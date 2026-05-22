@@ -13,7 +13,7 @@ public class ManagementScreenController : MonoBehaviour
     public GameModeManager modeManager;
     [Tooltip("Key to toggle the management screen (e.g. M for Management)")]
     public KeyCode toggleKey = KeyCode.M;
-    [Tooltip("Optional: button on the HUD that opens the management screen")]
+    [Tooltip("Optional: button on the HUD that toggles the management screen")]
     public Button openButton;
     [Tooltip("The main overlay panel (full-screen or large panel)")]
     public GameObject managementPanel;
@@ -44,7 +44,7 @@ public class ManagementScreenController : MonoBehaviour
 
         if (openButton != null)
         {
-            openButton.onClick.AddListener(Open);
+            openButton.onClick.AddListener(Toggle);
             ApplyModeVisibility();
         }
 
@@ -104,6 +104,8 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (managementPanel == null) return;
         managementPanel.SetActive(true);
+        if (openButton != null)
+            openButton.transform.SetAsLastSibling();
         SelectTab(0);
         isOpen = true;
         if (pauseWhileOpen)

@@ -162,7 +162,7 @@ public static class ManagementScreenSetup
 
         Undo.RegisterCreatedObjectUndo(root, "Create Management Screen");
         Selection.activeGameObject = root;
-        Debug.Log("Management Screen added: button is visible only in Play mode. Tabs: Store Stats, Workers, Settings, Other. Assign ProductionManager > Employee Prefab (create via Production > Create Default Employee Prefab) to hire workers.");
+        Debug.Log("Management Screen added: button is visible only in Play mode. Tabs: Store Stats, Workers, Settings, Other. Run Production > Create Worker Card UI Prefab if needed. Assign ProductionManager > Employee Prefab to hire workers.");
     }
 
     [MenuItem("Production/Add Workers Tab to Existing Management Screen")]
@@ -225,7 +225,7 @@ public static class ManagementScreenSetup
         so.ApplyModifiedPropertiesWithoutUndo();
         EditorUtility.SetDirty(controller);
 
-        Debug.Log("Workers tab added to Management Screen (second tab). Assign ProductionManager > Employee Prefab to hire workers.");
+        Debug.Log("Workers tab added to Management Screen (second tab). Run Production > Create Worker Card UI Prefab and Assign Worker Card Prefab To Scene if needed. Assign ProductionManager > Employee Prefab to hire workers.");
     }
 
     static GameObject CreateUIButton(string name, Transform parent, Vector2 anchor, Vector2 size, Vector2 position)
@@ -452,8 +452,57 @@ public static class ManagementScreenSetup
         workersUI.countText = countGo.GetComponent<TextMeshProUGUI>();
         workersUI.costText = costGo.GetComponent<TextMeshProUGUI>();
         workersUI.hireButton = hireBtnGo.GetComponent<Button>();
+        workersUI.cardContainer = CreateWorkerCardsScroll(panel.transform);
+        workersUI.workerCardPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(WorkerCardPrefabBuilder.DefaultPrefabPath);
 
         return panel;
+    }
+
+    static Transform CreateWorkerCardsScroll(Transform parent)
+    {
+        GameObject scrollGo = new GameObject("WorkerCardsScroll", typeof(RectTransform));
+        scrollGo.transform.SetParent(parent, false);
+        RectTransform scrollRect = (RectTransform)scrollGo.transform;
+        scrollRect.anchorMin = new Vector2(0, 0);
+        scrollRect.anchorMax = Vector2.one;
+        scrollRect.offsetMin = new Vector2(12, 12);
+        scrollRect.offsetMax = new Vector2(-12, -140);
+
+        var scroll = scrollGo.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+
+        GameObject viewport = new GameObject("Viewport", typeof(RectTransform));
+        viewport.transform.SetParent(scrollGo.transform, false);
+        var viewportRT = (RectTransform)viewport.transform;
+        viewportRT.anchorMin = Vector2.zero;
+        viewportRT.anchorMax = Vector2.one;
+        viewportRT.offsetMin = Vector2.zero;
+        viewportRT.offsetMax = Vector2.zero;
+        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.01f);
+        viewport.AddComponent<Mask>().showMaskGraphic = false;
+
+        GameObject content = new GameObject("CardContainer", typeof(RectTransform));
+        content.transform.SetParent(viewport.transform, false);
+        var contentRT = (RectTransform)content.transform;
+        contentRT.anchorMin = new Vector2(0, 1f);
+        contentRT.anchorMax = Vector2.one;
+        contentRT.pivot = new Vector2(0.5f, 1f);
+        contentRT.offsetMin = Vector2.zero;
+        contentRT.offsetMax = Vector2.zero;
+        contentRT.sizeDelta = new Vector2(0, 0);
+        var csf = content.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var vlg = content.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 8;
+        vlg.padding = new RectOffset(4, 4, 4, 4);
+        vlg.childControlHeight = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childForceExpandWidth = true;
+
+        scroll.viewport = viewportRT;
+        scroll.content = contentRT;
+        return content.transform;
     }
 
     static GameObject CreateTabPanel(string name, Transform parent, string title, string subtitle)

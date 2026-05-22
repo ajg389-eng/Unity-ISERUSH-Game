@@ -5,7 +5,7 @@ using TMPro;
 
 /// <summary>
 /// One worker's card in the Management > Workers tab: name field, fire button, and station toggles.
-/// Created and bound by WorkersUI.
+/// Lives on the worker card prefab; bound at runtime by WorkersUI.
 /// </summary>
 public class WorkerCardUI : MonoBehaviour
 {
@@ -19,6 +19,40 @@ public class WorkerCardUI : MonoBehaviour
     public Toggle toggleAssembly;
 
     ProductionManager production;
+
+    void OnValidate()
+    {
+        if (nameInputObject == null)
+        {
+            var t = transform.Find("Row1/NameInput");
+            if (t != null) nameInputObject = t.gameObject;
+        }
+        if (fireButton == null)
+        {
+            var t = transform.Find("Row1/Button_Fire");
+            if (t != null) fireButton = t.GetComponent<Button>();
+        }
+        if (toggleFreezer == null)
+        {
+            var t = transform.Find("Row2/Toggle_Freezer");
+            if (t != null) toggleFreezer = t.GetComponent<Toggle>();
+        }
+        if (toggleGrill == null)
+        {
+            var t = transform.Find("Row2/Toggle_Grill");
+            if (t != null) toggleGrill = t.GetComponent<Toggle>();
+        }
+        if (togglePantry == null)
+        {
+            var t = transform.Find("Row2/Toggle_Pantry");
+            if (t != null) togglePantry = t.GetComponent<Toggle>();
+        }
+        if (toggleAssembly == null)
+        {
+            var t = transform.Find("Row2/Toggle_Assembly");
+            if (t != null) toggleAssembly = t.GetComponent<Toggle>();
+        }
+    }
 
     public void Bind(KitchenEmployee emp)
     {
