@@ -13,10 +13,8 @@ MonoBehaviour:
   m_Name: CustomerOrderConfig
   m_EditorClassIdentifier: Assembly-CSharp::CustomerOrderConfig
   burgerBase: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
-  ingredientOptions:
-  - {fileID: 11400000, guid: 15a5bfc97f9dab84eab0bdc5f17d36e9, type: 2}
-  - {fileID: 11400000, guid: d8d67efd93515d241801efe5b3455bcd, type: 2}
-  - {fileID: 11400000, guid: a07ab9cb5fac5014d932b4668cac30bb, type: 2}
-  minIngredients: 1
-  maxIngredients: 3
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
+  drinkItem: {fileID: 11400000, guid: c4e8a1f29b7d4e6a9f3c5d8e1a2b3c4d, type: 2}
+  burgerChance: 0.85
+  friesChance: 0.7
+  drinkChance: 0.55

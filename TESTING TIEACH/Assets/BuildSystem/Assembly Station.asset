@@ -12,7 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
   m_Name: Assembly Station
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Station
+  itemName: Assembly Station
   prefab: {fileID: 7020022477330457741, guid: 6696c4841b719a049bedef89c7e9985e, type: 3}
   price: 120
   startingQuantity: 0
+  orderPackSize: 10
+  orderPackPrice: 15

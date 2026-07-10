@@ -1,10 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// Placeable station. Employee places raw patty, waits for cook time, then takes cooked patty.
+/// Placeable grill. Choose which product this grill cooks (Manage mode).
+/// Currently used for burgers; selection is required before jobs are accepted.
 /// </summary>
 public class GrillStation : MonoBehaviour
 {
+    [Header("Product")]
+    [Tooltip("Product this grill is set to cook. Must be chosen in Manage mode.")]
+    public ItemDefinition selectedProduct;
+
     public float cookTimeSeconds = 4f;
     [Tooltip("Time for employee to place patty on grill.")]
     public float placeTimeSeconds = 0.5f;
@@ -17,6 +22,11 @@ public class GrillStation : MonoBehaviour
     bool hasPatty;
     float cookTimer;
 
+    public bool HasProductSelected => selectedProduct != null;
+
+    public bool CanProcess(ItemDefinition product) =>
+        product != null && selectedProduct != null && product == selectedProduct;
+
     public Vector3 GetInteractionPosition()
     {
         var tiles = GetComponent<StationInteractionTiles>();
@@ -26,12 +36,12 @@ public class GrillStation : MonoBehaviour
 
     public bool CanPlacePatty()
     {
-        return !hasPatty;
+        return !hasPatty && HasProductSelected;
     }
 
     public void PlacePatty()
     {
-        if (hasPatty) return;
+        if (hasPatty || !HasProductSelected) return;
         hasPatty = true;
         cookTimer = 0f;
     }

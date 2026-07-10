@@ -2,26 +2,27 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Defines interaction tiles for the station (where the employee must stand).
-/// Assign the highlight object that is part of your station model; it will be shown in Build mode and hidden in Play mode.
+/// Defines where employees must stand to use a station.
+/// Prefers the green interaction quads on the station model; workers must be
+/// at the center of a quad to interact.
+/// Quads are visible in Inventory/Build mode and hidden in Play/Manage.
 /// </summary>
-[RequireComponent(typeof(BuildFootprint))]
 public class StationInteractionTiles : MonoBehaviour
 {
     public GridManager grid;
     public GameModeManager modeManager;
 
-    [Tooltip("Grid offsets from the station footprint origin (bottom-left). (0, -1) = one tile in front; add (1,-1) for 2-wide stations.")]
+    [Tooltip("Fallback grid offsets if no highlight quads are found. (0, -1) = one tile in front.")]
     public List<Vector2Int> interactionTileOffsets = new List<Vector2Int> { new Vector2Int(0, -1) };
 
     [Header("Build mode highlight (part of station model)")]
-    [Tooltip("The child GameObject(s) in your station model that show the green interaction tiles. Shown in Build mode, hidden in Play mode. Assign one parent that contains all highlight meshes (each child = one quad center).")]
+    [Tooltip("Parent of the green interaction Quad(s), or the Quad itself. Shown in Inventory/Build mode, hidden otherwise.")]
     public GameObject buildModeHighlight;
-    [Tooltip("Employee must stand within this distance (XZ) of a quad center to use the station. Uses grid cell size if 0.")]
+    [Tooltip("Max XZ distance from a quad center to count as standing on it. If 0, uses 10% of cell size (or 0.1).")]
     public float interactionRadius = 0f;
 
     BuildFootprint footprint;
-    bool lastBuildMode;
+    bool? lastShown;
 
     void Awake()
     {
@@ -30,26 +31,73 @@ public class StationInteractionTiles : MonoBehaviour
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
         if (interactionTileOffsets == null || interactionTileOffsets.Count == 0)
             interactionTileOffsets = new List<Vector2Int> { new Vector2Int(0, -1) };
+        if (buildModeHighlight == null)
+            TryAutoFindHighlight();
+    }
+
+    void Start()
+    {
+        if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        if (buildModeHighlight == null)
+            TryAutoFindHighlight();
+        ApplyHighlightVisibility(force: true);
+    }
+
+    void TryAutoFindHighlight()
+    {
+        // Common setup: child named like the green interaction quad
+        foreach (Transform t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t == transform) continue;
+            if (t.name == "Quad" || t.name.IndexOf("Interaction", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                buildModeHighlight = t.gameObject;
+                return;
+            }
+        }
+
+        // Fallback: any child using a Quad mesh (registers often add these by hand)
+        foreach (var mf in GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (mf == null || mf.gameObject == gameObject || mf.sharedMesh == null) continue;
+            if (mf.sharedMesh.name.IndexOf("Quad", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                buildModeHighlight = mf.gameObject;
+                return;
+            }
+        }
+    }
+
+    /// <summary>Re-scan children for a green interaction quad if none is assigned.</summary>
+    public void EnsureHighlightReference()
+    {
+        if (buildModeHighlight == null)
+            TryAutoFindHighlight();
+        ApplyHighlightVisibility(force: true);
     }
 
     void Update()
     {
-        if (modeManager == null) return;
-        bool buildMode = modeManager.CurrentMode == GameModeManager.Mode.Build;
-        if (buildMode == lastBuildMode) return;
-        lastBuildMode = buildMode;
-
-        if (buildModeHighlight != null)
-            buildModeHighlight.SetActive(buildMode);
+        ApplyHighlightVisibility(force: false);
     }
 
     void OnEnable()
     {
-        if (modeManager != null && buildModeHighlight != null)
-            buildModeHighlight.SetActive(modeManager.CurrentMode == GameModeManager.Mode.Build);
+        ApplyHighlightVisibility(force: true);
     }
 
-    /// <summary>Footprint origin cell (bottom-left of the station).</summary>
+    void ApplyHighlightVisibility(bool force)
+    {
+        if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        if (buildModeHighlight == null) return;
+
+        // Same as other stations: visible only while Inventory opens Build mode
+        bool show = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Build;
+        if (!force && lastShown.HasValue && lastShown.Value == show) return;
+        lastShown = show;
+        buildModeHighlight.SetActive(show);
+    }
+
     public void GetOriginCell(out int originX, out int originY)
     {
         originX = 0;
@@ -64,7 +112,7 @@ public class StationInteractionTiles : MonoBehaviour
         originY = Mathf.RoundToInt(continuousZ - sizeY * 0.5f);
     }
 
-    /// <summary>World positions (cell centers) for each interaction tile.</summary>
+    /// <summary>Fallback stand positions from grid offsets.</summary>
     public List<Vector3> GetInteractionTileWorldPositions()
     {
         var list = new List<Vector3>();
@@ -81,76 +129,93 @@ public class StationInteractionTiles : MonoBehaviour
         return list;
     }
 
-    /// <summary>World positions from the highlight quads (center of each child, or the single highlight). Used so worker must stand in the middle of the quad.</summary>
+    /// <summary>World centers of the green interaction quads on the model.</summary>
     public List<Vector3> GetInteractionPositionsFromModel()
     {
         var list = new List<Vector3>();
         if (buildModeHighlight == null) return list;
+
+        // If highlight has child quads, each child is a stand point
         int childCount = buildModeHighlight.transform.childCount;
         if (childCount > 0)
         {
             for (int i = 0; i < childCount; i++)
-                list.Add(buildModeHighlight.transform.GetChild(i).position);
+            {
+                var child = buildModeHighlight.transform.GetChild(i);
+                if (child != null)
+                    list.Add(FlattenToGround(child.position));
+            }
+            return list;
         }
-        else
+
+        // Highlight itself is the quad
+        list.Add(FlattenToGround(buildModeHighlight.transform.position));
+        return list;
+    }
+
+    Vector3 FlattenToGround(Vector3 world)
+    {
+        if (grid != null)
+            world.y = grid.Origin.y;
+        return world;
+    }
+
+    /// <summary>First interaction stand position (center of first green quad).</summary>
+    public Vector3 GetFirstInteractionPosition()
+    {
+        var centers = GetInteractionStandCenters();
+        if (centers.Count > 0)
+            return centers[0];
+        return FlattenToGround(transform.position);
+    }
+
+    /// <summary>
+    /// Stand positions: green quad centers first (exact XZ), then grid-offset fallback.
+    /// </summary>
+    public List<Vector3> GetInteractionStandCenters()
+    {
+        var list = new List<Vector3>();
+
+        var fromModel = GetInteractionPositionsFromModel();
+        if (fromModel != null && fromModel.Count > 0)
         {
-            list.Add(buildModeHighlight.transform.position);
+            foreach (var p in fromModel)
+                list.Add(p);
+            return list;
+        }
+
+        var fromOffsets = GetInteractionTileWorldPositions();
+        if (fromOffsets != null)
+        {
+            foreach (var p in fromOffsets)
+                list.Add(p);
         }
         return list;
     }
 
-    /// <summary>First interaction position (middle of first quad, or grid fallback). Snaps to a walkable cell so pathfinding can reach it.</summary>
-    public Vector3 GetFirstInteractionPosition()
+    float GetStandTolerance()
     {
-        var fromModel = GetInteractionPositionsFromModel();
-        if (fromModel != null && fromModel.Count > 0)
-        {
-            Vector3 quadCenter = fromModel[0];
-            if (grid != null && grid.WorldToCell(quadCenter, out int tx, out int ty))
-            {
-                if (grid.IsWalkable(tx, ty))
-                    return grid.CellToWorld(tx, ty);
-                if (grid.FindNearestWalkable(tx, ty, out int wx, out int wy))
-                    return grid.CellToWorld(wx, wy);
-            }
-            return quadCenter;
-        }
-        var positions = GetInteractionTileWorldPositions();
-        if (positions != null && positions.Count > 0)
-            return positions[0];
-        return transform.position;
+        if (interactionRadius > 0f) return interactionRadius;
+        if (grid != null) return grid.cellSize * 0.1f;
+        return 0.1f;
     }
 
-    /// <summary>True if the given world position is within the middle of one of the highlight quads.</summary>
+    /// <summary>True only when the employee is at the center of a green interaction quad.</summary>
     public bool IsEmployeeOnInteractionTile(Vector3 worldPosition)
     {
-        var fromModel = GetInteractionPositionsFromModel();
-        if (fromModel != null && fromModel.Count > 0)
+        var centers = GetInteractionStandCenters();
+        if (centers == null || centers.Count == 0)
+            return true; // no quads configured
+
+        float tol = GetStandTolerance();
+        float tolSq = tol * tol;
+
+        for (int i = 0; i < centers.Count; i++)
         {
-            float r = interactionRadius > 0f ? interactionRadius : (grid != null ? grid.cellSize * 0.65f : 0.65f);
-            float rSq = r * r;
-            float ex = worldPosition.x;
-            float ez = worldPosition.z;
-            if (!grid.WorldToCell(worldPosition, out int empCellX, out int empCellY))
-                empCellX = empCellY = -999;
-            for (int i = 0; i < fromModel.Count; i++)
-            {
-                Vector3 c = fromModel[i];
-                float dx = ex - c.x;
-                float dz = ez - c.z;
-                if (dx * dx + dz * dz <= rSq)
-                    return true;
-                if (grid != null && grid.WorldToCell(c, out int quadCellX, out int quadCellY) && empCellX == quadCellX && empCellY == quadCellY)
-                    return true;
-            }
-            return false;
-        }
-        if (grid == null || interactionTileOffsets == null) return false;
-        if (!grid.WorldToCell(worldPosition, out int exi, out int ey)) return false;
-        GetOriginCell(out int ox, out int oy);
-        foreach (var offset in interactionTileOffsets)
-        {
-            if (ox + offset.x == exi && oy + offset.y == ey)
+            Vector3 c = centers[i];
+            float dx = worldPosition.x - c.x;
+            float dz = worldPosition.z - c.z;
+            if (dx * dx + dz * dz <= tolSq)
                 return true;
         }
         return false;

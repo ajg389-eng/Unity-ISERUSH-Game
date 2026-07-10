@@ -12,7 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
   m_Name: Burger
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: 
+  itemName: Burger
   prefab: {fileID: 0}
-  price: 10
-  startingQuantity: 0
+  price: 12
+  startingQuantity: 12
+  orderPackSize: 10
+  orderPackPrice: 20

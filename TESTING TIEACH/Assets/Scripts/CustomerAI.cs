@@ -13,18 +13,51 @@ public class CustomerAI : MonoBehaviour
     float queueJoinTime;
     public float QueueJoinTime => queueJoinTime;
 
+    /// <summary>Items still owed to this customer (shrinks as the cashier delivers).</summary>
     CustomerOrder order;
+    /// <summary>Full sale price locked in when the order was placed.</summary>
+    int salePrice;
     CustomerOrderLabel orderLabel;
 
     public CustomerOrder GetOrder() => order;
+    public int SalePrice => salePrice;
+    public bool IsOrderFullyDelivered =>
+        order == null || order.lines == null || order.GetTotalQuantity() <= 0;
 
     public void SetOrder(CustomerOrder o)
     {
-        order = o;
+        order = o != null ? o.Clone() : new CustomerOrder();
+        salePrice = order.GetSalePrice();
+        RefreshOrderLabel();
+    }
+
+    /// <summary>Hand one item to the customer; removes it from the floating order list.</summary>
+    public bool TryReceiveItem(ItemDefinition item)
+    {
+        if (item == null || order == null) return false;
+        if (!order.TryRemoveOne(item)) return false;
+        RefreshOrderLabel();
+        return true;
+    }
+
+    void RefreshOrderLabel()
+    {
         if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
         if (orderLabel == null) orderLabel = gameObject.AddComponent<CustomerOrderLabel>();
-        string label = (order != null && order.lines != null && order.lines.Count > 0) ? order.GetDisplayString() : "No order";
-        orderLabel.Setup(transform, label);
+
+        string label;
+        if (IsOrderFullyDelivered)
+            label = "Done!";
+        else if (order != null && order.lines != null && order.lines.Count > 0)
+            label = order.GetDisplayString();
+        else
+            label = "No order";
+
+        var existing = transform.Find("OrderLabel");
+        if (existing == null)
+            orderLabel.Setup(transform, label);
+        else
+            orderLabel.SetText(label);
     }
 
     public void SetQueueJoinTime(float time)

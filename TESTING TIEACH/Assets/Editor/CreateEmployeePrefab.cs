@@ -17,6 +17,7 @@ public static class CreateEmployeePrefab
         var root = new GameObject("KitchenEmployee");
         root.AddComponent<KitchenEmployee>();
         root.AddComponent<EmployeeTaskBar>();
+        root.AddComponent<EmployeeInventoryLabel>();
 
         var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         capsule.name = "Model";

@@ -3,33 +3,36 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Management screen Workers tab: hire button, and a scrollable list of worker cards (name, fire, assign stations).
+/// Management screen Workers tab: hire workers and list them.
+/// Station assignment is done in Manage mode by clicking stations in the world.
 /// </summary>
 public class WorkersUI : MonoBehaviour
 {
-    [Tooltip("Shows current number of employees")]
+    [Header("Header")]
     public TextMeshProUGUI countText;
-    [Tooltip("Shows hire cost (e.g. Cost: $100)")]
     public TextMeshProUGUI costText;
-    [Tooltip("Click to hire one worker")]
+    public TextMeshProUGUI hintText;
     public Button hireButton;
-    [Tooltip("Prefab for one worker row (must include WorkerCardUI)")]
+
+    [Header("List")]
     public GameObject workerCardPrefab;
-    [Tooltip("Parent for worker cards. If null, a scroll area is created at runtime.")]
     public Transform cardContainer;
 
     ProductionManager production;
     bool listenerAdded;
+    bool layoutApplied;
 
     void Start()
     {
         EnsureRefs();
+        ApplyCleanLayout();
         EnsureCardContainer();
     }
 
     void OnEnable()
     {
         EnsureRefs();
+        ApplyCleanLayout();
         EnsureCardContainer();
         Refresh();
     }
@@ -38,8 +41,28 @@ public class WorkersUI : MonoBehaviour
     {
         if (production == null)
             production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
-        if (countText == null) countText = GetComponentInChildren<TextMeshProUGUI>(true);
-        if (hireButton == null) hireButton = GetComponentInChildren<Button>(true);
+
+        if (countText == null)
+        {
+            var t = transform.Find("CountText") ?? transform.Find("HeaderBar/CountText");
+            if (t != null) countText = t.GetComponent<TextMeshProUGUI>();
+        }
+        if (costText == null)
+        {
+            var t = transform.Find("CostText") ?? transform.Find("HeaderBar/CostText");
+            if (t != null) costText = t.GetComponent<TextMeshProUGUI>();
+        }
+        if (hireButton == null)
+        {
+            var t = transform.Find("HireButton") ?? transform.Find("HeaderBar/HireButton");
+            if (t != null) hireButton = t.GetComponent<Button>();
+        }
+        if (hintText == null)
+        {
+            var t = transform.Find("HintText");
+            if (t != null) hintText = t.GetComponent<TextMeshProUGUI>();
+        }
+
         if (hireButton != null && !listenerAdded)
         {
             hireButton.onClick.AddListener(OnHireClicked);
@@ -47,35 +70,164 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
+    /// <summary>Reorganize the Workers panel into a tidy header + list layout.</summary>
+    void ApplyCleanLayout()
+    {
+        if (layoutApplied) return;
+        layoutApplied = true;
+
+        var title = transform.Find("Title") as RectTransform;
+        if (title != null)
+        {
+            title.anchorMin = new Vector2(0f, 1f);
+            title.anchorMax = new Vector2(1f, 1f);
+            title.pivot = new Vector2(0.5f, 1f);
+            title.anchoredPosition = new Vector2(0f, -10f);
+            title.sizeDelta = new Vector2(-24f, 28f);
+            var titleTmp = title.GetComponent<TextMeshProUGUI>();
+            if (titleTmp != null)
+            {
+                titleTmp.alignment = TextAlignmentOptions.Center;
+                titleTmp.fontSize = 20;
+            }
+        }
+
+        // Header bar: Workers count | Cost | Hire button
+        Transform header = transform.Find("HeaderBar");
+        if (header == null)
+        {
+            var headerGo = new GameObject("HeaderBar", typeof(RectTransform));
+            headerGo.transform.SetParent(transform, false);
+            header = headerGo.transform;
+        }
+
+        var headerRt = (RectTransform)header;
+        headerRt.anchorMin = new Vector2(0f, 1f);
+        headerRt.anchorMax = new Vector2(1f, 1f);
+        headerRt.pivot = new Vector2(0.5f, 1f);
+        headerRt.anchoredPosition = new Vector2(0f, -44f);
+        headerRt.sizeDelta = new Vector2(-24f, 44f);
+
+        var headerImg = header.GetComponent<Image>();
+        if (headerImg == null) headerImg = header.gameObject.AddComponent<Image>();
+        headerImg.color = new Color(0.18f, 0.18f, 0.24f, 0.9f);
+        headerImg.raycastTarget = false;
+
+        var hlg = header.GetComponent<HorizontalLayoutGroup>();
+        if (hlg == null) hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
+        hlg.padding = new RectOffset(12, 12, 6, 6);
+        hlg.spacing = 12;
+        hlg.childAlignment = TextAnchor.MiddleLeft;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = true;
+
+        // Move count / cost / hire into header
+        if (countText != null)
+        {
+            countText.transform.SetParent(header, false);
+            var le = countText.GetComponent<LayoutElement>();
+            if (le == null) le = countText.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 100;
+            le.flexibleWidth = 1;
+            countText.alignment = TextAlignmentOptions.Left;
+            countText.fontSize = 15;
+            countText.raycastTarget = false;
+        }
+
+        if (costText != null)
+        {
+            costText.transform.SetParent(header, false);
+            var le = costText.GetComponent<LayoutElement>();
+            if (le == null) le = costText.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 90;
+            le.preferredWidth = 110;
+            costText.alignment = TextAlignmentOptions.Center;
+            costText.fontSize = 15;
+            costText.color = new Color(0.85f, 0.88f, 0.75f, 1f);
+            costText.raycastTarget = false;
+        }
+
+        if (hireButton != null)
+        {
+            hireButton.transform.SetParent(header, false);
+            var le = hireButton.GetComponent<LayoutElement>();
+            if (le == null) le = hireButton.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 130;
+            le.preferredWidth = 140;
+            le.minHeight = 32;
+            var img = hireButton.GetComponent<Image>();
+            if (img != null) img.color = new Color(0.3f, 0.48f, 0.36f, 1f);
+            var label = hireButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null)
+            {
+                label.text = "Hire Worker";
+                label.fontSize = 15;
+            }
+        }
+
+        // Hint under header
+        if (hintText == null)
+        {
+            var hintGo = new GameObject("HintText", typeof(RectTransform));
+            hintGo.transform.SetParent(transform, false);
+            hintText = hintGo.AddComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null) hintText.font = TMP_Settings.defaultFontAsset;
+        }
+
+        var hintRt = hintText.rectTransform;
+        hintRt.anchorMin = new Vector2(0f, 1f);
+        hintRt.anchorMax = new Vector2(1f, 1f);
+        hintRt.pivot = new Vector2(0.5f, 1f);
+        hintRt.anchoredPosition = new Vector2(0f, -94f);
+        hintRt.sizeDelta = new Vector2(-28f, 36f);
+        hintText.fontSize = 12;
+        hintText.color = new Color(0.75f, 0.78f, 0.85f, 1f);
+        hintText.alignment = TextAlignmentOptions.TopLeft;
+        hintText.textWrappingMode = TextWrappingModes.Normal;
+        hintText.raycastTarget = false;
+        hintText.text = "Tip: every station needs Assign Output. Workers use the station, then deliver only to that output.";
+
+        // Keep header above list in hierarchy for clarity
+        header.SetSiblingIndex(1);
+        hintText.transform.SetSiblingIndex(2);
+    }
+
     void EnsureCardContainer()
     {
-        if (cardContainer != null) return;
-        var rect = GetComponent<RectTransform>();
-        if (rect == null) return;
+        // Prefer existing scroll if present
+        if (cardContainer == null)
+        {
+            var existing = transform.Find("WorkerCardsScroll/Viewport/CardContainer");
+            if (existing != null) cardContainer = existing;
+        }
 
-        GameObject scrollGo = new GameObject("WorkerCardsScroll", typeof(RectTransform));
+        if (cardContainer != null)
+        {
+            FitScrollArea();
+            return;
+        }
+
+        var scrollGo = new GameObject("WorkerCardsScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
         var scrollRect = (RectTransform)scrollGo.transform;
-        scrollRect.anchorMin = new Vector2(0, 0);
-        scrollRect.anchorMax = Vector2.one;
-        scrollRect.offsetMin = new Vector2(12, 12);
-        scrollRect.offsetMax = new Vector2(-12, -140);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         scroll.horizontal = false;
         scroll.vertical = true;
 
-        GameObject viewport = new GameObject("Viewport", typeof(RectTransform));
+        var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
         var vpRect = (RectTransform)viewport.transform;
         vpRect.anchorMin = Vector2.zero;
         vpRect.anchorMax = Vector2.one;
         vpRect.offsetMin = Vector2.zero;
         vpRect.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.01f);
+        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.02f);
         viewport.AddComponent<Mask>().showMaskGraphic = false;
 
-        GameObject content = new GameObject("CardContainer", typeof(RectTransform));
+        var content = new GameObject("CardContainer", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
         var contentRect = (RectTransform)content.transform;
         contentRect.anchorMin = new Vector2(0, 1f);
@@ -83,9 +235,7 @@ public class WorkersUI : MonoBehaviour
         contentRect.pivot = new Vector2(0.5f, 1f);
         contentRect.offsetMin = Vector2.zero;
         contentRect.offsetMax = Vector2.zero;
-        contentRect.sizeDelta = new Vector2(0, 0);
-        var csf = content.AddComponent<ContentSizeFitter>();
-        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var vlg = content.AddComponent<VerticalLayoutGroup>();
         vlg.spacing = 8;
         vlg.padding = new RectOffset(4, 4, 4, 4);
@@ -96,6 +246,23 @@ public class WorkersUI : MonoBehaviour
         scroll.viewport = vpRect;
         scroll.content = contentRect;
         cardContainer = content.transform;
+        FitScrollArea();
+    }
+
+    void FitScrollArea()
+    {
+        var scroll = transform.Find("WorkerCardsScroll") as RectTransform;
+        if (scroll == null && cardContainer != null)
+            scroll = cardContainer.parent != null && cardContainer.parent.parent != null
+                ? cardContainer.parent.parent as RectTransform
+                : null;
+        if (scroll == null) return;
+
+        scroll.anchorMin = new Vector2(0f, 0f);
+        scroll.anchorMax = Vector2.one;
+        scroll.offsetMin = new Vector2(12f, 12f);
+        scroll.offsetMax = new Vector2(-12f, -138f); // leave room for title + header + hint
+        scroll.SetSiblingIndex(transform.childCount - 1);
     }
 
     void OnHireClicked()
@@ -112,12 +279,13 @@ public class WorkersUI : MonoBehaviour
     public void Refresh()
     {
         EnsureRefs();
+        ApplyCleanLayout();
         EnsureCardContainer();
 
         if (production == null)
         {
             if (countText != null) countText.text = "Workers: —";
-            if (costText != null) costText.text = "Cost: — (No ProductionManager in scene)";
+            if (costText != null) costText.text = "Hire: —";
             if (hireButton != null) hireButton.interactable = false;
             return;
         }
@@ -128,20 +296,20 @@ public class WorkersUI : MonoBehaviour
 
         bool canHire = production.employeePrefab != null;
         var money = FindObjectOfType<MoneyManager>();
-        string status = "";
+        string costLabel = "Hire: $" + production.hireCost;
         if (production.employeePrefab == null)
         {
             canHire = false;
-            status = " — Assign Employee Prefab on ProductionManager.";
+            costLabel = "Hire: N/A";
         }
         else if (money != null && !money.CanAfford(production.hireCost))
         {
             canHire = false;
-            status = " — Not enough money.";
+            costLabel = "Hire: $" + production.hireCost + " (broke)";
         }
 
         if (costText != null)
-            costText.text = "Cost: $" + production.hireCost + status;
+            costText.text = costLabel;
 
         if (hireButton != null)
             hireButton.interactable = canHire;
@@ -150,25 +318,34 @@ public class WorkersUI : MonoBehaviour
         for (int i = cardContainer.childCount - 1; i >= 0; i--)
             Destroy(cardContainer.GetChild(i).gameObject);
 
-        if (workerCardPrefab == null)
-        {
-            Debug.LogWarning("WorkersUI: assign Worker Card Prefab (Assets/Prefabs/WorkerCard.prefab). Create via Production > Create Worker Card UI Prefab.", this);
-            return;
-        }
-
         if (production.employees == null) return;
         foreach (var emp in production.employees)
         {
             if (emp == null) continue;
-            var cardGo = Instantiate(workerCardPrefab, cardContainer);
-            var card = cardGo.GetComponent<WorkerCardUI>();
-            if (card == null)
-            {
-                Debug.LogWarning("Worker card prefab is missing WorkerCardUI: " + workerCardPrefab.name, workerCardPrefab);
-                Destroy(cardGo);
-                continue;
-            }
-            card.Bind(emp);
+            var card = CreateCard();
+            if (card != null)
+                card.Bind(emp);
         }
+    }
+
+    WorkerCardUI CreateCard()
+    {
+        GameObject cardGo;
+        if (workerCardPrefab != null)
+            cardGo = Instantiate(workerCardPrefab, cardContainer);
+        else
+        {
+            cardGo = WorkerCardPrefabBuilder.Build();
+            cardGo.transform.SetParent(cardContainer, false);
+        }
+
+        var card = cardGo.GetComponent<WorkerCardUI>();
+        if (card == null)
+        {
+            Debug.LogWarning("Worker card is missing WorkerCardUI.", cardGo);
+            Destroy(cardGo);
+            return null;
+        }
+        return card;
     }
 }

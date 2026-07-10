@@ -32,6 +32,9 @@ public class EmployeeAssignmentPanel : MonoBehaviour
     {
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
         if (panelRoot != null) panelRoot.SetActive(false);
+
+        // Replaced by ManagementModeController (click stations in Manage mode)
+        enabled = false;
     }
 
     void Update()
@@ -78,6 +81,8 @@ public class EmployeeAssignmentPanel : MonoBehaviour
             ?? hit.collider.GetComponentInParent<GrillStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<PantryStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<AssemblyStation>()?.gameObject
+            ?? hit.collider.GetComponentInParent<FryerStation>()?.gameObject
+            ?? hit.collider.GetComponentInParent<DrinkStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<Register>()?.gameObject;
         if (target == null) return;
 
@@ -428,7 +433,7 @@ public class EmployeeAssignmentPanel : MonoBehaviour
         statusText.text = "Click a slot, then click a station in the game.";
         statusText.fontSize = 12;
         statusText.color = new Color(0.85f, 0.85f, 0.9f, 1f);
-        statusText.enableWordWrapping = true;
+        statusText.textWrappingMode = TextWrappingModes.Normal;
         if (TMP_Settings.defaultFontAsset != null) statusText.font = TMP_Settings.defaultFontAsset;
         statusGo.AddComponent<LayoutElement>().minHeight = 36;
 

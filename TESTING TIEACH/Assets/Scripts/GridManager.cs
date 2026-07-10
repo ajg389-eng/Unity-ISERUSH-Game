@@ -3,23 +3,47 @@ using UnityEngine;
 
 public class GridManager : MonoBehaviour
 {
+    public static GridManager Instance { get; private set; }
+
     public Transform floor;
     public float cellSize = 1f;
     public bool drawGizmos = true;
+
+    [Header("Expansion")]
+    [Tooltip("Native size of a Unity Plane mesh (default Plane is 10x10). Used when scaling the floor.")]
+    public float floorMeshWorldSize = 10f;
+    [Tooltip("Maximum grid width (cells) the player can expand to.")]
+    public int maxWidth = 30;
+    [Tooltip("Maximum grid height / depth (cells) the player can expand to.")]
+    public int maxHeight = 30;
 
     public int Width { get; private set; }
     public int Height { get; private set; }
     public Node[,] Nodes { get; private set; }
     public Vector3 Origin { get; private set; }
 
-    void Awake() => RebuildFromFloor();
+    /// <summary>Fired after Width/Height/Origin/Nodes change (e.g. expand).</summary>
+    public event System.Action GridChanged;
+
+    void Awake()
+    {
+        Instance = this;
+        RebuildFromFloor();
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
 
     [ContextMenu("Rebuild Grid From Floor")]
+    public void RebuildFromFloorMenu() => RebuildFromFloor();
 
     public void SetGridVisible(bool visible)
     {
         drawGizmos = visible;
     }
+
     public void RebuildFromFloor()
     {
         if (!floor) { Debug.LogError("Assign floor Transform."); return; }
@@ -29,7 +53,7 @@ public class GridManager : MonoBehaviour
         if (r != null) b = r.bounds;
         else
         {
-            Vector3 size = new Vector3(floor.localScale.x * 10f, 0f, floor.localScale.z * 10f);
+            Vector3 size = new Vector3(floor.localScale.x * floorMeshWorldSize, 0f, floor.localScale.z * floorMeshWorldSize);
             b = new Bounds(floor.position, size);
         }
 
@@ -45,10 +69,111 @@ public class GridManager : MonoBehaviour
                 Vector3 world = CellToWorld(x, y);
                 Nodes[x, y] = new Node(x, y, world);
             }
+
+        GridChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Grow the placeable grid by the given cell counts along -X and -Z
+    /// (opposite of the floor's +X/+Z extent). Existing placements stay put;
+    /// Origin and occupancy indices shift to match.
+    /// </summary>
+    public bool TryExpand(int addWidth, int addHeight)
+    {
+        addWidth = Mathf.Max(0, addWidth);
+        addHeight = Mathf.Max(0, addHeight);
+        if (addWidth == 0 && addHeight == 0) return false;
+        if (Nodes == null || Width <= 0 || Height <= 0)
+            RebuildFromFloor();
+        if (Nodes == null) return false;
+
+        int newW = Width + addWidth;
+        int newH = Height + addHeight;
+        if (newW > maxWidth || newH > maxHeight)
+            return false;
+
+        // Preserve occupancy before reallocating
+        int oldW = Width;
+        int oldH = Height;
+        bool[,] occupied = new bool[oldW, oldH];
+        for (int x = 0; x < oldW; x++)
+            for (int y = 0; y < oldH; y++)
+                occupied[x, y] = Nodes[x, y] != null && Nodes[x, y].occupied;
+
+        // Grow toward -X / -Z: Origin moves, old cells shift up in index space
+        Vector3 newOrigin = Origin + new Vector3(-addWidth * cellSize, 0f, -addHeight * cellSize);
+        ResizeFloorToCells(newW, newH, newOrigin);
+
+        Width = newW;
+        Height = newH;
+        Origin = newOrigin;
+
+        Nodes = new Node[Width, Height];
+        for (int x = 0; x < Width; x++)
+            for (int y = 0; y < Height; y++)
+            {
+                Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
+                int ox = x - addWidth;
+                int oy = y - addHeight;
+                if (ox >= 0 && oy >= 0 && ox < oldW && oy < oldH)
+                    Nodes[x, y].occupied = occupied[ox, oy];
+            }
+
+        GridChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>True if expanding by these amounts would stay under max size.</summary>
+    public bool CanExpand(int addWidth, int addHeight)
+    {
+        addWidth = Mathf.Max(0, addWidth);
+        addHeight = Mathf.Max(0, addHeight);
+        if (addWidth == 0 && addHeight == 0) return false;
+        return Width + addWidth <= maxWidth && Height + addHeight <= maxHeight;
+    }
+
+    void ResizeFloorToCells(int cellsW, int cellsH, Vector3 origin)
+    {
+        if (floor == null) return;
+
+        float worldW = cellsW * cellSize;
+        float worldH = cellsH * cellSize;
+        float mesh = Mathf.Max(0.01f, floorMeshWorldSize);
+
+        Vector3 scale = floor.localScale;
+        floor.localScale = new Vector3(worldW / mesh, scale.y, worldH / mesh);
+
+        // Keep the max-corner fixed in world space; grow toward -X / -Z via new origin
+        floor.position = new Vector3(
+            origin.x + worldW * 0.5f,
+            floor.position.y,
+            origin.z + worldH * 0.5f);
     }
 
     public Vector3 CellToWorld(int x, int y)
         => Origin + new Vector3((x + 0.5f) * cellSize, 0f, (y + 0.5f) * cellSize);
+
+    /// <summary>Snap any world position to the center of its grid cell (Y kept from Origin / floor).</summary>
+    public Vector3 GetCellCenter(Vector3 world)
+    {
+        if (Nodes == null || Width == 0 || Height == 0)
+            return world;
+        WorldToCell(world, out int x, out int y);
+        x = Mathf.Clamp(x, 0, Width - 1);
+        y = Mathf.Clamp(y, 0, Height - 1);
+        Vector3 c = CellToWorld(x, y);
+        c.y = Origin.y;
+        return c;
+    }
+
+    /// <summary>True if world XZ is within tolerance of the cell center.</summary>
+    public bool IsAtCellCenter(Vector3 world, float tolerance = 0.05f)
+    {
+        Vector3 c = GetCellCenter(world);
+        float dx = world.x - c.x;
+        float dz = world.z - c.z;
+        return dx * dx + dz * dz <= tolerance * tolerance;
+    }
 
     /// <summary>World position for the center of a multi-cell footprint (so 2x1 objects sit centered over both tiles).</summary>
     public Vector3 GetFootprintCenter(int startX, int startY, int sizeX, int sizeY)
@@ -116,7 +241,7 @@ public class GridManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>Path from current world position to target world position using only walkable cells. Returns world positions (cell centers) to follow, or empty if no path.</summary>
+    /// <summary>Path from current world position to target world position using only walkable cells. Returns cell-center world positions.</summary>
     public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld)
     {
         var result = new List<Vector3>();
@@ -128,6 +253,13 @@ public class GridManager : MonoBehaviour
         sy = Mathf.Clamp(sy, 0, Height - 1);
         if (!FindNearestWalkable(tx, ty, out int gx, out int gy)) return result;
         if (!IsWalkable(sx, sy) && !FindNearestWalkable(sx, sy, out sx, out sy)) return result;
+
+        // Already on the goal cell — still return that cell center so the worker can snap to it
+        if (sx == gx && sy == gy)
+        {
+            result.Add(CellToWorld(gx, gy));
+            return result;
+        }
 
         var open = new List<(int x, int y, float g, float f)>();
         var closed = new HashSet<(int, int)>();

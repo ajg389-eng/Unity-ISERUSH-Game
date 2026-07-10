@@ -12,7 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
   m_Name: Cheese
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: 
+  itemName: Cheese
   prefab: {fileID: 0}
-  price: 10
-  startingQuantity: 0
+  price: 8
+  startingQuantity: 10
+  orderPackSize: 10
+  orderPackPrice: 12

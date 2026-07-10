@@ -1,8 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Placeable station. Employee walks here to grab a patty for the burger.
-/// Assign patty item in ProductionManager; this station just provides an interaction point.
+/// Placeable station. Employee grabs a patty here (consumes from KitchenInventory).
 /// </summary>
 public class FreezerStation : MonoBehaviour
 {
@@ -15,5 +14,22 @@ public class FreezerStation : MonoBehaviour
         var tiles = GetComponent<StationInteractionTiles>();
         if (tiles != null) return tiles.GetFirstInteractionPosition();
         return transform.position + interactionOffset;
+    }
+
+    /// <summary>Consume one patty/burger base from kitchen stock.</summary>
+    public bool TryTakePatty(ItemDefinition pattyItem)
+    {
+        if (pattyItem == null) return false;
+        var inv = KitchenInventory.Instance;
+        if (inv == null) return true; // legacy infinite
+        return inv.TryConsume(pattyItem, 1);
+    }
+
+    public bool HasPatty(ItemDefinition pattyItem)
+    {
+        if (pattyItem == null) return false;
+        var inv = KitchenInventory.Instance;
+        if (inv == null) return true;
+        return inv.Has(pattyItem);
     }
 }

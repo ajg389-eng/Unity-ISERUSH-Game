@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Simple timer-based order completion. Fully disabled when ProductionManager exists –
-/// customers only get served when employees deliver orders (freezer -> grill -> pantry -> assembly -> register).
+/// Legacy timer kitchen. When ProductionManager exists this is a no-op.
+/// Without it, still fills the heat lamp (or register) on a simple timer.
 /// </summary>
 public class Kitchen : MonoBehaviour
 {
@@ -14,24 +14,51 @@ public class Kitchen : MonoBehaviour
     [Tooltip("Seconds to create/assemble one order (only used when no ProductionManager in scene)")]
     public float prepTimePerOrder = 5f;
 
+    [Header("Orders")]
+    public CustomerOrderConfig orderConfig;
+    public HeatLampStation heatLamp;
+
     float prepTimer;
     CustomerOrder orderInProgress;
-    Register targetRegister;
 
     void Update()
     {
         if (ProductionManager.Instance != null)
             return;
 
-        if (orderInProgress != null && targetRegister != null)
+        if (heatLamp == null)
+            heatLamp = HeatLampStation.Instance;
+
+        if (orderInProgress != null)
         {
             prepTimer -= Time.deltaTime;
             if (prepTimer <= 0f)
             {
-                targetRegister.DeliverOrder(orderInProgress);
+                if (heatLamp != null)
+                    heatLamp.DeliverMeal(orderInProgress);
+                else
+                {
+                    foreach (var reg in registers)
+                    {
+                        if (reg != null && reg.isEnabled)
+                        {
+                            reg.DeliverOrder(orderInProgress);
+                            break;
+                        }
+                    }
+                }
                 orderInProgress = null;
-                targetRegister = null;
             }
+            return;
+        }
+
+        if (heatLamp != null)
+        {
+            if (!heatLamp.HasSpace || heatLamp.Count >= heatLamp.targetStock)
+                return;
+            if (orderConfig == null) return;
+            orderInProgress = orderConfig.GenerateRandomOrder();
+            prepTimer = prepTimePerOrder;
             return;
         }
 
@@ -45,7 +72,6 @@ public class Kitchen : MonoBehaviour
                 continue;
 
             orderInProgress = frontOrder.Clone();
-            targetRegister = reg;
             prepTimer = prepTimePerOrder;
             return;
         }

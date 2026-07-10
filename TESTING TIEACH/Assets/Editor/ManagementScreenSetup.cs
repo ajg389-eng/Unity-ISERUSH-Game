@@ -134,8 +134,6 @@ public static class ManagementScreenSetup
 
         GameObject statsTabBtn = CreateTabButton("Tab_StoreStats", tabBar.transform, "Store Stats");
         GameObject workersTabBtn = CreateTabButton("Tab_Workers", tabBar.transform, "Workers");
-        GameObject settingsTabBtn = CreateTabButton("Tab_Settings", tabBar.transform, "Settings");
-        GameObject otherTabBtn = CreateTabButton("Tab_Other", tabBar.transform, "Other");
 
         // Area where tab panels sit (below tab bar)
         GameObject tabContentArea = new GameObject("TabContentArea", typeof(RectTransform));
@@ -149,20 +147,16 @@ public static class ManagementScreenSetup
         EnsureStoreStatisticsManager();
         GameObject statsPanel = CreateStoreStatsPanel("StatsPanel", tabContentArea.transform);
         GameObject workersPanel = CreateWorkersPanel("WorkersPanel", tabContentArea.transform);
-        GameObject settingsPanel = CreateTabPanel("SettingsPanel", tabContentArea.transform, "Settings", "Game options, volume, etc.");
-        GameObject otherPanel = CreateTabPanel("OtherPanel", tabContentArea.transform, "Other", "Add your management tools here.");
 
         statsPanel.SetActive(true);
         workersPanel.SetActive(false);
-        settingsPanel.SetActive(false);
-        otherPanel.SetActive(false);
 
-        controller.tabButtons = new Button[] { statsTabBtn.GetComponent<Button>(), workersTabBtn.GetComponent<Button>(), settingsTabBtn.GetComponent<Button>(), otherTabBtn.GetComponent<Button>() };
-        controller.tabPanels = new GameObject[] { statsPanel, workersPanel, settingsPanel, otherPanel };
+        controller.tabButtons = new Button[] { statsTabBtn.GetComponent<Button>(), workersTabBtn.GetComponent<Button>() };
+        controller.tabPanels = new GameObject[] { statsPanel, workersPanel };
 
         Undo.RegisterCreatedObjectUndo(root, "Create Management Screen");
         Selection.activeGameObject = root;
-        Debug.Log("Management Screen added: button is visible only in Play mode. Tabs: Store Stats, Workers, Settings, Other. Run Production > Create Worker Card UI Prefab if needed. Assign ProductionManager > Employee Prefab to hire workers.");
+        Debug.Log("Management Screen added: button is visible only in Play mode. Tabs: Store Stats, Workers. Run Production > Create Worker Card UI Prefab if needed. Assign ProductionManager > Employee Prefab to hire workers.");
     }
 
     [MenuItem("Production/Add Workers Tab to Existing Management Screen")]
@@ -394,7 +388,7 @@ public static class ManagementScreenSetup
         tmp.richText = true;
         tmp.alignment = TextAlignmentOptions.TopLeft;
         tmp.color = new Color(0.9f, 0.9f, 0.95f, 1f);
-        tmp.enableWordWrapping = true;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
         AssignTMPFont(tmp);
 
         var storeStatsUI = panel.AddComponent<StoreStatsUI>();
@@ -420,31 +414,15 @@ public static class ManagementScreenSetup
         titleRect.anchorMin = new Vector2(0, 1f);
         titleRect.anchorMax = new Vector2(1, 1f);
         titleRect.pivot = new Vector2(0.5f, 1f);
-        titleRect.anchoredPosition = new Vector2(0, -12);
-        titleRect.sizeDelta = new Vector2(0, 28);
+        titleRect.anchoredPosition = new Vector2(0, -10);
+        titleRect.sizeDelta = new Vector2(-24, 28);
 
-        GameObject countGo = CreateTMPText("CountText", panel.transform, "Workers: 0", 16);
-        RectTransform countRect = (RectTransform)countGo.transform;
-        countRect.anchorMin = new Vector2(0, 1f);
-        countRect.anchorMax = new Vector2(1, 1f);
-        countRect.pivot = new Vector2(0.5f, 1f);
-        countRect.anchoredPosition = new Vector2(0, -50);
-        countRect.sizeDelta = new Vector2(-32, 24);
-        countGo.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.TopLeft;
-        AssignTMPFont(countGo.GetComponent<TextMeshProUGUI>());
+        // Placeholder children — WorkersUI.ApplyCleanLayout reorganizes these at runtime
+        GameObject countGo = CreateTMPText("CountText", panel.transform, "Workers: 0", 15);
+        GameObject costGo = CreateTMPText("CostText", panel.transform, "Hire: $100", 15);
+        costGo.GetComponent<TextMeshProUGUI>().color = new Color(0.85f, 0.88f, 0.75f, 1f);
 
-        GameObject costGo = CreateTMPText("CostText", panel.transform, "Cost: $100", 14);
-        RectTransform costRect = (RectTransform)costGo.transform;
-        costRect.anchorMin = new Vector2(0, 1f);
-        costRect.anchorMax = new Vector2(1, 1f);
-        costRect.pivot = new Vector2(0.5f, 1f);
-        costRect.anchoredPosition = new Vector2(0, -78);
-        costRect.sizeDelta = new Vector2(-32, 22);
-        costGo.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.TopLeft;
-        costGo.GetComponent<TextMeshProUGUI>().color = new Color(0.85f, 0.85f, 0.9f, 1f);
-        AssignTMPFont(costGo.GetComponent<TextMeshProUGUI>());
-
-        GameObject hireBtnGo = CreateUIButton("HireButton", panel.transform, new Vector2(0.5f, 1f), new Vector2(140, 36), new Vector2(0, -120));
+        GameObject hireBtnGo = CreateUIButton("HireButton", panel.transform, new Vector2(0.5f, 1f), new Vector2(140, 32), new Vector2(0, -60));
         TextMeshProUGUI hireBtnText = hireBtnGo.GetComponentInChildren<TextMeshProUGUI>();
         if (hireBtnText != null) hireBtnText.text = "Hire Worker";
 
@@ -466,7 +444,7 @@ public static class ManagementScreenSetup
         scrollRect.anchorMin = new Vector2(0, 0);
         scrollRect.anchorMax = Vector2.one;
         scrollRect.offsetMin = new Vector2(12, 12);
-        scrollRect.offsetMax = new Vector2(-12, -140);
+        scrollRect.offsetMax = new Vector2(-12, -138);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         scroll.horizontal = false;

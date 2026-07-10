@@ -16,6 +16,8 @@ public class StoreStatisticsManager : MonoBehaviour
     // Completed orders: (gameTime when completed, wait duration)
     readonly List<(float completedAt, float waitSeconds)> completedOrders = new List<(float, float)>();
     const int MaxCompletedOrders = 500;
+    int mealsWasted;
+    int revenueEarned;
 
     // Per-register: busy time (queue not empty) in the current window
     readonly Dictionary<Register, float> stationBusyTime = new Dictionary<Register, float>();
@@ -38,13 +40,41 @@ public class StoreStatisticsManager : MonoBehaviour
             Instance = null;
     }
 
-    public void RecordOrderCompleted(float queueJoinTime, Register station)
+    public void RecordOrderCompleted(float queueJoinTime, Register station, int saleAmount = 0)
     {
         float now = Time.time;
         float wait = now - queueJoinTime;
         completedOrders.Add((now, wait));
         if (completedOrders.Count > MaxCompletedOrders)
             completedOrders.RemoveAt(0);
+        if (saleAmount > 0)
+            revenueEarned += saleAmount;
+    }
+
+    public void RecordMealWasted()
+    {
+        mealsWasted++;
+    }
+
+    public int MealsWasted => mealsWasted;
+    public int RevenueEarned => revenueEarned;
+
+    public int HeatLampStock
+    {
+        get
+        {
+            var lamp = HeatLampStation.Instance;
+            return lamp != null ? lamp.Count : 0;
+        }
+    }
+
+    public int HeatLampCapacity
+    {
+        get
+        {
+            var lamp = HeatLampStation.Instance;
+            return lamp != null ? lamp.maxCapacity : 0;
+        }
     }
 
     void Update()

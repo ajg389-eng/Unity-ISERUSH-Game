@@ -14,8 +14,23 @@ public class GridVisual : MonoBehaviour
 
     void Start()
     {
+        if (!grid) grid = GetComponent<GridManager>() ?? FindObjectOfType<GridManager>();
+        if (grid != null)
+            grid.GridChanged += OnGridChanged;
+
         RebuildVisual();
         UpdateVisibility();
+    }
+
+    void OnDestroy()
+    {
+        if (grid != null)
+            grid.GridChanged -= OnGridChanged;
+    }
+
+    void OnGridChanged()
+    {
+        RebuildVisual();
     }
 
     void Update()
@@ -40,12 +55,16 @@ public class GridVisual : MonoBehaviour
         if (lines != null)
         {
             for (int i = transform.childCount - 1; i >= 0; i--)
-                Destroy(transform.GetChild(i).gameObject);
+            {
+                var child = transform.GetChild(i).gameObject;
+                if (Application.isPlaying) Destroy(child);
+                else DestroyImmediate(child);
+            }
         }
 
         int w = grid.Width;
         int h = grid.Height;
-        float cs = grid.cellSize; // uses your GridManager cellSize
+        float cs = grid.cellSize;
 
         // There are (w+1) vertical lines and (h+1) horizontal lines
         lines = new LineRenderer[(w + 1) + (h + 1)];

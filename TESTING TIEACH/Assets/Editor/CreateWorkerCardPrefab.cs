@@ -1,8 +1,48 @@
 using UnityEngine;
 using UnityEditor;
 
+[InitializeOnLoad]
 public static class CreateWorkerCardPrefab
 {
+    static CreateWorkerCardPrefab()
+    {
+        EditorApplication.delayCall += EnsurePrefabAndAssign;
+    }
+
+    static void EnsurePrefabAndAssign()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+        EnsurePrefabFolder();
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WorkerCardPrefabBuilder.DefaultPrefabPath);
+        if (prefab == null)
+        {
+            var root = WorkerCardPrefabBuilder.Build();
+            prefab = PrefabUtility.SaveAsPrefabAsset(root, WorkerCardPrefabBuilder.DefaultPrefabPath);
+            UnityEngine.Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Debug.Log("Created " + WorkerCardPrefabBuilder.DefaultPrefabPath);
+        }
+
+        if (prefab == null) return;
+
+        int count = 0;
+        foreach (var workersUI in UnityEngine.Object.FindObjectsByType<WorkersUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (workersUI.workerCardPrefab != null) continue;
+            Undo.RecordObject(workersUI, "Assign Worker Card Prefab");
+            workersUI.workerCardPrefab = prefab;
+            EditorUtility.SetDirty(workersUI);
+            count++;
+        }
+
+        if (count > 0)
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.MarkAllScenesDirty();
+            Debug.Log("Assigned Worker Card prefab on " + count + " WorkersUI component(s). Save the scene to keep it.");
+        }
+    }
+
     [MenuItem("Production/Create Worker Card UI Prefab")]
     public static void Create()
     {
@@ -17,11 +57,12 @@ public static class CreateWorkerCardPrefab
 
         var root = WorkerCardPrefabBuilder.Build();
         PrefabUtility.SaveAsPrefabAsset(root, WorkerCardPrefabBuilder.DefaultPrefabPath);
-        Object.DestroyImmediate(root);
+        UnityEngine.Object.DestroyImmediate(root);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("Created " + WorkerCardPrefabBuilder.DefaultPrefabPath + ". Assign it on WorkersUI > Worker Card Prefab (or use Production > Assign Worker Card Prefab To Scene).");
+        AssignToScene();
+        Debug.Log("Created " + WorkerCardPrefabBuilder.DefaultPrefabPath + " and assigned it in the scene.");
     }
 
     [MenuItem("Production/Assign Worker Card Prefab To Scene")]
@@ -35,7 +76,7 @@ public static class CreateWorkerCardPrefab
         }
 
         int count = 0;
-        foreach (var workersUI in Object.FindObjectsByType<WorkersUI>(FindObjectsSortMode.None))
+        foreach (var workersUI in UnityEngine.Object.FindObjectsByType<WorkersUI>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             Undo.RecordObject(workersUI, "Assign Worker Card Prefab");
             workersUI.workerCardPrefab = prefab;
@@ -46,7 +87,10 @@ public static class CreateWorkerCardPrefab
         if (count == 0)
             Debug.LogWarning("No WorkersUI found in the open scene(s).");
         else
-            Debug.Log("Assigned Worker Card prefab on " + count + " WorkersUI component(s).");
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.MarkAllScenesDirty();
+            Debug.Log("Assigned Worker Card prefab on " + count + " WorkersUI component(s). Save the scene to keep it.");
+        }
     }
 
     static void EnsurePrefabFolder()

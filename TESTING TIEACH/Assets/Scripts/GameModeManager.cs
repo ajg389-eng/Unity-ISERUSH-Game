@@ -4,8 +4,8 @@ using UnityEngine.UI;
 
 public class GameModeManager : MonoBehaviour
 {
-    public enum Mode { Build, Play }
-    public Mode CurrentMode { get; private set; } = Mode.Build;
+    public enum Mode { Build, Play, Manage }
+    public Mode CurrentMode { get; private set; } = Mode.Play;
 
     [Header("UI")]
     public TextMeshProUGUI modeText;
@@ -36,7 +36,6 @@ public class GameModeManager : MonoBehaviour
     /// <summary>Legacy hook (old toggle button). Kept to avoid missing reference errors.</summary>
     public void ToggleMode()
     {
-        // Intentionally no-op now. Build mode is controlled by inventory panel visibility.
         UpdateUI();
     }
 

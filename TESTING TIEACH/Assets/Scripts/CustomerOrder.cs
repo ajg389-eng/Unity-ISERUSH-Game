@@ -97,4 +97,70 @@ public class CustomerOrder
                 copy.lines.Add(new OrderLine(line.item, line.quantity));
         return copy;
     }
+
+    /// <summary>Create a single-item order (one heat-lamp meal / production job).</summary>
+    public static CustomerOrder FromItem(ItemDefinition item, int quantity = 1)
+    {
+        var order = new CustomerOrder();
+        if (item != null && quantity > 0)
+            order.lines.Add(new OrderLine(item, quantity));
+        return order;
+    }
+
+    /// <summary>First line item, or null.</summary>
+    public ItemDefinition PrimaryItem
+    {
+        get
+        {
+            if (lines == null) return null;
+            foreach (var line in lines)
+            {
+                if (line.item != null && line.quantity > 0)
+                    return line.item;
+            }
+            return null;
+        }
+    }
+
+    public int GetTotalQuantity()
+    {
+        if (lines == null) return 0;
+        int n = 0;
+        foreach (var line in lines)
+        {
+            if (line.item == null) continue;
+            n += Mathf.Max(0, line.quantity);
+        }
+        return n;
+    }
+
+    /// <summary>Remove one unit of the item from the order. Returns false if it wasn't on the order.</summary>
+    public bool TryRemoveOne(ItemDefinition item)
+    {
+        if (item == null || lines == null) return false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            if (line.item != item || line.quantity <= 0) continue;
+            line.quantity--;
+            if (line.quantity <= 0)
+                lines.RemoveAt(i);
+            else
+                lines[i] = line;
+            return true;
+        }
+        return false;
+    }
+
+    public int GetSalePrice()
+    {
+        if (lines == null) return 0;
+        int sum = 0;
+        foreach (var line in lines)
+        {
+            if (line.item == null) continue;
+            sum += Mathf.Max(0, line.item.price) * Mathf.Max(0, line.quantity);
+        }
+        return sum;
+    }
 }

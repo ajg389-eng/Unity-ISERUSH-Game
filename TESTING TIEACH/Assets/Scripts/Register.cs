@@ -6,26 +6,49 @@ public class Register : MonoBehaviour
     public bool isEnabled = true;
 
     [Header("Queue")]
-    public Transform queueStart;      // empty object at front of the line
-    public Vector3 queueDirection = Vector3.back; // direction line extends (world space)
-    public float spacing = 1.2f;      // distance between customers
+    public Transform queueStart;
+    public Vector3 queueDirection = Vector3.back;
+    public float spacing = 1.2f;
     [Tooltip("Front customer must be this close to the register before they can be served")]
     public float serveArrivalRadius = 0.6f;
     public int maxQueue = 6;
 
-    private readonly List<CustomerAI> queue = new List<CustomerAI>();
+    readonly List<CustomerAI> queue = new List<CustomerAI>();
     public int QueueCount => queue.Count;
 
     [Header("Prepared orders")]
-    [Tooltip("Set by Kitchen when order is assembled and delivered")]
+    [Tooltip("Legacy single-slot buffer. Prefer HeatLampStation for fast-food serving.")]
     CustomerOrder preparedOrder;
     [Tooltip("Where customers walk to after being served")]
     public Transform storeExit;
+    [Tooltip("Shared holding area. If unset, uses HeatLampStation.Instance.")]
+    public HeatLampStation heatLamp;
 
-    [Header("Cashier")]
-    public Transform cashierSpawnPoint;   // empty child behind register
-    public GameObject cashierPrefab;      // assign a capsule prefab (or create at runtime)
-    private GameObject cashierInstance;
+    [Header("Worker station")]
+    [Tooltip("Where an assigned worker stands to operate this register. Falls back to interaction tiles / behind register.")]
+    public Transform workerStandPoint;
+    [Tooltip("How close the assigned worker must be to serve customers")]
+    public float workerDutyRadius = 1.25f;
+
+    MoneyManager moneyManager;
+
+    void Awake()
+    {
+        StationNode.EnsureOn(gameObject);
+        EnsureInteractionTiles();
+    }
+
+    /// <summary>
+    /// Registers use the same green interaction quads as kitchen stations:
+    /// visible in Inventory/Build mode, hidden in Play/Manage.
+    /// </summary>
+    void EnsureInteractionTiles()
+    {
+        var tiles = GetComponent<StationInteractionTiles>();
+        if (tiles == null)
+            tiles = gameObject.AddComponent<StationInteractionTiles>();
+        tiles.EnsureHighlightReference();
+    }
 
     public bool HasSpace()
     {
@@ -59,43 +82,139 @@ public class Register : MonoBehaviour
         return front != null ? front.GetOrder() : null;
     }
 
-    /// <summary>Kitchen calls this when an order is assembled and delivered to this register. Serves the front customer immediately if their order matches.</summary>
+    public List<CustomerOrder> GetQueuedOrders()
+    {
+        var list = new List<CustomerOrder>(queue.Count);
+        foreach (var c in queue)
+        {
+            if (c == null) continue;
+            var o = c.GetOrder();
+            if (o != null) list.Add(o);
+        }
+        return list;
+    }
+
+    public CustomerAI GetFrontCustomer()
+    {
+        if (queue.Count == 0) return null;
+        return queue[0];
+    }
+
+    /// <summary>Front customer is close enough to the first queue slot to be served.</summary>
+    public bool IsFrontCustomerReady()
+    {
+        var front = GetFrontCustomer();
+        if (front == null || queueStart == null) return false;
+        return Vector3.Distance(front.transform.position, queueStart.position) <= serveArrivalRadius;
+    }
+
+    public KitchenEmployee AssignedWorker
+    {
+        get
+        {
+            var node = GetComponent<StationNode>();
+            return node != null ? node.assignedWorker : null;
+        }
+    }
+
+    /// <summary>True when a worker is assigned and close enough to operate the register.</summary>
+    public bool HasWorkerOnDuty()
+    {
+        var worker = AssignedWorker;
+        if (worker == null) return false;
+        Vector3 stand = GetInteractionPosition();
+        return Vector3.Distance(worker.transform.position, stand) <= workerDutyRadius;
+    }
+
+    public Vector3 GetInteractionPosition()
+    {
+        var tiles = GetComponent<StationInteractionTiles>();
+        if (tiles != null) return tiles.GetFirstInteractionPosition();
+        if (workerStandPoint != null) return workerStandPoint.position;
+        return transform.position + transform.forward * -0.8f;
+    }
+
+    HeatLampStation GetHeatLamp()
+    {
+        if (heatLamp != null) return heatLamp;
+        return HeatLampStation.Instance;
+    }
+
     public void DeliverOrder(CustomerOrder order)
     {
+        var lamp = GetHeatLamp();
+        if (lamp != null)
+        {
+            lamp.DeliverMeal(order);
+            return;
+        }
+
         preparedOrder = order != null ? order.Clone() : null;
-        TryServeFront();
     }
 
-    /// <summary>Serve front customer only when we have a matching prepared order and they have arrived at the register.</summary>
-    public void TryServeFront()
+    /// <summary>Legacy auto-serve disabled — cashiers fetch/deliver items via TryDeliverItem.</summary>
+    public void TryServeFront() { }
+
+    /// <summary>
+    /// Cashier hands one item to the front customer. Removes it from their order label.
+    /// When the order is empty, completes the sale and sends them out.
+    /// </summary>
+    public bool TryDeliverItem(CustomerAI customer, ItemDefinition item)
     {
-        if (queue.Count == 0 || queueStart == null) return;
-        var front = queue[0];
-        if (front == null) return;
+        if (!isEnabled || customer == null || item == null) return false;
+        if (queue.Count == 0 || queue[0] != customer) return false;
+        if (!HasWorkerOnDuty()) return false;
+        if (!IsFrontCustomerReady()) return false;
 
-        Vector3 frontSlotPos = queueStart.position + queueDirection.normalized * 0f;
-        float dist = Vector3.Distance(front.transform.position, frontSlotPos);
-        if (dist > serveArrivalRadius)
-            return;
+        if (!customer.TryReceiveItem(item))
+            return false;
 
-        CustomerOrder order = front.GetOrder();
-        if (order == null || order.lines == null || order.lines.Count == 0)
-            return;
-        if (preparedOrder == null || !order.Matches(preparedOrder))
-            return;
-        preparedOrder = null;
-        CompleteServeFront(front);
+        if (customer.IsOrderFullyDelivered)
+        {
+            CompleteServeFront(customer, customer.SalePrice);
+        }
+        return true;
     }
 
-    void CompleteServeFront(CustomerAI front)
+    /// <summary>Cashier finished the full order (legacy path).</summary>
+    public bool CompleteServe(CustomerAI customer, CustomerOrder soldOrder)
+    {
+        if (!isEnabled || customer == null) return false;
+        if (queue.Count == 0 || queue[0] != customer) return false;
+        if (!HasWorkerOnDuty()) return false;
+        if (!IsFrontCustomerReady()) return false;
+
+        int sale = customer.SalePrice > 0
+            ? customer.SalePrice
+            : (soldOrder != null ? soldOrder.GetSalePrice() : 0);
+        CompleteServeFront(customer, sale);
+        return true;
+    }
+
+    void CompleteServeFront(CustomerAI front, int sale)
     {
         if (queue.Count == 0 || queue[0] != front) return;
         queue.RemoveAt(0);
 
+        if (sale > 0)
+        {
+            if (moneyManager == null) moneyManager = FindObjectOfType<MoneyManager>();
+            if (moneyManager != null) moneyManager.AddMoney(sale);
+            ShowSalePopup(sale);
+        }
+
         if (StoreStatisticsManager.Instance != null)
-            StoreStatisticsManager.Instance.RecordOrderCompleted(front.QueueJoinTime, this);
+            StoreStatisticsManager.Instance.RecordOrderCompleted(front.QueueJoinTime, this, sale);
         if (front != null) front.OnServed(storeExit);
         UpdateQueueTargets();
+    }
+
+    void ShowSalePopup(int sale)
+    {
+        Vector3 pos = transform.position + Vector3.up * 1.6f;
+        if (queueStart != null)
+            pos = queueStart.position + Vector3.up * 1.8f;
+        FloatingMoneyText.Spawn(pos, sale, transform);
     }
 
     public void Toggle()
@@ -107,56 +226,14 @@ public class Register : MonoBehaviour
             foreach (var c in queue)
                 if (c != null) c.OnRegisterDisabled();
             queue.Clear();
-
-            RemoveCashier();
-        }
-        else
-        {
-            SpawnCashier();
         }
 
         UpdateQueueTargets();
     }
 
-    void SpawnCashier()
-    {
-        if (cashierInstance != null) return;
-
-        Vector3 pos = cashierSpawnPoint ? cashierSpawnPoint.position : transform.position + transform.forward * -0.8f;
-        Quaternion rot = cashierSpawnPoint ? cashierSpawnPoint.rotation : transform.rotation;
-
-        if (cashierPrefab != null)
-        {
-            cashierInstance = Instantiate(cashierPrefab, pos, rot);
-        }
-        else
-        {
-            cashierInstance = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            cashierInstance.transform.SetPositionAndRotation(pos, rot);
-            cashierInstance.name = "Cashier";
-            Destroy(cashierInstance.GetComponent<Collider>());
-        }
-
-        cashierInstance.transform.SetParent(transform);
-        cashierInstance.name = "Cashier";
-    }
-
-    void Start()
-    {
-        if (isEnabled) SpawnCashier();
-    }
-
     void Update()
     {
-        if (isEnabled)
-            TryServeFront();
-    }
-
-    void RemoveCashier()
-    {
-        if (cashierInstance == null) return;
-        Destroy(cashierInstance);
-        cashierInstance = null;
+        // Serving is cashier-driven via KitchenEmployee
     }
 
     void UpdateQueueTargets()
@@ -174,12 +251,17 @@ public class Register : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        if (!queueStart) return;
-        Gizmos.color = Color.cyan;
-        for (int i = 0; i < maxQueue; i++)
+        if (queueStart)
         {
-            Vector3 slot = queueStart.position + queueDirection.normalized * (spacing * i);
-            Gizmos.DrawSphere(slot, 0.15f);
+            Gizmos.color = Color.cyan;
+            for (int i = 0; i < maxQueue; i++)
+            {
+                Vector3 slot = queueStart.position + queueDirection.normalized * (spacing * i);
+                Gizmos.DrawSphere(slot, 0.15f);
+            }
         }
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(GetInteractionPosition(), 0.2f);
     }
 }

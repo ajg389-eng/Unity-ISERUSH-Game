@@ -1,18 +1,20 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// One worker's card in the Management > Workers tab: name field, fire button, and station toggles.
-/// Lives on the worker card prefab; bound at runtime by WorkersUI.
+/// Worker card on Management > Workers: name, fire, and which stations they operate.
+/// Station assignment is done in Manage mode by clicking stations in the world.
 /// </summary>
 public class WorkerCardUI : MonoBehaviour
 {
     public KitchenEmployee employee;
-    [Tooltip("Name field (TMP_InputField or Unity UI InputField).")]
     public GameObject nameInputObject;
     public Button fireButton;
+    [Tooltip("Optional label showing assigned stations")]
+    public TextMeshProUGUI stationsLabel;
+
+    // Legacy toggles (hidden/unused — assignment is world-based now)
     public Toggle toggleFreezer;
     public Toggle toggleGrill;
     public Toggle togglePantry;
@@ -24,33 +26,18 @@ public class WorkerCardUI : MonoBehaviour
     {
         if (nameInputObject == null)
         {
-            var t = transform.Find("Row1/NameInput");
+            var t = transform.Find("NameInput") ?? transform.Find("Row1/NameInput");
             if (t != null) nameInputObject = t.gameObject;
         }
         if (fireButton == null)
         {
-            var t = transform.Find("Row1/Button_Fire");
+            var t = transform.Find("Button_Fire") ?? transform.Find("Row1/Button_Fire");
             if (t != null) fireButton = t.GetComponent<Button>();
         }
-        if (toggleFreezer == null)
+        if (stationsLabel == null)
         {
-            var t = transform.Find("Row2/Toggle_Freezer");
-            if (t != null) toggleFreezer = t.GetComponent<Toggle>();
-        }
-        if (toggleGrill == null)
-        {
-            var t = transform.Find("Row2/Toggle_Grill");
-            if (t != null) toggleGrill = t.GetComponent<Toggle>();
-        }
-        if (togglePantry == null)
-        {
-            var t = transform.Find("Row2/Toggle_Pantry");
-            if (t != null) togglePantry = t.GetComponent<Toggle>();
-        }
-        if (toggleAssembly == null)
-        {
-            var t = transform.Find("Row2/Toggle_Assembly");
-            if (t != null) toggleAssembly = t.GetComponent<Toggle>();
+            var t = transform.Find("StationsLabel") ?? transform.Find("Row2/StationsLabel");
+            if (t != null) stationsLabel = t.GetComponent<TextMeshProUGUI>();
         }
     }
 
@@ -59,32 +46,50 @@ public class WorkerCardUI : MonoBehaviour
         RemoveNameListener();
         if (fireButton != null)
             fireButton.onClick.RemoveListener(OnFireClicked);
-        RemoveStationListeners();
 
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
 
+        HideLegacyToggles();
+
         if (emp == null)
         {
             SetNameText("");
-            SetToggles(false, false, false, false);
+            SetStationsText("—");
             return;
         }
 
         SetNameText(emp.employeeName ?? "Worker");
+        SetStationsText(emp.GetAssignedStationsSummary());
         AddNameListener();
         if (fireButton != null)
         {
             fireButton.interactable = true;
             fireButton.onClick.AddListener(OnFireClicked);
         }
+    }
 
-        SetToggles(
-            emp.assignedStations != null && emp.assignedStations.Contains(StationType.Freezer),
-            emp.assignedStations != null && emp.assignedStations.Contains(StationType.Grill),
-            emp.assignedStations != null && emp.assignedStations.Contains(StationType.Pantry),
-            emp.assignedStations != null && emp.assignedStations.Contains(StationType.Assembly));
-        AddStationListeners();
+    void HideLegacyToggles()
+    {
+        if (toggleFreezer != null) toggleFreezer.gameObject.SetActive(false);
+        if (toggleGrill != null) toggleGrill.gameObject.SetActive(false);
+        if (togglePantry != null) togglePantry.gameObject.SetActive(false);
+        if (toggleAssembly != null) toggleAssembly.gameObject.SetActive(false);
+    }
+
+    void SetStationsText(string text)
+    {
+        if (stationsLabel != null)
+        {
+            stationsLabel.text = text;
+            return;
+        }
+        // Fallback: reuse Row2 first TMP if present
+        var row2 = transform.Find("Row2");
+        if (row2 == null) return;
+        var tmp = row2.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (tmp != null && (tmp.transform.parent == row2 || tmp.name.Contains("Station") || tmp.name.Contains("Label")))
+            tmp.text = text;
     }
 
     void AddNameListener()
@@ -113,16 +118,6 @@ public class WorkerCardUI : MonoBehaviour
         if (legacyInput != null) legacyInput.text = text;
     }
 
-    string GetNameText()
-    {
-        if (nameInputObject == null) return "";
-        var tmpInput = nameInputObject.GetComponent<TMP_InputField>();
-        var legacyInput = nameInputObject.GetComponent<InputField>();
-        if (tmpInput != null) return tmpInput.text;
-        if (legacyInput != null) return legacyInput.text;
-        return "";
-    }
-
     void OnNameChanged(string value)
     {
         if (employee != null)
@@ -137,40 +132,5 @@ public class WorkerCardUI : MonoBehaviour
         var workersUI = GetComponentInParent<WorkersUI>();
         if (workersUI != null) workersUI.Refresh();
         else gameObject.SetActive(false);
-    }
-
-    void AddStationListeners()
-    {
-        if (toggleFreezer != null) toggleFreezer.onValueChanged.AddListener(_ => SyncStations());
-        if (toggleGrill != null) toggleGrill.onValueChanged.AddListener(_ => SyncStations());
-        if (togglePantry != null) togglePantry.onValueChanged.AddListener(_ => SyncStations());
-        if (toggleAssembly != null) toggleAssembly.onValueChanged.AddListener(_ => SyncStations());
-    }
-
-    void RemoveStationListeners()
-    {
-        if (toggleFreezer != null) toggleFreezer.onValueChanged.RemoveAllListeners();
-        if (toggleGrill != null) toggleGrill.onValueChanged.RemoveAllListeners();
-        if (togglePantry != null) togglePantry.onValueChanged.RemoveAllListeners();
-        if (toggleAssembly != null) toggleAssembly.onValueChanged.RemoveAllListeners();
-    }
-
-    void SetToggles(bool freezer, bool grill, bool pantry, bool assembly)
-    {
-        if (toggleFreezer != null) toggleFreezer.SetIsOnWithoutNotify(freezer);
-        if (toggleGrill != null) toggleGrill.SetIsOnWithoutNotify(grill);
-        if (togglePantry != null) togglePantry.SetIsOnWithoutNotify(pantry);
-        if (toggleAssembly != null) toggleAssembly.SetIsOnWithoutNotify(assembly);
-    }
-
-    void SyncStations()
-    {
-        if (employee == null) return;
-        var list = new List<StationType>();
-        if (toggleFreezer != null && toggleFreezer.isOn) list.Add(StationType.Freezer);
-        if (toggleGrill != null && toggleGrill.isOn) list.Add(StationType.Grill);
-        if (togglePantry != null && togglePantry.isOn) list.Add(StationType.Pantry);
-        if (toggleAssembly != null && toggleAssembly.isOn) list.Add(StationType.Assembly);
-        employee.SetAssignedStations(list);
     }
 }
