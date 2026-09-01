@@ -566,6 +566,7 @@ public class KitchenEmployee : MonoBehaviour
         stateTimer = 0f;
         path.Clear();
         pathDestination = Vector3.zero;
+        Sfx.Play(SfxId.StationWorkComplete);
     }
 
     bool IsAtDeliverTarget()

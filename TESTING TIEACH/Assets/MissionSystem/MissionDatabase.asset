@@ -1,0 +1,110 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-7141265570579484023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: watch_queue
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: watch_queue
+  title: Watch the queue
+  description: A customer is lining up at the register.
+  completionEventId: first_customer_arrived
+  showBeforeComplete: 1
+  showAfterComplete: 1
+--- !u!114 &-3093332893185653172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: start_shift
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: start_shift
+  title: Start your shift
+  description: Click Play and get ready to run the restaurant.
+  completionEventId: shift_started
+  showBeforeComplete: 1
+  showAfterComplete: 1
+--- !u!114 &-2703072046945232558
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: serve_order
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: serve_order
+  title: Serve an order
+  description: Get food to the customer at the register.
+  completionEventId: first_order_served
+  showBeforeComplete: 1
+  showAfterComplete: 1
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1699f2fa76421e4089cb31f0f51739a, type: 3}
+  m_Name: MissionDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDatabase
+  missions:
+  - {fileID: -3093332893185653172}
+  - {fileID: -7141265570579484023}
+  - {fileID: 306315907573584047}
+  - {fileID: 379842167464196429}
+  - {fileID: -2703072046945232558}
+--- !u!114 &306315907573584047
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: hire_worker
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: hire_worker
+  title: Hire a worker
+  description: Open Management and hire someone from the Workers tab.
+  completionEventId: first_worker_hired
+  showBeforeComplete: 1
+  showAfterComplete: 1
+--- !u!114 &379842167464196429
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: assign_output
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: assign_output
+  title: Connect your kitchen
+  description: Assign a worker to a station, then set its Output.
+  completionEventId: output_assigned
+  showBeforeComplete: 1
+  showAfterComplete: 1

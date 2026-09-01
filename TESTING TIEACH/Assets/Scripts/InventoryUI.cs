@@ -73,14 +73,18 @@ public class InventoryUI : MonoBehaviour
     public void TogglePanel()
     {
         if (!panel) return;
-        panel.SetActive(!panel.activeSelf);
-        if (panel.activeSelf)
+        bool opening = !panel.activeSelf;
+        panel.SetActive(opening);
+        Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
+        if (opening)
         {
             EnsureExpandUi();
             RefreshAll();
             RefreshExpandButton();
         }
     }
+
+    public bool IsPanelOpen => panel != null && panel.activeSelf;
 
     public void RefreshAll()
     {
@@ -129,7 +133,13 @@ public class InventoryUI : MonoBehaviour
             buyButton.onClick.AddListener(() =>
             {
                 bool bought = inventory.PurchaseOne(item);
-                if (bought) qtyText.text = inventory.GetCount(item).ToString();
+                if (bought)
+                {
+                    qtyText.text = inventory.GetCount(item).ToString();
+                    Sfx.Play(SfxId.Purchase);
+                }
+                else
+                    Sfx.Play(SfxId.UiError);
             });
         }
 
@@ -271,14 +281,18 @@ public class InventoryUI : MonoBehaviour
         if (!money.TrySpend(expandCost))
         {
             RefreshExpandButton();
+            Sfx.Play(SfxId.UiError);
             return;
         }
+        Sfx.Play(SfxId.SpendMoney);
 
         if (!grid.TryExpand(expandWidth, expandHeight))
         {
-            // Refund if expand failed after spend
             money.AddMoney(expandCost);
+            Sfx.Play(SfxId.UiError);
         }
+        else
+            Sfx.Play(SfxId.GridExpand);
 
         RefreshExpandButton();
     }

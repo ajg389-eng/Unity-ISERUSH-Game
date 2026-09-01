@@ -31,6 +31,8 @@ public class Register : MonoBehaviour
     public float workerDutyRadius = 1.25f;
 
     MoneyManager moneyManager;
+    static bool raisedFirstCustomerEvent;
+    static bool raisedFirstOrderServedEvent;
 
     void Awake()
     {
@@ -63,6 +65,18 @@ public class Register : MonoBehaviour
         customer.SetQueueJoinTime(Time.time);
         queue.Add(customer);
         UpdateQueueTargets();
+
+        if (!raisedFirstCustomerEvent)
+        {
+            raisedFirstCustomerEvent = true;
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstCustomerArrived);
+        }
+
+        Sfx.Play(SfxId.CustomerArrive);
+
+        if (queue.Count >= 3)
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.QueueGrowing);
+
         return true;
     }
 
@@ -169,6 +183,8 @@ public class Register : MonoBehaviour
         if (!customer.TryReceiveItem(item))
             return false;
 
+        Sfx.Play(SfxId.ItemDelivered);
+
         if (customer.IsOrderFullyDelivered)
         {
             CompleteServeFront(customer, customer.SalePrice);
@@ -201,12 +217,21 @@ public class Register : MonoBehaviour
             if (moneyManager == null) moneyManager = FindObjectOfType<MoneyManager>();
             if (moneyManager != null) moneyManager.AddMoney(sale);
             ShowSalePopup(sale);
+            Sfx.Play(SfxId.EarnMoney);
         }
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.RecordOrderCompleted(front.QueueJoinTime, this, sale);
         if (front != null) front.OnServed(storeExit);
         UpdateQueueTargets();
+
+        if (!raisedFirstOrderServedEvent)
+        {
+            raisedFirstOrderServedEvent = true;
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstOrderServed);
+        }
+
+        Sfx.Play(SfxId.CustomerServed);
     }
 
     void ShowSalePopup(int sale)

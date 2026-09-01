@@ -48,8 +48,21 @@ public class StationNode : MonoBehaviour
     public void SetOutput(GameObject target)
     {
         if (target == gameObject) return;
+        bool wasEmpty = outputTarget == null;
         outputTarget = target;
         StationOutputLinkVisuals.NotifyLinksChanged();
+
+        if (wasEmpty && target != null)
+            RaiseFirstOutputAssignedEvent();
+    }
+
+    static bool raisedFirstOutputEvent;
+
+    static void RaiseFirstOutputAssignedEvent()
+    {
+        if (raisedFirstOutputEvent) return;
+        raisedFirstOutputEvent = true;
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.OutputAssigned);
     }
 
     public void ClearOutput()

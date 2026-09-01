@@ -148,6 +148,7 @@ public class HeatLampStation : MonoBehaviour
 
         meals.Add(new HeldMeal(order.Clone(), Time.time));
         totalDelivered++;
+        Sfx.Play(SfxId.HeatLampStock);
         RefreshStatusLabel();
         return true;
     }
@@ -305,6 +306,7 @@ public class HeatLampStation : MonoBehaviour
                 continue;
             meals.RemoveAt(i);
             totalWasted++;
+            Sfx.Play(SfxId.FoodWasted);
             changed = true;
             if (StoreStatisticsManager.Instance != null)
                 StoreStatisticsManager.Instance.RecordMealWasted();

@@ -145,6 +145,7 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
+            RaiseFirstWorkerHiredEvent();
         }
         return emp;
     }
@@ -156,10 +157,9 @@ public class ProductionManager : MonoBehaviour
             Debug.LogWarning("ProductionManager: no employeePrefab assigned. Use Production > Create Default Employee Prefab and assign it.");
             return null;
         }
-        if (moneyManager != null && !moneyManager.CanAfford(hireCost))
+        if (moneyManager != null && !moneyManager.TrySpend(hireCost))
             return null;
-        if (moneyManager != null)
-            moneyManager.TrySpend(hireCost);
+        Sfx.Play(SfxId.SpendMoney);
 
         Vector3 pos = spawnPoint != null ? spawnPoint.position : transform.position;
         GameObject go = Instantiate(employeePrefab, pos, Quaternion.identity);
@@ -169,8 +169,19 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
+            Sfx.Play(SfxId.HireWorker);
+            RaiseFirstWorkerHiredEvent();
         }
         return emp;
+    }
+
+    static bool raisedFirstWorkerEvent;
+
+    static void RaiseFirstWorkerHiredEvent()
+    {
+        if (raisedFirstWorkerEvent) return;
+        raisedFirstWorkerEvent = true;
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstWorkerHired);
     }
 
     public void FireWorker(KitchenEmployee emp)

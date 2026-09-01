@@ -87,6 +87,9 @@ public class TitleScreenController : MonoBehaviour
             gameCamera.enabled = true;
         else if (Camera.main != null)
             Camera.main.enabled = true;
+
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.ShiftStarted);
+        Sfx.Play(SfxId.UiOpen);
     }
 
     void OnSettings()

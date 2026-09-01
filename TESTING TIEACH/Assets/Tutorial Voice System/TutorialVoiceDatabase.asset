@@ -1,0 +1,135 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d78891c1adfc8c4d9bf3f301d045430, type: 3}
+  m_Name: TutorialVoiceDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceDatabase
+  lines:
+  - {fileID: 11400001}
+  - {fileID: 11400002}
+  - {fileID: 11400003}
+  - {fileID: 11400004}
+  - {fileID: 11400005}
+  - {fileID: 11400006}
+--- !u!114 &11400001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: shift_started
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: shift_started
+  subtitleText: "Welcome to your first shift. Customers will line up at the register
+    \u2014 your job is to get orders out without making them wait too long."
+  voiceClip: {fileID: 8300000, guid: c74bd1aa876ba7048b5172062aa2dcb2, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25
+--- !u!114 &11400002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: first_customer_arrived
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: first_customer_arrived
+  subtitleText: Here comes your first customer. Watch the queue. When people wait,
+    that backlog is called work in progress.
+  voiceClip: {fileID: 8300000, guid: 0b5b6a761e75928408a5bc03e96014ab, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25
+--- !u!114 &11400003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: queue_growing
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: queue_growing
+  subtitleText: "The line is getting long. That usually means something in your system
+    is slowing down \u2014 maybe the counter or the kitchen."
+  voiceClip: {fileID: 8300000, guid: 40b86053eafdc7d41b7c7ba3d8aa86d5, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25
+--- !u!114 &11400004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: first_worker_hired
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: first_worker_hired
+  subtitleText: Good hire. Open Management, click a station, and assign your worker
+    so food can start moving.
+  voiceClip: {fileID: 8300000, guid: a57ef17ae7fa3bf4f9d5508510a7a6bb, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25
+--- !u!114 &11400005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: output_assigned
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: output_assigned
+  subtitleText: Nice. After a station finishes, the worker delivers only to the output
+    you set.
+  voiceClip: {fileID: 8300000, guid: ee35139e3d7be95489c003b0149ff6d2, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25
+--- !u!114 &11400006
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca011ec92c4f71343918d0723b19990c, type: 3}
+  m_Name: first_order_served
+  m_EditorClassIdentifier: Assembly-CSharp::TutorialVoiceLine
+  eventId: first_order_served
+  subtitleText: "First order served. Keep the flow steady \u2014 faster service means
+    happier customers and more sales."
+  voiceClip: {fileID: 8300000, guid: 128a576400f036c47bc808a3d4dff056, type: 3}
+  playOnce: 1
+  displayDuration: 5
+  postClipPadding: 0.25

@@ -115,6 +115,7 @@ public class ManagementModeController : MonoBehaviour
             if (selectedStation != null && node.gameObject != selectedStation.gameObject)
             {
                 selectedStation.SetOutput(node.gameObject);
+                Sfx.Play(SfxId.AssignOutput);
                 pending = PendingAction.None;
                 RefreshPopup();
                 StationOutputLinkVisuals.NotifyLinksChanged();
@@ -128,6 +129,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SelectStation(StationNode node)
     {
+        Sfx.Play(SfxId.StationSelect);
         selectedStation = node;
         pending = PendingAction.None;
         EnsurePopup();
@@ -458,6 +460,7 @@ public class ManagementModeController : MonoBehaviour
         }
 
         selectedStation.SetWorker(emp);
+        Sfx.Play(SfxId.AssignWorker);
         pending = PendingAction.None;
         RefreshPopup();
         SetStatus(emp.employeeName + " assigned to " + selectedStation.DisplayName);
@@ -480,6 +483,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (selectedStation == null) return;
         selectedStation.ClearWorker();
+        Sfx.Play(SfxId.ClearWorker);
         pending = PendingAction.None;
         RefreshPopup();
         SetStatus("Worker cleared.");
@@ -497,6 +501,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (selectedStation == null) return;
         selectedStation.ClearOutput();
+        Sfx.Play(SfxId.ClearOutput);
         pending = PendingAction.None;
         RefreshPopup();
         SetStatus("Output cleared.");

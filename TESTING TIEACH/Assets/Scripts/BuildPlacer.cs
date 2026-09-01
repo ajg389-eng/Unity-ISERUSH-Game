@@ -65,11 +65,12 @@ public class BuildPlacer : MonoBehaviour
                 RemoveDraggedAndReturnToInventory();
                 return;
             }
-            if (Input.GetKeyDown(KeyCode.R))
-            {
-                dragRotation = (dragRotation + 1) % 4;
-                draggingObject.transform.rotation = Quaternion.Euler(0f, dragRotation * 90f, 0f);
-            }
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            dragRotation = (dragRotation + 1) % 4;
+            draggingObject.transform.rotation = Quaternion.Euler(0f, dragRotation * 90f, 0f);
+            Sfx.Play(SfxId.BuildRotate);
+        }
             if (TryGetHoveredCell(out int dx, out int dy))
             {
                 GetEffectiveDragSize(out int sx, out int sy);
@@ -97,6 +98,7 @@ public class BuildPlacer : MonoBehaviour
             placementRotation = (placementRotation + 1) % 4;
             if (ghost)
                 ghost.transform.rotation = Quaternion.Euler(0f, placementRotation * 90f, 0f);
+            Sfx.Play(SfxId.BuildRotate);
         }
 
         // Move ghost to hovered cell (centered on footprint if multi-tile)
@@ -134,6 +136,7 @@ public class BuildPlacer : MonoBehaviour
             c.enabled = false;
 
         SetHint(true);
+        Sfx.Play(SfxId.BuildPickup);
     }
 
     public void CancelPlacement()
@@ -310,6 +313,7 @@ public class BuildPlacer : MonoBehaviour
             dragRotation = rot;
             dragOrigRotation = rot;
             SetHint(true, true);
+            Sfx.Play(SfxId.BuildPickup);
             return;
         }
     }
@@ -320,12 +324,16 @@ public class BuildPlacer : MonoBehaviour
 
         GetEffectiveDragSize(out int sizeX, out int sizeY);
         if (!grid.CanPlace(x, y, sizeX, sizeY))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
             return;
+        }
 
         Vector3 pos = grid.GetFootprintCenter(x, y, sizeX, sizeY);
         pos.y = GetYOnFloor(draggingObject, grid.Origin.y);
         draggingObject.transform.position = pos;
         grid.SetOccupied(x, y, sizeX, sizeY, true);
+        Sfx.Play(SfxId.BuildPlace);
         EndDrag();
     }
 
@@ -363,6 +371,7 @@ public class BuildPlacer : MonoBehaviour
         draggingObject = null;
         dragFootprint = null;
         SetHint(IsPlacing);
+        Sfx.Play(SfxId.BuildRemove);
 
         var invUI = FindObjectOfType<InventoryUI>();
         if (invUI != null) invUI.RefreshAll();
@@ -378,10 +387,18 @@ public class BuildPlacer : MonoBehaviour
         GetEffectivePlacementSize(out int sizeX, out int sizeY);
 
         // Check space
-        if (!grid.CanPlace(x, y, sizeX, sizeY)) return;
+        if (!grid.CanPlace(x, y, sizeX, sizeY))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
 
         // Consume inventory
-        if (!inventory.TryConsumeOne(placingItem)) return;
+        if (!inventory.TryConsumeOne(placingItem))
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
 
         // Place real object (centered on footprint, bottom on floor, with placement rotation)
         var placed = Instantiate(placingItem.prefab);
@@ -399,6 +416,7 @@ public class BuildPlacer : MonoBehaviour
 
         // Mark occupied + not walkable
         grid.SetOccupied(x, y, sizeX, sizeY, true);
+        Sfx.Play(SfxId.BuildPlace);
 
         // Keep placing until user cancels (or you can auto-cancel if you want)
         // If you want auto-cancel after 1 placement, uncomment:

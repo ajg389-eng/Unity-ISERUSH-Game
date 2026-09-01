@@ -101,6 +101,7 @@ public class ManagementScreenController : MonoBehaviour
             inv.panel.SetActive(false);
 
         managementPanel.SetActive(true);
+        Sfx.Play(SfxId.UiOpen);
         // Let clicks on empty overlay pass through to stations (like Build mode)
         var panelImg = managementPanel.GetComponent<Image>();
         if (panelImg != null) panelImg.raycastTarget = false;
@@ -121,6 +122,7 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (managementPanel == null) return;
         managementPanel.SetActive(false);
+        Sfx.Play(SfxId.UiClose);
         isOpen = false;
 
         if (modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage)
