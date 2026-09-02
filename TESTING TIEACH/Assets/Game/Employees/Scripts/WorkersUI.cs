@@ -17,6 +17,7 @@ public class WorkersUI : MonoBehaviour
     [Header("List")]
     public GameObject workerCardPrefab;
     public Transform cardContainer;
+    public ScrollRect workerCardsScroll;
 
     ProductionManager production;
     bool listenerAdded;
@@ -34,6 +35,7 @@ public class WorkersUI : MonoBehaviour
         EnsureRefs();
         ApplyCleanLayout();
         EnsureCardContainer();
+        ConfigureWorkerScroll();
         Refresh();
     }
 
@@ -187,7 +189,7 @@ public class WorkersUI : MonoBehaviour
         hintText.alignment = TextAlignmentOptions.TopLeft;
         hintText.textWrappingMode = TextWrappingModes.Normal;
         hintText.raycastTarget = false;
-        hintText.text = "Tip: every station needs Assign Output. Workers use the station, then deliver only to that output.";
+        hintText.text = "Each card shows live task, station assignments, and inventory. Assign stations in Manage mode by clicking them in the world.";
 
         // Keep header above list in hierarchy for clarity
         header.SetSiblingIndex(1);
@@ -206,16 +208,26 @@ public class WorkersUI : MonoBehaviour
         if (cardContainer != null)
         {
             FitScrollArea();
+            ConfigureWorkerScroll();
             return;
         }
 
         var scrollGo = new GameObject("WorkerCardsScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
-        var scrollRect = (RectTransform)scrollGo.transform;
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         scroll.horizontal = false;
         scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 28f;
+        workerCardsScroll = scroll;
+
+        var scrollBg = scrollGo.AddComponent<Image>();
+        scrollBg.color = new Color(0f, 0f, 0f, 0f);
+        scrollBg.raycastTarget = true;
+
+        var blocker = scrollGo.AddComponent<ScrollRectWheelBlocker>();
+        blocker.scrollRect = scroll;
 
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
@@ -224,7 +236,9 @@ public class WorkersUI : MonoBehaviour
         vpRect.anchorMax = Vector2.one;
         vpRect.offsetMin = Vector2.zero;
         vpRect.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.02f);
+        var viewportImage = viewport.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+        viewportImage.raycastTarget = true;
         viewport.AddComponent<Mask>().showMaskGraphic = false;
 
         var content = new GameObject("CardContainer", typeof(RectTransform));
@@ -237,8 +251,8 @@ public class WorkersUI : MonoBehaviour
         contentRect.offsetMax = Vector2.zero;
         content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 8;
-        vlg.padding = new RectOffset(4, 4, 4, 4);
+        vlg.spacing = 12;
+        vlg.padding = new RectOffset(4, 4, 4, 8);
         vlg.childControlHeight = true;
         vlg.childForceExpandHeight = false;
         vlg.childForceExpandWidth = true;
@@ -247,6 +261,44 @@ public class WorkersUI : MonoBehaviour
         scroll.content = contentRect;
         cardContainer = content.transform;
         FitScrollArea();
+        ConfigureWorkerScroll();
+    }
+
+    void ConfigureWorkerScroll()
+    {
+        if (workerCardsScroll == null)
+        {
+            var existing = transform.Find("WorkerCardsScroll");
+            if (existing != null)
+                workerCardsScroll = existing.GetComponent<ScrollRect>();
+        }
+
+        if (workerCardsScroll == null) return;
+
+        workerCardsScroll.horizontal = false;
+        workerCardsScroll.vertical = true;
+        workerCardsScroll.movementType = ScrollRect.MovementType.Clamped;
+        workerCardsScroll.scrollSensitivity = 28f;
+
+        var scrollImage = workerCardsScroll.GetComponent<Image>();
+        if (scrollImage == null)
+            scrollImage = workerCardsScroll.gameObject.AddComponent<Image>();
+        scrollImage.color = new Color(0f, 0f, 0f, 0f);
+        scrollImage.raycastTarget = true;
+
+        var blocker = workerCardsScroll.GetComponent<ScrollRectWheelBlocker>();
+        if (blocker == null)
+            blocker = workerCardsScroll.gameObject.AddComponent<ScrollRectWheelBlocker>();
+        blocker.scrollRect = workerCardsScroll;
+
+        var viewport = workerCardsScroll.viewport;
+        if (viewport != null)
+        {
+            var viewportImage = viewport.GetComponent<Image>();
+            if (viewportImage == null)
+                viewportImage = viewport.gameObject.AddComponent<Image>();
+            viewportImage.raycastTarget = true;
+        }
     }
 
     void FitScrollArea()

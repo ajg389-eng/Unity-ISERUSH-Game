@@ -18,39 +18,39 @@ MonoBehaviour:
     volume: 1
     pitchVariance: 0.05
   - id: 1
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 05f47a09de95a424f8d04d606a4b28e1, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 2
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 05f47a09de95a424f8d04d606a4b28e1, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 3
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: c2aaacc6177ffff429062fde153c7252, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 4
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 949e8e8c3014e4a46a16d1901c6ea2e9, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 5
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 776cb5e5a3207b74c8063146d326cde6, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 6
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 949e8e8c3014e4a46a16d1901c6ea2e9, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 7
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: aa588b36e8bcc7145abe713f3b7906fd, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 8
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: 670e4dc1f7da898488206955c5e9fad9, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 9
-    clip: {fileID: 0}
+    clip: {fileID: 8300000, guid: f80c51926a3034b498c51234736295a8, type: 3}
     volume: 1
     pitchVariance: 0.05
   - id: 10

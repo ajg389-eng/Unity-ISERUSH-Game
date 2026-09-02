@@ -107,6 +107,133 @@ public class KitchenEmployee : MonoBehaviour
         return parts.Count > 0 ? string.Join(", ", parts) : "Unassigned (idle)";
     }
 
+    /// <summary>Multi-line detail for worker inspect UI: station and output route per assignment.</summary>
+    public string GetAssignmentDetailText()
+    {
+        if (operatedStations == null || operatedStations.Count == 0)
+            return "No stations assigned";
+
+        var lines = new List<string>();
+        foreach (var go in operatedStations)
+        {
+            if (go == null) continue;
+
+            if (go.GetComponent<Register>() != null)
+            {
+                lines.Add("• Register (cashier)");
+                continue;
+            }
+
+            var node = go.GetComponent<StationNode>();
+            string stationName = node != null ? node.DisplayName : go.name;
+            if (node != null && node.outputTarget != null)
+            {
+                var outNode = StationNode.EnsureOn(node.outputTarget);
+                string outName = outNode != null ? outNode.DisplayName : node.outputTarget.name;
+                lines.Add("• " + stationName + " → " + outName);
+            }
+            else
+            {
+                lines.Add("• " + stationName + " (no output set)");
+            }
+        }
+
+        return lines.Count > 0 ? string.Join("\n", lines) : "No stations assigned";
+    }
+
+    /// <summary>Human-readable description of what this worker is doing right now.</summary>
+    public string GetCurrentTaskDescription()
+    {
+        string product = GetActiveProductLabel();
+
+        switch (step)
+        {
+            case Step.GoToFreezer: return FormatTask("Walking to Freezer", product);
+            case Step.AtFreezer: return FormatTask("Taking patty from Freezer", product);
+            case Step.GoToGrill: return FormatTask("Walking to Grill", product);
+            case Step.AtGrill: return FormatTask("Cooking at Grill", product);
+            case Step.GoToAssembly: return FormatTask("Walking to Assembly", product);
+            case Step.AtAssembly: return FormatTask("Assembling order", product);
+            case Step.GoToFryer: return FormatTask("Walking to Fryer", product);
+            case Step.AtFryer: return FormatTask("Frying at Fryer", product);
+            case Step.GoToOutput:
+            case Step.GoToHeatLamp:
+                return FormatTask("Walking to deliver at " + GetDeliverTargetLabel(), product);
+            case Step.AtOutput:
+            case Step.AtHeatLamp:
+                return FormatTask("Delivering to " + GetDeliverTargetLabel(), product);
+            case Step.CashierGoDrink: return "Cashier — walking to drink station";
+            case Step.CashierAtDrink: return "Cashier — pouring drink";
+            case Step.CashierGoFood: return "Cashier — walking to heat lamp";
+            case Step.CashierAtFood: return "Cashier — picking up food";
+            case Step.CashierReturnServe: return "Cashier — serving customer";
+        }
+
+        var reg = GetRegisterStation();
+        if (reg != null)
+        {
+            if (cashierTray != null && cashierTray.Count > 0)
+                return "Cashier — ready to serve customer";
+
+            var front = reg.GetFrontCustomer();
+            if (front != null)
+            {
+                var order = front.GetOrder();
+                if (order != null)
+                {
+                    var next = GetNextCashierFetch(order);
+                    if (next == null)
+                        return "Cashier — waiting for kitchen items";
+                    return "Cashier — starting customer order";
+                }
+            }
+
+            return "Cashier — waiting at register";
+        }
+
+        if (currentJob != null)
+            return FormatTask("Working", product);
+
+        if (!CanTakeJobs)
+            return "Idle — no stations assigned";
+
+        return "Idle — waiting for work";
+    }
+
+    string GetActiveProductLabel()
+    {
+        if (currentJob?.product != null)
+            return FormatItemName(currentJob.product);
+
+        if (heldDeliveryItem != null)
+            return FormatItemName(heldDeliveryItem);
+
+        if (cashierFetchItem != null)
+            return FormatItemName(cashierFetchItem);
+
+        return null;
+    }
+
+    static string FormatItemName(ItemDefinition item)
+    {
+        if (item == null) return null;
+        return !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+    }
+
+    static string FormatTask(string action, string product)
+    {
+        if (string.IsNullOrEmpty(product))
+            return action;
+        return action + " (" + product + ")";
+    }
+
+    string GetDeliverTargetLabel()
+    {
+        if (deliverTarget == null) return "output station";
+        var node = StationNode.EnsureOn(deliverTarget);
+        return node != null ? node.DisplayName : deliverTarget.name;
+    }
+
     public void SyncFromOperatedStations()
     {
         assignedStations = new List<StationType>();

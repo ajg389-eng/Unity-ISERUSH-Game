@@ -3,18 +3,20 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Worker card on Management > Workers: name, fire, and which stations they operate.
-/// Station assignment is done in Manage mode by clicking stations in the world.
+/// Worker card on Management > Workers: name, live task, assignments, inventory, and fire.
 /// </summary>
 public class WorkerCardUI : MonoBehaviour
 {
     public KitchenEmployee employee;
     public GameObject nameInputObject;
     public Button fireButton;
-    [Tooltip("Optional label showing assigned stations")]
+    public TextMeshProUGUI currentTaskText;
+    public TextMeshProUGUI assignmentsText;
+    public TextMeshProUGUI heldItemsText;
+
+    [Tooltip("Legacy summary label; hidden when detail labels are present")]
     public TextMeshProUGUI stationsLabel;
 
-    // Legacy toggles (hidden/unused — assignment is world-based now)
     public Toggle toggleFreezer;
     public Toggle toggleGrill;
     public Toggle togglePantry;
@@ -23,6 +25,17 @@ public class WorkerCardUI : MonoBehaviour
     ProductionManager production;
 
     void OnValidate()
+    {
+        BindReferences();
+    }
+
+    void Update()
+    {
+        if (employee != null)
+            RefreshDetails();
+    }
+
+    void BindReferences()
     {
         if (nameInputObject == null)
         {
@@ -39,6 +52,20 @@ public class WorkerCardUI : MonoBehaviour
             var t = transform.Find("StationsLabel") ?? transform.Find("Row2/StationsLabel");
             if (t != null) stationsLabel = t.GetComponent<TextMeshProUGUI>();
         }
+
+        var details = transform.Find("WorkerDetails");
+        if (details != null)
+        {
+            if (currentTaskText == null)
+                currentTaskText = details.Find("TaskSection/CurrentTask")?.GetComponent<TextMeshProUGUI>()
+                    ?? details.Find("CurrentTask")?.GetComponent<TextMeshProUGUI>();
+            if (assignmentsText == null)
+                assignmentsText = details.Find("StationsSection/Assignments")?.GetComponent<TextMeshProUGUI>()
+                    ?? details.Find("Assignments")?.GetComponent<TextMeshProUGUI>();
+            if (heldItemsText == null)
+                heldItemsText = details.Find("CarryingSection/HeldItems")?.GetComponent<TextMeshProUGUI>()
+                    ?? details.Find("HeldItems")?.GetComponent<TextMeshProUGUI>();
+        }
     }
 
     public void Bind(KitchenEmployee emp)
@@ -50,17 +77,19 @@ public class WorkerCardUI : MonoBehaviour
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
 
-        HideLegacyToggles();
+        HideLegacyUi();
+        EnsureLayout();
+        BindReferences();
 
         if (emp == null)
         {
             SetNameText("");
-            SetStationsText("—");
+            RefreshDetails();
             return;
         }
 
         SetNameText(emp.employeeName ?? "Worker");
-        SetStationsText(emp.GetAssignedStationsSummary());
+        RefreshDetails();
         AddNameListener();
         if (fireButton != null)
         {
@@ -69,27 +98,141 @@ public class WorkerCardUI : MonoBehaviour
         }
     }
 
-    void HideLegacyToggles()
+    public void RefreshDetails()
+    {
+        EnsureLayout();
+
+        if (employee == null)
+        {
+            SetDetailText(currentTaskText, "—");
+            SetDetailText(assignmentsText, "No stations assigned");
+            SetDetailText(heldItemsText, "Nothing");
+            if (stationsLabel != null) stationsLabel.text = "—";
+            return;
+        }
+
+        SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
+        SetDetailText(assignmentsText, FormatAssignments(employee.GetAssignmentDetailText()));
+
+        string held = employee.GetHeldInventoryDisplay();
+        SetDetailText(heldItemsText, string.IsNullOrEmpty(held) ? "Nothing" : held);
+
+        if (stationsLabel != null)
+            stationsLabel.gameObject.SetActive(false);
+    }
+
+    static string FormatAssignments(string detailText)
+    {
+        if (string.IsNullOrEmpty(detailText) || detailText == "No stations assigned")
+            return "No stations assigned";
+
+        return detailText.Replace("• ", "  • ").Replace("\n", "\n\n");
+    }
+
+    void EnsureLayout()
+    {
+        HideLegacyUi();
+
+        var details = transform.Find("WorkerDetails");
+        if (details == null || details.Find("TaskSection") == null)
+        {
+            if (details != null)
+                Destroy(details.gameObject);
+
+            WorkerCardPrefabBuilder.BuildDetailsSection(transform, out currentTaskText, out assignmentsText, out heldItemsText);
+        }
+
+        ApplyCardLayout();
+        BindReferences();
+    }
+
+    void ApplyCardLayout()
+    {
+        var cardLe = GetComponent<LayoutElement>();
+        if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
+        cardLe.minHeight = 210;
+        cardLe.preferredHeight = -1;
+        cardLe.flexibleWidth = 1;
+
+        var cardImage = GetComponent<Image>();
+        if (cardImage != null)
+            cardImage.color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
+
+        var vlg = GetComponent<VerticalLayoutGroup>();
+        if (vlg == null)
+        {
+            var hlg = GetComponent<HorizontalLayoutGroup>();
+            if (hlg != null) Destroy(hlg);
+            vlg = gameObject.AddComponent<VerticalLayoutGroup>();
+        }
+        vlg.padding = new RectOffset(14, 14, 12, 12);
+        vlg.spacing = 12;
+        vlg.childAlignment = TextAnchor.UpperLeft;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+
+        var row1 = transform.Find("Row1");
+        if (row1 != null)
+        {
+            row1.SetAsFirstSibling();
+            var rowLe = row1.GetComponent<LayoutElement>();
+            if (rowLe == null) rowLe = row1.gameObject.AddComponent<LayoutElement>();
+            rowLe.minHeight = 36;
+            rowLe.preferredHeight = 36;
+
+            var hlg = row1.GetComponent<HorizontalLayoutGroup>();
+            if (hlg == null) hlg = row1.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.padding = new RectOffset(0, 0, 0, 0);
+            hlg.spacing = 12;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandHeight = true;
+
+            if (nameInputObject != null)
+            {
+                var nameLe = nameInputObject.GetComponent<LayoutElement>();
+                if (nameLe == null) nameLe = nameInputObject.AddComponent<LayoutElement>();
+                nameLe.flexibleWidth = 1;
+                nameLe.minWidth = 160;
+                nameLe.preferredWidth = -1;
+            }
+
+            if (fireButton != null)
+            {
+                fireButton.transform.SetAsLastSibling();
+                var fireLe = fireButton.GetComponent<LayoutElement>();
+                if (fireLe == null) fireLe = fireButton.gameObject.AddComponent<LayoutElement>();
+                fireLe.minWidth = 72;
+                fireLe.preferredWidth = 72;
+                fireLe.flexibleWidth = 0;
+            }
+        }
+
+        var details = transform.Find("WorkerDetails");
+        if (details != null)
+            details.SetAsLastSibling();
+    }
+
+    static void SetDetailText(TextMeshProUGUI label, string text)
+    {
+        if (label != null)
+            label.text = text;
+    }
+
+    void HideLegacyUi()
     {
         if (toggleFreezer != null) toggleFreezer.gameObject.SetActive(false);
         if (toggleGrill != null) toggleGrill.gameObject.SetActive(false);
         if (togglePantry != null) togglePantry.gameObject.SetActive(false);
         if (toggleAssembly != null) toggleAssembly.gameObject.SetActive(false);
-    }
 
-    void SetStationsText(string text)
-    {
-        if (stationsLabel != null)
-        {
-            stationsLabel.text = text;
-            return;
-        }
-        // Fallback: reuse Row2 first TMP if present
         var row2 = transform.Find("Row2");
-        if (row2 == null) return;
-        var tmp = row2.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (tmp != null && (tmp.transform.parent == row2 || tmp.name.Contains("Station") || tmp.name.Contains("Label")))
-            tmp.text = text;
+        if (row2 != null)
+            row2.gameObject.SetActive(false);
     }
 
     void AddNameListener()

@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 public class PlayerCameraController : MonoBehaviour
 {
@@ -66,6 +69,9 @@ public class PlayerCameraController : MonoBehaviour
 
     void Zoom()
     {
+        if (ShouldBlockZoom())
+            return;
+
         float scroll = Input.mouseScrollDelta.y * 0.1f;
         if (Mathf.Abs(scroll) > 0.01f)
         {
@@ -96,4 +102,25 @@ public class PlayerCameraController : MonoBehaviour
 
     /// <summary>Real-time delta so camera keeps moving while simulation is paused.</summary>
     static float InteractionDeltaTime => Time.unscaledDeltaTime;
+
+    static readonly List<RaycastResult> ZoomRaycastHits = new List<RaycastResult>();
+
+    static bool ShouldBlockZoom()
+    {
+        var es = EventSystem.current;
+        if (es == null) return false;
+
+        var pointer = new PointerEventData(es) { position = Input.mousePosition };
+        ZoomRaycastHits.Clear();
+        es.RaycastAll(pointer, ZoomRaycastHits);
+
+        for (int i = 0; i < ZoomRaycastHits.Count; i++)
+        {
+            var go = ZoomRaycastHits[i].gameObject;
+            if (go != null && go.GetComponentInParent<ScrollRect>() != null)
+                return true;
+        }
+
+        return false;
+    }
 }

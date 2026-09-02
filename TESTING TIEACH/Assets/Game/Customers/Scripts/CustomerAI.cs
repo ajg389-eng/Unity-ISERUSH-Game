@@ -2,27 +2,44 @@ using UnityEngine;
 
 public class CustomerAI : MonoBehaviour
 {
+    [Header("Movement")]
     public float moveSpeed = 2.5f;
 
-    private Register reg;
-    private Vector3 targetPos;
-    private bool hasTarget;
+    [Header("Patience")]
+    [Tooltip("Seconds a customer will wait in line before leaving.")]
+    public float patienceDuration = 50f;
 
-    private bool isFront;
+    [Header("Components")]
+    public CustomerPatienceMeter patienceMeter;
+    public CustomerOrderLabel orderLabel;
+
+    Register reg;
+    Vector3 targetPos;
+    bool hasTarget;
+    bool isFront;
 
     float queueJoinTime;
     public float QueueJoinTime => queueJoinTime;
 
-    /// <summary>Items still owed to this customer (shrinks as the cashier delivers).</summary>
     CustomerOrder order;
-    /// <summary>Full sale price locked in when the order was placed.</summary>
     int salePrice;
-    CustomerOrderLabel orderLabel;
+    bool waitingInQueue;
+    bool leaving;
+    bool leavingImpatient;
+    Vector3 exitTarget;
 
     public CustomerOrder GetOrder() => order;
     public int SalePrice => salePrice;
     public bool IsOrderFullyDelivered =>
         order == null || order.lines == null || order.GetTotalQuantity() <= 0;
+
+    void Awake()
+    {
+        if (patienceMeter == null)
+            patienceMeter = GetComponent<CustomerPatienceMeter>();
+        if (orderLabel == null)
+            orderLabel = GetComponent<CustomerOrderLabel>();
+    }
 
     public void SetOrder(CustomerOrder o)
     {
@@ -31,7 +48,6 @@ public class CustomerAI : MonoBehaviour
         RefreshOrderLabel();
     }
 
-    /// <summary>Hand one item to the customer; removes it from the floating order list.</summary>
     public bool TryReceiveItem(ItemDefinition item)
     {
         if (item == null || order == null) return false;
@@ -42,8 +58,8 @@ public class CustomerAI : MonoBehaviour
 
     void RefreshOrderLabel()
     {
-        if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
-        if (orderLabel == null) orderLabel = gameObject.AddComponent<CustomerOrderLabel>();
+        if (orderLabel == null)
+            orderLabel = GetComponent<CustomerOrderLabel>();
 
         string label;
         if (IsOrderFullyDelivered)
@@ -53,16 +69,53 @@ public class CustomerAI : MonoBehaviour
         else
             label = "No order";
 
-        var existing = transform.Find("OrderLabel");
-        if (existing == null)
-            orderLabel.Setup(transform, label);
-        else
+        if (orderLabel != null)
             orderLabel.SetText(label);
     }
 
     public void SetQueueJoinTime(float time)
     {
         queueJoinTime = time;
+    }
+
+    public void BeginQueueWait()
+    {
+        if (waitingInQueue) return;
+        waitingInQueue = true;
+
+        if (patienceMeter == null)
+            patienceMeter = GetComponent<CustomerPatienceMeter>();
+
+        if (patienceMeter != null)
+            patienceMeter.Begin(patienceDuration, OnPatienceExpired);
+    }
+
+    void StopPatienceMeter()
+    {
+        waitingInQueue = false;
+        if (patienceMeter != null)
+            patienceMeter.Stop();
+    }
+
+    void OnPatienceExpired()
+    {
+        if (!waitingInQueue || leaving || leavingImpatient) return;
+
+        Transform exit = reg != null ? reg.storeExit : null;
+        if (reg != null)
+            reg.LeaveQueue(this);
+
+        LeaveImpatient(exit);
+    }
+
+    public void LeaveImpatient(Transform exit)
+    {
+        StopPatienceMeter();
+        reg = null;
+        hasTarget = true;
+        leavingImpatient = true;
+        exitTarget = exit != null ? exit.position : transform.position + transform.forward * 8f;
+        targetPos = exitTarget;
     }
 
     public void SetTargetRegister(Register r)
@@ -81,11 +134,9 @@ public class CustomerAI : MonoBehaviour
         hasTarget = true;
     }
 
-    bool leaving;
-    Vector3 exitTarget;
-
     public void OnServed(Transform exit)
     {
+        StopPatienceMeter();
         reg = null;
         hasTarget = true;
         leaving = true;
@@ -95,6 +146,7 @@ public class CustomerAI : MonoBehaviour
 
     public void OnRegisterDisabled()
     {
+        StopPatienceMeter();
         Destroy(gameObject);
     }
 
@@ -105,6 +157,9 @@ public class CustomerAI : MonoBehaviour
         transform.position = Vector3.MoveTowards(transform.position, targetPos, moveSpeed * Time.deltaTime);
 
         if (leaving && Vector3.Distance(transform.position, targetPos) < 0.2f)
+            Destroy(gameObject);
+
+        if (leavingImpatient && Vector3.Distance(transform.position, targetPos) < 0.2f)
             Destroy(gameObject);
     }
 }

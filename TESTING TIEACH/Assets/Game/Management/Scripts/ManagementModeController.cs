@@ -48,6 +48,7 @@ public class ManagementModeController : MonoBehaviour
     enum PendingAction { None, PickOutput, PickWorker }
     PendingAction pending;
     StationNode selectedStation;
+    StationSelectionHighlight selectedHighlight;
 
     void Awake()
     {
@@ -112,7 +113,7 @@ public class ManagementModeController : MonoBehaviour
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
             if (pending == PendingAction.None)
-                HidePopup();
+                ClearSelection();
             return;
         }
 
@@ -120,7 +121,7 @@ public class ManagementModeController : MonoBehaviour
         if (node == null)
         {
             if (pending == PendingAction.None)
-                HidePopup();
+                ClearSelection();
             return;
         }
 
@@ -144,7 +145,7 @@ public class ManagementModeController : MonoBehaviour
     void SelectStation(StationNode node)
     {
         Sfx.Play(SfxId.StationSelect);
-        selectedStation = node;
+        SetSelectedStation(node);
         pending = PendingAction.None;
         EnsurePopup();
         if (stationPopup != null)
@@ -535,8 +536,40 @@ public class ManagementModeController : MonoBehaviour
     void CancelAndHide()
     {
         pending = PendingAction.None;
+        ClearSelection();
+    }
+
+    void SetSelectedStation(StationNode node)
+    {
+        if (selectedStation == node) return;
+
+        SetStationHighlighted(selectedStation, false);
+        selectedStation = node;
+        SetStationHighlighted(selectedStation, true);
+    }
+
+    void ClearSelection()
+    {
+        ClearStationSelection();
+    }
+
+    void ClearStationSelection()
+    {
+        SetStationHighlighted(selectedStation, false);
         selectedStation = null;
+        selectedHighlight = null;
         HidePopup();
+    }
+
+    void SetStationHighlighted(StationNode node, bool on)
+    {
+        if (node == null) return;
+
+        var highlight = StationSelectionHighlight.EnsureOn(node.gameObject);
+        if (highlight == null) return;
+
+        highlight.SetSelected(on);
+        selectedHighlight = on ? highlight : null;
     }
 
     void HidePopup()
@@ -576,11 +609,11 @@ public class ManagementModeController : MonoBehaviour
             }
             else
             {
-                // Keep it under PlayerUI if it somehow isn't
                 var parentCanvas = ResolvePlayerUICanvas();
                 if (parentCanvas != null && stationPopup.transform.parent != parentCanvas.transform)
                     stationPopup.transform.SetParent(parentCanvas.transform, false);
 
+                TryImportScenePopup(stationPopup);
                 BindPopupReferences();
                 WirePopupButtons();
                 return;
@@ -594,55 +627,39 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        stationPopup = new GameObject("StationManagePopup", typeof(RectTransform));
-        stationPopup.transform.SetParent(parent.transform, false);
+        var popup = StationManagePopup.CreateInCanvas(parent.transform);
+        if (popup == null) return;
 
-        ApplyPopupLayout((RectTransform)stationPopup.transform, 520f);
+        popup.CopyReferencesTo(this);
+        usingScenePopup = true;
+        BindPopupReferences();
+        WirePopupButtons();
+    }
 
-        var bg = stationPopup.AddComponent<Image>();
-        bg.color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
-        bg.raycastTarget = true;
+    void TryImportScenePopup(GameObject popupGo)
+    {
+        if (popupGo == null) return;
 
-        var vlg = stationPopup.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(14, 14, 14, 14);
-        vlg.spacing = 8;
-        vlg.childControlHeight = true;
-        vlg.childForceExpandWidth = true;
-        vlg.childAlignment = TextAnchor.UpperCenter;
+        var popup = popupGo.GetComponent<StationManagePopup>();
+        if (popup == null) return;
 
-        stationTitleText = CreateLabel(stationPopup.transform, "Station", 22);
-        workerInfoText = CreateLabel(stationPopup.transform, "Worker: —", 15);
-        outputInfoText = CreateLabel(stationPopup.transform, "Output → (none)", 15);
-        statusText = CreateLabel(stationPopup.transform, "", 13);
-        statusText.color = new Color(0.85f, 0.85f, 0.9f, 1f);
-        statusText.alignment = TextAlignmentOptions.Left;
-
-        assignWorkerButton = CreateButton(stationPopup.transform, "Assign Worker", OnAssignWorkerClicked);
-        clearWorkerButton = CreateButton(stationPopup.transform, "Clear Worker", OnClearWorkerClicked);
-        assignOutputButton = CreateButton(stationPopup.transform, "Assign Output", OnAssignOutputClicked);
-        clearOutputButton = CreateButton(stationPopup.transform, "Clear Output", OnClearOutputClicked);
-
-        var listGo = new GameObject("WorkerList", typeof(RectTransform));
-        listGo.transform.SetParent(stationPopup.transform, false);
-        workerListContainer = listGo.transform;
-        var listVlg = listGo.AddComponent<VerticalLayoutGroup>();
-        listVlg.spacing = 4;
-        listVlg.childForceExpandWidth = true;
-        var le = listGo.AddComponent<LayoutElement>();
-        le.minHeight = 80;
-        le.flexibleHeight = 1;
-
-        stationPopup.transform.SetAsLastSibling();
+        popup.BindReferences();
+        popup.CopyReferencesTo(this);
+        usingScenePopup = true;
     }
 
     GameObject FindExistingStationPopup()
     {
+        var popup = FindFirstObjectByType<StationManagePopup>(FindObjectsInactive.Include);
+        if (popup != null)
+            return popup.gameObject;
+
         var canvas = ResolvePlayerUICanvas();
         if (canvas == null) return null;
 
         foreach (var t in canvas.GetComponentsInChildren<Transform>(true))
         {
-            if (t != null && t.name == "StationManagePopup")
+            if (t != null && t.name == StationManagePopup.PopupObjectName)
                 return t.gameObject;
         }
 
@@ -653,21 +670,39 @@ public class ManagementModeController : MonoBehaviour
     {
         if (stationPopup == null) return;
 
-        var workerList = stationPopup.transform.Find("WorkerList");
+        TryImportScenePopup(stationPopup);
+
+        var workerList = stationPopup.transform.Find(StationManagePopup.WorkerListName);
         if (workerList != null)
             workerListContainer = workerList;
 
-        var productInfo = stationPopup.transform.Find("ProductInfo");
+        var productInfo = stationPopup.transform.Find(StationManagePopup.ProductInfoName);
         if (productInfo != null)
             productInfoText = productInfo.GetComponent<TextMeshProUGUI>();
 
-        var productList = stationPopup.transform.Find("ProductList");
+        var productList = stationPopup.transform.Find(StationManagePopup.ProductListName);
         if (productList != null)
             productListContainer = productList;
 
-        var inventoryInfo = stationPopup.transform.Find("InventoryInfo");
+        var inventoryInfo = stationPopup.transform.Find(StationManagePopup.InventoryInfoName);
         if (inventoryInfo != null)
             inventoryInfoText = inventoryInfo.GetComponent<TextMeshProUGUI>();
+
+        var stationTitle = stationPopup.transform.Find(StationManagePopup.StationTitleName);
+        if (stationTitle != null)
+            stationTitleText = stationTitle.GetComponent<TextMeshProUGUI>();
+
+        var workerInfo = stationPopup.transform.Find(StationManagePopup.WorkerInfoName);
+        if (workerInfo != null)
+            workerInfoText = workerInfo.GetComponent<TextMeshProUGUI>();
+
+        var outputInfo = stationPopup.transform.Find(StationManagePopup.OutputInfoName);
+        if (outputInfo != null)
+            outputInfoText = outputInfo.GetComponent<TextMeshProUGUI>();
+
+        var status = stationPopup.transform.Find(StationManagePopup.StatusName);
+        if (status != null)
+            statusText = status.GetComponent<TextMeshProUGUI>();
 
         foreach (var btn in stationPopup.GetComponentsInChildren<Button>(true))
         {

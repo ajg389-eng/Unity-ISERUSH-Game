@@ -63,6 +63,7 @@ public class Register : MonoBehaviour
         if (queue.Contains(customer)) return true;
 
         customer.SetQueueJoinTime(Time.time);
+        customer.BeginQueueWait();
         queue.Add(customer);
         UpdateQueueTargets();
 
