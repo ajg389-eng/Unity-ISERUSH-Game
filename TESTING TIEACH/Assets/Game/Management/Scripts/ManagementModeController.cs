@@ -18,7 +18,16 @@ public class ManagementModeController : MonoBehaviour
     [Tooltip("Canvas that shows the station panel. Defaults to PlayerUI.")]
     public Canvas playerUICanvas;
 
-    [Header("Optional UI roots (created at runtime if null)")]
+    [Header("Station popup layout")]
+    [Tooltip("Screen anchor for the popup (0=left/bottom, 1=right/top). Default pins to right-center.")]
+    public Vector2 popupAnchor = new Vector2(1f, 0.5f);
+    [Tooltip("Pivot on the popup panel itself. Match horizontal anchor for edge-aligned panels.")]
+    public Vector2 popupPivot = new Vector2(1f, 0.5f);
+    [Tooltip("Pixel offset from the anchor. Negative X pulls inward from the right edge.")]
+    public Vector2 popupAnchoredPosition = new Vector2(-24f, 0f);
+
+    [Header("Optional UI roots")]
+    [Tooltip("Assign a scene copy of StationManagePopup to use your layout. If empty, looks for StationManagePopup under PlayerUI before creating one.")]
     public GameObject stationPopup;
     public TextMeshProUGUI stationTitleText;
     public TextMeshProUGUI workerInfoText;
@@ -33,6 +42,9 @@ public class ManagementModeController : MonoBehaviour
     public Transform productListContainer;
     public TextMeshProUGUI inventoryInfoText;
 
+    /// <summary>True when using a designer-placed popup (inspector or scene). Keeps your RectTransform.</summary>
+    bool usingScenePopup;
+
     enum PendingAction { None, PickOutput, PickWorker }
     PendingAction pending;
     StationNode selectedStation;
@@ -41,6 +53,8 @@ public class ManagementModeController : MonoBehaviour
     {
         Instance = this;
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        if (stationPopup != null)
+            usingScenePopup = true;
     }
 
     void OnDestroy()
@@ -204,6 +218,16 @@ public class ManagementModeController : MonoBehaviour
             RebuildWorkerList(false);
     }
 
+    void ApplyPopupLayout(RectTransform rt, float height)
+    {
+        if (rt == null) return;
+        rt.anchorMin = popupAnchor;
+        rt.anchorMax = popupAnchor;
+        rt.pivot = popupPivot;
+        rt.anchoredPosition = popupAnchoredPosition;
+        rt.sizeDelta = new Vector2(300f, height);
+    }
+
     void ApplyPanelLayout(bool heatLampCompact)
     {
         if (stationPopup == null) return;
@@ -219,9 +243,10 @@ public class ManagementModeController : MonoBehaviour
             vlg.childAlignment = TextAnchor.UpperCenter;
         }
 
-        rt.sizeDelta = heatLampCompact
-            ? new Vector2(300f, 280f)
-            : new Vector2(300f, 520f);
+        if (!usingScenePopup)
+            ApplyPopupLayout(rt, heatLampCompact ? 280f : 520f);
+        else
+            rt.sizeDelta = new Vector2(rt.sizeDelta.x, heatLampCompact ? 280f : 520f);
 
         if (stationTitleText != null)
         {
@@ -532,6 +557,13 @@ public class ManagementModeController : MonoBehaviour
 
     void EnsurePopup()
     {
+        if (stationPopup == null)
+        {
+            stationPopup = FindExistingStationPopup();
+            if (stationPopup != null)
+                usingScenePopup = true;
+        }
+
         if (stationPopup != null)
         {
             // If an old world-space popup exists from a previous version, rebuild as screen UI
@@ -540,6 +572,7 @@ public class ManagementModeController : MonoBehaviour
             {
                 Destroy(stationPopup);
                 stationPopup = null;
+                usingScenePopup = false;
             }
             else
             {
@@ -547,6 +580,9 @@ public class ManagementModeController : MonoBehaviour
                 var parentCanvas = ResolvePlayerUICanvas();
                 if (parentCanvas != null && stationPopup.transform.parent != parentCanvas.transform)
                     stationPopup.transform.SetParent(parentCanvas.transform, false);
+
+                BindPopupReferences();
+                WirePopupButtons();
                 return;
             }
         }
@@ -561,12 +597,7 @@ public class ManagementModeController : MonoBehaviour
         stationPopup = new GameObject("StationManagePopup", typeof(RectTransform));
         stationPopup.transform.SetParent(parent.transform, false);
 
-        var rt = (RectTransform)stationPopup.transform;
-        rt.anchorMin = new Vector2(1f, 0.5f);
-        rt.anchorMax = new Vector2(1f, 0.5f);
-        rt.pivot = new Vector2(1f, 0.5f);
-        rt.anchoredPosition = new Vector2(-24f, 0f);
-        rt.sizeDelta = new Vector2(300f, 520f);
+        ApplyPopupLayout((RectTransform)stationPopup.transform, 520f);
 
         var bg = stationPopup.AddComponent<Image>();
         bg.color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
@@ -602,6 +633,81 @@ public class ManagementModeController : MonoBehaviour
         le.flexibleHeight = 1;
 
         stationPopup.transform.SetAsLastSibling();
+    }
+
+    GameObject FindExistingStationPopup()
+    {
+        var canvas = ResolvePlayerUICanvas();
+        if (canvas == null) return null;
+
+        foreach (var t in canvas.GetComponentsInChildren<Transform>(true))
+        {
+            if (t != null && t.name == "StationManagePopup")
+                return t.gameObject;
+        }
+
+        return null;
+    }
+
+    void BindPopupReferences()
+    {
+        if (stationPopup == null) return;
+
+        var workerList = stationPopup.transform.Find("WorkerList");
+        if (workerList != null)
+            workerListContainer = workerList;
+
+        var productInfo = stationPopup.transform.Find("ProductInfo");
+        if (productInfo != null)
+            productInfoText = productInfo.GetComponent<TextMeshProUGUI>();
+
+        var productList = stationPopup.transform.Find("ProductList");
+        if (productList != null)
+            productListContainer = productList;
+
+        var inventoryInfo = stationPopup.transform.Find("InventoryInfo");
+        if (inventoryInfo != null)
+            inventoryInfoText = inventoryInfo.GetComponent<TextMeshProUGUI>();
+
+        foreach (var btn in stationPopup.GetComponentsInChildren<Button>(true))
+        {
+            switch (btn.gameObject.name)
+            {
+                case "Assign Worker": assignWorkerButton = btn; break;
+                case "Clear Worker": clearWorkerButton = btn; break;
+                case "Assign Output": assignOutputButton = btn; break;
+                case "Clear Output": clearOutputButton = btn; break;
+            }
+        }
+
+        var directLabels = new List<TextMeshProUGUI>();
+        for (int i = 0; i < stationPopup.transform.childCount; i++)
+        {
+            var child = stationPopup.transform.GetChild(i);
+            var label = child.GetComponent<TextMeshProUGUI>();
+            if (label != null)
+                directLabels.Add(label);
+        }
+
+        if (stationTitleText == null && directLabels.Count > 0) stationTitleText = directLabels[0];
+        if (workerInfoText == null && directLabels.Count > 1) workerInfoText = directLabels[1];
+        if (outputInfoText == null && directLabels.Count > 2) outputInfoText = directLabels[2];
+        if (statusText == null && directLabels.Count > 3) statusText = directLabels[3];
+    }
+
+    void WirePopupButtons()
+    {
+        WireButton(assignWorkerButton, OnAssignWorkerClicked);
+        WireButton(clearWorkerButton, OnClearWorkerClicked);
+        WireButton(assignOutputButton, OnAssignOutputClicked);
+        WireButton(clearOutputButton, OnClearOutputClicked);
+    }
+
+    static void WireButton(Button btn, UnityEngine.Events.UnityAction onClick)
+    {
+        if (btn == null || onClick == null) return;
+        btn.onClick.RemoveListener(onClick);
+        btn.onClick.AddListener(onClick);
     }
 
     Canvas ResolvePlayerUICanvas()

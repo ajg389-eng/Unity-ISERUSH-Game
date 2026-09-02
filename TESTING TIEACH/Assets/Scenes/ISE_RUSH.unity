@@ -1849,9 +1849,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1114d2e0fc0c26e4f8127a9104fd2c28, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCameraController
-  moveSpeed: 20
+  moveSpeed: 30
+  moveResponse: 42
+  moveStopResponse: 32
   zoomSpeed: 10
-  zoomSmoothTime: 0.15
+  zoomSmoothTime: 0.1
   rotationSpeed: 5
   minY: 8
   maxY: 40

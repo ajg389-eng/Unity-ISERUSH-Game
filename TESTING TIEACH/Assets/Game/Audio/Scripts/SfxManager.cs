@@ -59,6 +59,7 @@ public class SfxManager : MonoBehaviour
             var src = gameObject.AddComponent<AudioSource>();
             src.playOnAwake = false;
             src.spatialBlend = 0f;
+            src.ignoreListenerPause = true;
             pool.Add(src);
         }
     }

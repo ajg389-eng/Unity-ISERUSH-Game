@@ -115,7 +115,12 @@ public class ManagementScreenController : MonoBehaviour
             modeManager.SetMode(GameModeManager.Mode.Manage);
 
         if (pauseWhileOpen)
-            Time.timeScale = 0f;
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.RequestExternalPause(GameTimeManager.PauseManagement);
+            else
+                Time.timeScale = 0f;
+        }
     }
 
     public void Close()
@@ -129,7 +134,12 @@ public class ManagementScreenController : MonoBehaviour
             modeManager.SetMode(GameModeManager.Mode.Play);
 
         if (pauseWhileOpen)
-            Time.timeScale = 1f;
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.ReleaseExternalPause(GameTimeManager.PauseManagement);
+            else
+                Time.timeScale = 1f;
+        }
     }
 
     public void Toggle()

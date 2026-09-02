@@ -51,7 +51,10 @@ public class TitleScreenController : MonoBehaviour
         if (inGameUIRoot != null)
             inGameUIRoot.SetActive(false);
 
-        Time.timeScale = 0f;
+        if (GameTimeManager.Instance != null)
+            GameTimeManager.Instance.RequestExternalPause(GameTimeManager.PauseTitleScreen);
+        else
+            Time.timeScale = 0f;
 
         if (titleCamera != null) titleCamera.enabled = true;
         if (gameCamera != null) gameCamera.enabled = false;
@@ -80,7 +83,10 @@ public class TitleScreenController : MonoBehaviour
         if (inGameUIRoot != null)
             inGameUIRoot.SetActive(true);
 
-        Time.timeScale = 1f;
+        if (GameTimeManager.Instance != null)
+            GameTimeManager.Instance.ReleaseExternalPause(GameTimeManager.PauseTitleScreen);
+        else
+            Time.timeScale = 1f;
 
         if (titleCamera != null) titleCamera.enabled = false;
         if (gameCamera != null)

@@ -104,12 +104,16 @@ public class DebugMenu : MonoBehaviour
                 if (e != null) stockUnits += e.quantity;
         }
 
+        var time = GameTimeManager.Instance;
+        string clock = time != null ? time.GetClockText() : "—";
+        string speed = time != null ? time.CurrentSpeed.ToString() : $"{Time.timeScale:0.##}x";
+
         statusText.text =
             $"Money: ${cash}\n" +
             $"Workers: {workers}   Jobs: {pending}\n" +
             $"Heat Lamp: {lampCount}/{lampCap}\n" +
             $"Kitchen stock units: {stockUnits}\n" +
-            $"Time scale: {Time.timeScale:0.##}x";
+            $"Clock: {clock}   Speed: {speed}";
     }
 
     void EnsureUI()
@@ -201,13 +205,23 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Time 1x", () => { Time.timeScale = 1f; Toast("1x"); RefreshStatus(); });
-        CreateButton(panel.transform, "Time 2x", () => { Time.timeScale = 2f; Toast("2x"); RefreshStatus(); });
-        CreateButton(panel.transform, "Time 3x", () => { Time.timeScale = 3f; Toast("3x"); RefreshStatus(); });
+        CreateButton(panel.transform, "Time 1x", () =>
+        {
+            GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
+            Toast("1x");
+            RefreshStatus();
+        });
+        CreateButton(panel.transform, "Time 3x", () =>
+        {
+            GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.FastForward);
+            Toast("3x");
+            RefreshStatus();
+        });
         CreateButton(panel.transform, "Pause / Unpause", () =>
         {
-            Time.timeScale = Time.timeScale > 0.01f ? 0f : 1f;
-            Toast(Time.timeScale <= 0.01f ? "Paused" : "Unpaused");
+            GameTimeManager.Instance?.TogglePausePlay();
+            var t = GameTimeManager.Instance;
+            Toast(t != null && t.CurrentSpeed == GameTimeManager.SpeedMode.Paused ? "Paused" : "Unpaused");
             RefreshStatus();
         });
 
