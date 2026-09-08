@@ -61,16 +61,8 @@ public class CustomerAI : MonoBehaviour
         if (orderLabel == null)
             orderLabel = GetComponent<CustomerOrderLabel>();
 
-        string label;
-        if (IsOrderFullyDelivered)
-            label = "Done!";
-        else if (order != null && order.lines != null && order.lines.Count > 0)
-            label = order.GetDisplayString();
-        else
-            label = "No order";
-
         if (orderLabel != null)
-            orderLabel.SetText(label);
+            orderLabel.SetOrder(order, IsOrderFullyDelivered);
     }
 
     public void SetQueueJoinTime(float time)
