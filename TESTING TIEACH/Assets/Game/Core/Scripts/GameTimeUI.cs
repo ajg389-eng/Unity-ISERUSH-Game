@@ -120,23 +120,24 @@ public class GameTimeUI : MonoBehaviour
         rowRt.offsetMax = Vector2.zero;
 
         var hlg = row.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 12f;
+        hlg.spacing = 10f;
+        hlg.padding = new RectOffset(0, 0, 0, 0);
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = false;
         hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        dayText = CreateLabel(row.transform, "DayText", "Day 1", 18, 110f);
+        dayText = CreateLabel(row.transform, "DayText", "Day 1", 18, 72f);
         dayText.fontStyle = FontStyles.Bold;
         dayText.color = new Color(0.85f, 0.88f, 0.95f, 1f);
 
-        clockText = CreateLabel(row.transform, "ClockText", "10:00 AM", 28, 150f);
+        clockText = CreateLabel(row.transform, "ClockText", "10:00 AM", 26, 130f);
         clockText.fontStyle = FontStyles.Bold;
 
         var controls = new GameObject("Controls", typeof(RectTransform));
         controls.transform.SetParent(row.transform, false);
-        controls.AddComponent<LayoutElement>().minWidth = 150f;
+        controls.AddComponent<LayoutElement>().minWidth = 138f;
         var controlsH = controls.AddComponent<HorizontalLayoutGroup>();
         controlsH.spacing = 6f;
         controlsH.childAlignment = TextAnchor.MiddleCenter;
@@ -275,6 +276,7 @@ public class GameTimeUI : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
         return tmp;
     }

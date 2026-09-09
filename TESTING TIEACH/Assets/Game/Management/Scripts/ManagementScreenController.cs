@@ -86,8 +86,6 @@ public class ManagementScreenController : MonoBehaviour
 
     void Update()
     {
-        if (openButton != null)
-            openButton.gameObject.SetActive(true);
         if (Input.GetKeyDown(toggleKey))
             Toggle();
     }
@@ -107,7 +105,7 @@ public class ManagementScreenController : MonoBehaviour
         if (panelImg != null) panelImg.raycastTarget = false;
 
         if (openButton != null)
-            openButton.transform.SetAsLastSibling();
+            openButton.gameObject.SetActive(false);
         SelectTab(0);
         isOpen = true;
 

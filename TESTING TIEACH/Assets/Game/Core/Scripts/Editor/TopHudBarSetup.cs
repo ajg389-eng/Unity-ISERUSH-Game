@@ -55,6 +55,8 @@ public static class TopHudBarSetup
             bar.money = moneyManager;
 
         bar.BindReferences();
+        bar.ApplyFitLayout();
+        bar.RemoveUndoFromBar();
         Selection.activeGameObject = bar.gameObject;
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
 

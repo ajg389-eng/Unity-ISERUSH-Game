@@ -39,6 +39,7 @@ public class InventoryUI : MonoBehaviour
             inventoryButton.onClick.AddListener(TogglePanel);
 
         EnsureExpandUi();
+        EnsureUndoFooter();
         RefreshAll();
         ApplyModeState();
     }
@@ -52,7 +53,6 @@ public class InventoryUI : MonoBehaviour
 
     void ApplyModeState()
     {
-        if (inventoryButton) inventoryButton.gameObject.SetActive(true);
         if (modeManager == null || panel == null) return;
 
         if (panel.activeSelf)
@@ -78,7 +78,11 @@ public class InventoryUI : MonoBehaviour
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            var mgmt = FindObjectOfType<ManagementScreenController>();
+            if (mgmt != null && mgmt.IsOpen)
+                mgmt.Close();
             EnsureExpandUi();
+            EnsureUndoFooter();
             RefreshAll();
             RefreshExpandButton();
         }
@@ -236,6 +240,22 @@ public class InventoryUI : MonoBehaviour
         expandButton.onClick.AddListener(OnExpandClicked);
         expandUiBuilt = true;
         RefreshExpandButton();
+        EnsureUndoFooter();
+    }
+
+    void EnsureUndoFooter()
+    {
+        if (panel == null) return;
+
+        var scroll = panel.transform.Find("Scroll View") as RectTransform;
+        if (scroll != null)
+        {
+            scroll.offsetMin = new Vector2(scroll.offsetMin.x, 52f);
+            PurchaseUndoFooter.EnsureMatching(scroll);
+            return;
+        }
+
+        PurchaseUndoFooter.EnsureOnPanel(panel.transform);
     }
 
     void RefreshExpandButton()

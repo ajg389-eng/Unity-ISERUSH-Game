@@ -169,9 +169,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.LayoutElement
   m_IgnoreLayout: 0
-  m_MinWidth: 140
+  m_MinWidth: 90
   m_MinHeight: -1
-  m_PreferredWidth: 140
+  m_PreferredWidth: 110
   m_PreferredHeight: -1
   m_FlexibleWidth: 0
   m_FlexibleHeight: -1
@@ -2046,7 +2046,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 600, y: 56}
+  m_SizeDelta: {x: 520, y: 56}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &241275784
 MonoBehaviour:
@@ -2063,8 +2063,6 @@ MonoBehaviour:
   money: {fileID: 626923595}
   moneyText: {fileID: 58481756}
   timeUI: {fileID: 1190729277}
-  undoButton: {fileID: 0}
-  undoLabel: {fileID: 0}
   barHeight: 56
 --- !u!114 &241275785
 MonoBehaviour:
@@ -2085,7 +2083,7 @@ MonoBehaviour:
     m_Bottom: 8
   m_ChildAlignment: 4
   m_Spacing: 16
-  m_ChildForceExpandWidth: 1
+  m_ChildForceExpandWidth: 0
   m_ChildForceExpandHeight: 1
   m_ChildControlWidth: 1
   m_ChildControlHeight: 1
@@ -9451,7 +9449,7 @@ MonoBehaviour:
   m_IgnoreLayout: 0
   m_MinWidth: 360
   m_MinHeight: -1
-  m_PreferredWidth: 420
+  m_PreferredWidth: 380
   m_PreferredHeight: -1
   m_FlexibleWidth: 0
   m_FlexibleHeight: -1

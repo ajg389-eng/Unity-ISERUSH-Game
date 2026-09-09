@@ -23,6 +23,7 @@ public class IngredientsOrderUI : MonoBehaviour
         EnsureRefs();
         EnsureList();
         RebuildRows();
+        PurchaseUndoFooter.EnsureOnPanel(transform);
         RefreshAll();
     }
 
@@ -46,14 +47,18 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void EnsureList()
     {
-        if (listContainer != null) return;
+        if (listContainer != null)
+        {
+            PadListForUndoFooter();
+            return;
+        }
 
         var scrollGo = new GameObject("IngredientsScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
         var scrollRt = (RectTransform)scrollGo.transform;
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = Vector2.one;
-        scrollRt.offsetMin = new Vector2(12, 12);
+        scrollRt.offsetMin = new Vector2(12, 56);
         scrollRt.offsetMax = new Vector2(-12, -48);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
@@ -89,6 +94,22 @@ public class IngredientsOrderUI : MonoBehaviour
         scroll.viewport = vpRt;
         scroll.content = contentRt;
         listContainer = content.transform;
+        PadListForUndoFooter();
+    }
+
+    void PadListForUndoFooter()
+    {
+        var scrollRt = transform.Find("IngredientsScroll") as RectTransform;
+        if (scrollRt == null && listContainer != null)
+        {
+            var sr = listContainer.GetComponentInParent<ScrollRect>();
+            if (sr != null) scrollRt = sr.transform as RectTransform;
+        }
+        if (scrollRt == null) return;
+        scrollRt.anchorMin = new Vector2(0, 0);
+        scrollRt.anchorMax = Vector2.one;
+        scrollRt.offsetMin = new Vector2(12, 56);
+        scrollRt.offsetMax = new Vector2(-12, -48);
     }
 
     void RebuildRows()

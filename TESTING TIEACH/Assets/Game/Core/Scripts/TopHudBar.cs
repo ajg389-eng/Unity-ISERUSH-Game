@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top HUD bar for PlayerUI. Holds money, time controls, and room for more widgets.
+/// Top HUD bar for PlayerUI. Wraps money and time controls in a compact centered strip.
 /// </summary>
 public class TopHudBar : MonoBehaviour
 {
@@ -15,8 +15,6 @@ public class TopHudBar : MonoBehaviour
     public MoneyManager money;
     public TextMeshProUGUI moneyText;
     public GameTimeUI timeUI;
-    public Button undoButton;
-    public TextMeshProUGUI undoLabel;
 
     [Header("Layout")]
     public float barHeight = 56f;
@@ -32,7 +30,8 @@ public class TopHudBar : MonoBehaviour
         if (money == null)
             money = FindFirstObjectByType<MoneyManager>();
         BindReferences();
-        EnsureUndoButton();
+        ApplyFitLayout();
+        RemoveUndoFromBar();
     }
 
     void Update()
@@ -41,7 +40,6 @@ public class TopHudBar : MonoBehaviour
             money = FindFirstObjectByType<MoneyManager>();
         if (money != null && moneyText != null)
             moneyText.text = "$" + money.CurrentMoney;
-        RefreshUndoButton();
     }
 
     public void BindReferences()
@@ -54,22 +52,6 @@ public class TopHudBar : MonoBehaviour
                 var textT = moneySection.Find(MoneyTextName);
                 if (textT != null)
                     moneyText = textT.GetComponent<TextMeshProUGUI>();
-            }
-        }
-
-        if (undoButton == null)
-        {
-            var undoSection = transform.Find("UndoSection");
-            if (undoSection != null)
-            {
-                undoButton = undoSection.GetComponent<Button>();
-                if (undoButton == null)
-                    undoButton = undoSection.GetComponentInChildren<Button>(true);
-                var labelT = undoSection.Find("Label");
-                if (labelT != null)
-                    undoLabel = labelT.GetComponent<TextMeshProUGUI>();
-                if (undoLabel == null)
-                    undoLabel = undoSection.GetComponentInChildren<TextMeshProUGUI>(true);
             }
         }
 
@@ -87,7 +69,8 @@ public class TopHudBar : MonoBehaviour
         if (existing != null)
         {
             existing.BindReferences();
-            existing.EnsureUndoButton();
+            existing.ApplyFitLayout();
+            existing.RemoveUndoFromBar();
             return existing;
         }
 
@@ -108,18 +91,39 @@ public class TopHudBar : MonoBehaviour
         var barGo = new GameObject(BarObjectName, typeof(RectTransform));
         barGo.transform.SetParent(canvasTransform, false);
 
-        var rt = (RectTransform)barGo.transform;
-        rt.anchorMin = new Vector2(0f, 1f);
-        rt.anchorMax = new Vector2(1f, 1f);
+        var bar = barGo.AddComponent<TopHudBar>();
+        CreateMoneySection(barGo.transform);
+        CreateTimeSection(barGo.transform);
+        bar.BindReferences();
+        bar.ApplyFitLayout();
+        return bar;
+    }
+
+    public void ApplyFitLayout()
+    {
+        DestroyIfPresent("LeftSpacer");
+        DestroyIfPresent("RightSpacer");
+
+        var rt = GetComponent<RectTransform>();
+        if (rt == null) rt = gameObject.AddComponent<RectTransform>();
+
+        rt.anchorMin = new Vector2(0.5f, 1f);
+        rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(0f, 56f);
+        rt.sizeDelta = new Vector2(520f, barHeight);
 
-        var bg = barGo.AddComponent<Image>();
-        bg.color = new Color(0.08f, 0.08f, 0.12f, 0.88f);
+        var bg = GetComponent<Image>();
+        if (bg == null) bg = gameObject.AddComponent<Image>();
+        bg.color = new Color(0.06f, 0.06f, 0.09f, 0.96f);
         bg.raycastTarget = true;
 
-        var hlg = barGo.AddComponent<HorizontalLayoutGroup>();
+        var mask = GetComponent<RectMask2D>();
+        if (mask != null)
+            Destroy(mask);
+
+        var hlg = GetComponent<HorizontalLayoutGroup>();
+        if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(16, 16, 8, 8);
         hlg.spacing = 16f;
         hlg.childAlignment = TextAnchor.MiddleCenter;
@@ -128,84 +132,51 @@ public class TopHudBar : MonoBehaviour
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        var bar = barGo.AddComponent<TopHudBar>();
+        var fitter = GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = gameObject.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 
-        CreateMoneySection(barGo.transform);
-        CreateSpacer(barGo.transform, "LeftSpacer");
-        CreateTimeSection(barGo.transform);
-        CreateSpacer(barGo.transform, "RightSpacer");
-
-        bar.BindReferences();
-        bar.EnsureUndoButton();
-        return bar;
-    }
-
-    public void EnsureUndoButton()
-    {
-        if (undoButton != null)
+        var moneySection = transform.Find("MoneySection") as RectTransform;
+        if (moneySection != null)
         {
-            undoButton.onClick.RemoveListener(OnUndoClicked);
-            undoButton.onClick.AddListener(OnUndoClicked);
-            RefreshUndoButton();
-            return;
+            var le = moneySection.GetComponent<LayoutElement>();
+            if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 90f;
+            le.preferredWidth = 110f;
+            le.flexibleWidth = 0f;
         }
 
-        int moneyIndex = 0;
-        var moneySection = transform.Find("MoneySection");
-        if (moneySection != null)
-            moneyIndex = moneySection.GetSiblingIndex();
+        var timeSection = transform.Find(TimeSectionName) as RectTransform;
+        if (timeSection != null)
+        {
+            var le = timeSection.GetComponent<LayoutElement>();
+            if (le == null) le = timeSection.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 360f;
+            le.preferredWidth = 380f;
+            le.flexibleWidth = 0f;
+        }
 
-        var section = new GameObject("UndoSection", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
-        section.transform.SetParent(transform, false);
-        section.transform.SetSiblingIndex(moneyIndex + 1);
-
-        var le = section.GetComponent<LayoutElement>();
-        le.minWidth = 170f;
-        le.preferredWidth = 190f;
-        le.flexibleWidth = 0f;
-
-        var img = section.GetComponent<Image>();
-        img.color = new Color(0.28f, 0.32f, 0.42f, 1f);
-
-        undoButton = section.GetComponent<Button>();
-        undoButton.onClick.AddListener(OnUndoClicked);
-
-        var labelGo = new GameObject("Label", typeof(RectTransform));
-        labelGo.transform.SetParent(section.transform, false);
-        var labelRt = (RectTransform)labelGo.transform;
-        labelRt.anchorMin = Vector2.zero;
-        labelRt.anchorMax = Vector2.one;
-        labelRt.offsetMin = Vector2.zero;
-        labelRt.offsetMax = Vector2.zero;
-        undoLabel = labelGo.AddComponent<TextMeshProUGUI>();
-        undoLabel.text = "Undo";
-        undoLabel.fontSize = 18;
-        undoLabel.fontStyle = FontStyles.Bold;
-        undoLabel.alignment = TextAlignmentOptions.Center;
-        undoLabel.color = Color.white;
-        undoLabel.raycastTarget = false;
-        if (TMP_Settings.defaultFontAsset != null)
-            undoLabel.font = TMP_Settings.defaultFontAsset;
-
-        RefreshUndoButton();
+        if (moneyText != null)
+        {
+            moneyText.overflowMode = TextOverflowModes.Ellipsis;
+            moneyText.alignment = TextAlignmentOptions.MidlineLeft;
+            moneyText.enableAutoSizing = true;
+            moneyText.fontSizeMin = 18;
+            moneyText.fontSizeMax = 24;
+        }
     }
 
-    void RefreshUndoButton()
+    public void RemoveUndoFromBar()
     {
-        var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
-        bool can = undo != null && undo.CanUndo;
-        if (undoButton != null)
-            undoButton.interactable = can;
-        if (undoLabel != null)
-            undoLabel.text = can ? undo.PeekLabel : "Undo";
+        DestroyIfPresent("UndoSection");
     }
 
-    void OnUndoClicked()
+    void DestroyIfPresent(string childName)
     {
-        var undo = PurchaseUndoManager.Ensure();
-        if (undo != null)
-            undo.TryUndo();
-        RefreshUndoButton();
+        var child = transform.Find(childName);
+        if (child != null)
+            Destroy(child.gameObject);
     }
 
     static void CreateMoneySection(Transform parent)
@@ -213,8 +184,8 @@ public class TopHudBar : MonoBehaviour
         var section = new GameObject("MoneySection", typeof(RectTransform));
         section.transform.SetParent(parent, false);
         var le = section.AddComponent<LayoutElement>();
-        le.minWidth = 140f;
-        le.preferredWidth = 140f;
+        le.minWidth = 90f;
+        le.preferredWidth = 110f;
         le.flexibleWidth = 0f;
 
         var moneyTextGo = new GameObject(MoneyTextName, typeof(RectTransform));
@@ -232,17 +203,9 @@ public class TopHudBar : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
         tmp.color = new Color(0.55f, 0.95f, 0.55f, 1f);
         tmp.raycastTarget = false;
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
-    }
-
-    static void CreateSpacer(Transform parent, string name)
-    {
-        var spacer = new GameObject(name, typeof(RectTransform));
-        spacer.transform.SetParent(parent, false);
-        var le = spacer.AddComponent<LayoutElement>();
-        le.flexibleWidth = 1f;
-        le.minWidth = 10f;
     }
 
     static void CreateTimeSection(Transform parent)
@@ -251,7 +214,7 @@ public class TopHudBar : MonoBehaviour
         section.transform.SetParent(parent, false);
         var le = section.AddComponent<LayoutElement>();
         le.minWidth = 360f;
-        le.preferredWidth = 420f;
+        le.preferredWidth = 380f;
         le.flexibleWidth = 0f;
 
         if (section.GetComponent<GameTimeUI>() == null)

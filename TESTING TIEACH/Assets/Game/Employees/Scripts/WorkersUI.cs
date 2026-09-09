@@ -28,6 +28,7 @@ public class WorkersUI : MonoBehaviour
         EnsureRefs();
         ApplyCleanLayout();
         EnsureCardContainer();
+        PurchaseUndoFooter.EnsureOnPanel(transform);
     }
 
     void OnEnable()
@@ -36,6 +37,7 @@ public class WorkersUI : MonoBehaviour
         ApplyCleanLayout();
         EnsureCardContainer();
         ConfigureWorkerScroll();
+        PurchaseUndoFooter.EnsureOnPanel(transform);
         Refresh();
     }
 
@@ -312,9 +314,10 @@ public class WorkersUI : MonoBehaviour
 
         scroll.anchorMin = new Vector2(0f, 0f);
         scroll.anchorMax = Vector2.one;
-        scroll.offsetMin = new Vector2(12f, 12f);
+        scroll.offsetMin = new Vector2(12f, 56f);
         scroll.offsetMax = new Vector2(-12f, -138f); // leave room for title + header + hint
-        scroll.SetSiblingIndex(transform.childCount - 1);
+        PurchaseUndoFooter.EnsureOnPanel(transform);
+        scroll.SetSiblingIndex(Mathf.Max(0, transform.childCount - 2));
     }
 
     void OnHireClicked()
