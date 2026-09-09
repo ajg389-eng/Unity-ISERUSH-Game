@@ -19,6 +19,15 @@ public class StoreStatisticsManager : MonoBehaviour
     int mealsWasted;
     int revenueEarned;
 
+    // Day-scoped counters (reset at the start of each shift)
+    int dayOrdersCompleted;
+    int dayRevenue;
+    int dayMealsWasted;
+    int dayCustomersLost;
+    float dayWaitSum;
+    int dayMoneyStart;
+    bool dayTrackingStarted;
+
     // Per-register: busy time (queue not empty) in the current window
     readonly Dictionary<Register, float> stationBusyTime = new Dictionary<Register, float>();
     float windowStartTime;
@@ -34,6 +43,12 @@ public class StoreStatisticsManager : MonoBehaviour
         windowStartTime = Time.time;
     }
 
+    void Start()
+    {
+        if (!dayTrackingStarted)
+            BeginDay();
+    }
+
     void OnDestroy()
     {
         if (Instance == this)
@@ -43,21 +58,76 @@ public class StoreStatisticsManager : MonoBehaviour
     public void RecordOrderCompleted(float queueJoinTime, Register station, int saleAmount = 0)
     {
         float now = Time.time;
-        float wait = now - queueJoinTime;
+        float wait = Mathf.Max(0f, now - queueJoinTime);
         completedOrders.Add((now, wait));
         if (completedOrders.Count > MaxCompletedOrders)
             completedOrders.RemoveAt(0);
         if (saleAmount > 0)
             revenueEarned += saleAmount;
+
+        dayOrdersCompleted++;
+        dayWaitSum += wait;
+        if (saleAmount > 0)
+            dayRevenue += saleAmount;
     }
 
     public void RecordMealWasted()
     {
         mealsWasted++;
+        dayMealsWasted++;
+    }
+
+    public void RecordCustomerLost()
+    {
+        dayCustomersLost++;
+    }
+
+    /// <summary>Reset day counters and snapshot starting cash for the new shift.</summary>
+    public void BeginDay()
+    {
+        dayOrdersCompleted = 0;
+        dayRevenue = 0;
+        dayMealsWasted = 0;
+        dayCustomersLost = 0;
+        dayWaitSum = 0f;
+        dayMoneyStart = GetCurrentMoney();
+        dayTrackingStarted = true;
     }
 
     public int MealsWasted => mealsWasted;
     public int RevenueEarned => revenueEarned;
+
+    public int OrdersCompletedToday => dayOrdersCompleted;
+    public int RevenueToday => dayRevenue;
+    public int MealsWastedToday => dayMealsWasted;
+    public int CustomersLostToday => dayCustomersLost;
+    public int MoneyAtDayStart => dayMoneyStart;
+    public bool DayTrackingStarted => dayTrackingStarted;
+
+    public float AverageWaitTimeTodaySeconds =>
+        dayOrdersCompleted > 0 ? dayWaitSum / dayOrdersCompleted : 0f;
+
+    /// <summary>Share of customers who were served (vs walked out), 0–100.</summary>
+    public float ServiceEfficiencyPercent
+    {
+        get
+        {
+            int total = dayOrdersCompleted + dayCustomersLost;
+            if (total <= 0) return 0f;
+            return (dayOrdersCompleted / (float)total) * 100f;
+        }
+    }
+
+    public int GetCashChangeToday()
+    {
+        return GetCurrentMoney() - dayMoneyStart;
+    }
+
+    static int GetCurrentMoney()
+    {
+        var money = FindFirstObjectByType<MoneyManager>();
+        return money != null ? money.CurrentMoney : 0;
+    }
 
     public int HeatLampStock
     {

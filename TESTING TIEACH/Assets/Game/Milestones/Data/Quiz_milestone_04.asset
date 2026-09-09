@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd62bf0e9b3a5eb45846a85a8561b632, type: 3}
+  m_Name: Quiz_milestone_04
+  m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
+  quizId: milestone_04_quiz
+  title: Supply Chain & Forecasting Quiz
+  introText: Answer every question correctly to unlock the next milestone.
+  questions:
+  - prompt: Supplier A is cheaper but frequently delivers late. Supplier B costs
+      more but is highly reliable. What type of decision is this?
+    choices:
+    - Cost versus reliability trade-off
+    - Queue discipline decision
+    - Facility layout problem
+    - Worker ergonomics problem
+    correctChoiceIndex: 0
+  - prompt: What is the main purpose of safety stock?
+    choices:
+    - Guarantee maximum profit
+    - Protect against uncertainty in demand or replenishment
+    - Eliminate holding costs
+    - Increase cooking speed
+    correctChoiceIndex: 1
+  - prompt: Ordering extremely large quantities of ingredients lowers purchase cost
+      per unit but increases which cost?
+    choices:
+    - Waiting cost
+    - Inventory holding cost
+    - Employee training cost
+    - Equipment maintenance cost
+    correctChoiceIndex: 1
+  - prompt: Historical data shows that burger demand consistently increases between
+      noon and 1 PM. How should this information be used?
+    choices:
+    - Ignore it because future demand is always random
+    - Forecast higher lunch demand and plan inventory/capacity accordingly
+    - Reduce inventory before noon
+    - Close a cooking station during lunch
+    correctChoiceIndex: 1

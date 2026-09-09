@@ -106,7 +106,7 @@ public class DebugMenu : MonoBehaviour
 
         var time = GameTimeManager.Instance;
         string clock = time != null ? time.GetClockText() : "—";
-        string speed = time != null ? time.CurrentSpeed.ToString() : $"{Time.timeScale:0.##}x";
+        string speed = time != null ? time.GetSpeedLabel() : $"{Time.timeScale:0.##}x";
 
         statusText.text =
             $"Money: ${cash}\n" +
@@ -137,7 +137,7 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 520f);
+        prt.sizeDelta = new Vector2(320f, 640f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
@@ -216,6 +216,32 @@ public class DebugMenu : MonoBehaviour
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.FastForward);
             Toast("3x");
             RefreshStatus();
+        });
+        CreateButton(panel.transform, "Time 20x (Super)", () =>
+        {
+            GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.SuperFast);
+            Toast("20x");
+            RefreshStatus();
+        });
+        CreateButton(panel.transform, "Force Milestone Quiz", () =>
+        {
+            var m = MilestoneProgressManager.Instance;
+            if (m == null) { Toast("No MilestoneProgressManager"); return; }
+            m.DebugForceQuizReady();
+            Toast("Quiz ready");
+            FindFirstObjectByType<MilestoneQuizUI>()?.Show();
+        });
+        CreateButton(panel.transform, "Open Milestone Map", () =>
+        {
+            if (MissionListUI.Instance != null)
+            {
+                MissionListUI.Instance.ShowProgressionTab();
+                Toast("Progression tab");
+            }
+            else
+            {
+                Toast("No side menu");
+            }
         });
         CreateButton(panel.transform, "Pause / Unpause", () =>
         {

@@ -226,6 +226,7 @@ public class Register : MonoBehaviour
         if (front != null) front.OnServed(storeExit);
         UpdateQueueTargets();
 
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.OrderServed);
         if (!raisedFirstOrderServedEvent)
         {
             raisedFirstOrderServedEvent = true;

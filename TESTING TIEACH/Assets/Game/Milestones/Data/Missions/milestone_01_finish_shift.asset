@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
+  m_Name: milestone_01_finish_shift
+  m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
+  missionId: milestone_01_finish_shift
+  title: Study a full day
+  description: Run until closing (10 PM) to observe a complete service day.
+  completionEventId: day_ended
+  requiredCount: 1
+  showBeforeComplete: 1
+  showAfterComplete: 1

@@ -96,6 +96,9 @@ public class TitleScreenController : MonoBehaviour
 
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.ShiftStarted);
         Sfx.Play(SfxId.UiOpen);
+
+        if (StoreStatisticsManager.Instance != null)
+            StoreStatisticsManager.Instance.BeginDay();
     }
 
     void OnSettings()

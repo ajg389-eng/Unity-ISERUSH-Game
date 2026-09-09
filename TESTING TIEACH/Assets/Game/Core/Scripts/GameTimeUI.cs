@@ -205,7 +205,17 @@ public class GameTimeUI : MonoBehaviour
             {
                 Sfx.Play(SfxId.UiClick);
                 if (timeManager != null && timeManager.IsShiftOver)
-                    timeManager.StartNextDay();
+                {
+                    if (EndOfDaySummaryUI.Instance != null)
+                    {
+                        if (EndOfDaySummaryUI.Instance.IsVisible)
+                            EndOfDaySummaryUI.Instance.ContinueToNextDay();
+                        else
+                            EndOfDaySummaryUI.Instance.Show();
+                    }
+                    else
+                        timeManager.StartNextDay();
+                }
                 else
                     timeManager?.SetSpeed(GameTimeManager.SpeedMode.Play);
             });

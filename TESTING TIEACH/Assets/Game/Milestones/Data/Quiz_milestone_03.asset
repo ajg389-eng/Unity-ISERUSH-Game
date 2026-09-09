@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd62bf0e9b3a5eb45846a85a8561b632, type: 3}
+  m_Name: Quiz_milestone_03
+  m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
+  quizId: milestone_03_quiz
+  title: Production & Economics Quiz
+  introText: Answer every question correctly to unlock the next milestone.
+  questions:
+  - prompt: A $1,000 equipment upgrade is expected to increase profit by $250 per
+      day. What is its simple payback period?
+    choices:
+    - 2 days
+    - 4 days
+    - 5 days
+    - 10 days
+    correctChoiceIndex: 1
+  - prompt: Why can batch cooking improve production efficiency?
+    choices:
+    - It eliminates all inventory
+    - Multiple items can be processed together using available capacity
+    - It guarantees perfect quality
+    - It eliminates customer variability
+    correctChoiceIndex: 1
+  - prompt: Which option is better evidence that an expansion was successful?
+    choices:
+    - Revenue increased
+    - Profit increased after accounting for the expansion's additional costs
+    - More equipment was purchased
+    - More employees were hired
+    correctChoiceIndex: 1
+  - prompt: Several large orders are waiting while restaurant capacity is limited.
+      Deciding which jobs should be processed and when is primarily what type of
+      problem?
+    choices:
+    - Production scheduling
+    - Facility decoration
+    - Market research
+    - Reliability testing
+    correctChoiceIndex: 0

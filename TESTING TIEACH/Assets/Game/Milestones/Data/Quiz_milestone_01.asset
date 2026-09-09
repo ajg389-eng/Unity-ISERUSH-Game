@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd62bf0e9b3a5eb45846a85a8561b632, type: 3}
+  m_Name: Quiz_milestone_01
+  m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
+  quizId: milestone_01_quiz
+  title: Flow & Work Design Quiz
+  introText: Answer every question correctly to unlock the next milestone.
+  questions:
+  - prompt: Customers are waiting for burgers while the assembly station is frequently
+      idle. What is the most likely problem?
+    choices:
+    - Too much assembly capacity
+    - A bottleneck earlier in the process
+    - Too much finished inventory
+    - Customer demand is too low
+    correctChoiceIndex: 1
+  - prompt: A worker repeatedly walks across the entire kitchen between the freezer
+      and stove. What would an industrial engineer most likely investigate?
+    choices:
+    - Increasing menu prices
+    - Moving the stations closer together
+    - Increasing customer demand
+    - Buying more inventory
+    correctChoiceIndex: 1
+  - prompt: The restaurant serves 20 customers per hour, and customers spend an average
+      of 0.25 hours in the system. Using Little's Law, approximately how many customers
+      are in the system on average?
+    choices:
+    - 4
+    - 5
+    - 10
+    - 80
+    correctChoiceIndex: 1
+  - prompt: Which metric is most useful for identifying where work is accumulating?
+    choices:
+    - Restaurant revenue
+    - Queue length by station
+    - Ingredient purchase price
+    - Menu size
+    correctChoiceIndex: 1

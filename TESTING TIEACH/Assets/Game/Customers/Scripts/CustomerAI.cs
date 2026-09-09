@@ -108,6 +108,9 @@ public class CustomerAI : MonoBehaviour
         leavingImpatient = true;
         exitTarget = exit != null ? exit.position : transform.position + transform.forward * 8f;
         targetPos = exitTarget;
+
+        if (StoreStatisticsManager.Instance != null)
+            StoreStatisticsManager.Instance.RecordCustomerLost();
     }
 
     public void SetTargetRegister(Register r)

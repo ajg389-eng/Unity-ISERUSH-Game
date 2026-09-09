@@ -297,6 +297,8 @@ public class InventoryUI : MonoBehaviour
             var undo = PurchaseUndoManager.Ensure();
             if (undo != null)
                 undo.RecordFloorExpand(expandWidth, expandHeight, expandCost);
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.FloorExpanded);
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.CapacityInvested);
         }
 
         RefreshExpandButton();

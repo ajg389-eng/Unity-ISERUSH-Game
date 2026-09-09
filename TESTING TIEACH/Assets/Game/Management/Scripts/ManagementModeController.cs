@@ -487,6 +487,7 @@ public class ManagementModeController : MonoBehaviour
 
         selectedStation.SetWorker(emp);
         Sfx.Play(SfxId.AssignWorker);
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.WorkerAssigned);
         pending = PendingAction.None;
         RefreshPopup();
         SetStatus(emp.employeeName + " assigned to " + selectedStation.DisplayName);

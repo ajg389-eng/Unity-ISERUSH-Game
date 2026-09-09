@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d6f36f76393b34386043860fe93167, type: 3}
+  m_Name: Milestone_milestone_01
+  m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
+  milestoneId: milestone_01
+  displayName: Flow & Work Design
+  description: 'Understand queues, layout, and how work moves through the restaurant.
+
+
+    Topics:
+    Queueing Theory, Work Design & Measurement, Facilities Planning'
+  isTutorial: 0
+  missions:
+  - {fileID: 11400000, guid: 7a8ccd56baa7476eb83291c1650c9c38, type: 2}
+  - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
+  - {fileID: 11400000, guid: d1486712a5db494ea3b04884fbde2522, type: 2}
+  - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
+  missionDatabase: {fileID: 0}
+  quiz: {fileID: 11400000, guid: 6f785e371c9c82f409c695c26e381abc, type: 2}
+  unlocks:
+  - kind: 3
+    unlockId: milestone_01_complete
+    displayName: Flow & Work Design Complete

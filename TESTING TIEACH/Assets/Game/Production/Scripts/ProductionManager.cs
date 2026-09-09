@@ -185,6 +185,7 @@ public class ProductionManager : MonoBehaviour
 
     static void RaiseFirstWorkerHiredEvent()
     {
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.WorkerHired);
         if (raisedFirstWorkerEvent) return;
         raisedFirstWorkerEvent = true;
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstWorkerHired);

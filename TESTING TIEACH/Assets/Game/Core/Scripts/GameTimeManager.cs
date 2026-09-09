@@ -15,7 +15,8 @@ public class GameTimeManager : MonoBehaviour
     {
         Paused = 0,
         Play = 1,
-        FastForward = 2
+        FastForward = 2,
+        SuperFast = 3
     }
 
     public const string PauseTitleScreen = "TitleScreen";
@@ -32,6 +33,8 @@ public class GameTimeManager : MonoBehaviour
     public float realSecondsPerGameHour = 60f;
     [Tooltip("Unity time scale while fast-forwarding.")]
     public float fastForwardTimeScale = 3f;
+    [Tooltip("Unity time scale for debug super-speed.")]
+    public float superFastTimeScale = 20f;
     [Tooltip("Pause automatically when the shift ends.")]
     public bool pauseAtDayEnd = true;
 
@@ -45,6 +48,7 @@ public class GameTimeManager : MonoBehaviour
     public event Action OnSpeedChanged;
     public event Action OnTimeChanged;
     public event Action OnDayEnded;
+    public event Action OnDayStarted;
 
     readonly HashSet<string> externalPauseSources = new HashSet<string>();
 
@@ -107,6 +111,7 @@ public class GameTimeManager : MonoBehaviour
         CurrentDay++;
         ResetDayClock();
         SetSpeed(SpeedMode.Play);
+        OnDayStarted?.Invoke();
     }
 
     public void SetSpeed(SpeedMode mode)
@@ -166,9 +171,24 @@ public class GameTimeManager : MonoBehaviour
             return;
         }
 
-        Time.timeScale = CurrentSpeed == SpeedMode.FastForward
-            ? Mathf.Max(1f, fastForwardTimeScale)
-            : 1f;
+        if (CurrentSpeed == SpeedMode.SuperFast)
+            Time.timeScale = Mathf.Max(1f, superFastTimeScale);
+        else if (CurrentSpeed == SpeedMode.FastForward)
+            Time.timeScale = Mathf.Max(1f, fastForwardTimeScale);
+        else
+            Time.timeScale = 1f;
+    }
+
+    public string GetSpeedLabel()
+    {
+        switch (CurrentSpeed)
+        {
+            case SpeedMode.Paused: return "Paused";
+            case SpeedMode.Play: return "1x";
+            case SpeedMode.FastForward: return $"{fastForwardTimeScale:0.##}x";
+            case SpeedMode.SuperFast: return $"{superFastTimeScale:0.##}x";
+            default: return CurrentSpeed.ToString();
+        }
     }
 
     void EndShift()
@@ -178,5 +198,6 @@ public class GameTimeManager : MonoBehaviour
         if (pauseAtDayEnd)
             SetSpeed(SpeedMode.Paused);
         OnDayEnded?.Invoke();
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.DayEnded);
     }
 }
