@@ -132,6 +132,67 @@ public class GridManager : MonoBehaviour
         return Width + addWidth <= maxWidth && Height + addHeight <= maxHeight;
     }
 
+    /// <summary>
+    /// Reverse of TryExpand: remove the strip that was added along -X / -Z.
+    /// Fails if that strip is occupied or the grid would shrink below 1x1.
+    /// </summary>
+    public bool TryShrink(int removeWidth, int removeHeight)
+    {
+        if (!CanShrink(removeWidth, removeHeight))
+            return false;
+
+        int oldW = Width;
+        int oldH = Height;
+        bool[,] occupied = new bool[oldW, oldH];
+        for (int x = 0; x < oldW; x++)
+            for (int y = 0; y < oldH; y++)
+                occupied[x, y] = Nodes[x, y] != null && Nodes[x, y].occupied;
+
+        int newW = Width - removeWidth;
+        int newH = Height - removeHeight;
+        Vector3 newOrigin = Origin + new Vector3(removeWidth * cellSize, 0f, removeHeight * cellSize);
+        ResizeFloorToCells(newW, newH, newOrigin);
+
+        Width = newW;
+        Height = newH;
+        Origin = newOrigin;
+
+        Nodes = new Node[Width, Height];
+        for (int x = 0; x < Width; x++)
+            for (int y = 0; y < Height; y++)
+            {
+                Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
+                int ox = x + removeWidth;
+                int oy = y + removeHeight;
+                if (ox < oldW && oy < oldH)
+                    Nodes[x, y].occupied = occupied[ox, oy];
+            }
+
+        GridChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>True if the newest expansion strip is empty and shrinking would leave at least a 1x1 grid.</summary>
+    public bool CanShrink(int removeWidth, int removeHeight)
+    {
+        removeWidth = Mathf.Max(0, removeWidth);
+        removeHeight = Mathf.Max(0, removeHeight);
+        if (removeWidth == 0 && removeHeight == 0) return false;
+        if (Nodes == null || Width <= 0 || Height <= 0) return false;
+        if (Width - removeWidth < 1 || Height - removeHeight < 1) return false;
+
+        for (int x = 0; x < Width; x++)
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                if (x >= removeWidth && y >= removeHeight) continue;
+                if (Nodes[x, y] != null && Nodes[x, y].occupied)
+                    return false;
+            }
+        }
+        return true;
+    }
+
     void ResizeFloorToCells(int cellsW, int cellsH, Vector3 origin)
     {
         if (floor == null) return;

@@ -171,7 +171,13 @@ public class ProductionManager : MonoBehaviour
             RegisterEmployee(emp);
             Sfx.Play(SfxId.HireWorker);
             RaiseFirstWorkerHiredEvent();
+            int paid = moneyManager != null ? hireCost : 0;
+            var undo = PurchaseUndoManager.Ensure();
+            if (undo != null)
+                undo.RecordWorkerHire(emp, paid);
         }
+        else if (moneyManager != null)
+            moneyManager.AddMoney(hireCost);
         return emp;
     }
 
@@ -187,6 +193,9 @@ public class ProductionManager : MonoBehaviour
     public void FireWorker(KitchenEmployee emp)
     {
         if (emp == null) return;
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.NotifyWorkerFired(emp);
         UnregisterEmployee(emp);
         Destroy(emp.gameObject);
     }

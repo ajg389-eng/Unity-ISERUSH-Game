@@ -38,13 +38,17 @@ public class InventoryManager : MonoBehaviour
         if (item == null) return false;
         if (!counts.ContainsKey(item)) counts[item] = 0;
 
-        // If money manager exists, enforce price
+        int paid = 0;
         if (money != null)
         {
             if (!money.TrySpend(item.price)) return false;
+            paid = item.price;
         }
 
         counts[item] += 1;
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.RecordStationPurchase(item, paid);
         return true;
     }
 

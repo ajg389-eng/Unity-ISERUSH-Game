@@ -200,6 +200,8 @@ public class IngredientsOrderUI : MonoBehaviour
         binder.orderButtonLabel = btnTmp;
     }
 
+    public void Refresh() => RefreshAll();
+
     void RefreshAll()
     {
         EnsureRefs();

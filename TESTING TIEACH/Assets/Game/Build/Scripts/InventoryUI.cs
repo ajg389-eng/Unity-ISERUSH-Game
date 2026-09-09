@@ -292,7 +292,12 @@ public class InventoryUI : MonoBehaviour
             Sfx.Play(SfxId.UiError);
         }
         else
+        {
             Sfx.Play(SfxId.GridExpand);
+            var undo = PurchaseUndoManager.Ensure();
+            if (undo != null)
+                undo.RecordFloorExpand(expandWidth, expandHeight, expandCost);
+        }
 
         RefreshExpandButton();
     }

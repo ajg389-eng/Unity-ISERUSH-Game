@@ -15,6 +15,8 @@ public class TopHudBar : MonoBehaviour
     public MoneyManager money;
     public TextMeshProUGUI moneyText;
     public GameTimeUI timeUI;
+    public Button undoButton;
+    public TextMeshProUGUI undoLabel;
 
     [Header("Layout")]
     public float barHeight = 56f;
@@ -30,6 +32,7 @@ public class TopHudBar : MonoBehaviour
         if (money == null)
             money = FindFirstObjectByType<MoneyManager>();
         BindReferences();
+        EnsureUndoButton();
     }
 
     void Update()
@@ -38,6 +41,7 @@ public class TopHudBar : MonoBehaviour
             money = FindFirstObjectByType<MoneyManager>();
         if (money != null && moneyText != null)
             moneyText.text = "$" + money.CurrentMoney;
+        RefreshUndoButton();
     }
 
     public void BindReferences()
@@ -50,6 +54,22 @@ public class TopHudBar : MonoBehaviour
                 var textT = moneySection.Find(MoneyTextName);
                 if (textT != null)
                     moneyText = textT.GetComponent<TextMeshProUGUI>();
+            }
+        }
+
+        if (undoButton == null)
+        {
+            var undoSection = transform.Find("UndoSection");
+            if (undoSection != null)
+            {
+                undoButton = undoSection.GetComponent<Button>();
+                if (undoButton == null)
+                    undoButton = undoSection.GetComponentInChildren<Button>(true);
+                var labelT = undoSection.Find("Label");
+                if (labelT != null)
+                    undoLabel = labelT.GetComponent<TextMeshProUGUI>();
+                if (undoLabel == null)
+                    undoLabel = undoSection.GetComponentInChildren<TextMeshProUGUI>(true);
             }
         }
 
@@ -67,6 +87,7 @@ public class TopHudBar : MonoBehaviour
         if (existing != null)
         {
             existing.BindReferences();
+            existing.EnsureUndoButton();
             return existing;
         }
 
@@ -115,7 +136,76 @@ public class TopHudBar : MonoBehaviour
         CreateSpacer(barGo.transform, "RightSpacer");
 
         bar.BindReferences();
+        bar.EnsureUndoButton();
         return bar;
+    }
+
+    public void EnsureUndoButton()
+    {
+        if (undoButton != null)
+        {
+            undoButton.onClick.RemoveListener(OnUndoClicked);
+            undoButton.onClick.AddListener(OnUndoClicked);
+            RefreshUndoButton();
+            return;
+        }
+
+        int moneyIndex = 0;
+        var moneySection = transform.Find("MoneySection");
+        if (moneySection != null)
+            moneyIndex = moneySection.GetSiblingIndex();
+
+        var section = new GameObject("UndoSection", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        section.transform.SetParent(transform, false);
+        section.transform.SetSiblingIndex(moneyIndex + 1);
+
+        var le = section.GetComponent<LayoutElement>();
+        le.minWidth = 170f;
+        le.preferredWidth = 190f;
+        le.flexibleWidth = 0f;
+
+        var img = section.GetComponent<Image>();
+        img.color = new Color(0.28f, 0.32f, 0.42f, 1f);
+
+        undoButton = section.GetComponent<Button>();
+        undoButton.onClick.AddListener(OnUndoClicked);
+
+        var labelGo = new GameObject("Label", typeof(RectTransform));
+        labelGo.transform.SetParent(section.transform, false);
+        var labelRt = (RectTransform)labelGo.transform;
+        labelRt.anchorMin = Vector2.zero;
+        labelRt.anchorMax = Vector2.one;
+        labelRt.offsetMin = Vector2.zero;
+        labelRt.offsetMax = Vector2.zero;
+        undoLabel = labelGo.AddComponent<TextMeshProUGUI>();
+        undoLabel.text = "Undo";
+        undoLabel.fontSize = 18;
+        undoLabel.fontStyle = FontStyles.Bold;
+        undoLabel.alignment = TextAlignmentOptions.Center;
+        undoLabel.color = Color.white;
+        undoLabel.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null)
+            undoLabel.font = TMP_Settings.defaultFontAsset;
+
+        RefreshUndoButton();
+    }
+
+    void RefreshUndoButton()
+    {
+        var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
+        bool can = undo != null && undo.CanUndo;
+        if (undoButton != null)
+            undoButton.interactable = can;
+        if (undoLabel != null)
+            undoLabel.text = can ? undo.PeekLabel : "Undo";
+    }
+
+    void OnUndoClicked()
+    {
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.TryUndo();
+        RefreshUndoButton();
     }
 
     static void CreateMoneySection(Transform parent)

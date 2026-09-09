@@ -183,6 +183,9 @@ public class KitchenInventory : MonoBehaviour
         }
 
         AddStock(item, pack);
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.RecordIngredientPack(item, pack, money != null ? price : 0);
         return true;
     }
 }

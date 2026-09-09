@@ -337,7 +337,7 @@ public class BuildPlacer : MonoBehaviour
         EndDrag();
     }
 
-    void CancelDrag()
+    public void CancelDrag()
     {
         if (draggingObject == null || dragFootprint == null) return;
 
@@ -417,6 +417,10 @@ public class BuildPlacer : MonoBehaviour
         // Mark occupied + not walkable
         grid.SetOccupied(x, y, sizeX, sizeY, true);
         Sfx.Play(SfxId.BuildPlace);
+
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.NotifyStationPlaced(placingItem, placed);
 
         // Keep placing until user cancels (or you can auto-cancel if you want)
         // If you want auto-cancel after 1 placement, uncomment:
