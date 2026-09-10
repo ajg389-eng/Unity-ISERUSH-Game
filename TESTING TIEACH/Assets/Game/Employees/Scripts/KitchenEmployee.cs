@@ -92,6 +92,25 @@ public class KitchenEmployee : MonoBehaviour
         if (operatedStations == null || station == null) return;
         operatedStations.Remove(station);
         SyncFromOperatedStations();
+        if (operatedStations.Count == 0)
+            AbortCurrentWork();
+    }
+
+    /// <summary>Drop the active job so the worker becomes idle and reassignable.</summary>
+    public void AbortCurrentWork()
+    {
+        if (currentJob != null && manager != null)
+            manager.ReleaseJob(currentJob);
+        currentJob = null;
+        ClearHeldInventory();
+        deliverTarget = null;
+        step = Step.None;
+        stateTimer = 0f;
+        path.Clear();
+        pathDestination = Vector3.zero;
+        ShowTaskBar = false;
+        TaskProgress = 0f;
+        cashierTray.Clear();
     }
 
     public string GetAssignedStationsSummary()
@@ -544,14 +563,23 @@ public class KitchenEmployee : MonoBehaviour
             manager.RegisterEmployee(this);
         if (grid == null)
             grid = FindObjectOfType<GridManager>();
+        if (grid != null)
+            grid.GridChanged += OnGridChanged;
         if (groundHeight == 0f && grid != null)
             groundHeight = grid.Origin.y;
         if (GetComponent<EmployeeInventoryLabel>() == null)
             gameObject.AddComponent<EmployeeInventoryLabel>();
     }
 
+    void OnGridChanged()
+    {
+        path.Clear();
+    }
+
     void OnDestroy()
     {
+        if (grid != null)
+            grid.GridChanged -= OnGridChanged;
         if (operatedStations != null)
         {
             foreach (var go in operatedStations)
@@ -1312,9 +1340,11 @@ public class KitchenEmployee : MonoBehaviour
         if (path.Count == 0 || Vector3.SqrMagnitude(pathDestination - exactTarget) > 0.0001f)
         {
             pathDestination = exactTarget;
-            // Pathfind via nearest walkable cell, but always finish on the exact target (quad center)
+            // Pathfind via nearest walkable cell, then finish on the exact stand point when close.
             Vector3 pathQuery = grid.GetCellCenter(exactTarget);
             path = grid.GetPath(transform.position, pathQuery);
+            bool hadRoute = path.Count > 0;
+            float maxApproach = grid.cellSize * 1.25f;
 
             while (path.Count > 0 && HorizontalDistSq(transform.position, path[0]) <= ArrivalRadius * ArrivalRadius)
             {
@@ -1323,13 +1353,26 @@ public class KitchenEmployee : MonoBehaviour
             }
 
             if (path.Count > 0)
-                path[path.Count - 1] = exactTarget;
-            else
+            {
+                Vector3 last = path[path.Count - 1];
+                if (HorizontalDistSq(last, exactTarget) <= maxApproach * maxApproach)
+                    path[path.Count - 1] = exactTarget;
+            }
+            else if (hadRoute || HorizontalDistSq(transform.position, exactTarget) <= maxApproach * maxApproach)
+            {
+                // Already on/near the goal cell — walk the last step onto the interaction point
+                // (do not treat stripped waypoints as "no route").
                 path.Add(exactTarget);
+            }
+            else
+            {
+                // Truly unreachable without cutting through walls/stations.
+                return false;
+            }
         }
 
         if (path.Count == 0)
-            return MoveTowardStraight(exactTarget);
+            return false;
 
         Vector3 waypoint = path[0];
         waypoint.y = GroundY;

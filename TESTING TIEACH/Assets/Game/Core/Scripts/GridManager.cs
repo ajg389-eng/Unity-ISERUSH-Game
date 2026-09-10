@@ -70,7 +70,7 @@ public class GridManager : MonoBehaviour
                 Nodes[x, y] = new Node(x, y, world);
             }
 
-        GridChanged?.Invoke();
+        ResyncOccupancyFromScene();
     }
 
     /// <summary>
@@ -92,14 +92,6 @@ public class GridManager : MonoBehaviour
         if (newW > maxWidth || newH > maxHeight)
             return false;
 
-        // Preserve occupancy before reallocating
-        int oldW = Width;
-        int oldH = Height;
-        bool[,] occupied = new bool[oldW, oldH];
-        for (int x = 0; x < oldW; x++)
-            for (int y = 0; y < oldH; y++)
-                occupied[x, y] = Nodes[x, y] != null && Nodes[x, y].occupied;
-
         // Grow toward -X / -Z: Origin moves, old cells shift up in index space
         Vector3 newOrigin = Origin + new Vector3(-addWidth * cellSize, 0f, -addHeight * cellSize);
         ResizeFloorToCells(newW, newH, newOrigin);
@@ -111,15 +103,9 @@ public class GridManager : MonoBehaviour
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
             for (int y = 0; y < Height; y++)
-            {
                 Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
-                int ox = x - addWidth;
-                int oy = y - addHeight;
-                if (ox >= 0 && oy >= 0 && ox < oldW && oy < oldH)
-                    Nodes[x, y].occupied = occupied[ox, oy];
-            }
 
-        GridChanged?.Invoke();
+        ResyncOccupancyFromScene();
         return true;
     }
 
@@ -141,13 +127,6 @@ public class GridManager : MonoBehaviour
         if (!CanShrink(removeWidth, removeHeight))
             return false;
 
-        int oldW = Width;
-        int oldH = Height;
-        bool[,] occupied = new bool[oldW, oldH];
-        for (int x = 0; x < oldW; x++)
-            for (int y = 0; y < oldH; y++)
-                occupied[x, y] = Nodes[x, y] != null && Nodes[x, y].occupied;
-
         int newW = Width - removeWidth;
         int newH = Height - removeHeight;
         Vector3 newOrigin = Origin + new Vector3(removeWidth * cellSize, 0f, removeHeight * cellSize);
@@ -160,15 +139,9 @@ public class GridManager : MonoBehaviour
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
             for (int y = 0; y < Height; y++)
-            {
                 Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
-                int ox = x + removeWidth;
-                int oy = y + removeHeight;
-                if (ox < oldW && oy < oldH)
-                    Nodes[x, y].occupied = occupied[ox, oy];
-            }
 
-        GridChanged?.Invoke();
+        ResyncOccupancyFromScene();
         return true;
     }
 
@@ -262,18 +235,204 @@ public class GridManager : MonoBehaviour
         return true;
     }
 
+    bool suppressGridChanged;
+
     public void SetOccupied(int startX, int startY, int sizeX, int sizeY, bool occ)
     {
         for (int x = startX; x < startX + sizeX; x++)
             for (int y = startY; y < startY + sizeY; y++)
                 Nodes[x, y].occupied = occ;
+
+        if (!suppressGridChanged)
+            GridChanged?.Invoke();
     }
 
-    /// <summary>True if the cell is in bounds and not occupied (employee can walk here).</summary>
+    /// <summary>True if the cell is in bounds, walkable, and not occupied by a station/wall.</summary>
     public bool IsWalkable(int x, int y)
     {
         if (Nodes == null || x < 0 || y < 0 || x >= Width || y >= Height) return false;
-        return !Nodes[x, y].occupied;
+        var n = Nodes[x, y];
+        return n != null && n.walkable && !n.occupied;
+    }
+
+    public void ClearOccupancy()
+    {
+        if (Nodes == null) return;
+        for (int x = 0; x < Width; x++)
+            for (int y = 0; y < Height; y++)
+            {
+                if (Nodes[x, y] == null) continue;
+                Nodes[x, y].occupied = false;
+            }
+    }
+
+    /// <summary>
+    /// Rebuild occupied cells from placed stations, footprints, and wall/obstacle colliders in the scene.
+    /// </summary>
+    public void ResyncOccupancyFromScene()
+    {
+        if (Nodes == null || Width <= 0 || Height <= 0) return;
+
+        suppressGridChanged = true;
+        try
+        {
+            ClearOccupancy();
+
+            // Placed / footprint objects (stations, equipment).
+            var footprints = FindObjectsByType<BuildFootprint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var fp in footprints)
+            {
+                if (fp == null || ShouldIgnoreOccupancyObject(fp.gameObject)) continue;
+                MarkObjectFootprint(fp.gameObject, fp);
+            }
+
+            // Stations without a footprint still block their collider footprint.
+            var stations = FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var station in stations)
+            {
+                if (station == null || ShouldIgnoreOccupancyObject(station.gameObject)) continue;
+                if (station.GetComponent<BuildFootprint>() != null) continue;
+                MarkColliderOccupancy(station.gameObject);
+            }
+
+            // Walls and explicit grid obstacles (by component or name).
+            var obstacles = FindObjectsByType<GridObstacle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var obstacle in obstacles)
+            {
+                if (obstacle == null || ShouldIgnoreOccupancyObject(obstacle.gameObject)) continue;
+                MarkColliderOccupancy(obstacle.gameObject);
+            }
+
+            foreach (var col in FindObjectsByType<Collider>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (col == null || !col.enabled) continue;
+                if (col.isTrigger) continue;
+                if (ShouldIgnoreOccupancyObject(col.gameObject)) continue;
+                if (!IsWallLike(col.gameObject)) continue;
+                if (col.GetComponentInParent<GridObstacle>() != null) continue;
+                if (col.GetComponentInParent<BuildFootprint>() != null) continue;
+                if (col.GetComponentInParent<StationNode>() != null) continue;
+                MarkBoundsOccupancy(col.bounds);
+            }
+
+            // Keep green stand tiles walkable so workers can path onto them.
+            ClearInteractionStandOccupancy();
+        }
+        finally
+        {
+            suppressGridChanged = false;
+            GridChanged?.Invoke();
+        }
+    }
+
+    void ClearInteractionStandOccupancy()
+    {
+        var tiles = FindObjectsByType<StationInteractionTiles>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (var tile in tiles)
+        {
+            if (tile == null || ShouldIgnoreOccupancyObject(tile.gameObject)) continue;
+            var centers = tile.GetInteractionStandCenters();
+            if (centers == null) continue;
+            for (int i = 0; i < centers.Count; i++)
+            {
+                if (!WorldToCell(centers[i], out int x, out int y)) continue;
+                if (Nodes[x, y] != null)
+                    Nodes[x, y].occupied = false;
+            }
+        }
+    }
+
+    public void MarkObjectFootprint(GameObject go, BuildFootprint fp)
+    {
+        if (go == null || Nodes == null) return;
+        int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);
+        int sizeY = Mathf.Max(1, fp != null ? fp.sizeY : 1);
+
+        int yaw = Mathf.RoundToInt(go.transform.eulerAngles.y / 90f) & 3;
+        if (yaw == 1 || yaw == 3)
+        {
+            int t = sizeX;
+            sizeX = sizeY;
+            sizeY = t;
+        }
+
+        if (!TryGetFootprintOriginFromCenter(go.transform.position, sizeX, sizeY, out int ox, out int oy))
+        {
+            MarkColliderOccupancy(go);
+            return;
+        }
+
+        SetOccupied(ox, oy, sizeX, sizeY, true);
+    }
+
+    public bool TryGetFootprintOriginFromCenter(Vector3 worldCenter, int sizeX, int sizeY, out int originX, out int originY)
+    {
+        originX = 0;
+        originY = 0;
+        if (Nodes == null || Width <= 0 || Height <= 0) return false;
+
+        float cx = (worldCenter.x - Origin.x) / cellSize;
+        float cy = (worldCenter.z - Origin.z) / cellSize;
+        originX = Mathf.RoundToInt(cx - sizeX * 0.5f);
+        originY = Mathf.RoundToInt(cy - sizeY * 0.5f);
+        return originX >= 0 && originY >= 0 && originX + sizeX <= Width && originY + sizeY <= Height;
+    }
+
+    public void MarkColliderOccupancy(GameObject go)
+    {
+        if (go == null) return;
+        var cols = go.GetComponentsInChildren<Collider>();
+        if (cols == null || cols.Length == 0)
+        {
+            MarkBoundsOccupancy(new Bounds(go.transform.position, Vector3.one * cellSize));
+            return;
+        }
+
+        foreach (var col in cols)
+        {
+            if (col == null || !col.enabled || col.isTrigger) continue;
+            MarkBoundsOccupancy(col.bounds);
+        }
+    }
+
+    public void MarkBoundsOccupancy(Bounds bounds)
+    {
+        if (Nodes == null) return;
+
+        WorldToCell(new Vector3(bounds.min.x + 0.01f, bounds.center.y, bounds.min.z + 0.01f), out int minX, out int minY);
+        WorldToCell(new Vector3(bounds.max.x - 0.01f, bounds.center.y, bounds.max.z - 0.01f), out int maxX, out int maxY);
+
+        minX = Mathf.Clamp(minX, 0, Width - 1);
+        maxX = Mathf.Clamp(maxX, 0, Width - 1);
+        minY = Mathf.Clamp(minY, 0, Height - 1);
+        maxY = Mathf.Clamp(maxY, 0, Height - 1);
+
+        for (int x = minX; x <= maxX; x++)
+            for (int y = minY; y <= maxY; y++)
+            {
+                if (Nodes[x, y] != null)
+                    Nodes[x, y].occupied = true;
+            }
+    }
+
+    static bool IsWallLike(GameObject go)
+    {
+        if (go == null) return false;
+        string n = go.name;
+        return n.StartsWith("Wall", System.StringComparison.OrdinalIgnoreCase)
+               || n.IndexOf("Wall", System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static bool ShouldIgnoreOccupancyObject(GameObject go)
+    {
+        if (go == null) return true;
+        if (!go.activeInHierarchy) return true;
+        string n = go.name;
+        if (n.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (n.IndexOf("Preview", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (go.GetComponentInParent<KitchenEmployee>() != null) return true;
+        if (go.GetComponentInParent<CustomerAI>() != null) return true;
+        return false;
     }
 
     /// <summary>Returns the nearest walkable cell to (cx, cy), including (cx,cy) or a neighbor.</summary>
@@ -381,7 +540,8 @@ public class GridManager : MonoBehaviour
             for (int y = 0; y < Height; y++)
             {
                 var n = Nodes[x, y];
-                Gizmos.color = n.walkable ? new Color(0.7f, 0.7f, 0.7f, 0.35f) : new Color(1f, 0.2f, 0.2f, 0.5f);
+                bool blocked = n == null || !n.walkable || n.occupied;
+                Gizmos.color = blocked ? new Color(1f, 0.2f, 0.2f, 0.5f) : new Color(0.7f, 0.7f, 0.7f, 0.35f);
                 Gizmos.DrawCube(n.world + Vector3.up * 0.02f, new Vector3(cellSize * 0.95f, 0.02f, cellSize * 0.95f));
             }
     }

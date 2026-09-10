@@ -77,10 +77,7 @@ public class ManagementScreenController : MonoBehaviour
         if (tabButtons != null)
         {
             for (int i = 0; i < tabButtons.Length; i++)
-            {
-                if (tabButtons[i] != null && tabButtons[i].targetGraphic is Image img)
-                    img.color = (i == index) ? new Color(0.45f, 0.45f, 0.55f, 1f) : new Color(0.35f, 0.35f, 0.4f, 1f);
-            }
+                HudTabColors.Apply(tabButtons[i], i == index);
         }
     }
 

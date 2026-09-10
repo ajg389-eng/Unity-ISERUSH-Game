@@ -38,6 +38,8 @@ public class StationNode : MonoBehaviour
 
         if (worker != null)
             worker.AddOperatedStation(gameObject);
+
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     public void ClearWorker()

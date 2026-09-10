@@ -3,8 +3,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top-left Inventory / Management tabs. Builds clean equal-sized buttons so
-/// scene leftovers (auto-size text, 400x70 buttons) cannot overlap.
+/// Top-left Inventory / Management tabs. Place under PlayerUI via
+/// Game → Setup Main HUD Tabs so you can edit position in the scene.
 /// </summary>
 public class MainHudTabs : MonoBehaviour
 {
@@ -14,14 +14,21 @@ public class MainHudTabs : MonoBehaviour
     const float TabHeight = 40f;
     const float TabSpacing = 10f;
 
-    static readonly Color StripColor = new Color(0.06f, 0.06f, 0.09f, 0.96f);
-    static readonly Color IdleColor = new Color(0.16f, 0.17f, 0.22f, 1f);
-    static readonly Color ActiveColor = new Color(0.32f, 0.40f, 0.52f, 1f);
+    static readonly Color StripColor = HudTabColors.Strip;
+    static readonly Color IdleColor = HudTabColors.Idle;
+    static readonly Color ActiveColor = HudTabColors.Active;
 
-    Button inventorySource;
-    Button managementSource;
+    [Header("Layout")]
+    [Tooltip("When true, RectTransform position/size are left alone so you can edit them in the scene.")]
+    public bool useSceneLayout = true;
+
+    [Tooltip("Anchored position used only when Use Scene Layout is off.")]
+    public Vector2 screenOffset = new Vector2(16f, -8f);
+
     Image inventoryBg;
     Image managementBg;
+    Button inventoryTabButton;
+    Button managementTabButton;
     bool built;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -42,12 +49,21 @@ public class MainHudTabs : MonoBehaviour
         var canvas = GameObject.Find("PlayerUI")?.GetComponent<Canvas>();
         if (canvas == null) return null;
 
+        return CreateInCanvas(canvas.transform);
+    }
+
+    /// <summary>Create a scene-editable strip under the given canvas (used by editor setup).</summary>
+    public static MainHudTabs CreateInCanvas(Transform canvasTransform)
+    {
+        if (canvasTransform == null) return null;
+
         var go = new GameObject(StripName, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(MainHudTabs));
-        go.transform.SetParent(canvas.transform, false);
+        go.transform.SetParent(canvasTransform, false);
         go.transform.SetAsLastSibling();
 
         var tabs = go.GetComponent<MainHudTabs>();
-        tabs.Build();
+        tabs.useSceneLayout = true;
+        tabs.Build(forceDefaultLayout: true);
         return tabs;
     }
 
@@ -60,27 +76,52 @@ public class MainHudTabs : MonoBehaviour
     {
         HideSourceButtons();
         RefreshVisuals();
+        // Stay above full-screen overlays that use raycastTarget=false parents
+        // but still have opaque children.
+        transform.SetAsLastSibling();
     }
 
-    public void Build()
+    public void Build(bool forceDefaultLayout = false)
     {
-        inventorySource = FindInventoryButton();
-        managementSource = FindManagementButton();
-
         var rt = (RectTransform)transform;
-        rt.anchorMin = new Vector2(0f, 1f);
-        rt.anchorMax = new Vector2(0f, 1f);
-        rt.pivot = new Vector2(0f, 1f);
-        rt.anchoredPosition = new Vector2(16f, -8f);
-        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 12f);
+        if (forceDefaultLayout || !useSceneLayout)
+            ApplyDefaultLayout(rt);
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
-        bg.color = StripColor;
         bg.raycastTarget = true;
+        bg.color = StripColor;
 
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
+        if (forceDefaultLayout || !useSceneLayout)
+            ApplyDefaultLayoutGroup(hlg);
+
+        EnsureTabVisuals();
+        WireTabButtons();
+        HideSourceButtons();
+        HideManagementPageTitle();
+        RefreshVisuals();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+        built = true;
+    }
+
+    public void ApplyDefaultLayout()
+    {
+        ApplyDefaultLayout((RectTransform)transform);
+    }
+
+    void ApplyDefaultLayout(RectTransform rt)
+    {
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = screenOffset;
+        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 12f);
+    }
+
+    static void ApplyDefaultLayoutGroup(HorizontalLayoutGroup hlg)
+    {
         hlg.padding = new RectOffset(8, 8, 6, 6);
         hlg.spacing = TabSpacing;
         hlg.childAlignment = TextAnchor.MiddleCenter;
@@ -88,49 +129,84 @@ public class MainHudTabs : MonoBehaviour
         hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
-
-        if (!built)
-        {
-            ClearGeneratedTabs();
-            inventoryBg = CreateTab("InventoryTab", "Inventory", OnInventoryClicked);
-            managementBg = CreateTab("ManagementTab", "Management", OnManagementClicked);
-            built = true;
-        }
-
-        HideSourceButtons();
-        HideManagementPageTitle();
-        RefreshVisuals();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
-    void ClearGeneratedTabs()
+    void EnsureTabVisuals()
+    {
+        // Prefer scene-authored tabs; only create missing ones.
+        inventoryBg = FindTabImage("InventoryTab");
+        managementBg = FindTabImage("ManagementTab");
+
+        if (inventoryBg == null)
+            inventoryBg = CreateTab("InventoryTab", "Inventory");
+        if (managementBg == null)
+            managementBg = CreateTab("ManagementTab", "Management");
+
+        inventoryTabButton = inventoryBg != null ? inventoryBg.GetComponent<Button>() : null;
+        managementTabButton = managementBg != null ? managementBg.GetComponent<Button>() : null;
+
+        // Remove accidental duplicates left from older rebuild logic.
+        RemoveDuplicateTabs("InventoryTab", inventoryBg != null ? inventoryBg.transform : null);
+        RemoveDuplicateTabs("ManagementTab", managementBg != null ? managementBg.transform : null);
+    }
+
+    Image FindTabImage(string objectName)
+    {
+        var t = transform.Find(objectName);
+        return t != null ? t.GetComponent<Image>() : null;
+    }
+
+    void RemoveDuplicateTabs(string objectName, Transform keep)
     {
         for (int i = transform.childCount - 1; i >= 0; i--)
         {
             var child = transform.GetChild(i);
-            if (child.name == "InventoryTab" || child.name == "ManagementTab")
-                Destroy(child.gameObject);
+            if (child == null || child.name != objectName || child == keep)
+                continue;
+            DestroyObject(child.gameObject);
         }
     }
 
-    Image CreateTab(string objectName, string label, UnityEngine.Events.UnityAction onClick)
+    void WireTabButtons()
     {
-        var go = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement), typeof(RectMask2D));
+        if (inventoryTabButton != null)
+        {
+            inventoryTabButton.onClick.RemoveAllListeners();
+            inventoryTabButton.onClick.AddListener(OnInventoryClicked);
+            inventoryTabButton.transition = Selectable.Transition.None;
+            if (inventoryTabButton.targetGraphic == null)
+                inventoryTabButton.targetGraphic = inventoryBg;
+        }
+
+        if (managementTabButton != null)
+        {
+            managementTabButton.onClick.RemoveAllListeners();
+            managementTabButton.onClick.AddListener(OnManagementClicked);
+            managementTabButton.transition = Selectable.Transition.None;
+            if (managementTabButton.targetGraphic == null)
+                managementTabButton.targetGraphic = managementBg;
+        }
+    }
+
+    Image CreateTab(string objectName, string label)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         go.transform.SetParent(transform, false);
 
         var le = go.GetComponent<LayoutElement>();
         le.minWidth = TabWidth;
         le.preferredWidth = TabWidth;
-        le.flexibleWidth = 0f;
+        le.flexibleWidth = 1f;
         le.minHeight = TabHeight;
         le.preferredHeight = TabHeight;
 
         var img = go.GetComponent<Image>();
         img.color = IdleColor;
+        img.raycastTarget = true;
 
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
+        btn.transition = Selectable.Transition.None;
 
         var textGo = new GameObject("Label", typeof(RectTransform));
         textGo.transform.SetParent(go.transform, false);
@@ -158,18 +234,38 @@ public class MainHudTabs : MonoBehaviour
 
     void OnInventoryClicked()
     {
-        if (inventorySource != null)
-            inventorySource.onClick.Invoke();
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inv != null)
+        {
+            inv.TogglePanel();
+            return;
+        }
+
+        // Fallback: invoke the legacy scene button if InventoryUI is missing.
+        var source = FindInventoryButton();
+        if (source != null)
+            source.onClick.Invoke();
     }
 
     void OnManagementClicked()
     {
-        if (managementSource != null)
-            managementSource.onClick.Invoke();
+        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (mgmt != null)
+        {
+            mgmt.Toggle();
+            return;
+        }
+
+        var source = FindManagementButton();
+        if (source != null)
+            source.onClick.Invoke();
     }
 
     void HideSourceButtons()
     {
+        var inventorySource = FindInventoryButton();
+        var managementSource = FindManagementButton();
+
         if (inventorySource != null)
             inventorySource.gameObject.SetActive(false);
         if (managementSource != null)
@@ -216,5 +312,14 @@ public class MainHudTabs : MonoBehaviour
 
         var named = GameObject.Find("ManagementButton");
         return named != null ? named.GetComponent<Button>() : null;
+    }
+
+    static void DestroyObject(Object obj)
+    {
+        if (obj == null) return;
+        if (Application.isPlaying)
+            Destroy(obj);
+        else
+            DestroyImmediate(obj);
     }
 }

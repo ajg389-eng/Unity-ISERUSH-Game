@@ -127,6 +127,7 @@ public class BuildPlacer : MonoBehaviour
         // Make a ghost preview
         if (ghost) Destroy(ghost);
         ghost = Instantiate(item.prefab);
+        ghost.name = item.prefab.name + " Ghost";
         ghost.transform.rotation = Quaternion.identity;
 
         MakeTranslucent(ghost, 0.7f); // 0.5 = 50% transparent

@@ -196,8 +196,9 @@ public class StationInteractionTiles : MonoBehaviour
     float GetStandTolerance()
     {
         if (interactionRadius > 0f) return interactionRadius;
-        if (grid != null) return grid.cellSize * 0.1f;
-        return 0.1f;
+        // Slightly generous so cell-center arrival still counts for green stand quads.
+        if (grid != null) return grid.cellSize * 0.4f;
+        return 0.35f;
     }
 
     /// <summary>True only when the employee is at the center of a green interaction quad.</summary>

@@ -10,6 +10,10 @@ public class ItemDefinition : ScriptableObject
     [Tooltip("Starting kitchen stock when KitchenInventory grants starting stock")]
     public int startingQuantity = 0;
 
+    [Header("Inventory UI")]
+    [Tooltip("Optional 2D icon for inventory cards. If empty, a 3D thumbnail is generated from the prefab.")]
+    public Sprite previewIcon;
+
     [Header("Kitchen ordering (Management > Ingredients)")]
     [Tooltip("How many units arrive when the player orders one pack")]
     public int orderPackSize = 10;

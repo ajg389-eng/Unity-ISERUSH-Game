@@ -49,6 +49,16 @@ public class ManagementModeController : MonoBehaviour
     PendingAction pending;
     StationNode selectedStation;
     StationSelectionHighlight selectedHighlight;
+    WorkerHoverHighlight hoveredWorkerHighlight;
+    KitchenEmployee selectedEmployee;
+    WorkerHoverHighlight selectedWorkerHighlight;
+
+    StationNode outputDragSource;
+    Vector2 outputDragStartScreen;
+    bool outputDragActive;
+    bool outputDragMoved;
+    LineRenderer outputDragPreview;
+    const float OutputDragThresholdPixels = 14f;
 
     void Awake()
     {
@@ -72,10 +82,19 @@ public class ManagementModeController : MonoBehaviour
 
     void EnsureLinkVisuals()
     {
-        if (StationOutputLinkVisuals.Instance != null) return;
-        var go = new GameObject("StationOutputLinkVisuals");
-        var visuals = go.AddComponent<StationOutputLinkVisuals>();
-        visuals.modeManager = modeManager;
+        if (StationOutputLinkVisuals.Instance == null)
+        {
+            var go = new GameObject("StationOutputLinkVisuals");
+            var visuals = go.AddComponent<StationOutputLinkVisuals>();
+            visuals.modeManager = modeManager;
+        }
+
+        if (WorkerAssignmentLinkVisuals.Instance == null)
+        {
+            var go = new GameObject("WorkerAssignmentLinkVisuals");
+            var visuals = go.AddComponent<WorkerAssignmentLinkVisuals>();
+            visuals.modeManager = modeManager;
+        }
     }
 
     public bool IsManageMode =>
@@ -85,10 +104,15 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode)
         {
-            if (selectedStation != null || pending != PendingAction.None)
+            if (selectedStation != null || pending != PendingAction.None || selectedEmployee != null)
                 CancelAndHide();
+            ClearWorkerHover();
+            CancelOutputDrag();
             return;
         }
+
+        UpdateWorkerHover();
+        UpdateOutputDragPreview();
 
         // Keep heat lamp inventory readout live while selected
         if (selectedStation != null
@@ -101,7 +125,14 @@ public class ManagementModeController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
+            CancelOutputDrag();
             CancelAndHide();
+            return;
+        }
+
+        if (Input.GetMouseButtonUp(0))
+        {
+            HandleMouseUp();
             return;
         }
 
@@ -113,7 +144,20 @@ public class ManagementModeController : MonoBehaviour
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
             if (pending == PendingAction.None)
+            {
+                ClearEmployeeSelection();
                 ClearSelection();
+            }
+            CancelOutputDrag();
+            return;
+        }
+
+        // Click worker first: select them for station assignment.
+        var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
+        if (clickedEmployee != null)
+        {
+            CancelOutputDrag();
+            SelectEmployeeForAssignment(clickedEmployee);
             return;
         }
 
@@ -121,25 +165,326 @@ public class ManagementModeController : MonoBehaviour
         if (node == null)
         {
             if (pending == PendingAction.None)
+            {
+                ClearEmployeeSelection();
                 ClearSelection();
+            }
+            CancelOutputDrag();
             return;
         }
 
+        // Legacy button flow: next station click sets output.
         if (pending == PendingAction.PickOutput)
         {
             if (selectedStation != null && node.gameObject != selectedStation.gameObject)
             {
-                selectedStation.SetOutput(node.gameObject);
-                Sfx.Play(SfxId.AssignOutput);
+                ApplyOutputLink(selectedStation, node);
                 pending = PendingAction.None;
-                RefreshPopup();
-                StationOutputLinkVisuals.NotifyLinksChanged();
-                SetStatus($"Output set: {selectedStation.DisplayName} → {node.DisplayName}");
             }
             return;
         }
 
+        // Worker selected → assign to clicked station.
+        if (selectedEmployee != null)
+        {
+            CancelOutputDrag();
+            TryAssignEmployeeToStation(selectedEmployee, node);
+            return;
+        }
+
+        // Start potential drag-to-assign-output from this station.
+        BeginOutputDrag(node);
         SelectStation(node);
+    }
+
+    void HandleMouseUp()
+    {
+        if (!outputDragActive)
+            return;
+
+        StationNode source = outputDragSource;
+        bool wasDrag = outputDragMoved
+            || (Vector2.Distance(outputDragStartScreen, Input.mousePosition) >= OutputDragThresholdPixels);
+
+        StationNode target = null;
+        if (wasDrag && Camera.main != null && !IsPointerOverUI())
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+                target = StationNode.FindFromCollider(hit.collider);
+        }
+
+        CancelOutputDrag();
+
+        if (source != null && target != null && target != source && wasDrag)
+            ApplyOutputLink(source, target);
+    }
+
+    void BeginOutputDrag(StationNode source)
+    {
+        outputDragSource = source;
+        outputDragStartScreen = Input.mousePosition;
+        outputDragActive = source != null;
+        outputDragMoved = false;
+        EnsureOutputDragPreview();
+        SetStatus("Drag to another station to set this station's Output.");
+    }
+
+    void CancelOutputDrag()
+    {
+        outputDragActive = false;
+        outputDragMoved = false;
+        outputDragSource = null;
+        if (outputDragPreview != null)
+            outputDragPreview.enabled = false;
+    }
+
+    void UpdateOutputDragPreview()
+    {
+        if (!outputDragActive || outputDragSource == null || Camera.main == null)
+        {
+            if (outputDragPreview != null)
+                outputDragPreview.enabled = false;
+            return;
+        }
+
+        float moved = Vector2.Distance(outputDragStartScreen, Input.mousePosition);
+        if (moved >= OutputDragThresholdPixels)
+            outputDragMoved = true;
+
+        if (!outputDragMoved)
+        {
+            if (outputDragPreview != null)
+                outputDragPreview.enabled = false;
+            return;
+        }
+
+        EnsureOutputDragPreview();
+        Vector3 from = GetStationAnchor(outputDragSource.gameObject);
+        Vector3 to = from;
+
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+        {
+            var target = StationNode.FindFromCollider(hit.collider);
+            to = target != null ? GetStationAnchor(target.gameObject) : hit.point;
+        }
+        else if (Physics.Raycast(ray, out hit, 500f))
+        {
+            to = hit.point;
+        }
+        else
+        {
+            // Project onto a horizontal plane near the source.
+            var plane = new Plane(Vector3.up, from);
+            if (plane.Raycast(ray, out float enter))
+                to = ray.GetPoint(enter);
+        }
+
+        float bridgeY = Mathf.Max(from.y, to.y) + 1.5f;
+        outputDragPreview.enabled = true;
+        outputDragPreview.SetPosition(0, from);
+        outputDragPreview.SetPosition(1, new Vector3(from.x, bridgeY, from.z));
+        outputDragPreview.SetPosition(2, new Vector3(to.x, bridgeY, to.z));
+        outputDragPreview.SetPosition(3, to);
+    }
+
+    void EnsureOutputDragPreview()
+    {
+        if (outputDragPreview != null) return;
+
+        var go = new GameObject("OutputDragPreview");
+        go.transform.SetParent(transform, false);
+        outputDragPreview = go.AddComponent<LineRenderer>();
+        outputDragPreview.useWorldSpace = true;
+        outputDragPreview.positionCount = 4;
+        outputDragPreview.startWidth = 0.08f;
+        outputDragPreview.endWidth = 0.05f;
+        outputDragPreview.numCapVertices = 4;
+        outputDragPreview.numCornerVertices = 4;
+        outputDragPreview.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        outputDragPreview.receiveShadows = false;
+
+        var shader = Shader.Find("Sprites/Default")
+                     ?? Shader.Find("Universal Render Pipeline/Unlit")
+                     ?? Shader.Find("Unlit/Color");
+        var mat = new Material(shader);
+        var color = new Color(1f, 0.7f, 0.2f, 0.9f);
+        mat.color = color;
+        outputDragPreview.material = mat;
+        outputDragPreview.startColor = color;
+        outputDragPreview.endColor = color;
+        outputDragPreview.enabled = false;
+    }
+
+    static Vector3 GetStationAnchor(GameObject go)
+    {
+        if (go == null) return Vector3.zero;
+        var renderers = go.GetComponentsInChildren<Renderer>();
+        if (renderers != null && renderers.Length > 0)
+        {
+            Bounds b = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                if (renderers[i] == null || renderers[i] is LineRenderer) continue;
+                if (renderers[i].GetComponentInParent<Canvas>() != null) continue;
+                b.Encapsulate(renderers[i].bounds);
+            }
+            return new Vector3(b.center.x, b.max.y + 0.15f, b.center.z);
+        }
+
+        var col = go.GetComponentInChildren<Collider>();
+        if (col != null)
+        {
+            var b = col.bounds;
+            return new Vector3(b.center.x, b.max.y + 0.15f, b.center.z);
+        }
+
+        return go.transform.position + Vector3.up;
+    }
+
+    void ApplyOutputLink(StationNode from, StationNode to)
+    {
+        if (from == null || to == null || from == to) return;
+
+        from.SetOutput(to.gameObject);
+        Sfx.Play(SfxId.AssignOutput);
+        if (selectedStation == from)
+            RefreshPopup();
+        StationOutputLinkVisuals.NotifyLinksChanged();
+        SetStatus($"Output set: {from.DisplayName} → {to.DisplayName}");
+    }
+
+    void SelectEmployeeForAssignment(KitchenEmployee emp)
+    {
+        if (emp == null) return;
+
+        // Cancel output picking if we switch to worker assignment.
+        if (pending == PendingAction.PickOutput)
+            pending = PendingAction.None;
+
+        SetSelectedEmployee(emp);
+        ClearSelection();
+        SetStatus(emp.employeeName + " selected — click a station to assign them (" +
+                  emp.OperatedStationCount + "/" + KitchenEmployee.MaxStations + ").");
+    }
+
+    void SetSelectedEmployee(KitchenEmployee emp)
+    {
+        if (selectedEmployee == emp) return;
+
+        if (selectedWorkerHighlight != null)
+        {
+            selectedWorkerHighlight.SetHovered(false);
+            selectedWorkerHighlight = null;
+        }
+
+        selectedEmployee = emp;
+        if (selectedEmployee != null)
+        {
+            selectedWorkerHighlight = WorkerHoverHighlight.EnsureOn(selectedEmployee);
+            if (selectedWorkerHighlight != null)
+                selectedWorkerHighlight.SetHovered(true);
+        }
+
+        WorkerAssignmentLinkVisuals.SetFocusedWorker(selectedEmployee);
+    }
+
+    void ClearEmployeeSelection()
+    {
+        if (selectedWorkerHighlight != null)
+        {
+            // Keep hover glow if the cursor is still over this worker.
+            bool keepHover = hoveredWorkerHighlight == selectedWorkerHighlight;
+            if (!keepHover)
+                selectedWorkerHighlight.SetHovered(false);
+            selectedWorkerHighlight = null;
+        }
+        selectedEmployee = null;
+        // If a station is still selected, show its worker link instead of clearing.
+        if (selectedStation != null)
+            WorkerAssignmentLinkVisuals.SetFocusedStation(selectedStation);
+        else
+            WorkerAssignmentLinkVisuals.ClearFocus();
+    }
+
+    void TryAssignEmployeeToStation(KitchenEmployee emp, StationNode node)
+    {
+        if (emp == null || node == null) return;
+
+        if (!node.IsWorkStation)
+        {
+            SetStatus("Only kitchen/register stations can have workers.");
+            return;
+        }
+
+        if (emp.IsAssignedTo(node.gameObject))
+        {
+            SetStatus(emp.employeeName + " is already assigned to " + node.DisplayName + ".");
+            SelectStation(node);
+            return;
+        }
+
+        if (emp.OperatedStationCount >= KitchenEmployee.MaxStations)
+        {
+            SetStatus(emp.employeeName + " already has " + KitchenEmployee.MaxStations + " stations.");
+            return;
+        }
+
+        node.SetWorker(emp);
+        Sfx.Play(SfxId.AssignWorker);
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.WorkerAssigned);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+
+        SetStatus(emp.employeeName + " assigned to " + node.DisplayName +
+                  " (" + emp.OperatedStationCount + "/" + KitchenEmployee.MaxStations + "). Click another station or Esc.");
+        SelectStation(node);
+        // Keep employee selected so you can assign them to more stations.
+        SetSelectedEmployee(emp);
+    }
+
+    void UpdateWorkerHover()
+    {
+        if (Camera.main == null || IsPointerOverUI())
+        {
+            ClearWorkerHover();
+            return;
+        }
+
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+        {
+            ClearWorkerHover();
+            return;
+        }
+
+        var employee = hit.collider.GetComponentInParent<KitchenEmployee>();
+        if (employee == null)
+        {
+            ClearWorkerHover();
+            return;
+        }
+
+        var highlight = WorkerHoverHighlight.EnsureOn(employee);
+        if (hoveredWorkerHighlight == highlight) return;
+
+        ClearWorkerHover();
+        hoveredWorkerHighlight = highlight;
+        if (hoveredWorkerHighlight != null)
+            hoveredWorkerHighlight.SetHovered(true);
+    }
+
+    void ClearWorkerHover()
+    {
+        if (hoveredWorkerHighlight == null) return;
+        // Don't clear glow if this worker is the selected assignment source.
+        if (hoveredWorkerHighlight == selectedWorkerHighlight)
+        {
+            hoveredWorkerHighlight = null;
+            return;
+        }
+        hoveredWorkerHighlight.SetHovered(false);
+        hoveredWorkerHighlight = null;
     }
 
     void SelectStation(StationNode node)
@@ -151,6 +496,7 @@ public class ManagementModeController : MonoBehaviour
         if (stationPopup != null)
             stationPopup.SetActive(true);
         RefreshPopup();
+        WorkerAssignmentLinkVisuals.SetFocusedStation(node);
 
         var t = node != null ? node.StationType : null;
         if (node != null && node.GetComponent<HeatLampStation>() != null)
@@ -160,9 +506,12 @@ public class ManagementModeController : MonoBehaviour
         else if (t.HasValue)
         {
             bool hasOut = node.HasOutput;
+            string workerBit = node.assignedWorker != null
+                ? $" Worker: {node.assignedWorker.employeeName}."
+                : " No worker assigned.";
             SetStatus(hasOut
-                ? $"Output → {StationNode.EnsureOn(node.outputTarget)?.DisplayName}. Worker will deliver here after using this station."
-                : "Required: Assign Output — worker will only deliver to the station you set.");
+                ? $"Output → {StationNode.EnsureOn(node.outputTarget)?.DisplayName}.{workerBit}"
+                : $"Required: Assign Output — drag to another station.{workerBit}");
         }
         else
             SetStatus("Assign a worker or set this station's output.");
@@ -488,6 +837,7 @@ public class ManagementModeController : MonoBehaviour
         selectedStation.SetWorker(emp);
         Sfx.Play(SfxId.AssignWorker);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.WorkerAssigned);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
         pending = PendingAction.None;
         RefreshPopup();
         SetStatus(emp.employeeName + " assigned to " + selectedStation.DisplayName);
@@ -537,6 +887,8 @@ public class ManagementModeController : MonoBehaviour
     void CancelAndHide()
     {
         pending = PendingAction.None;
+        CancelOutputDrag();
+        ClearEmployeeSelection();
         ClearSelection();
     }
 
@@ -560,6 +912,10 @@ public class ManagementModeController : MonoBehaviour
         selectedStation = null;
         selectedHighlight = null;
         HidePopup();
+        if (selectedEmployee != null)
+            WorkerAssignmentLinkVisuals.SetFocusedWorker(selectedEmployee);
+        else
+            WorkerAssignmentLinkVisuals.ClearFocus();
     }
 
     void SetStationHighlighted(StationNode node, bool on)
