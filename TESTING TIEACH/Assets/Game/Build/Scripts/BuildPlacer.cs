@@ -47,13 +47,18 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
-        // Cancel (placement or drag)
-        if (Input.GetKeyDown(KeyCode.Escape))
+        // Cancel (placement or drag). Only consume Escape when there is something to cancel
+        // so the pause menu can still open in Build mode.
+        if (Input.GetKeyDown(KeyCode.Escape) && (IsDragging || IsPlacing))
         {
+            if (PauseMenuUI.IsOpen)
+                return;
+
             if (IsDragging)
                 CancelDrag();
             else
                 CancelPlacement();
+            PauseMenuUI.MarkEscapeHandled();
             return;
         }
 

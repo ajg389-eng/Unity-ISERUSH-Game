@@ -123,10 +123,14 @@ public class ManagementModeController : MonoBehaviour
             RefreshHeatLampInventory();
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
         {
+            if (PauseMenuUI.IsOpen)
+                return;
+
             CancelOutputDrag();
             CancelAndHide();
+            PauseMenuUI.MarkEscapeHandled();
             return;
         }
 
@@ -890,6 +894,15 @@ public class ManagementModeController : MonoBehaviour
         CancelOutputDrag();
         ClearEmployeeSelection();
         ClearSelection();
+    }
+
+    bool HasCancellableManageAction()
+    {
+        return outputDragActive
+            || pending != PendingAction.None
+            || selectedStation != null
+            || selectedEmployee != null
+            || (stationPopup != null && stationPopup.activeSelf);
     }
 
     void SetSelectedStation(StationNode node)
