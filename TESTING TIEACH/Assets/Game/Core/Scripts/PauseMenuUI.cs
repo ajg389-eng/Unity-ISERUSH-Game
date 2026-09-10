@@ -37,6 +37,7 @@ public class PauseMenuUI : MonoBehaviour
     GameObject overlay;
     GameObject mainPage;
     GameObject optionsPage;
+    GuidebookUI guidebook;
     GameObject audioPage;
     GameObject videoPage;
     Button audioTab;
@@ -54,6 +55,7 @@ public class PauseMenuUI : MonoBehaviour
     bool visible;
     bool built;
     bool showingOptions;
+    bool showingGuidebook;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -94,6 +96,8 @@ public class PauseMenuUI : MonoBehaviour
         {
             if (!visible)
                 Show();
+            else if (showingGuidebook)
+                CloseGuidebook();
             else if (showingOptions)
                 ShowMain();
             else
@@ -125,6 +129,9 @@ public class PauseMenuUI : MonoBehaviour
     {
         visible = false;
         showingOptions = false;
+        showingGuidebook = false;
+        if (guidebook != null)
+            guidebook.Close();
         if (overlay != null)
             overlay.SetActive(false);
 
@@ -138,8 +145,29 @@ public class PauseMenuUI : MonoBehaviour
     void ShowMain()
     {
         showingOptions = false;
+        showingGuidebook = false;
+        if (guidebook != null)
+            guidebook.Close();
         if (mainPage != null) mainPage.SetActive(true);
         if (optionsPage != null) optionsPage.SetActive(false);
+    }
+
+    public void CloseGuidebook()
+    {
+        showingGuidebook = false;
+        if (guidebook != null)
+            guidebook.Close();
+        ShowMain();
+    }
+
+    void ShowGuidebook()
+    {
+        showingGuidebook = true;
+        showingOptions = false;
+        if (mainPage != null) mainPage.SetActive(false);
+        if (optionsPage != null) optionsPage.SetActive(false);
+        if (guidebook != null)
+            guidebook.Open();
     }
 
     void ShowOptions()
@@ -182,6 +210,7 @@ public class PauseMenuUI : MonoBehaviour
         mainPage = BuildMainPage(overlay.transform);
         optionsPage = BuildOptionsPage(overlay.transform);
         optionsPage.SetActive(false);
+        guidebook = GuidebookUI.Create(overlay.transform);
     }
 
     GameObject BuildMainPage(Transform parent)
@@ -220,6 +249,13 @@ public class PauseMenuUI : MonoBehaviour
         {
             Sfx.Play(SfxId.UiClick);
             ShowOptions();
+        });
+
+        var guidebookBtn = CreateMenuButton(page.transform, "GuidebookButton", "Guidebook", 64f, 320f, 26f, MainButtonColor);
+        guidebookBtn.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            ShowGuidebook();
         });
 
         var quit = CreateMenuButton(page.transform, "QuitButton", "Quit", 64f, 320f, 26f, MainButtonColor);
