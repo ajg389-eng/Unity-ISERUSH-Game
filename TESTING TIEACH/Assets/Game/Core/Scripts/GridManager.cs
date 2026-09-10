@@ -17,6 +17,12 @@ public class GridManager : MonoBehaviour
     [Tooltip("Maximum grid height / depth (cells) the player can expand to.")]
     public int maxHeight = 30;
 
+    [Header("Floor texture")]
+    [Tooltip("When on, material tiling is set to Width/Height so the pattern stays grid-sized and does not grow when the floor expands. Requires a Repeat-wrapped texture (e.g. URP Lit), not a fixed-frequency Shader Graph checker.")]
+    public bool syncFloorTextureToGrid = true;
+    [Tooltip("How many texture repeats per grid cell (1 = one tile per cell).")]
+    public float textureTilesPerCell = 1f;
+
     public int Width { get; private set; }
     public int Height { get; private set; }
     public Node[,] Nodes { get; private set; }
@@ -71,6 +77,7 @@ public class GridManager : MonoBehaviour
             }
 
         ResyncOccupancyFromScene();
+        SyncFloorTextureTiling();
     }
 
     /// <summary>
@@ -182,6 +189,53 @@ public class GridManager : MonoBehaviour
             origin.x + worldW * 0.5f,
             floor.position.y,
             origin.z + worldH * 0.5f);
+
+        SyncFloorTextureTiling();
+    }
+
+    /// <summary>
+    /// Sets material tiling to match grid cell counts so the floor pattern keeps a fixed
+    /// world size when the plane is scaled (expand/shrink).
+    /// No-ops for shaders without a tiled texture (e.g. CheckeredFloor Shader Graph).
+    /// </summary>
+    public void SyncFloorTextureTiling()
+    {
+        if (!syncFloorTextureToGrid || floor == null) return;
+        if (Width <= 0 || Height <= 0) return;
+
+        var renderer = floor.GetComponentInChildren<Renderer>();
+        if (renderer == null) return;
+
+        float tilesX = Width * Mathf.Max(0.01f, textureTilesPerCell);
+        float tilesY = Height * Mathf.Max(0.01f, textureTilesPerCell);
+        var scale = new Vector2(tilesX, tilesY);
+
+        // Prefer a per-renderer instance so we don't mutate the shared project material permanently.
+        var mat = Application.isPlaying ? renderer.material : renderer.sharedMaterial;
+        if (mat == null) return;
+
+        // Only touch properties that exist — CheckeredFloor has none of these.
+        if (mat.HasProperty("_BaseMap"))
+            mat.SetTextureScale("_BaseMap", scale);
+        if (mat.HasProperty("_MainTex"))
+            mat.SetTextureScale("_MainTex", scale);
+        if (mat.HasProperty("_BaseColorMap"))
+            mat.SetTextureScale("_BaseColorMap", scale);
+
+        if (mat.HasProperty("_BaseMap_ST"))
+        {
+            Vector4 st = mat.GetVector("_BaseMap_ST");
+            st.x = scale.x;
+            st.y = scale.y;
+            mat.SetVector("_BaseMap_ST", st);
+        }
+        if (mat.HasProperty("_MainTex_ST"))
+        {
+            Vector4 st = mat.GetVector("_MainTex_ST");
+            st.x = scale.x;
+            st.y = scale.y;
+            mat.SetVector("_MainTex_ST", st);
+        }
     }
 
     public Vector3 CellToWorld(int x, int y)
