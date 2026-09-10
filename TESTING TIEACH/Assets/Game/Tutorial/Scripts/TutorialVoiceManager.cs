@@ -29,6 +29,7 @@ public class TutorialVoiceManager : MonoBehaviour
     readonly HashSet<string> playedOnceIds = new HashSet<string>();
     Coroutine playbackRoutine;
     bool isPlaying;
+    bool voicePausedForSim;
 
     public bool IsPlaying => isPlaying;
     public bool IsBubbleVisible => voiceUI != null && voiceUI.IsVisible;
@@ -104,6 +105,24 @@ public class TutorialVoiceManager : MonoBehaviour
             Instance = null;
     }
 
+    void Update()
+    {
+        SyncPauseWithSimulation();
+    }
+
+    void SyncPauseWithSimulation()
+    {
+        bool paused = Time.timeScale <= 0f;
+        if (paused == voicePausedForSim) return;
+        voicePausedForSim = paused;
+        if (voiceSource == null) return;
+
+        if (paused)
+            voiceSource.Pause();
+        else
+            voiceSource.UnPause();
+    }
+
     /// <summary>Convenience wrapper for TutorialVoiceEvents.Raise.</summary>
     public static void RaiseEvent(string eventId)
     {
@@ -170,6 +189,11 @@ public class TutorialVoiceManager : MonoBehaviour
             voiceSource.clip = line.voiceClip;
             voiceSource.volume = voiceVolume;
             voiceSource.Play();
+            if (Time.timeScale <= 0f)
+            {
+                voiceSource.Pause();
+                voicePausedForSim = true;
+            }
             wait = line.voiceClip.length + line.postClipPadding;
         }
 
@@ -177,6 +201,13 @@ public class TutorialVoiceManager : MonoBehaviour
 
         if (voiceUI != null)
             voiceUI.Hide();
+    }
+
+    public void SetVolume(float value)
+    {
+        voiceVolume = Mathf.Clamp01(value);
+        if (voiceSource != null)
+            voiceSource.volume = voiceVolume;
     }
 
     /// <summary>Skip the current line and hide the bubble.</summary>

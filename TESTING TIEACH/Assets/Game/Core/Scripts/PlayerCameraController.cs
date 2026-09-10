@@ -29,6 +29,13 @@ public class PlayerCameraController : MonoBehaviour
 
     void Update()
     {
+        if (PauseMenuUI.IsOpen)
+        {
+            currentMoveVelocity = Vector3.zero;
+            zoomVelocity = 0f;
+            return;
+        }
+
         Move();
         Zoom();
         Rotate();
