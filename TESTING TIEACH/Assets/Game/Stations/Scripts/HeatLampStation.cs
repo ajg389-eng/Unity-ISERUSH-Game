@@ -262,14 +262,14 @@ public class HeatLampStation : MonoBehaviour
         for (int i = 0; i < meals.Count; i++)
         {
             var o = meals[i]?.order;
-            if (o == null || o.lines == null || o.lines.Count != 1) continue;
-            if (o.PrimaryItem == item) return i;
-        }
-        for (int i = 0; i < meals.Count; i++)
-        {
-            var o = meals[i]?.order;
-            if (o != null && o.PrimaryItem == item && o.Matches(CustomerOrder.FromItem(item, 1)))
-                return i;
+            if (o?.lines == null) continue;
+            foreach (var line in o.lines)
+            {
+                if (line.quantity <= 0 || line.item == null) continue;
+                if (line.item == item) return i;
+                if (!string.IsNullOrEmpty(item.itemName) && line.item.itemName == item.itemName)
+                    return i;
+            }
         }
         return -1;
     }

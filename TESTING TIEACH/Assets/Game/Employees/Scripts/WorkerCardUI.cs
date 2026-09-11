@@ -89,8 +89,8 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         SetNameText(emp.employeeName ?? "Worker");
+        LockNameField();
         RefreshDetails();
-        AddNameListener();
         if (fireButton != null)
         {
             fireButton.interactable = true;
@@ -112,10 +112,14 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
-        SetDetailText(assignmentsText, FormatAssignments(employee.GetAssignmentDetailText()));
+        SetDetailText(assignmentsText, employee.GetCompactRouteText());
 
         string held = employee.GetHeldInventoryDisplay();
-        SetDetailText(heldItemsText, string.IsNullOrEmpty(held) ? "Nothing" : held);
+        bool carrying = !string.IsNullOrEmpty(held);
+        SetDetailText(heldItemsText, carrying ? held : "—");
+        var carryingSection = heldItemsText != null ? heldItemsText.transform.parent : null;
+        if (carryingSection != null)
+            carryingSection.gameObject.SetActive(carrying);
 
         if (stationsLabel != null)
             stationsLabel.gameObject.SetActive(false);
@@ -150,7 +154,7 @@ public class WorkerCardUI : MonoBehaviour
     {
         var cardLe = GetComponent<LayoutElement>();
         if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
-        cardLe.minHeight = 210;
+        cardLe.minHeight = 96;
         cardLe.preferredHeight = -1;
         cardLe.flexibleWidth = 1;
 
@@ -165,8 +169,8 @@ public class WorkerCardUI : MonoBehaviour
             if (hlg != null) Destroy(hlg);
             vlg = gameObject.AddComponent<VerticalLayoutGroup>();
         }
-        vlg.padding = new RectOffset(14, 14, 12, 12);
-        vlg.spacing = 12;
+        vlg.padding = new RectOffset(10, 10, 8, 8);
+        vlg.spacing = 4;
         vlg.childAlignment = TextAnchor.UpperLeft;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -179,8 +183,8 @@ public class WorkerCardUI : MonoBehaviour
             row1.SetAsFirstSibling();
             var rowLe = row1.GetComponent<LayoutElement>();
             if (rowLe == null) rowLe = row1.gameObject.AddComponent<LayoutElement>();
-            rowLe.minHeight = 36;
-            rowLe.preferredHeight = 36;
+            rowLe.minHeight = 28;
+            rowLe.preferredHeight = 28;
 
             var hlg = row1.GetComponent<HorizontalLayoutGroup>();
             if (hlg == null) hlg = row1.gameObject.AddComponent<HorizontalLayoutGroup>();
@@ -214,7 +218,29 @@ public class WorkerCardUI : MonoBehaviour
 
         var details = transform.Find("WorkerDetails");
         if (details != null)
+        {
             details.SetAsLastSibling();
+            var detailsVlg = details.GetComponent<VerticalLayoutGroup>();
+            if (detailsVlg != null)
+                detailsVlg.spacing = 4;
+            CompactSection(details.Find("TaskSection"), 36);
+            CompactSection(details.Find("StationsSection"), 32);
+            CompactSection(details.Find("CarryingSection"), 28);
+        }
+    }
+
+    static void CompactSection(Transform section, float minHeight)
+    {
+        if (section == null) return;
+        var header = section.Find("Header");
+        if (header != null)
+            header.gameObject.SetActive(false);
+        var le = section.GetComponent<LayoutElement>();
+        if (le != null)
+            le.minHeight = minHeight;
+        var vlg = section.GetComponent<VerticalLayoutGroup>();
+        if (vlg != null)
+            vlg.padding = new RectOffset(8, 8, 4, 4);
     }
 
     static void SetDetailText(TextMeshProUGUI label, string text)
@@ -235,12 +261,20 @@ public class WorkerCardUI : MonoBehaviour
             row2.gameObject.SetActive(false);
     }
 
-    void AddNameListener()
+    void AddNameListener() { }
+
+    void LockNameField()
     {
-        var tmpInput = nameInputObject != null ? nameInputObject.GetComponent<TMP_InputField>() : null;
-        var legacyInput = nameInputObject != null ? nameInputObject.GetComponent<InputField>() : null;
-        if (tmpInput != null) tmpInput.onEndEdit.AddListener(OnNameChanged);
-        if (legacyInput != null) legacyInput.onEndEdit.AddListener(OnNameChanged);
+        if (nameInputObject == null) return;
+        var tmpInput = nameInputObject.GetComponent<TMP_InputField>();
+        if (tmpInput != null)
+        {
+            tmpInput.readOnly = true;
+            tmpInput.interactable = false;
+        }
+        var legacyInput = nameInputObject.GetComponent<InputField>();
+        if (legacyInput != null)
+            legacyInput.interactable = false;
     }
 
     void RemoveNameListener()

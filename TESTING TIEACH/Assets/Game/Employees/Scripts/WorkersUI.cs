@@ -1,10 +1,10 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Management screen Workers tab: hire workers and list them.
-/// Station assignment is done in Manage mode by clicking stations in the world.
+/// Management screen Workers tab: hire workers, pick a station-to-station flow, list staff.
 /// </summary>
 public class WorkersUI : MonoBehaviour
 {
@@ -22,12 +22,26 @@ public class WorkersUI : MonoBehaviour
     ProductionManager production;
     bool listenerAdded;
     bool layoutApplied;
+    RectTransform flowPanel;
+    Transform presetRow;
+    Transform stepRow;
+    TextMeshProUGUI flowStatus;
+    readonly Dictionary<KitchenFlowKind, Button> presetButtons = new Dictionary<KitchenFlowKind, Button>();
+
+    static readonly KitchenFlowKind[] Presets =
+    {
+        KitchenFlowKind.BurgerLine,
+        KitchenFlowKind.FriesLine,
+        KitchenFlowKind.Drinks,
+        KitchenFlowKind.Register
+    };
 
     void Start()
     {
         EnsureRefs();
         ApplyCleanLayout();
         EnsureCardContainer();
+        EnsureFlowSection();
         PurchaseUndoFooter.EnsureOnPanel(transform);
     }
 
@@ -37,6 +51,7 @@ public class WorkersUI : MonoBehaviour
         ApplyCleanLayout();
         EnsureCardContainer();
         ConfigureWorkerScroll();
+        EnsureFlowSection();
         PurchaseUndoFooter.EnsureOnPanel(transform);
         Refresh();
     }
@@ -74,7 +89,6 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
-    /// <summary>Reorganize the Workers panel into a tidy header + list layout.</summary>
     void ApplyCleanLayout()
     {
         if (layoutApplied) return;
@@ -86,17 +100,16 @@ public class WorkersUI : MonoBehaviour
             title.anchorMin = new Vector2(0f, 1f);
             title.anchorMax = new Vector2(1f, 1f);
             title.pivot = new Vector2(0.5f, 1f);
-            title.anchoredPosition = new Vector2(0f, -10f);
-            title.sizeDelta = new Vector2(-24f, 28f);
+            title.anchoredPosition = new Vector2(0f, -8f);
+            title.sizeDelta = new Vector2(-24f, 24f);
             var titleTmp = title.GetComponent<TextMeshProUGUI>();
             if (titleTmp != null)
             {
                 titleTmp.alignment = TextAlignmentOptions.Center;
-                titleTmp.fontSize = 20;
+                titleTmp.fontSize = 18;
             }
         }
 
-        // Header bar: Workers count | Cost | Hire button
         Transform header = transform.Find("HeaderBar");
         if (header == null)
         {
@@ -109,8 +122,8 @@ public class WorkersUI : MonoBehaviour
         headerRt.anchorMin = new Vector2(0f, 1f);
         headerRt.anchorMax = new Vector2(1f, 1f);
         headerRt.pivot = new Vector2(0.5f, 1f);
-        headerRt.anchoredPosition = new Vector2(0f, -44f);
-        headerRt.sizeDelta = new Vector2(-24f, 44f);
+        headerRt.anchoredPosition = new Vector2(0f, -34f);
+        headerRt.sizeDelta = new Vector2(-24f, 36f);
 
         var headerImg = header.GetComponent<Image>();
         if (headerImg == null) headerImg = header.gameObject.AddComponent<Image>();
@@ -119,24 +132,23 @@ public class WorkersUI : MonoBehaviour
 
         var hlg = header.GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(12, 12, 6, 6);
-        hlg.spacing = 12;
+        hlg.padding = new RectOffset(10, 10, 4, 4);
+        hlg.spacing = 8;
         hlg.childAlignment = TextAnchor.MiddleLeft;
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        // Move count / cost / hire into header
         if (countText != null)
         {
             countText.transform.SetParent(header, false);
             var le = countText.GetComponent<LayoutElement>();
             if (le == null) le = countText.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 100;
+            le.minWidth = 90;
             le.flexibleWidth = 1;
             countText.alignment = TextAlignmentOptions.Left;
-            countText.fontSize = 15;
+            countText.fontSize = 14;
             countText.raycastTarget = false;
         }
 
@@ -145,10 +157,10 @@ public class WorkersUI : MonoBehaviour
             costText.transform.SetParent(header, false);
             var le = costText.GetComponent<LayoutElement>();
             if (le == null) le = costText.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 90;
-            le.preferredWidth = 110;
+            le.minWidth = 80;
+            le.preferredWidth = 90;
             costText.alignment = TextAlignmentOptions.Center;
-            costText.fontSize = 15;
+            costText.fontSize = 14;
             costText.color = new Color(0.85f, 0.88f, 0.75f, 1f);
             costText.raycastTarget = false;
         }
@@ -158,49 +170,28 @@ public class WorkersUI : MonoBehaviour
             hireButton.transform.SetParent(header, false);
             var le = hireButton.GetComponent<LayoutElement>();
             if (le == null) le = hireButton.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 130;
-            le.preferredWidth = 140;
-            le.minHeight = 32;
+            le.minWidth = 110;
+            le.preferredWidth = 118;
+            le.minHeight = 28;
             var img = hireButton.GetComponent<Image>();
             if (img != null) img.color = new Color(0.3f, 0.48f, 0.36f, 1f);
             var label = hireButton.GetComponentInChildren<TextMeshProUGUI>();
             if (label != null)
             {
-                label.text = "Hire Worker";
-                label.fontSize = 15;
+                label.text = "Hire";
+                label.fontSize = 14;
             }
         }
 
-        // Hint under header
-        if (hintText == null)
-        {
-            var hintGo = new GameObject("HintText", typeof(RectTransform));
-            hintGo.transform.SetParent(transform, false);
-            hintText = hintGo.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null) hintText.font = TMP_Settings.defaultFontAsset;
-        }
+        if (hintText != null)
+            hintText.gameObject.SetActive(false);
 
-        var hintRt = hintText.rectTransform;
-        hintRt.anchorMin = new Vector2(0f, 1f);
-        hintRt.anchorMax = new Vector2(1f, 1f);
-        hintRt.pivot = new Vector2(0.5f, 1f);
-        hintRt.anchoredPosition = new Vector2(0f, -94f);
-        hintRt.sizeDelta = new Vector2(-28f, 36f);
-        hintText.fontSize = 12;
-        hintText.color = new Color(0.75f, 0.78f, 0.85f, 1f);
-        hintText.alignment = TextAlignmentOptions.TopLeft;
-        hintText.textWrappingMode = TextWrappingModes.Normal;
-        hintText.raycastTarget = false;
-        hintText.text = "Each card shows live task, station assignments, and inventory. Assign stations in Manage mode by clicking them in the world.";
-
-        // Keep header above list in hierarchy for clarity
         header.SetSiblingIndex(1);
-        hintText.transform.SetSiblingIndex(2);
+        EnsureFlowSection();
     }
 
     void EnsureCardContainer()
     {
-        // Prefer existing scroll if present
         if (cardContainer == null)
         {
             var existing = transform.Find("WorkerCardsScroll/Viewport/CardContainer");
@@ -227,9 +218,7 @@ public class WorkersUI : MonoBehaviour
         var scrollBg = scrollGo.AddComponent<Image>();
         scrollBg.color = new Color(0f, 0f, 0f, 0f);
         scrollBg.raycastTarget = true;
-
-        var blocker = scrollGo.AddComponent<ScrollRectWheelBlocker>();
-        blocker.scrollRect = scroll;
+        scrollGo.AddComponent<ScrollRectWheelBlocker>().scrollRect = scroll;
 
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
@@ -238,9 +227,7 @@ public class WorkersUI : MonoBehaviour
         vpRect.anchorMax = Vector2.one;
         vpRect.offsetMin = Vector2.zero;
         vpRect.offsetMax = Vector2.zero;
-        var viewportImage = viewport.AddComponent<Image>();
-        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
-        viewportImage.raycastTarget = true;
+        viewport.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
         viewport.AddComponent<Mask>().showMaskGraphic = false;
 
         var content = new GameObject("CardContainer", typeof(RectTransform));
@@ -253,8 +240,8 @@ public class WorkersUI : MonoBehaviour
         contentRect.offsetMax = Vector2.zero;
         content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 12;
-        vlg.padding = new RectOffset(4, 4, 4, 8);
+        vlg.spacing = 6;
+        vlg.padding = new RectOffset(2, 2, 2, 4);
         vlg.childControlHeight = true;
         vlg.childForceExpandHeight = false;
         vlg.childForceExpandWidth = true;
@@ -274,33 +261,11 @@ public class WorkersUI : MonoBehaviour
             if (existing != null)
                 workerCardsScroll = existing.GetComponent<ScrollRect>();
         }
-
         if (workerCardsScroll == null) return;
-
         workerCardsScroll.horizontal = false;
         workerCardsScroll.vertical = true;
         workerCardsScroll.movementType = ScrollRect.MovementType.Clamped;
         workerCardsScroll.scrollSensitivity = 28f;
-
-        var scrollImage = workerCardsScroll.GetComponent<Image>();
-        if (scrollImage == null)
-            scrollImage = workerCardsScroll.gameObject.AddComponent<Image>();
-        scrollImage.color = new Color(0f, 0f, 0f, 0f);
-        scrollImage.raycastTarget = true;
-
-        var blocker = workerCardsScroll.GetComponent<ScrollRectWheelBlocker>();
-        if (blocker == null)
-            blocker = workerCardsScroll.gameObject.AddComponent<ScrollRectWheelBlocker>();
-        blocker.scrollRect = workerCardsScroll;
-
-        var viewport = workerCardsScroll.viewport;
-        if (viewport != null)
-        {
-            var viewportImage = viewport.GetComponent<Image>();
-            if (viewportImage == null)
-                viewportImage = viewport.gameObject.AddComponent<Image>();
-            viewportImage.raycastTarget = true;
-        }
     }
 
     void FitScrollArea()
@@ -315,7 +280,7 @@ public class WorkersUI : MonoBehaviour
         scroll.anchorMin = new Vector2(0f, 0f);
         scroll.anchorMax = Vector2.one;
         scroll.offsetMin = new Vector2(12f, 56f);
-        scroll.offsetMax = new Vector2(-12f, -138f); // leave room for title + header + hint
+        scroll.offsetMax = new Vector2(-12f, -210f);
         PurchaseUndoFooter.EnsureOnPanel(transform);
         scroll.SetSiblingIndex(Mathf.Max(0, transform.childCount - 2));
     }
@@ -331,11 +296,288 @@ public class WorkersUI : MonoBehaviour
         Refresh();
     }
 
+    void EnsureFlowSection()
+    {
+        var existing = transform.Find("FlowPathPanel") as RectTransform;
+        if (existing != null && existing.Find("StepRow") == null)
+        {
+            Destroy(existing.gameObject);
+            existing = null;
+            flowPanel = null;
+        }
+
+        if (flowPanel != null)
+        {
+            LayoutFlowPanel();
+            return;
+        }
+
+        if (existing != null)
+        {
+            flowPanel = existing;
+            presetRow = existing.Find("PresetRow");
+            stepRow = existing.Find("StepRow");
+            flowStatus = existing.Find("Status")?.GetComponent<TextMeshProUGUI>();
+            LayoutFlowPanel();
+            return;
+        }
+
+        var go = new GameObject("FlowPathPanel", typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(transform, false);
+        flowPanel = go.GetComponent<RectTransform>();
+        var bg = go.GetComponent<Image>();
+        bg.color = new Color(0.14f, 0.15f, 0.2f, 0.95f);
+        bg.raycastTarget = true;
+
+        var vlg = go.AddComponent<VerticalLayoutGroup>();
+        vlg.padding = new RectOffset(8, 8, 6, 6);
+        vlg.spacing = 4;
+        vlg.childAlignment = TextAnchor.UpperLeft;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+
+        MakeLabel(flowPanel, "Presets — then edit hops below", 11, new Color(0.72f, 0.75f, 0.82f, 1f), 16);
+
+        presetRow = MakeRow(flowPanel, "PresetRow", 26);
+        foreach (var kind in Presets)
+        {
+            var captured = kind;
+            var btn = MakeChip(presetRow, WorkerFlowAssigner.GetTitle(kind), 72f);
+            btn.onClick.AddListener(() => SelectPreset(captured));
+            presetButtons[kind] = btn;
+        }
+
+        var assign = MakeChip(presetRow, "Assign idle", 92f);
+        assign.onClick.AddListener(() =>
+        {
+            if (production == null) return;
+            WorkerFlowAssigner.ApplyToIdleWorkers(production.hireFlowSteps, production.hireFlow);
+            Refresh();
+        });
+
+        MakeLabel(flowPanel, "Click a station to change the next stop", 11, new Color(0.72f, 0.75f, 0.82f, 1f), 16);
+
+        stepRow = MakeRow(flowPanel, "StepRow", 28);
+
+        var statusGo = new GameObject("Status", typeof(RectTransform));
+        statusGo.transform.SetParent(flowPanel, false);
+        flowStatus = statusGo.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) flowStatus.font = TMP_Settings.defaultFontAsset;
+        flowStatus.fontSize = 11;
+        flowStatus.color = new Color(0.82f, 0.86f, 0.7f, 1f);
+        flowStatus.alignment = TextAlignmentOptions.MidlineLeft;
+        var statusLe = statusGo.AddComponent<LayoutElement>();
+        statusLe.minHeight = 16;
+        statusLe.preferredHeight = 16;
+
+        LayoutFlowPanel();
+        var header = transform.Find("HeaderBar");
+        if (header != null)
+            flowPanel.SetSiblingIndex(header.GetSiblingIndex() + 1);
+    }
+
+    void LayoutFlowPanel()
+    {
+        if (flowPanel == null) return;
+        flowPanel.anchorMin = new Vector2(0f, 1f);
+        flowPanel.anchorMax = new Vector2(1f, 1f);
+        flowPanel.pivot = new Vector2(0.5f, 1f);
+        flowPanel.anchoredPosition = new Vector2(0f, -74f);
+        flowPanel.sizeDelta = new Vector2(-24f, 128f);
+    }
+
+    Transform MakeRow(Transform parent, string name, float height)
+    {
+        var row = new GameObject(name, typeof(RectTransform));
+        row.transform.SetParent(parent, false);
+        var hlg = row.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing = 4;
+        hlg.childAlignment = TextAnchor.MiddleLeft;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = true;
+        var le = row.AddComponent<LayoutElement>();
+        le.minHeight = height;
+        le.preferredHeight = height;
+        return row.transform;
+    }
+
+    TextMeshProUGUI MakeLabel(Transform parent, string text, float size, Color color, float height)
+    {
+        var go = new GameObject("Label", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        tmp.text = text;
+        tmp.fontSize = size;
+        tmp.color = color;
+        tmp.alignment = TextAlignmentOptions.MidlineLeft;
+        tmp.raycastTarget = false;
+        var le = go.AddComponent<LayoutElement>();
+        le.minHeight = height;
+        le.preferredHeight = height;
+        return tmp;
+    }
+
+    Button MakeChip(Transform parent, string label, float width)
+    {
+        var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        go.GetComponent<Image>().color = HudTabColors.Idle;
+        var le = go.AddComponent<LayoutElement>();
+        le.minWidth = width;
+        le.preferredWidth = width;
+        le.flexibleWidth = 0;
+        le.minHeight = 24;
+
+        var textGo = new GameObject("Label", typeof(RectTransform));
+        textGo.transform.SetParent(go.transform, false);
+        var rt = textGo.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        var tmp = textGo.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        tmp.text = label;
+        tmp.fontSize = 12;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.raycastTarget = false;
+        return go.GetComponent<Button>();
+    }
+
+    void SelectPreset(KitchenFlowKind kind)
+    {
+        if (production == null) return;
+        production.hireFlow = kind;
+        production.hireFlowSteps = WorkerFlowAssigner.GetPresetSteps(kind);
+        RefreshFlowSection();
+    }
+
+    List<string> Steps
+    {
+        get
+        {
+            if (production == null) return new List<string>();
+            if (production.hireFlowSteps == null)
+                production.hireFlowSteps = new List<string>();
+            if (production.hireFlowSteps.Count == 0)
+                production.hireFlowSteps = WorkerFlowAssigner.GetPresetSteps(production.hireFlow);
+            return production.hireFlowSteps;
+        }
+    }
+
+    void CycleStep(int index)
+    {
+        var available = WorkerFlowAssigner.GetStationsInScene();
+        if (available.Count == 0) available.AddRange(WorkerFlowAssigner.Catalog);
+        if (index < 0 || index >= Steps.Count || available.Count == 0) return;
+
+        string current = Steps[index];
+        int found = 0;
+        for (int i = 0; i < available.Count; i++)
+        {
+            if (available[i].id == current) { found = i; break; }
+        }
+        Steps[index] = available[(found + 1) % available.Count].id;
+        production.hireFlow = KitchenFlowKind.Custom;
+        RefreshFlowSection();
+    }
+
+    void AddStep()
+    {
+        if (Steps.Count >= WorkerFlowAssigner.MaxSteps) return;
+        var available = WorkerFlowAssigner.GetStationsInScene();
+        if (available.Count == 0) available.AddRange(WorkerFlowAssigner.Catalog);
+        string nextId = "HeatLamp";
+        for (int i = 0; i < available.Count; i++)
+        {
+            if (!Steps.Contains(available[i].id))
+            {
+                nextId = available[i].id;
+                break;
+            }
+        }
+        Steps.Add(nextId);
+        production.hireFlow = KitchenFlowKind.Custom;
+        RefreshFlowSection();
+    }
+
+    void RemoveLastStep()
+    {
+        if (Steps.Count <= 1) return;
+        Steps.RemoveAt(Steps.Count - 1);
+        production.hireFlow = KitchenFlowKind.Custom;
+        RefreshFlowSection();
+    }
+
+    void RebuildStepRow()
+    {
+        if (stepRow == null) return;
+        for (int i = stepRow.childCount - 1; i >= 0; i--)
+            Destroy(stepRow.GetChild(i).gameObject);
+
+        var steps = Steps;
+        for (int i = 0; i < steps.Count; i++)
+        {
+            if (i > 0)
+            {
+                var arrow = MakeLabel(stepRow, "→", 13, new Color(0.7f, 0.73f, 0.8f, 1f), 24);
+                arrow.alignment = TextAlignmentOptions.Center;
+                var ale = arrow.GetComponent<LayoutElement>();
+                ale.minWidth = 14;
+                ale.preferredWidth = 14;
+                ale.flexibleWidth = 0;
+            }
+
+            int captured = i;
+            var def = WorkerFlowAssigner.FindDef(steps[i]);
+            var btn = MakeChip(stepRow, def != null ? def.label : steps[i], 86f);
+            btn.onClick.AddListener(() => CycleStep(captured));
+        }
+
+        if (steps.Count < WorkerFlowAssigner.MaxSteps)
+        {
+            var add = MakeChip(stepRow, "+", 28f);
+            add.onClick.AddListener(AddStep);
+        }
+
+        if (steps.Count > 1)
+        {
+            var remove = MakeChip(stepRow, "–", 28f);
+            remove.onClick.AddListener(RemoveLastStep);
+        }
+    }
+
+    void RefreshFlowSection()
+    {
+        EnsureFlowSection();
+        if (production == null) return;
+
+        RebuildStepRow();
+
+        foreach (var kv in presetButtons)
+            HudTabColors.Apply(kv.Value, production.hireFlow == kv.Key);
+
+        if (flowStatus == null) return;
+        string missing = WorkerFlowAssigner.DescribeMissing(production.hireFlowSteps);
+        if (!string.IsNullOrEmpty(missing))
+            flowStatus.text = missing;
+        else
+            flowStatus.text = "New hires: " + WorkerFlowAssigner.FormatSteps(production.hireFlowSteps);
+    }
+
     public void Refresh()
     {
         EnsureRefs();
         ApplyCleanLayout();
         EnsureCardContainer();
+        EnsureFlowSection();
+        RefreshFlowSection();
 
         if (production == null)
         {
@@ -351,16 +593,16 @@ public class WorkersUI : MonoBehaviour
 
         bool canHire = production.employeePrefab != null;
         var money = FindObjectOfType<MoneyManager>();
-        string costLabel = "Hire: $" + production.hireCost;
+        string costLabel = "$" + production.hireCost;
         if (production.employeePrefab == null)
         {
             canHire = false;
-            costLabel = "Hire: N/A";
+            costLabel = "N/A";
         }
         else if (money != null && !money.CanAfford(production.hireCost))
         {
             canHire = false;
-            costLabel = "Hire: $" + production.hireCost + " (broke)";
+            costLabel = "$" + production.hireCost;
         }
 
         if (costText != null)

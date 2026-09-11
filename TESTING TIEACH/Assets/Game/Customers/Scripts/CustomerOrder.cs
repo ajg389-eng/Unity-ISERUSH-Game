@@ -141,7 +141,10 @@ public class CustomerOrder
         for (int i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
-            if (line.item != item || line.quantity <= 0) continue;
+            if (line.item == null || line.quantity <= 0) continue;
+            bool same = line.item == item
+                || (!string.IsNullOrEmpty(item.itemName) && line.item.itemName == item.itemName);
+            if (!same) continue;
             line.quantity--;
             if (line.quantity <= 0)
                 lines.RemoveAt(i);

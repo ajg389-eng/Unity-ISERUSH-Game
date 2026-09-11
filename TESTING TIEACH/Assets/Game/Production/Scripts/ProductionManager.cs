@@ -101,6 +101,10 @@ public class ProductionManager : MonoBehaviour
     public GameObject employeePrefab;
     public Transform spawnPoint;
     public int hireCost = 100;
+    [Tooltip("Product path new hires are assigned to from the Workers tab.")]
+    public KitchenFlowKind hireFlow = KitchenFlowKind.BurgerLine;
+    [Tooltip("Station hop list for new hires (Freezer, Grill, …).")]
+    public List<string> hireFlowSteps = new List<string>();
 
     readonly List<ProductionJob> pendingJobs = new List<ProductionJob>();
     MoneyManager moneyManager;
@@ -126,6 +130,8 @@ public class ProductionManager : MonoBehaviour
         }
         Instance = this;
         moneyManager = FindObjectOfType<MoneyManager>();
+        if (hireFlowSteps == null || hireFlowSteps.Count == 0)
+            hireFlowSteps = WorkerFlowAssigner.GetPresetSteps(hireFlow);
     }
 
     /// <summary>Hire without spending money (debug).</summary>
@@ -145,6 +151,7 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
+            WorkerFlowAssigner.Apply(emp, hireFlowSteps, hireFlow);
             RaiseFirstWorkerHiredEvent();
         }
         return emp;
@@ -169,6 +176,7 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
+            WorkerFlowAssigner.Apply(emp, hireFlowSteps, hireFlow);
             Sfx.Play(SfxId.HireWorker);
             RaiseFirstWorkerHiredEvent();
             int paid = moneyManager != null ? hireCost : 0;
@@ -321,6 +329,7 @@ public class ProductionManager : MonoBehaviour
         foreach (var e in employees)
         {
             if (e == null || !e.IsIdle || !e.CanTakeJobs) continue;
+            if (e.ShouldDeliverInsteadOfCook()) continue;
             foreach (var job in pendingJobs)
             {
                 if (job.assignedTo != null) continue;

@@ -40,6 +40,7 @@ public class CustomerAI : MonoBehaviour
     CustomerOrder order;
     int salePrice;
     bool waitingInQueue;
+    bool waitingForPickup;
     bool leaving;
     bool leavingImpatient;
 
@@ -167,6 +168,7 @@ public class CustomerAI : MonoBehaviour
         reg = null;
         hasTarget = false;
         hasQueueSlot = false;
+        waitingForPickup = false;
         leaving = true;
         leavingImpatient = true;
         BeginLeaveRoute(exit);
@@ -188,6 +190,16 @@ public class CustomerAI : MonoBehaviour
     /// </summary>
     public void SetQueueSlot(Register register, Vector3 slotPos, bool front)
     {
+        ApplySlot(register, slotPos, front, pickup: false);
+    }
+
+    public void SetPickupSlot(Register register, Vector3 slotPos, bool front)
+    {
+        ApplySlot(register, slotPos, front, pickup: true);
+    }
+
+    void ApplySlot(Register register, Vector3 slotPos, bool front, bool pickup)
+    {
         if (phase == Phase.Leaving) return;
 
         reg = register;
@@ -195,6 +207,7 @@ public class CustomerAI : MonoBehaviour
         queuedIsFront = front;
         hasQueueSlot = true;
         isFront = front;
+        waitingForPickup = pickup;
 
         if (phase == Phase.Entering)
             return;
@@ -221,6 +234,7 @@ public class CustomerAI : MonoBehaviour
     public void OnServed(Transform exit)
     {
         StopPatienceMeter();
+        waitingForPickup = false;
         reg = null;
         hasTarget = false;
         hasQueueSlot = false;
@@ -323,6 +337,9 @@ public class CustomerAI : MonoBehaviour
 
         if (!patienceStarted)
             BeginQueueWait();
+
+        if (!waitingForPickup && isFront && reg != null)
+            reg.SendCustomerToPickup(this);
     }
 
     void UpdateLeaving()

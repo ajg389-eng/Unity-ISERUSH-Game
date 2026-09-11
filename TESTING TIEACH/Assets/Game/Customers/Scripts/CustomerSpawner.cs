@@ -27,6 +27,14 @@ public class CustomerSpawner : MonoBehaviour
     float timer;
     readonly List<Vector3> entryPointsBuffer = new List<Vector3>();
 
+    float EffectiveSpawnInterval()
+    {
+        bool dayOne = GameTimeManager.Instance == null || GameTimeManager.Instance.CurrentDay <= 1;
+        if (dayOne)
+            return Mathf.Max(spawnInterval, 6f);
+        return Mathf.Max(spawnInterval, 3.5f);
+    }
+
     void Awake()
     {
         if (grid == null)
@@ -71,7 +79,7 @@ public class CustomerSpawner : MonoBehaviour
     void Update()
     {
         timer += Time.deltaTime;
-        if (timer < spawnInterval) return;
+        if (timer < EffectiveSpawnInterval()) return;
         timer = 0f;
         TrySpawn();
     }
