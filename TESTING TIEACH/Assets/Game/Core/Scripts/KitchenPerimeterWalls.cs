@@ -48,6 +48,11 @@ public class KitchenPerimeterWalls : MonoBehaviour
             Hide(eastCap);
             Hide(south);
             Hide(northCap);
+            HideNamed("KitchenRoofGlass");
+            HideNamed("KitchenRoofTrim_N");
+            HideNamed("KitchenRoofTrim_S");
+            HideNamed("KitchenRoofTrim_W");
+            HideNamed("KitchenRoofTrim_E");
 
             float minX = grid.Origin.x;
             float minZ = grid.Origin.z;
@@ -69,7 +74,9 @@ public class KitchenPerimeterWalls : MonoBehaviour
             {
                 float z0 = minZ;
                 float z1 = backZ + t * 0.5f;
-                Place(west, new Vector3(outerX + t * 0.5f, y, (z0 + z1) * 0.5f), 90f, z1 - z0, t);
+                // Keep the inner face just outside the first floor cell so stations can sit flush.
+                float innerX = minX - 0.05f;
+                Place(west, new Vector3(innerX - t * 0.5f, y, (z0 + z1) * 0.5f), 90f, z1 - z0, t);
             }
             else
             {
@@ -181,7 +188,13 @@ public class KitchenPerimeterWalls : MonoBehaviour
     Transform EnsurePiece(string name)
     {
         Transform t = root.Find(name);
-        if (t != null) return t;
+        if (t != null)
+        {
+            var extra = t.GetComponent<GridObstacle>();
+            if (extra != null)
+                Object.Destroy(extra);
+            return t;
+        }
 
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         go.name = name;
@@ -196,9 +209,6 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (renderer != null && sharedMaterials != null && sharedMaterials.Length > 0)
             renderer.sharedMaterials = sharedMaterials;
 
-        if (go.GetComponent<GridObstacle>() == null)
-            go.AddComponent<GridObstacle>();
-
         return go.transform;
     }
 
@@ -209,6 +219,12 @@ public class KitchenPerimeterWalls : MonoBehaviour
         wall.position = worldPos;
         wall.rotation = Quaternion.Euler(0f, yaw, 0f);
         wall.localScale = new Vector3(Mathf.Max(0.25f, length), height, thick);
+    }
+
+    void HideNamed(string name)
+    {
+        if (root == null) return;
+        Hide(root.Find(name));
     }
 
     static void Hide(Transform wall)

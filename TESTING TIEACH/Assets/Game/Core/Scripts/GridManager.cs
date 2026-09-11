@@ -543,17 +543,28 @@ public class GridManager : MonoBehaviour
         WorldToCell(new Vector3(bounds.min.x + 0.01f, bounds.center.y, bounds.min.z + 0.01f), out int minX, out int minY);
         WorldToCell(new Vector3(bounds.max.x - 0.01f, bounds.center.y, bounds.max.z - 0.01f), out int maxX, out int maxY);
 
-        minX = Mathf.Clamp(minX, 0, Width - 1);
-        maxX = Mathf.Clamp(maxX, 0, Width - 1);
-        minY = Mathf.Clamp(minY, 0, Height - 1);
-        maxY = Mathf.Clamp(maxY, 0, Height - 1);
+        if (maxX < 0 || maxY < 0 || minX >= Width || minY >= Height)
+            return;
 
+        minX = Mathf.Max(0, minX);
+        maxX = Mathf.Min(Width - 1, maxX);
+        minY = Mathf.Max(0, minY);
+        maxY = Mathf.Min(Height - 1, maxY);
+
+        float pad = cellSize * 0.25f;
         for (int x = minX; x <= maxX; x++)
+        {
             for (int y = minY; y <= maxY; y++)
             {
-                if (Nodes[x, y] != null)
+                if (Nodes[x, y] == null) continue;
+                float x0 = Origin.x + x * cellSize;
+                float z0 = Origin.z + y * cellSize;
+                float overlapX = Mathf.Min(bounds.max.x, x0 + cellSize) - Mathf.Max(bounds.min.x, x0);
+                float overlapZ = Mathf.Min(bounds.max.z, z0 + cellSize) - Mathf.Max(bounds.min.z, z0);
+                if (overlapX > pad && overlapZ > pad)
                     Nodes[x, y].occupied = true;
             }
+        }
     }
 
     static bool IsWallLike(GameObject go)
@@ -573,6 +584,8 @@ public class GridManager : MonoBehaviour
         if (n.IndexOf("Preview", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (go.GetComponentInParent<KitchenEmployee>() != null) return true;
         if (go.GetComponentInParent<CustomerAI>() != null) return true;
+        if (n.StartsWith("Expand_", System.StringComparison.OrdinalIgnoreCase)) return true;
+        if (go.transform.parent != null && go.transform.parent.name == "KitchenExpandWalls") return true;
         return false;
     }
 
