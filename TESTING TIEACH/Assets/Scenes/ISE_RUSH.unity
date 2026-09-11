@@ -2458,7 +2458,7 @@ Transform:
   m_GameObject: {fileID: 238132404}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 10.2835, y: 1.5, z: 5.6882596}
+  m_LocalPosition: {x: 11, y: 1.5, z: 5.6882596}
   m_LocalScale: {x: 2, y: 3, z: 1.1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6158,6 +6158,8 @@ MonoBehaviour:
   employeePrefab: {fileID: 8879517237201228535, guid: f204490c17366ff458d0a8e36bc37f97, type: 3}
   spawnPoint: {fileID: 866130494}
   hireCost: 100
+  hireFlow: 1
+  hireFlowSteps: []
 --- !u!4 &599483240
 Transform:
   m_ObjectHideFlags: 0
@@ -10205,8 +10207,12 @@ MonoBehaviour:
   queueStart: {fileID: 594451285}
   queueDirection: {x: 1, y: 0, z: 0}
   spacing: 1.2
+  queueFrontOffset: 1.4
   serveArrivalRadius: 0.6
   maxQueue: 6
+  pickupStart: {fileID: 0}
+  pickupDirection: {x: 0, y: 0, z: 0}
+  maxPickup: 8
   storeExit: {fileID: 238132405}
   heatLamp: {fileID: 0}
   workerStandPoint: {fileID: 0}
@@ -15714,8 +15720,12 @@ MonoBehaviour:
   queueStart: {fileID: 2147468039}
   queueDirection: {x: 1, y: 0, z: 0}
   spacing: 1.2
+  queueFrontOffset: 1.4
   serveArrivalRadius: 0.6
   maxQueue: 6
+  pickupStart: {fileID: 0}
+  pickupDirection: {x: 0, y: 0, z: 0}
+  maxPickup: 8
   storeExit: {fileID: 238132405}
   heatLamp: {fileID: 0}
   workerStandPoint: {fileID: 0}
@@ -15870,6 +15880,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PurchaseUndoFooter
   button: {fileID: 1741330159}
   label: {fileID: 479717156}
+  floorOnly: 0
 --- !u!114 &1741330159
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17515,8 +17526,12 @@ MonoBehaviour:
   queueStart: {fileID: 764632805}
   queueDirection: {x: 1, y: 0, z: 0}
   spacing: 1.2
+  queueFrontOffset: 1.4
   serveArrivalRadius: 0.6
   maxQueue: 6
+  pickupStart: {fileID: 0}
+  pickupDirection: {x: 0, y: 0, z: 0}
+  maxPickup: 8
   storeExit: {fileID: 238132405}
   heatLamp: {fileID: 0}
   workerStandPoint: {fileID: 0}
