@@ -230,7 +230,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9846e9cfa6ff19842b7ef1eee40facca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GrillStation
-  cookTimeSeconds: 5
+  selectedProduct: {fileID: 0}
+  cookTimeSeconds: 3
   placeTimeSeconds: 0.5
   waitAfterCookedSeconds: 0.5
   takeTimeSeconds: 0.5

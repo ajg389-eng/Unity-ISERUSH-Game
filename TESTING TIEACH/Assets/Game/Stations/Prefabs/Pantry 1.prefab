@@ -481,7 +481,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PantryStation
   stockedItems: []
-  interactionTimeSeconds: 3
+  interactionTimeSeconds: 1.5
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!114 &4988263162553479662
 MonoBehaviour:

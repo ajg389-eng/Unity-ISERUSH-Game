@@ -263,10 +263,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e037d0a0d0580ed439fc8b6d2dbbf9b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FryerStation
-  loadTimeSeconds: 0.5
-  cookTimeSeconds: 5
-  waitAfterCookedSeconds: 0.4
-  takeTimeSeconds: 0.5
+  loadTimeSeconds: 0
+  cookTimeSeconds: 3
+  waitAfterCookedSeconds: 0
+  takeTimeSeconds: 0
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!1 &5112166316824196911
 GameObject:

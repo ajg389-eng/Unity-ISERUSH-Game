@@ -185,26 +185,28 @@ public class KitchenEmployee : MonoBehaviour
             case Step.CashierAtDrink: return "Cashier — pouring drink";
             case Step.CashierGoFood: return "Cashier — walking to heat lamp";
             case Step.CashierAtFood: return "Cashier — picking up food";
-            case Step.CashierReturnServe: return "Cashier — serving customer";
+            case Step.CashierReturnServe: return "Cashier — serving full order";
         }
 
         var reg = GetRegisterStation();
         if (reg != null)
         {
-            if (cashierTray != null && cashierTray.Count > 0)
-                return "Cashier — ready to serve customer";
-
             var front = reg.GetFrontCustomer();
-            if (front != null)
+            var order = front != null ? front.GetOrder() : null;
+
+            if (cashierTray != null && cashierTray.Count > 0)
             {
-                var order = front.GetOrder();
-                if (order != null)
-                {
-                    var next = GetNextCashierFetch(order);
-                    if (next == null)
-                        return "Cashier — waiting for kitchen items";
-                    return "Cashier — starting customer order";
-                }
+                if (TrayFulfillsOrder(order))
+                    return "Cashier — serving full order";
+                return "Cashier — collecting order items";
+            }
+
+            if (front != null && order != null)
+            {
+                var next = GetNextCashierFetch(order);
+                if (next == null)
+                    return "Cashier — waiting for kitchen items";
+                return "Cashier — collecting customer order";
             }
 
             return "Cashier — waiting at register";
@@ -844,8 +846,19 @@ public class KitchenEmployee : MonoBehaviour
 
         EnsureCashierCustomer(front);
 
-        // Always deliver whatever we're holding before fetching more
-        if (cashierTray.Count > 0)
+        var order = front.GetOrder();
+        if (order == null || order.GetTotalQuantity() <= 0)
+        {
+            // Order already fully delivered — finish the sale if still in queue
+            if (front.IsOrderFullyDelivered)
+                reg.CompleteServe(front, order);
+            ClearCashierTray();
+            MoveToward(reg.GetInteractionPosition());
+            return;
+        }
+
+        // Only walk to the register when the tray holds the full remaining order.
+        if (TrayFulfillsOrder(order))
         {
             step = Step.CashierReturnServe;
             stateTimer = 0f;
@@ -854,20 +867,10 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        var order = front.GetOrder();
-        if (order == null || order.GetTotalQuantity() <= 0)
-        {
-            // Order already fully delivered — finish the sale if still in queue
-            if (front.IsOrderFullyDelivered)
-                reg.CompleteServe(front, order);
-            MoveToward(reg.GetInteractionPosition());
-            return;
-        }
-
         var next = GetNextCashierFetch(order);
         if (next == null)
         {
-            // Waiting on kitchen / stock — stand at register
+            // Waiting on kitchen / stock — stand at register (keep partial tray)
             MoveToward(reg.GetInteractionPosition());
             ShowTaskBar = true;
             TaskProgress = 0.25f;
@@ -901,17 +904,47 @@ public class KitchenEmployee : MonoBehaviour
             step = Step.None;
     }
 
-    /// <summary>Next remaining order item the cashier can fetch right now.</summary>
+    Dictionary<ItemDefinition, int> BuildTrayCounts()
+    {
+        var counts = new Dictionary<ItemDefinition, int>();
+        for (int i = 0; i < cashierTray.Count; i++)
+        {
+            var item = cashierTray[i];
+            if (item == null) continue;
+            counts[item] = counts.TryGetValue(item, out int c) ? c + 1 : 1;
+        }
+        return counts;
+    }
+
+    /// <summary>True when every remaining order line is already on the cashier tray.</summary>
+    bool TrayFulfillsOrder(CustomerOrder order)
+    {
+        if (order?.lines == null || order.GetTotalQuantity() <= 0) return false;
+        var trayCounts = BuildTrayCounts();
+        foreach (var line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            trayCounts.TryGetValue(line.item, out int held);
+            if (held < line.quantity) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Next remaining order item the cashier can fetch right now (ignores items already on the tray).</summary>
     ItemDefinition GetNextCashierFetch(CustomerOrder order)
     {
         if (order?.lines == null || manager == null) return null;
         var config = manager.orderConfig;
+        var trayCounts = BuildTrayCounts();
 
         // Prefer drinks first (quick)
         foreach (var line in order.lines)
         {
             if (line.item == null || line.quantity <= 0) continue;
-            if (config != null && config.IsDrink(line.item) && manager.HasDrinkInStock())
+            if (config == null || !config.IsDrink(line.item)) continue;
+            trayCounts.TryGetValue(line.item, out int held);
+            if (held >= line.quantity) continue;
+            if (manager.HasDrinkInStock())
                 return line.item;
         }
 
@@ -920,11 +953,45 @@ public class KitchenEmployee : MonoBehaviour
         {
             if (line.item == null || line.quantity <= 0) continue;
             if (config != null && config.IsDrink(line.item)) continue;
+            trayCounts.TryGetValue(line.item, out int held);
+            if (held >= line.quantity) continue;
             if (lamp != null && lamp.HasSingleItem(line.item))
                 return line.item;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// After picking something up: keep collecting until the tray matches the full order,
+    /// otherwise wait (do not serve a partial order).
+    /// </summary>
+    void ContinueCashierAfterPickup(Register reg)
+    {
+        cashierFetchItem = null;
+        stateTimer = 0f;
+        path.Clear();
+
+        var order = cashierCustomer != null ? cashierCustomer.GetOrder() : null;
+        if (TrayFulfillsOrder(order))
+        {
+            step = Step.CashierReturnServe;
+            return;
+        }
+
+        var next = GetNextCashierFetch(order);
+        if (next != null)
+        {
+            cashierFetchItem = next;
+            bool isDrink = manager != null && manager.orderConfig != null && manager.orderConfig.IsDrink(next);
+            step = isDrink ? Step.CashierGoDrink : Step.CashierGoFood;
+            return;
+        }
+
+        // Still missing kitchen items — wait at register without handing over a partial tray.
+        step = Step.None;
+        if (reg != null)
+            MoveToward(reg.GetInteractionPosition());
     }
 
     void RunCashierStep(Register reg)
@@ -965,11 +1032,7 @@ public class KitchenEmployee : MonoBehaviour
                     }
                     if (cashierFetchItem != null)
                         cashierTray.Add(cashierFetchItem);
-                    cashierFetchItem = null;
-                    // Deliver this item immediately
-                    step = Step.CashierReturnServe;
-                    stateTimer = 0f;
-                    path.Clear();
+                    ContinueCashierAfterPickup(reg);
                 }
                 break;
 
@@ -1007,11 +1070,7 @@ public class KitchenEmployee : MonoBehaviour
                 var taken = lamp.TryTakeSingleItem(cashierFetchItem);
                 if (taken != null)
                     cashierTray.Add(cashierFetchItem);
-                cashierFetchItem = null;
-                // Deliver this item immediately
-                step = Step.CashierReturnServe;
-                stateTimer = 0f;
-                path.Clear();
+                ContinueCashierAfterPickup(reg);
                 break;
             }
 
@@ -1027,17 +1086,27 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
 
-                // Hand over one item at a time
-                var item = cashierTray[0];
-                if (reg.TryDeliverItem(cashierCustomer, item))
+                var serveOrder = cashierCustomer.GetOrder();
+                if (!TrayFulfillsOrder(serveOrder))
                 {
-                    cashierTray.RemoveAt(0);
-                    // If more held (shouldn't usually), keep delivering; else fetch next
-                    if (cashierTray.Count > 0)
-                    {
-                        // stay in ReturnServe for next item
+                    // Order changed / incomplete — go collect the rest instead of partial serve.
+                    step = Step.None;
+                    break;
+                }
+
+                // Hand over the entire tray in one serve action.
+                while (cashierTray.Count > 0)
+                {
+                    var item = cashierTray[0];
+                    if (!reg.TryDeliverItem(cashierCustomer, item))
                         break;
-                    }
+                    cashierTray.RemoveAt(0);
+                }
+
+                if (cashierTray.Count == 0)
+                {
+                    cashierFetchItem = null;
+                    cashierCustomer = null;
                     step = Step.None;
                 }
                 // If deliver failed (not on duty yet), keep trying next frame

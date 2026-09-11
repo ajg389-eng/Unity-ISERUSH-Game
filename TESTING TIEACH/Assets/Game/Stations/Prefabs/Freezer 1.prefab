@@ -342,7 +342,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a313b6eaa79378a4aa91eba96903f413, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FreezerStation
-  interactionTimeSeconds: 3
+  interactionTimeSeconds: 1.5
   interactionOffset: {x: 1, y: 0, z: 0}
 --- !u!114 &5075803326445885385
 MonoBehaviour:

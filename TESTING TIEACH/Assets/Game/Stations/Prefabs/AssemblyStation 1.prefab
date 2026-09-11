@@ -342,7 +342,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c630fea0aceb6e14a88fc6d3f92609b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AssemblyStation
-  interactionTimeSeconds: 5
+  selectedProduct: {fileID: 0}
+  interactionTimeSeconds: 3
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!114 &7404325707326078716
 MonoBehaviour:

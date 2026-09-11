@@ -63,7 +63,7 @@ public class Register : MonoBehaviour
         if (queue.Contains(customer)) return true;
 
         customer.SetQueueJoinTime(Time.time);
-        customer.BeginQueueWait();
+        // Patience starts when the customer reaches their queue slot (see CustomerAI).
         queue.Add(customer);
         UpdateQueueTargets();
 
@@ -87,6 +87,9 @@ public class Register : MonoBehaviour
         queue.Remove(customer);
         UpdateQueueTargets();
     }
+
+    /// <summary>Re-assign stand positions for everyone currently in line.</summary>
+    public void RefreshQueueTargets() => UpdateQueueTargets();
 
     public bool HasPreparedOrder => preparedOrder != null && preparedOrder.lines != null && preparedOrder.lines.Count > 0;
 
@@ -173,6 +176,7 @@ public class Register : MonoBehaviour
     /// <summary>
     /// Cashier hands one item to the front customer. Removes it from their order label.
     /// When the order is empty, completes the sale and sends them out.
+    /// Cashiers collect the full order on their tray first, then call this for each item in one serve.
     /// </summary>
     public bool TryDeliverItem(CustomerAI customer, ItemDefinition item)
     {
@@ -260,7 +264,7 @@ public class Register : MonoBehaviour
 
     void Update()
     {
-        // Serving is cashier-driven via KitchenEmployee
+        // Serving is cashier-driven via KitchenEmployee.
     }
 
     void UpdateQueueTargets()
