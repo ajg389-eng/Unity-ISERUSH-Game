@@ -71,6 +71,8 @@ public class CustomerAI : MonoBehaviour
             orderLabel = GetComponent<CustomerOrderLabel>();
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        PartyCharacterAnimator.EnsureOn(gameObject);
+        PartyCharacterRandomizer.EnsureOn(gameObject);
     }
 
     public void BeginEntryRoute(IList<Vector3> worldPoints, GridManager gridOverride = null, CustomerPath exit = null)

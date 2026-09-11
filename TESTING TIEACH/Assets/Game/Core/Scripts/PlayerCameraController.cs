@@ -25,6 +25,7 @@ public class PlayerCameraController : MonoBehaviour
     void Start()
     {
         targetZoomY = transform.position.y;
+        CameraWallCutaway.EnsureExists();
     }
 
     void Update()

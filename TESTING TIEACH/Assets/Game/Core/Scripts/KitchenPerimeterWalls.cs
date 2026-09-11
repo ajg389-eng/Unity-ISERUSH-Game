@@ -3,14 +3,29 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Left wall on -X expand, stretched back wall, and a few see-through window
-/// openings (brick around real holes, glass visible from both sides).
+/// Wall layout:
+/// - Customer floor: static south + east walls (always from CustomerFloor bounds)
+/// - Work floor: north + west + south walls that refit on expand
+/// - Work floor east wall only on expand protrusions (keeps register counter open)
+/// Avoids a combined AABB so expand doesn't enclose empty grass courtyards.
 /// </summary>
 public class KitchenPerimeterWalls : MonoBehaviour
 {
     public GridManager grid;
+    [Tooltip("Dining / lobby floor. Auto-finds CustomerFloor if empty.")]
+    public Transform customerFloor;
     public float thickness = 1f;
     public float height = 5f;
+    [Tooltip("Pull walls inward onto the floor edge (closes the visible gap between tiles and bricks).")]
+    public float wallInset = 0.5f;
+
+    [Header("Runtime generation")]
+    [Tooltip("Build walls at runtime and resize work-floor walls when the floor expands.")]
+    public bool generateAtRuntime = true;
+
+    [Header("Look")]
+    [Tooltip("Brick material (e.g. BrickWall2). Auto-copied from scene Wall if empty.")]
+    public Material brickMaterial;
 
     [Header("Windows")]
     public float windowWidth = 1.7f;
@@ -19,16 +34,30 @@ public class KitchenPerimeterWalls : MonoBehaviour
     [Range(0.08f, 0.45f)]
     public float windowGlassAlpha = 0.22f;
 
+    [Header("Work floor (dynamic — follows expand)")]
+    public bool buildWorkNorth = true;
+    public bool buildWorkWest = true;
+    public bool buildWorkSouth = true;
+    [Tooltip("East wall only on work-floor segments that stick past the customer floor (not the register counter).")]
+    public bool buildWorkEastProtrusions = true;
+
+    [Header("Customer floor (static — from CustomerFloor bounds)")]
+    public bool buildCustomerEast = true;
+    public bool buildCustomerSouth = true;
+
     Transform root;
     Transform west;
     Transform south;
     Transform northCap;
     Transform eastCap;
     Transform windowRoot;
+    Transform currentWallGroup;
     readonly List<Transform> windowPool = new List<Transform>();
     readonly List<Transform> brickPool = new List<Transform>();
+    readonly List<Transform> wallGroupPool = new List<Transform>();
     int windowsUsed;
     int bricksUsed;
+    int wallGroupsUsed;
     Mesh sharedMesh;
     Material[] sharedMaterials;
     Material glassMaterial;
@@ -45,10 +74,18 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (grid == null)
             grid = GridManager.Instance;
         CacheLookFromExistingWalls();
+
+        if (!generateAtRuntime)
+            HideRuntimeGeneratedRoot();
     }
 
     public void FitToGrid()
     {
+        if (!generateAtRuntime)
+        {
+            HideRuntimeGeneratedRoot();
+            return;
+        }
         if (rebuilding) return;
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : GetComponent<GridManager>();
@@ -63,6 +100,8 @@ public class KitchenPerimeterWalls : MonoBehaviour
             RestoreOriginalWalls();
             EnsureGlassMaterial();
             EnsurePieces();
+            if (root != null)
+                root.gameObject.SetActive(true);
             Hide(eastCap);
             Hide(south);
             Hide(northCap);
@@ -73,63 +112,188 @@ public class KitchenPerimeterWalls : MonoBehaviour
             HideNamed("KitchenRoofTrim_W");
             HideNamed("KitchenRoofTrim_E");
 
-            float minX = grid.Origin.x;
-            float minZ = grid.Origin.z;
-            float oldMinX = grid.BaselineOrigin.x;
-            float t = Mathf.Max(0.2f, thickness);
-            float backZ = backWall != null ? backWall.position.z : minZ + grid.Height * grid.cellSize + t * 0.5f;
-
-            float addedWest = oldMinX - minX;
-            bool showWest = addedWest > 0.05f;
-            float outerX = minX - t;
-
-            if (showWest)
-                FitBackWall(outerX);
-            else
-                RestoreBackWallSize();
-
+            // Hide authored Wall / Wall (1) — replaced by brick pieces.
             SetOriginalBackSolidVisible(false);
             SetOriginalDiningSolidVisible(false);
 
+            HideNamed("KitchenWalls");
+            HideNamed("Wall_North");
+            HideNamed("Wall_South");
+            HideNamed("Wall_East");
+            HideNamed("Wall_West");
+
+            EnsureCustomerFloor();
+            float wMinX = 0f, wMaxX = 0f, wMinZ = 0f, wMaxZ = 0f;
+            if (!TryGetFloorBounds(grid.floor != null ? grid.floor : null, out wMinX, out wMaxX, out wMinZ, out wMaxZ)
+                && grid != null)
+            {
+                wMinX = grid.Origin.x;
+                wMinZ = grid.Origin.z;
+                wMaxX = wMinX + grid.Width * grid.cellSize;
+                wMaxZ = wMinZ + grid.Height * grid.cellSize;
+            }
+
+            float cMinX = 0f, cMaxX = 0f, cMinZ = 0f, cMaxZ = 0f;
+            bool hasCustomer = customerFloor != null
+                && TryGetFloorBounds(customerFloor, out cMinX, out cMaxX, out cMinZ, out cMaxZ);
+
+            float y = grid.Origin.y;
+            float t = Mathf.Max(0.2f, thickness);
+            // Slight overlap so corners don't leave gaps
+            float corner = t;
+            // Positive inset pulls wall centers onto the floor edge (was sitting fully outside).
+            float inset = Mathf.Clamp(wallInset, 0f, t);
+
             windowsUsed = 0;
             bricksUsed = 0;
+            wallGroupsUsed = 0;
+            currentWallGroup = null;
 
-            if (backWall != null)
+            // --- Work floor dynamic walls (follow expand) ---
+            if (buildWorkNorth)
             {
-                float length = Mathf.Abs(backWall.localScale.x);
+                float northZ = hasCustomer ? Mathf.Max(wMaxZ, cMaxZ) : wMaxZ;
+                float nMinX = hasCustomer ? Mathf.Min(wMinX, cMinX) : wMinX;
+                float nMaxX = hasCustomer ? Mathf.Max(wMaxX, cMaxX) : wMaxX;
                 BuildWallWithWindows(
-                    new Vector3(backWall.position.x, grid.Origin.y, backWall.position.z),
-                    0f, length, t, forceFlankingDoor: false);
+                    new Vector3((nMinX + nMaxX) * 0.5f, y, northZ + t * 0.5f - inset),
+                    0f, (nMaxX - nMinX) + corner, t, forceFlankingDoor: false, Vector3.forward);
             }
 
-            if (showWest)
+            if (buildWorkWest)
             {
-                float innerX = minX - 0.05f;
-                float westX = innerX - t * 0.5f;
-                float z0 = minZ;
-                float z1 = backZ + t * 0.5f;
                 BuildWallWithWindows(
-                    new Vector3(westX, grid.Origin.y, (z0 + z1) * 0.5f),
-                    90f, z1 - z0, t, forceFlankingDoor: false);
+                    new Vector3(wMinX - t * 0.5f + inset, y, (wMinZ + wMaxZ) * 0.5f),
+                    90f, (wMaxZ - wMinZ) + corner, t, forceFlankingDoor: false, Vector3.left);
             }
 
-            if (diningWall != null)
+            if (buildWorkSouth)
             {
-                float length = Mathf.Abs(diningWall.localScale.x);
                 BuildWallWithWindows(
-                    new Vector3(diningWall.position.x, grid.Origin.y, diningWall.position.z),
-                    diningWall.eulerAngles.y, length, t, forceFlankingDoor: true);
+                    new Vector3((wMinX + wMaxX) * 0.5f, y, wMinZ - t * 0.5f + inset),
+                    180f, (wMaxX - wMinX) + corner, t, forceFlankingDoor: false, Vector3.back);
+            }
+
+            // East wall only on work-floor protrusions past the customer floor (not at registers).
+            if (buildWorkEastProtrusions && hasCustomer)
+            {
+                // South of customer
+                if (wMinZ < cMinZ - 0.05f)
+                {
+                    float z0 = wMinZ;
+                    float z1 = Mathf.Min(wMaxZ, cMinZ);
+                    float len = z1 - z0;
+                    if (len > 0.35f)
+                    {
+                        BuildWallWithWindows(
+                            new Vector3(wMaxX + t * 0.5f - inset, y, (z0 + z1) * 0.5f),
+                            90f, len + corner * 0.5f, t, forceFlankingDoor: false, Vector3.right);
+                    }
+                }
+
+                // North of customer
+                if (wMaxZ > cMaxZ + 0.05f)
+                {
+                    float z0 = Mathf.Max(wMinZ, cMaxZ);
+                    float z1 = wMaxZ;
+                    float len = z1 - z0;
+                    if (len > 0.35f)
+                    {
+                        BuildWallWithWindows(
+                            new Vector3(wMaxX + t * 0.5f - inset, y, (z0 + z1) * 0.5f),
+                            90f, len + corner * 0.5f, t, forceFlankingDoor: false, Vector3.right);
+                    }
+                }
+            }
+            else if (buildWorkEastProtrusions && !hasCustomer)
+            {
+                // No dining floor — full work east wall
+                BuildWallWithWindows(
+                    new Vector3(wMaxX + t * 0.5f - inset, y, (wMinZ + wMaxZ) * 0.5f),
+                    90f, (wMaxZ - wMinZ) + corner, t, forceFlankingDoor: false, Vector3.right);
+            }
+
+            // --- Customer floor static walls (from CustomerFloor bounds only) ---
+            if (hasCustomer && buildCustomerEast)
+            {
+                BuildWallWithWindows(
+                    new Vector3(cMaxX + t * 0.5f - inset, y, (cMinZ + cMaxZ) * 0.5f),
+                    90f, (cMaxZ - cMinZ) + corner, t, forceFlankingDoor: false, Vector3.right);
+            }
+
+            if (hasCustomer && buildCustomerSouth)
+            {
+                BuildWallWithWindows(
+                    new Vector3((cMinX + cMaxX) * 0.5f, y, cMinZ - t * 0.5f + inset),
+                    180f, (cMaxX - cMinX) + corner, t, forceFlankingDoor: true, Vector3.back);
             }
 
             for (int i = windowsUsed; i < windowPool.Count; i++)
                 Hide(windowPool[i]);
             for (int i = bricksUsed; i < brickPool.Count; i++)
                 Hide(brickPool[i]);
+            for (int i = wallGroupsUsed; i < wallGroupPool.Count; i++)
+                Hide(wallGroupPool[i]);
+            currentWallGroup = null;
         }
         finally
         {
             rebuilding = false;
         }
+    }
+
+    void EnsureCustomerFloor()
+    {
+        if (customerFloor != null) return;
+        var go = GameObject.Find("CustomerFloor");
+        if (go != null) customerFloor = go.transform;
+    }
+
+    bool TryGetBuildingBounds(out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        // Kept for any external callers; prefer work/customer-specific bounds in FitToGrid.
+        minX = maxX = minZ = maxZ = 0f;
+        EnsureCustomerFloor();
+        bool any = TryGetFloorBounds(grid != null ? grid.floor : null, out minX, out maxX, out minZ, out maxZ);
+        if (customerFloor != null && TryGetFloorBounds(customerFloor, out float cMinX, out float cMaxX, out float cMinZ, out float cMaxZ))
+        {
+            if (!any)
+            {
+                minX = cMinX; maxX = cMaxX; minZ = cMinZ; maxZ = cMaxZ;
+                return true;
+            }
+            minX = Mathf.Min(minX, cMinX);
+            maxX = Mathf.Max(maxX, cMaxX);
+            minZ = Mathf.Min(minZ, cMinZ);
+            maxZ = Mathf.Max(maxZ, cMaxZ);
+            return true;
+        }
+        return any;
+    }
+
+    static bool TryGetFloorBounds(Transform floor, out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        minX = maxX = minZ = maxZ = 0f;
+        if (floor == null) return false;
+        var rend = floor.GetComponentInChildren<Renderer>();
+        if (rend != null)
+        {
+            Bounds b = rend.bounds;
+            minX = b.min.x;
+            maxX = b.max.x;
+            minZ = b.min.z;
+            maxZ = b.max.z;
+            return b.size.x > 0.01f && b.size.z > 0.01f;
+        }
+
+        // Unity Plane fallback (10x10 mesh)
+        float hx = Mathf.Abs(floor.lossyScale.x) * 5f;
+        float hz = Mathf.Abs(floor.lossyScale.z) * 5f;
+        minX = floor.position.x - hx;
+        maxX = floor.position.x + hx;
+        minZ = floor.position.z - hz;
+        maxZ = floor.position.z + hz;
+        return true;
     }
 
     static int WindowCountForLength(float length)
@@ -138,9 +302,11 @@ public class KitchenPerimeterWalls : MonoBehaviour
         return 2;
     }
 
-    void BuildWallWithWindows(Vector3 baseCenter, float yaw, float length, float thick, bool forceFlankingDoor)
+    void BuildWallWithWindows(Vector3 baseCenter, float yaw, float length, float thick, bool forceFlankingDoor, Vector3 outward)
     {
         if (length < 0.5f) return;
+
+        BeginWallGroup(outward, baseCenter);
 
         float floorY = baseCenter.y;
         Vector3 along = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
@@ -239,6 +405,35 @@ public class KitchenPerimeterWalls : MonoBehaviour
         }
     }
 
+    void BeginWallGroup(Vector3 outward, Vector3 worldAnchor)
+    {
+        Transform g = EnsureWallGroup(wallGroupsUsed);
+        wallGroupsUsed++;
+        g.gameObject.SetActive(true);
+        // Anchor at the wall center so cutaway side-tests use the real wall position.
+        g.position = new Vector3(worldAnchor.x, 0f, worldAnchor.z);
+        g.rotation = Quaternion.identity;
+        g.localScale = Vector3.one;
+
+        var occ = g.GetComponent<CameraOcclusionWall>();
+        if (occ != null)
+            occ.SnapUp();
+
+        currentWallGroup = g;
+        TagOcclusionWall(g, outward);
+    }
+
+    Transform EnsureWallGroup(int index)
+    {
+        while (wallGroupPool.Count <= index)
+        {
+            var go = new GameObject("KitchenWallGroup_" + wallGroupPool.Count);
+            go.transform.SetParent(root != null ? root : transform, false);
+            wallGroupPool.Add(go.transform);
+        }
+        return wallGroupPool[index];
+    }
+
     void TryAddWindowOpening(
         List<(float start, float end, bool door)> openings,
         float centerAlong, float length, bool hasDoor, float doorAlong, float doorHalf)
@@ -299,7 +494,10 @@ public class KitchenPerimeterWalls : MonoBehaviour
     {
         Transform win = EnsureWindow(windowsUsed);
         windowsUsed++;
+        StripPieceOcclusion(win);
         win.gameObject.SetActive(true);
+        if (currentWallGroup != null)
+            win.SetParent(currentWallGroup, true);
         win.position = pos;
         win.rotation = Quaternion.Euler(0f, yaw, 0f);
 
@@ -325,10 +523,34 @@ public class KitchenPerimeterWalls : MonoBehaviour
     {
         Transform b = EnsureBrick(bricksUsed);
         bricksUsed++;
+        StripPieceOcclusion(b);
         b.gameObject.SetActive(true);
+        if (currentWallGroup != null)
+            b.SetParent(currentWallGroup, true);
         b.position = pos;
         b.rotation = Quaternion.Euler(0f, yaw, 0f);
         b.localScale = new Vector3(Mathf.Max(0.08f, along), Mathf.Max(0.08f, up), thick);
+    }
+
+    static void StripPieceOcclusion(Transform piece)
+    {
+        if (piece == null) return;
+        var occ = piece.GetComponent<CameraOcclusionWall>();
+        if (occ != null)
+            Object.Destroy(occ);
+    }
+
+    void TagOcclusionWall(Transform wall, Vector3 outward)
+    {
+        if (wall == null) return;
+        var occ = wall.GetComponent<CameraOcclusionWall>();
+        if (occ == null)
+            occ = wall.gameObject.AddComponent<CameraOcclusionWall>();
+
+        occ.SetOutward(outward);
+        occ.lowerDistance = Mathf.Max(3.5f, height * 0.95f);
+        occ.SnapUp();
+        CameraWallCutaway.EnsureExists();
     }
 
     Transform EnsureWindow(int index)
@@ -381,10 +603,23 @@ public class KitchenPerimeterWalls : MonoBehaviour
             if (filter != null && sharedMesh != null)
                 filter.sharedMesh = sharedMesh;
             var rend = go.GetComponent<MeshRenderer>();
-            if (rend != null && sharedMaterials != null && sharedMaterials.Length > 0)
-                rend.sharedMaterials = sharedMaterials;
+            if (rend != null)
+            {
+                var brick = GetBrickMaterial();
+                if (brick != null)
+                    rend.sharedMaterial = brick;
+                else if (sharedMaterials != null && sharedMaterials.Length > 0)
+                    rend.sharedMaterials = sharedMaterials;
+            }
             brickPool.Add(go.transform);
         }
+
+        // Refresh material on pooled bricks (in case look was cached later).
+        var existing = brickPool[index];
+        var existingRend = existing != null ? existing.GetComponent<MeshRenderer>() : null;
+        var mat = GetBrickMaterial();
+        if (existingRend != null && mat != null)
+            existingRend.sharedMaterial = mat;
 
         return brickPool[index];
     }
@@ -436,16 +671,34 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (col != null) col.enabled = vis;
     }
 
+    void HideRuntimeGeneratedRoot()
+    {
+        var existing = GameObject.Find("KitchenExpandWalls");
+        if (existing != null)
+            existing.SetActive(false);
+        if (root != null)
+            root.gameObject.SetActive(false);
+    }
+
     void CacheLookFromExistingWalls()
     {
-        if (copyingLook) return;
+        // Keep re-trying until we have a brick material.
+        bool needMats = sharedMaterials == null || sharedMaterials.Length == 0;
+        if (copyingLook && !needMats && brickMaterial == null) return;
+
         var walls = FindObjectsByType<MeshRenderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < walls.Length; i++)
         {
-            var go = walls[i] != null ? walls[i].gameObject : null;
+            var r = walls[i];
+            var go = r != null ? r.gameObject : null;
             if (go == null) continue;
             if (go.name.StartsWith("KitchenWall") || go.name.StartsWith("KitchenWindow")) continue;
-            if (go.name != "Wall" && !go.name.StartsWith("Wall (")) continue;
+
+            bool isSceneWall = go.name == "Wall" || go.name.StartsWith("Wall (");
+            bool isBrickShader = r.sharedMaterial != null && r.sharedMaterial.shader != null
+                && r.sharedMaterial.shader.name.IndexOf("BrickWall", System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (!isSceneWall && !isBrickShader) continue;
 
             if (go.name == "Wall")
                 backWall = go.transform;
@@ -455,16 +708,33 @@ public class KitchenPerimeterWalls : MonoBehaviour
             var filter = go.GetComponent<MeshFilter>();
             if (filter != null && filter.sharedMesh != null)
                 sharedMesh = filter.sharedMesh;
-            if (walls[i].sharedMaterials != null && walls[i].sharedMaterials.Length > 0)
-                sharedMaterials = walls[i].sharedMaterials;
+
+            if (r.sharedMaterials != null && r.sharedMaterials.Length > 0)
+            {
+                sharedMaterials = r.sharedMaterials;
+                if (brickMaterial == null)
+                    brickMaterial = r.sharedMaterial;
+            }
 
             height = Mathf.Max(height, go.transform.localScale.y);
             float thick = Mathf.Min(go.transform.localScale.x, go.transform.localScale.z);
             if (thick > 0.15f && thick < 2.5f)
                 thickness = thick;
         }
-        copyingLook = backWall != null || diningWall != null;
+
+        if (brickMaterial != null)
+            sharedMaterials = new[] { brickMaterial };
+
+        copyingLook = backWall != null || diningWall != null || sharedMaterials != null;
         CacheEntranceDoor();
+    }
+
+    Material GetBrickMaterial()
+    {
+        if (brickMaterial != null) return brickMaterial;
+        if (sharedMaterials != null && sharedMaterials.Length > 0 && sharedMaterials[0] != null)
+            return sharedMaterials[0];
+        return null;
     }
 
     void CacheEntranceDoor()
@@ -612,8 +882,12 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     void HideNamed(string name)
     {
-        if (root == null) return;
-        Hide(root.Find(name));
+        if (root != null)
+            Hide(root.Find(name));
+
+        var go = GameObject.Find(name);
+        if (go != null)
+            go.SetActive(false);
     }
 
     static void Hide(Transform wall)

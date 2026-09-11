@@ -189,10 +189,19 @@ public class Register : MonoBehaviour
 
     public Vector3 GetInteractionPosition()
     {
+        // Prefer an explicit employee-side stand point so cashiers don't path into the customer queue.
+        if (workerStandPoint != null)
+            return workerStandPoint.position;
+
         var tiles = GetComponent<StationInteractionTiles>();
-        if (tiles != null) return tiles.GetFirstInteractionPosition();
-        if (workerStandPoint != null) return workerStandPoint.position;
-        return transform.position + transform.forward * -0.8f;
+        if (tiles != null)
+            return tiles.GetFirstInteractionPosition();
+
+        // Fallback: stand on the opposite side of the counter from the queue.
+        Vector3 awayFromQueue = -queueDirection.normalized;
+        if (awayFromQueue.sqrMagnitude < 0.01f)
+            awayFromQueue = -transform.forward;
+        return transform.position + awayFromQueue * 0.9f;
     }
 
     HeatLampStation GetHeatLamp()
@@ -218,6 +227,7 @@ public class Register : MonoBehaviour
     public bool TryDeliverItem(CustomerAI customer, ItemDefinition item)
     {
         if (!isEnabled || customer == null || item == null) return false;
+        if (!HasWorkerOnDuty()) return false;
         if (!pickup.Contains(customer) && !queue.Contains(customer))
             return false;
 

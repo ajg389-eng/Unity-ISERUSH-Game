@@ -579,6 +579,7 @@ public class KitchenEmployee : MonoBehaviour
             groundHeight = grid.Origin.y;
         if (GetComponent<EmployeeInventoryLabel>() == null)
             gameObject.AddComponent<EmployeeInventoryLabel>();
+        PartyCharacterAnimator.EnsureOn(gameObject);
     }
 
     void OnGridChanged()
@@ -1189,9 +1190,14 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
 
-                Vector3 servePos = cashierCustomer.transform.position;
-                if (!CloseEnough(servePos, 1.85f))
+                // Serve from the register (employee side) — never walk through the counter to the customer.
+                Vector3 servePos = reg.GetInteractionPosition();
+                if (!MoveToward(servePos))
+                    break;
+
+                if (!reg.HasWorkerOnDuty())
                 {
+                    // Arrived near register but not on the stand tile yet — keep approaching.
                     MoveTowardStraight(servePos);
                     break;
                 }

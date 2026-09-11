@@ -103,6 +103,19 @@ public class GridManager : MonoBehaviour
         var walls = GetComponent<KitchenPerimeterWalls>();
         if (walls == null)
             walls = gameObject.AddComponent<KitchenPerimeterWalls>();
+
+        walls.generateAtRuntime = true;
+        walls.buildWorkNorth = true;
+        walls.buildWorkWest = true;
+        walls.buildWorkSouth = true;
+        walls.buildWorkEastProtrusions = true;
+        walls.buildCustomerEast = true;
+        walls.buildCustomerSouth = true;
+        if (walls.customerFloor == null)
+        {
+            var cf = GameObject.Find("CustomerFloor");
+            if (cf != null) walls.customerFloor = cf.transform;
+        }
         walls.FitToGrid();
         ResyncOccupancyFromScene();
     }
