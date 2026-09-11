@@ -57,6 +57,30 @@ public class PurchaseUndoManager : MonoBehaviour
     public int Count => stack.Count;
     public bool CanUndo => stack.Count > 0;
 
+    public bool CanUndoFloor
+    {
+        get
+        {
+            for (int i = stack.Count - 1; i >= 0; i--)
+                if (stack[i].kind == Kind.Floor)
+                    return true;
+            return false;
+        }
+    }
+
+    public string PeekFloorLabel
+    {
+        get
+        {
+            for (int i = stack.Count - 1; i >= 0; i--)
+            {
+                if (stack[i].kind != Kind.Floor) continue;
+                return "Undo Floor $" + stack[i].floor.paid;
+            }
+            return "Undo Floor";
+        }
+    }
+
     public string PeekLabel
     {
         get
@@ -230,6 +254,26 @@ public class PurchaseUndoManager : MonoBehaviour
         Sfx.Play(SfxId.EarnMoney);
         RefreshRelatedUi();
         return true;
+    }
+
+    public bool TryUndoLastFloor()
+    {
+        for (int i = stack.Count - 1; i >= 0; i--)
+        {
+            if (stack[i].kind != Kind.Floor) continue;
+            if (!UndoFloor(stack[i].floor))
+            {
+                Sfx.Play(SfxId.UiError);
+                return false;
+            }
+
+            stack.RemoveAt(i);
+            Sfx.Play(SfxId.EarnMoney);
+            RefreshRelatedUi();
+            return true;
+        }
+
+        return false;
     }
 
     static void RefreshRelatedUi()

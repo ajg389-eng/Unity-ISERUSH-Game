@@ -28,12 +28,19 @@ public class GridManager : MonoBehaviour
     public Node[,] Nodes { get; private set; }
     public Vector3 Origin { get; private set; }
 
+    public bool HasBaseline { get; private set; }
+    public Vector3 BaselineOrigin { get; private set; }
+    public int BaselineWidth { get; private set; }
+    public int BaselineHeight { get; private set; }
+
     /// <summary>Fired after Width/Height/Origin/Nodes change (e.g. expand).</summary>
     public event System.Action GridChanged;
 
     void Awake()
     {
         Instance = this;
+        if (GetComponent<KitchenPerimeterWalls>() == null)
+            gameObject.AddComponent<KitchenPerimeterWalls>();
         RebuildFromFloor();
     }
 
@@ -78,6 +85,26 @@ public class GridManager : MonoBehaviour
 
         ResyncOccupancyFromScene();
         SyncFloorTextureTiling();
+        RememberBaseline();
+        RefreshExpandWalls();
+    }
+
+    void RememberBaseline()
+    {
+        if (HasBaseline || Width <= 0 || Height <= 0) return;
+        BaselineOrigin = Origin;
+        BaselineWidth = Width;
+        BaselineHeight = Height;
+        HasBaseline = true;
+    }
+
+    void RefreshExpandWalls()
+    {
+        var walls = GetComponent<KitchenPerimeterWalls>();
+        if (walls == null)
+            walls = gameObject.AddComponent<KitchenPerimeterWalls>();
+        walls.FitToGrid();
+        ResyncOccupancyFromScene();
     }
 
     /// <summary>
@@ -113,6 +140,7 @@ public class GridManager : MonoBehaviour
                 Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
 
         ResyncOccupancyFromScene();
+        RefreshExpandWalls();
         return true;
     }
 
@@ -149,10 +177,14 @@ public class GridManager : MonoBehaviour
                 Nodes[x, y] = new Node(x, y, CellToWorld(x, y));
 
         ResyncOccupancyFromScene();
+        RefreshExpandWalls();
         return true;
     }
 
-    /// <summary>True if the newest expansion strip is empty and shrinking would leave at least a 1x1 grid.</summary>
+    /// <summary>
+    /// True if the newest expansion strip has no stations and shrinking would not go
+    /// below the original kitchen. Perimeter expand-walls do not block undo.
+    /// </summary>
     public bool CanShrink(int removeWidth, int removeHeight)
     {
         removeWidth = Mathf.Max(0, removeWidth);
@@ -160,17 +192,72 @@ public class GridManager : MonoBehaviour
         if (removeWidth == 0 && removeHeight == 0) return false;
         if (Nodes == null || Width <= 0 || Height <= 0) return false;
         if (Width - removeWidth < 1 || Height - removeHeight < 1) return false;
+        if (HasBaseline && (Width - removeWidth < BaselineWidth || Height - removeHeight < BaselineHeight))
+            return false;
+        return !StripHasPlacedStation(removeWidth, removeHeight);
+    }
 
-        for (int x = 0; x < Width; x++)
+    bool StripHasPlacedStation(int removeWidth, int removeHeight)
+    {
+        var footprints = FindObjectsByType<BuildFootprint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (var fp in footprints)
         {
-            for (int y = 0; y < Height; y++)
-            {
-                if (x >= removeWidth && y >= removeHeight) continue;
-                if (Nodes[x, y] != null && Nodes[x, y].occupied)
-                    return false;
-            }
+            if (fp == null || ShouldIgnoreOccupancyObject(fp.gameObject)) continue;
+            if (fp.GetComponentInParent<KitchenPerimeterWalls>() != null) continue;
+            if (FootprintTouchesStrip(fp.gameObject, fp, removeWidth, removeHeight))
+                return true;
         }
-        return true;
+
+        var stations = FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (var station in stations)
+        {
+            if (station == null || ShouldIgnoreOccupancyObject(station.gameObject)) continue;
+            if (station.GetComponent<BuildFootprint>() != null) continue;
+            if (FootprintTouchesStrip(station.gameObject, null, removeWidth, removeHeight))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool FootprintTouchesStrip(GameObject go, BuildFootprint fp, int removeWidth, int removeHeight)
+    {
+        int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);
+        int sizeY = Mathf.Max(1, fp != null ? fp.sizeY : 1);
+        int yaw = Mathf.RoundToInt(go.transform.eulerAngles.y / 90f) & 3;
+        if (yaw == 1 || yaw == 3)
+        {
+            int t = sizeX;
+            sizeX = sizeY;
+            sizeY = t;
+        }
+
+        if (TryGetFootprintOriginFromCenter(go.transform.position, sizeX, sizeY, out int ox, out int oy))
+        {
+            for (int x = ox; x < ox + sizeX; x++)
+                for (int y = oy; y < oy + sizeY; y++)
+                    if (x < removeWidth || y < removeHeight)
+                        return true;
+            return false;
+        }
+
+        var cols = go.GetComponentsInChildren<Collider>();
+        if (cols == null || cols.Length == 0) return false;
+        foreach (var col in cols)
+        {
+            if (col == null || !col.enabled || col.isTrigger) continue;
+            WorldToCell(new Vector3(col.bounds.min.x + 0.01f, col.bounds.center.y, col.bounds.min.z + 0.01f), out int minX, out int minY);
+            WorldToCell(new Vector3(col.bounds.max.x - 0.01f, col.bounds.center.y, col.bounds.max.z - 0.01f), out int maxX, out int maxY);
+            minX = Mathf.Clamp(minX, 0, Width - 1);
+            maxX = Mathf.Clamp(maxX, 0, Width - 1);
+            minY = Mathf.Clamp(minY, 0, Height - 1);
+            maxY = Mathf.Clamp(maxY, 0, Height - 1);
+            for (int x = minX; x <= maxX; x++)
+                for (int y = minY; y <= maxY; y++)
+                    if (x < removeWidth || y < removeHeight)
+                        return true;
+        }
+        return false;
     }
 
     void ResizeFloorToCells(int cellsW, int cellsH, Vector3 origin)

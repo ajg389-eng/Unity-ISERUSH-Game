@@ -11,6 +11,8 @@ public class PurchaseUndoFooter : MonoBehaviour
 
     public Button button;
     public TextMeshProUGUI label;
+    [Tooltip("When true, only undoes kitchen floor expansions.")]
+    public bool floorOnly;
 
     public static PurchaseUndoFooter EnsureOnPanel(Transform panel)
     {
@@ -118,18 +120,28 @@ public class PurchaseUndoFooter : MonoBehaviour
     void Refresh()
     {
         var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
-        bool can = undo != null && undo.CanUndo;
+        bool can = undo != null && (floorOnly ? undo.CanUndoFloor : undo.CanUndo);
         if (button != null)
             button.interactable = can;
         if (label != null)
-            label.text = can ? undo.PeekLabel : "Undo";
+        {
+            if (!can)
+                label.text = floorOnly ? "Undo Floor" : "Undo";
+            else
+                label.text = floorOnly ? undo.PeekFloorLabel : undo.PeekLabel;
+        }
     }
 
     void OnClicked()
     {
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
-            undo.TryUndo();
+        {
+            if (floorOnly)
+                undo.TryUndoLastFloor();
+            else
+                undo.TryUndo();
+        }
         Refresh();
     }
 }

@@ -43,7 +43,9 @@ public class InventoryUI : MonoBehaviour
     public int expandHeight = 1;
 
     Button expandButton;
+    Button undoExpandButton;
     TextMeshProUGUI expandLabel;
+    TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
     bool expandUiBuilt;
     Transform floorContentParent;
@@ -688,10 +690,6 @@ public class InventoryUI : MonoBehaviour
             bg.color = new Color(0.12f, 0.14f, 0.18f, 0.95f);
             bg.raycastTarget = true;
 
-            var le = barGo.GetComponent<LayoutElement>();
-            le.minHeight = 120f;
-            le.preferredHeight = 120f;
-
             var layout = barGo.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(12, 12, 12, 12);
             layout.spacing = 8f;
@@ -700,6 +698,13 @@ public class InventoryUI : MonoBehaviour
             layout.childControlWidth = true;
             layout.childForceExpandHeight = false;
             layout.childForceExpandWidth = true;
+        }
+
+        var rowLe = barGo.GetComponent<LayoutElement>();
+        if (rowLe != null)
+        {
+            rowLe.minHeight = 168f;
+            rowLe.preferredHeight = 168f;
         }
 
         expandStatusText = barGo.transform.Find("Status")?.GetComponent<TextMeshProUGUI>();
@@ -745,6 +750,36 @@ public class InventoryUI : MonoBehaviour
 
         expandButton.onClick.RemoveListener(OnExpandClicked);
         expandButton.onClick.AddListener(OnExpandClicked);
+
+        undoExpandButton = barGo.transform.Find("UndoExpandButton")?.GetComponent<Button>();
+        if (undoExpandButton == null)
+        {
+            var undoGo = new GameObject("UndoExpandButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            undoGo.transform.SetParent(barGo.transform, false);
+            var undoImg = undoGo.GetComponent<Image>();
+            undoImg.color = new Color(0.28f, 0.32f, 0.42f, 1f);
+            undoExpandButton = undoGo.GetComponent<Button>();
+            var undoLe = undoGo.AddComponent<LayoutElement>();
+            undoLe.preferredHeight = 44f;
+
+            var undoLabelGo = new GameObject("Label", typeof(RectTransform));
+            undoLabelGo.transform.SetParent(undoGo.transform, false);
+            StretchFull((RectTransform)undoLabelGo.transform);
+            undoExpandLabel = undoLabelGo.AddComponent<TextMeshProUGUI>();
+            undoExpandLabel.fontSize = 16;
+            undoExpandLabel.alignment = TextAlignmentOptions.Center;
+            undoExpandLabel.color = Color.white;
+            if (TMP_Settings.defaultFontAsset != null)
+                undoExpandLabel.font = TMP_Settings.defaultFontAsset;
+        }
+        else
+        {
+            undoExpandLabel = undoExpandButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        }
+
+        undoExpandButton.onClick.RemoveListener(OnUndoFloorClicked);
+        undoExpandButton.onClick.AddListener(OnUndoFloorClicked);
+
         expandUiBuilt = true;
         RefreshExpandButton();
     }
@@ -761,10 +796,19 @@ public class InventoryUI : MonoBehaviour
         if (scroll != null)
         {
             PurchaseUndoFooter.EnsureMatching(scroll);
-            return;
+        }
+        else
+        {
+            PurchaseUndoFooter.EnsureOnPanel(panel.transform);
         }
 
-        PurchaseUndoFooter.EnsureOnPanel(panel.transform);
+        var floorPanel = contentBox != null ? contentBox.Find(FloorPanelName) : null;
+        if (floorPanel != null)
+        {
+            var leftover = floorPanel.Find(PurchaseUndoFooter.ObjectName);
+            if (leftover != null)
+                DestroyObject(leftover.gameObject);
+        }
     }
 
     void RefreshExpandButton()
@@ -794,6 +838,21 @@ public class InventoryUI : MonoBehaviour
 
         if (expandButton != null)
             expandButton.interactable = can;
+
+        var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
+        bool canUndoFloor = undo != null && undo.CanUndoFloor;
+        if (undoExpandLabel != null)
+            undoExpandLabel.text = canUndoFloor ? undo.PeekFloorLabel : "Undo Floor";
+        if (undoExpandButton != null)
+            undoExpandButton.interactable = canUndoFloor;
+    }
+
+    void OnUndoFloorClicked()
+    {
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null)
+            undo.TryUndoLastFloor();
+        RefreshExpandButton();
     }
 
     void OnExpandClicked()
