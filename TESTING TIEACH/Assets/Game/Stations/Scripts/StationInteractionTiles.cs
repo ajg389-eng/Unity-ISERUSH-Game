@@ -166,7 +166,7 @@ public class StationInteractionTiles : MonoBehaviour
         var centers = GetInteractionStandCenters();
         if (centers.Count > 0)
             return centers[0];
-        return FlattenToGround(transform.position);
+        return SnapToTileCenter(FlattenToGround(transform.position));
     }
 
     /// <summary>
@@ -180,7 +180,7 @@ public class StationInteractionTiles : MonoBehaviour
         if (fromModel != null && fromModel.Count > 0)
         {
             foreach (var p in fromModel)
-                list.Add(p);
+                AddUniqueTileCenter(list, p);
             return list;
         }
 
@@ -188,9 +188,33 @@ public class StationInteractionTiles : MonoBehaviour
         if (fromOffsets != null)
         {
             foreach (var p in fromOffsets)
-                list.Add(p);
+                AddUniqueTileCenter(list, p);
         }
         return list;
+    }
+
+    Vector3 SnapToTileCenter(Vector3 world)
+    {
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        if (grid == null) return world;
+
+        Vector3 centered = grid.GetCellCenter(world);
+        centered.y = grid.Origin.y;
+        return centered;
+    }
+
+    void AddUniqueTileCenter(List<Vector3> list, Vector3 world)
+    {
+        Vector3 centered = SnapToTileCenter(world);
+        for (int i = 0; i < list.Count; i++)
+        {
+            float dx = list[i].x - centered.x;
+            float dz = list[i].z - centered.z;
+            if (dx * dx + dz * dz < 0.001f)
+                return;
+        }
+        list.Add(centered);
     }
 
     float GetStandTolerance()

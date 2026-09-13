@@ -35,6 +35,9 @@ public class CustomerSpawner : MonoBehaviour
         return Mathf.Max(spawnInterval, 3.5f);
     }
 
+    /// <summary>Expected customer arrivals per real minute at the current spawn rate.</summary>
+    public float CustomersPerMinute => 60f / Mathf.Max(0.1f, EffectiveSpawnInterval());
+
     void Awake()
     {
         if (grid == null)
@@ -116,6 +119,9 @@ public class CustomerSpawner : MonoBehaviour
         // 1) Start entry walk  2) Join queue immediately so a lineup slot is reserved
         ai.BeginEntryRoute(entryPointsBuffer, grid, exitPath);
         ai.SetTargetRegister(r);
+
+        if (StoreStatisticsManager.Instance != null)
+            StoreStatisticsManager.Instance.RecordCustomerVisit();
 
         if (entryPointsBuffer.Count < 2)
         {

@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Draws world lines from each station to its assigned output while in Manage mode.
+/// Formerly drew Manage-mode lines from each station to its output.
+/// Disabled — flow visuals cover station order now. Output links still exist in data.
 /// </summary>
 public class StationOutputLinkVisuals : MonoBehaviour
 {
@@ -10,7 +11,7 @@ public class StationOutputLinkVisuals : MonoBehaviour
 
     public GameModeManager modeManager;
 
-    [Header("Line look")]
+    [Header("Line look (unused — visuals disabled)")]
     public Color lineColor = new Color(1f, 0.65f, 0.15f, 0.95f);
     public float lineWidth = 0.08f;
     [Tooltip("How high above the taller station the horizontal span runs")]
@@ -37,44 +38,24 @@ public class StationOutputLinkVisuals : MonoBehaviour
 
     void Update()
     {
-        bool show = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        if (show != visible)
+        // Output-link web removed — production flows already show station order.
+        if (visible)
         {
-            visible = show;
-            if (visible) Refresh();
-            else SetLinesEnabled(false);
-        }
-        else if (visible)
-        {
-            // Keep endpoints updated if stations move
-            RefreshPositionsOnly();
+            visible = false;
+            SetLinesEnabled(false);
         }
     }
 
     public static void NotifyLinksChanged()
     {
-        if (Instance != null && Instance.visible)
-            Instance.Refresh();
+        // No-op: station output lines are disabled in favor of flow visuals.
     }
 
     public void Refresh()
     {
         EnsureRoot();
         ClearLines();
-
-        if (modeManager == null || modeManager.CurrentMode != GameModeManager.Mode.Manage)
-        {
-            visible = false;
-            return;
-        }
-
-        visible = true;
-        var nodes = FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        foreach (var node in nodes)
-        {
-            if (node == null || node.outputTarget == null) continue;
-            CreateLink(node.gameObject, node.outputTarget);
-        }
+        visible = false;
     }
 
     void RefreshPositionsOnly()

@@ -139,6 +139,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
         string cashSign = cashChange > 0 ? "+" : "";
         string cashColor = cashChange >= 0 ? "#7DDB8A" : "#E07A7A";
+        string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste);
 
         summaryText.text =
             "<b>Sales & Cash</b>\n" +
@@ -151,7 +152,35 @@ public class EndOfDaySummaryUI : MonoBehaviour
             $"  Service efficiency <b>{efficiency:F0}%</b>\n\n" +
             "<b>Operations</b>\n" +
             $"  Avg wait time      <b>{avgWait:F1}s</b>\n" +
-            $"  Food wasted        <b>{waste}</b>";
+            $"  Food wasted        <b>{waste}</b>\n\n" +
+            "<b>ISE Diagnosis</b>\n" + diagnosis;
+    }
+
+    static string BuildOperationsDiagnosis(StoreStatisticsManager stats, int cashChange, float avgWait, int lost, int waste)
+    {
+        var notes = new System.Collections.Generic.List<string>();
+
+        if (lost > 0 || avgWait >= 35f)
+            notes.Add("<color=#F2C66D>Queue risk:</color> demand exceeded service capacity. Check the register and the slowest production step.");
+        else if (stats != null && stats.OrdersCompletedToday > 0)
+            notes.Add("<color=#7DDB8A>Flow:</color> customer waiting remained controlled during the shift.");
+
+        if (waste > 0)
+            notes.Add("<color=#F2C66D>Overproduction:</color> lower heat-lamp target stock or improve demand matching.");
+        if (cashChange < 0)
+            notes.Add("<color=#F2C66D>Economics:</color> spending exceeded revenue. Check whether added capacity produced enough throughput.");
+
+        var workflowNotes = WorkflowAnalysis.GetSystemDiagnostics();
+        for (int i = 0; i < workflowNotes.Count && i < 2; i++)
+            notes.Add("<color=#83D9ED>System:</color> " + workflowNotes[i]);
+
+        if (notes.Count == 0)
+            notes.Add("No major operational loss was detected. Increase demand or reduce resources to test the design's limit.");
+
+        var lines = new System.Text.StringBuilder();
+        for (int i = 0; i < notes.Count; i++)
+            lines.Append("  • ").Append(notes[i]).Append(i + 1 < notes.Count ? "\n" : "");
+        return lines.ToString();
     }
 
     void WireContinue()
@@ -217,7 +246,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(460f, 520f);
+        cardRt.sizeDelta = new Vector2(540f, 640f);
 
         var cardImg = card.AddComponent<Image>();
         cardImg.color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
@@ -244,7 +273,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         summaryText.richText = true;
         summaryText.textWrappingMode = TextWrappingModes.Normal;
         var summaryLe = summaryText.GetComponent<LayoutElement>();
-        summaryLe.minHeight = 320;
+        summaryLe.minHeight = 430;
         summaryLe.flexibleHeight = 1;
 
         continueButton = CreateButton(card.transform, "ContinueButton", "Continue to Next Day");

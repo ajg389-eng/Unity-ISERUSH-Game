@@ -16,8 +16,8 @@ public class KitchenPerimeterWalls : MonoBehaviour
     public Transform customerFloor;
     public float thickness = 1f;
     public float height = 5f;
-    [Tooltip("Pull walls inward onto the floor edge (closes the visible gap between tiles and bricks).")]
-    public float wallInset = 0.5f;
+    [Tooltip("Pull walls inward from the outside edge. Keep at 0 so the wall's inner face aligns with the playable grid boundary.")]
+    public float wallInset = 0f;
 
     [Header("Runtime generation")]
     [Tooltip("Build walls at runtime and resize work-floor walls when the floor expands.")]
@@ -141,7 +141,9 @@ public class KitchenPerimeterWalls : MonoBehaviour
             float t = Mathf.Max(0.2f, thickness);
             // Slight overlap so corners don't leave gaps
             float corner = t;
-            // Positive inset pulls wall centers onto the floor edge (was sitting fully outside).
+            // Add one full grid tile to every wall span, shared equally by both ends.
+            float tileLengthPadding = Mathf.Max(0f, grid.cellSize);
+            // Zero inset keeps the full wall outside the floor; positive values move it inward.
             float inset = Mathf.Clamp(wallInset, 0f, t);
 
             windowsUsed = 0;
@@ -157,21 +159,21 @@ public class KitchenPerimeterWalls : MonoBehaviour
                 float nMaxX = hasCustomer ? Mathf.Max(wMaxX, cMaxX) : wMaxX;
                 BuildWallWithWindows(
                     new Vector3((nMinX + nMaxX) * 0.5f, y, northZ + t * 0.5f - inset),
-                    0f, (nMaxX - nMinX) + corner, t, forceFlankingDoor: false, Vector3.forward);
+                    0f, (nMaxX - nMinX) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.forward);
             }
 
             if (buildWorkWest)
             {
                 BuildWallWithWindows(
                     new Vector3(wMinX - t * 0.5f + inset, y, (wMinZ + wMaxZ) * 0.5f),
-                    90f, (wMaxZ - wMinZ) + corner, t, forceFlankingDoor: false, Vector3.left);
+                    90f, (wMaxZ - wMinZ) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.left);
             }
 
             if (buildWorkSouth)
             {
                 BuildWallWithWindows(
                     new Vector3((wMinX + wMaxX) * 0.5f, y, wMinZ - t * 0.5f + inset),
-                    180f, (wMaxX - wMinX) + corner, t, forceFlankingDoor: false, Vector3.back);
+                    180f, (wMaxX - wMinX) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.back);
             }
 
             // East wall only on work-floor protrusions past the customer floor (not at registers).
@@ -187,7 +189,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
                     {
                         BuildWallWithWindows(
                             new Vector3(wMaxX + t * 0.5f - inset, y, (z0 + z1) * 0.5f),
-                            90f, len + corner * 0.5f, t, forceFlankingDoor: false, Vector3.right);
+                            90f, len, t, forceFlankingDoor: false, Vector3.right);
                     }
                 }
 
@@ -201,7 +203,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
                     {
                         BuildWallWithWindows(
                             new Vector3(wMaxX + t * 0.5f - inset, y, (z0 + z1) * 0.5f),
-                            90f, len + corner * 0.5f, t, forceFlankingDoor: false, Vector3.right);
+                            90f, len, t, forceFlankingDoor: false, Vector3.right);
                     }
                 }
             }
@@ -218,14 +220,14 @@ public class KitchenPerimeterWalls : MonoBehaviour
             {
                 BuildWallWithWindows(
                     new Vector3(cMaxX + t * 0.5f - inset, y, (cMinZ + cMaxZ) * 0.5f),
-                    90f, (cMaxZ - cMinZ) + corner, t, forceFlankingDoor: false, Vector3.right);
+                    90f, (cMaxZ - cMinZ) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.right);
             }
 
             if (hasCustomer && buildCustomerSouth)
             {
                 BuildWallWithWindows(
                     new Vector3((cMinX + cMaxX) * 0.5f, y, cMinZ - t * 0.5f + inset),
-                    180f, (cMaxX - cMinX) + corner, t, forceFlankingDoor: true, Vector3.back);
+                    180f, cMaxX - cMinX, t, forceFlankingDoor: true, Vector3.back);
             }
 
             for (int i = windowsUsed; i < windowPool.Count; i++)

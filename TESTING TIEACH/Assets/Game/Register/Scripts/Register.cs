@@ -191,7 +191,7 @@ public class Register : MonoBehaviour
     {
         // Prefer an explicit employee-side stand point so cashiers don't path into the customer queue.
         if (workerStandPoint != null)
-            return workerStandPoint.position;
+            return SnapWorkerPositionToTile(workerStandPoint.position);
 
         var tiles = GetComponent<StationInteractionTiles>();
         if (tiles != null)
@@ -201,7 +201,16 @@ public class Register : MonoBehaviour
         Vector3 awayFromQueue = -queueDirection.normalized;
         if (awayFromQueue.sqrMagnitude < 0.01f)
             awayFromQueue = -transform.forward;
-        return transform.position + awayFromQueue * 0.9f;
+        return SnapWorkerPositionToTile(transform.position + awayFromQueue * 0.9f);
+    }
+
+    static Vector3 SnapWorkerPositionToTile(Vector3 world)
+    {
+        GridManager grid = GridManager.Instance;
+        if (grid == null) return world;
+        Vector3 centered = grid.GetCellCenter(world);
+        centered.y = grid.Origin.y;
+        return centered;
     }
 
     HeatLampStation GetHeatLamp()

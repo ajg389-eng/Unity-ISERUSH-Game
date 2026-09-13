@@ -23,6 +23,8 @@ public class WorkerCardUI : MonoBehaviour
     public Toggle toggleAssembly;
 
     ProductionManager production;
+    Transform assignmentControls;
+    string assignmentSignature;
 
     void OnValidate()
     {
@@ -112,7 +114,10 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
-        SetDetailText(assignmentsText, employee.GetCompactRouteText());
+        string flowPrefix = !string.IsNullOrEmpty(employee.assignedFlowName)
+            ? "FLOW: " + employee.assignedFlowName + "\n"
+            : "";
+        SetDetailText(assignmentsText, flowPrefix + "Stations: " + employee.GetAssignedStationsSummary());
 
         string held = employee.GetHeldInventoryDisplay();
         bool carrying = !string.IsNullOrEmpty(held);
@@ -123,6 +128,8 @@ public class WorkerCardUI : MonoBehaviour
 
         if (stationsLabel != null)
             stationsLabel.gameObject.SetActive(false);
+
+        EnsureAssignmentControls();
     }
 
     static string FormatAssignments(string detailText)
@@ -227,6 +234,96 @@ public class WorkerCardUI : MonoBehaviour
             CompactSection(details.Find("StationsSection"), 32);
             CompactSection(details.Find("CarryingSection"), 28);
         }
+    }
+
+    void EnsureAssignmentControls()
+    {
+        var details = transform.Find("WorkerDetails");
+        if (details == null) return;
+
+        if (assignmentControls == null)
+        {
+            Transform oldPriorities = details.Find("PriorityControls");
+            if (oldPriorities != null) Destroy(oldPriorities.gameObject);
+            Transform oldAssignments = details.Find("AssignmentControls");
+            if (oldAssignments != null) Destroy(oldAssignments.gameObject);
+        }
+
+        string signature = employee == null ? "none" : employee.GetInstanceID().ToString();
+        if (employee != null && employee.operatedStations != null)
+            foreach (GameObject station in employee.operatedStations)
+                signature += ":" + (station != null ? station.GetInstanceID().ToString() : "null");
+        if (assignmentControls != null && assignmentSignature == signature) return;
+        assignmentSignature = signature;
+
+        if (assignmentControls != null)
+            Destroy(assignmentControls.gameObject);
+
+        var root = new GameObject("AssignmentControls", typeof(RectTransform));
+        root.transform.SetParent(details, false);
+        assignmentControls = root.transform;
+        var vertical = root.AddComponent<VerticalLayoutGroup>();
+        vertical.spacing = 3;
+        vertical.childControlWidth = true;
+        vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true;
+        vertical.childForceExpandHeight = false;
+        var rootLayout = root.AddComponent<LayoutElement>();
+        rootLayout.minHeight = 61f;
+        rootLayout.preferredHeight = rootLayout.minHeight;
+
+        Button inspect = CreateControlButton(assignmentControls, "Inspect / Assign on Grid", 28f);
+        inspect.onClick.AddListener(() =>
+        {
+            if (employee != null && ManagementModeController.Instance != null)
+                ManagementModeController.Instance.SelectWorker(employee);
+        });
+
+        Button assignFlow = CreateControlButton(assignmentControls, "Assign to Current Flow", 28f);
+        assignFlow.onClick.AddListener(() =>
+        {
+            if (employee == null) return;
+            ProductionManager manager = ProductionManager.Instance != null
+                ? ProductionManager.Instance
+                : FindObjectOfType<ProductionManager>();
+            if (manager == null) return;
+            manager.AddWorkerToSelectedFlow(employee);
+            WorkersUI workersUi = FindObjectOfType<WorkersUI>();
+            if (workersUi != null) workersUi.Refresh();
+        });
+
+    }
+
+    static Button CreateControlButton(Transform parent, string text, float height)
+    {
+        var go = new GameObject(text, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        go.GetComponent<Image>().color = new Color(0.25f, 0.32f, 0.42f, 0.98f);
+        var layout = go.AddComponent<LayoutElement>();
+        layout.minHeight = height;
+        layout.preferredHeight = height;
+        if (text.Length <= 2)
+        {
+            layout.minWidth = 28f;
+            layout.preferredWidth = 28f;
+        }
+        else
+            layout.flexibleWidth = 1f;
+
+        var textObject = new GameObject("Text", typeof(RectTransform));
+        textObject.transform.SetParent(go.transform, false);
+        var rect = (RectTransform)textObject.transform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        var tmp = textObject.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.fontSize = 11f;
+        tmp.color = Color.white;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.raycastTarget = false;
+        return go.GetComponent<Button>();
     }
 
     static void CompactSection(Transform section, float minHeight)

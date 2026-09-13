@@ -24,9 +24,13 @@ public class StoreStatisticsManager : MonoBehaviour
     int dayRevenue;
     int dayMealsWasted;
     int dayCustomersLost;
+    int dayCustomersVisited;
     float dayWaitSum;
     int dayMoneyStart;
     bool dayTrackingStarted;
+
+    /// <summary>Visits per in-game hour from day start → day end (e.g. 10 AM–10 PM).</summary>
+    int[] hourVisitBuckets = System.Array.Empty<int>();
 
     // Per-register: busy time (queue not empty) in the current window
     readonly Dictionary<Register, float> stationBusyTime = new Dictionary<Register, float>();
@@ -41,6 +45,7 @@ public class StoreStatisticsManager : MonoBehaviour
         }
         Instance = this;
         windowStartTime = Time.time;
+        EnsureHourBuckets();
     }
 
     void Start()
@@ -82,6 +87,16 @@ public class StoreStatisticsManager : MonoBehaviour
         dayCustomersLost++;
     }
 
+    /// <summary>Called when a customer successfully enters the store.</summary>
+    public void RecordCustomerVisit()
+    {
+        EnsureHourBuckets();
+        dayCustomersVisited++;
+        int idx = GetCurrentHourBucketIndex();
+        if (idx >= 0 && idx < hourVisitBuckets.Length)
+            hourVisitBuckets[idx]++;
+    }
+
     /// <summary>Reset day counters and snapshot starting cash for the new shift.</summary>
     public void BeginDay()
     {
@@ -89,9 +104,11 @@ public class StoreStatisticsManager : MonoBehaviour
         dayRevenue = 0;
         dayMealsWasted = 0;
         dayCustomersLost = 0;
+        dayCustomersVisited = 0;
         dayWaitSum = 0f;
         dayMoneyStart = GetCurrentMoney();
         dayTrackingStarted = true;
+        EnsureHourBuckets(forceReset: true);
     }
 
     public int MealsWasted => mealsWasted;
@@ -101,8 +118,79 @@ public class StoreStatisticsManager : MonoBehaviour
     public int RevenueToday => dayRevenue;
     public int MealsWastedToday => dayMealsWasted;
     public int CustomersLostToday => dayCustomersLost;
+    public int CustomersVisitedToday => dayCustomersVisited;
     public int MoneyAtDayStart => dayMoneyStart;
     public bool DayTrackingStarted => dayTrackingStarted;
+
+    public int ShiftStartHour
+    {
+        get
+        {
+            var tm = GameTimeManager.Instance;
+            return tm != null ? tm.dayStartHour : 10;
+        }
+    }
+
+    public int ShiftEndHour
+    {
+        get
+        {
+            var tm = GameTimeManager.Instance;
+            return tm != null ? tm.dayEndHour : 22;
+        }
+    }
+
+    /// <summary>Number of hour bars on the 10 AM–10 PM (or configured) visit graph.</summary>
+    public int ShiftHourCount => Mathf.Max(1, ShiftEndHour - ShiftStartHour);
+
+    /// <summary>Visits per hour from shift start → end (e.g. index 0 = 10–11 AM).</summary>
+    public int[] GetVisitTrendBuckets()
+    {
+        EnsureHourBuckets();
+        var copy = new int[hourVisitBuckets.Length];
+        System.Array.Copy(hourVisitBuckets, copy, hourVisitBuckets.Length);
+        return copy;
+    }
+
+    /// <summary>Short labels for each hour bar (10a, 11a, … 9p).</summary>
+    public string[] GetVisitHourLabels()
+    {
+        int n = ShiftHourCount;
+        int start = ShiftStartHour;
+        var labels = new string[n];
+        for (int i = 0; i < n; i++)
+            labels[i] = FormatHourLabel(start + i);
+        return labels;
+    }
+
+    public int GetCurrentHourBucketIndex()
+    {
+        EnsureHourBuckets();
+        var tm = GameTimeManager.Instance;
+        if (tm == null) return 0;
+        int hour = Mathf.FloorToInt(tm.CurrentMinutes / 60f);
+        int idx = hour - ShiftStartHour;
+        if (idx < 0) return 0;
+        if (idx >= hourVisitBuckets.Length) return hourVisitBuckets.Length - 1;
+        return idx;
+    }
+
+    void EnsureHourBuckets(bool forceReset = false)
+    {
+        int n = ShiftHourCount;
+        if (!forceReset && hourVisitBuckets != null && hourVisitBuckets.Length == n)
+            return;
+        hourVisitBuckets = new int[n];
+    }
+
+    static string FormatHourLabel(int hour24)
+    {
+        hour24 = ((hour24 % 24) + 24) % 24;
+        bool pm = hour24 >= 12;
+        int hour12 = hour24 % 12;
+        if (hour12 == 0) hour12 = 12;
+        return hour12 + (pm ? "p" : "a");
+    }
 
     public float AverageWaitTimeTodaySeconds =>
         dayOrdersCompleted > 0 ? dayWaitSum / dayOrdersCompleted : 0f;

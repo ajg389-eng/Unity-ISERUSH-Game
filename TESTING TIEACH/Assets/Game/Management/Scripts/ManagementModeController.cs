@@ -42,6 +42,17 @@ public class ManagementModeController : MonoBehaviour
     public Transform productListContainer;
     public TextMeshProUGUI inventoryInfoText;
 
+    [Header("Workflow decision support")]
+    public GameObject workflowDecisionHud;
+    public TextMeshProUGUI workflowDecisionText;
+
+    [Header("Flow capture")]
+    public GameObject flowCaptureHud;
+    public TextMeshProUGUI flowCaptureTitle;
+    public TextMeshProUGUI flowCapturePath;
+    public Button flowCaptureFinishButton;
+    public Button flowCaptureCancelButton;
+
     /// <summary>True when using a designer-placed popup (inspector or scene). Keeps your RectTransform.</summary>
     bool usingScenePopup;
 
@@ -59,6 +70,16 @@ public class ManagementModeController : MonoBehaviour
     bool outputDragMoved;
     LineRenderer outputDragPreview;
     const float OutputDragThresholdPixels = 14f;
+    float nextWorkflowHudRefresh;
+    ProductionFlowPlan capturedFlow;
+    readonly Dictionary<GameObject, GameObject> capturedOriginalOutputs = new Dictionary<GameObject, GameObject>();
+    bool capturingNewFlow;
+    readonly List<GameObject> editBackupStations = new List<GameObject>();
+    readonly List<string> editBackupStepIds = new List<string>();
+    readonly Dictionary<GameObject, GameObject> editBackupOutputs = new Dictionary<GameObject, GameObject>();
+
+    public bool IsCapturingFlow => capturedFlow != null;
+    public ProductionFlowPlan CapturedFlow => capturedFlow;
 
     void Awake()
     {
@@ -78,6 +99,7 @@ public class ManagementModeController : MonoBehaviour
         EnsurePopup();
         HidePopup();
         EnsureLinkVisuals();
+        EnsureWorkflowDecisionHud();
     }
 
     void EnsureLinkVisuals()
@@ -100,19 +122,37 @@ public class ManagementModeController : MonoBehaviour
     public bool IsManageMode =>
         modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
 
+    /// <summary>Select a worker from the Management UI and show their grid workflow.</summary>
+    public void SelectWorker(KitchenEmployee employee)
+    {
+        if (!IsManageMode || employee == null) return;
+        SelectEmployeeForAssignment(employee);
+    }
+
     void Update()
     {
         if (!IsManageMode)
         {
+            if (IsCapturingFlow)
+                CancelFlowCapture();
             if (selectedStation != null || pending != PendingAction.None || selectedEmployee != null)
                 CancelAndHide();
             ClearWorkerHover();
             CancelOutputDrag();
+            SetWorkflowDecisionHudVisible(false);
             return;
         }
 
         UpdateWorkerHover();
         UpdateOutputDragPreview();
+        RefreshWorkflowDecisionHud();
+
+        if (Input.GetKeyDown(KeyCode.Escape) && IsCapturingFlow)
+        {
+            CancelFlowCapture();
+            PauseMenuUI.MarkEscapeHandled();
+            return;
+        }
 
         // Keep heat lamp inventory readout live while selected
         if (selectedStation != null
@@ -174,6 +214,12 @@ public class ManagementModeController : MonoBehaviour
                 ClearSelection();
             }
             CancelOutputDrag();
+            return;
+        }
+
+        if (IsCapturingFlow)
+        {
+            AddCapturedFlowStation(node);
             return;
         }
 
@@ -392,6 +438,7 @@ public class ManagementModeController : MonoBehaviour
         }
 
         WorkerAssignmentLinkVisuals.SetFocusedWorker(selectedEmployee);
+        RefreshWorkflowDecisionHud();
     }
 
     void ClearEmployeeSelection()
@@ -405,6 +452,7 @@ public class ManagementModeController : MonoBehaviour
             selectedWorkerHighlight = null;
         }
         selectedEmployee = null;
+        SetWorkflowDecisionHudVisible(false);
         // If a station is still selected, show its worker link instead of clearing.
         if (selectedStation != null)
             WorkerAssignmentLinkVisuals.SetFocusedStation(selectedStation);
@@ -945,6 +993,550 @@ public class ManagementModeController : MonoBehaviour
     void HidePopup()
     {
         if (stationPopup != null) stationPopup.SetActive(false);
+    }
+
+    void EnsureWorkflowDecisionHud()
+    {
+        if (workflowDecisionHud != null && workflowDecisionText != null) return;
+        if (playerUICanvas == null)
+        {
+            var named = GameObject.Find("PlayerUI");
+            if (named != null) playerUICanvas = named.GetComponent<Canvas>();
+            if (playerUICanvas == null) playerUICanvas = FindObjectOfType<Canvas>();
+        }
+        if (playerUICanvas == null) return;
+
+        Transform existing = playerUICanvas.transform.Find("WorkflowDecisionHUD");
+        if (existing != null)
+        {
+            workflowDecisionHud = existing.gameObject;
+            workflowDecisionText = existing.Find("Text")?.GetComponent<TextMeshProUGUI>();
+            return;
+        }
+
+        workflowDecisionHud = new GameObject("WorkflowDecisionHUD", typeof(RectTransform), typeof(Image));
+        workflowDecisionHud.transform.SetParent(playerUICanvas.transform, false);
+        var rect = (RectTransform)workflowDecisionHud.transform;
+        rect.anchorMin = new Vector2(1f, 0f);
+        rect.anchorMax = new Vector2(1f, 0f);
+        rect.pivot = new Vector2(1f, 0f);
+        rect.anchoredPosition = new Vector2(-24f, 24f);
+        rect.sizeDelta = new Vector2(380f, 154f);
+        var image = workflowDecisionHud.GetComponent<Image>();
+        image.color = new Color(0.08f, 0.1f, 0.14f, 0.88f);
+        image.raycastTarget = false;
+
+        var titleObject = new GameObject("Title", typeof(RectTransform));
+        titleObject.transform.SetParent(workflowDecisionHud.transform, false);
+        var titleRect = (RectTransform)titleObject.transform;
+        titleRect.anchorMin = new Vector2(0f, 1f);
+        titleRect.anchorMax = new Vector2(1f, 1f);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.anchoredPosition = new Vector2(0f, -8f);
+        titleRect.sizeDelta = new Vector2(-24f, 32f);
+        var title = titleObject.AddComponent<TextMeshProUGUI>();
+        title.text = "Workflow";
+        title.fontSize = 18f;
+        title.fontStyle = FontStyles.Bold;
+        title.color = Color.white;
+        title.alignment = TextAlignmentOptions.MidlineLeft;
+        title.raycastTarget = false;
+
+        var headerObject = new GameObject("AnalysisHeader", typeof(RectTransform), typeof(Image));
+        headerObject.transform.SetParent(workflowDecisionHud.transform, false);
+        var headerRect = (RectTransform)headerObject.transform;
+        headerRect.anchorMin = new Vector2(0f, 1f);
+        headerRect.anchorMax = new Vector2(1f, 1f);
+        headerRect.pivot = new Vector2(0.5f, 1f);
+        headerRect.anchoredPosition = new Vector2(0f, -42f);
+        headerRect.sizeDelta = new Vector2(-24f, 30f);
+        var headerImage = headerObject.GetComponent<Image>();
+        headerImage.color = new Color(0.28f, 0.36f, 0.48f, 1f);
+        headerImage.raycastTarget = false;
+
+        var labelObject = new GameObject("Label", typeof(RectTransform));
+        labelObject.transform.SetParent(headerObject.transform, false);
+        var labelRect = (RectTransform)labelObject.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(8f, 2f);
+        labelRect.offsetMax = new Vector2(-8f, -2f);
+        var label = labelObject.AddComponent<TextMeshProUGUI>();
+        label.text = "Assignment Analysis";
+        label.fontSize = 14f;
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+
+        var textObject = new GameObject("Text", typeof(RectTransform));
+        textObject.transform.SetParent(workflowDecisionHud.transform, false);
+        var textRect = (RectTransform)textObject.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(12f, 10f);
+        textRect.offsetMax = new Vector2(-12f, -78f);
+        workflowDecisionText = textObject.AddComponent<TextMeshProUGUI>();
+        workflowDecisionText.fontSize = 14f;
+        workflowDecisionText.color = new Color(0.78f, 0.82f, 0.88f, 1f);
+        workflowDecisionText.alignment = TextAlignmentOptions.TopLeft;
+        workflowDecisionText.textWrappingMode = TextWrappingModes.Normal;
+        workflowDecisionText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) workflowDecisionText.font = TMP_Settings.defaultFontAsset;
+        workflowDecisionHud.transform.SetAsLastSibling();
+        workflowDecisionHud.SetActive(false);
+    }
+
+    public void BeginFlowCapture(ProductionFlowPlan flow, bool isNew = true)
+    {
+        if (flow == null) return;
+        if (modeManager != null)
+            modeManager.SetMode(GameModeManager.Mode.Manage);
+
+        CancelOutputDrag();
+        ClearEmployeeSelection();
+        ClearSelection();
+        HidePopup();
+
+        capturingNewFlow = isNew;
+        capturedFlow = flow;
+        capturedFlow.kind = KitchenFlowKind.Custom;
+        capturedOriginalOutputs.Clear();
+        editBackupStations.Clear();
+        editBackupStepIds.Clear();
+        editBackupOutputs.Clear();
+
+        if (isNew)
+        {
+            capturedFlow.stepIds.Clear();
+            capturedFlow.stations.Clear();
+        }
+        else
+        {
+            // Rebuild GameObject route from saved steps if stations were lost (null refs, etc.).
+            WorkerFlowAssigner.SynchronizeFlowRoute(capturedFlow);
+
+            // Snapshot so Esc can restore the previous route.
+            if (capturedFlow.stations != null)
+            {
+                foreach (GameObject station in capturedFlow.stations)
+                {
+                    if (station == null) continue;
+                    editBackupStations.Add(station);
+                    StationNode node = StationNode.EnsureOn(station);
+                    if (node != null)
+                    {
+                        editBackupOutputs[station] = node.outputTarget;
+                        capturedOriginalOutputs[station] = node.outputTarget;
+                    }
+                }
+            }
+            if (capturedFlow.stepIds != null)
+                editBackupStepIds.AddRange(capturedFlow.stepIds);
+
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(capturedFlow);
+        }
+
+        var screen = FindObjectOfType<ManagementScreenController>();
+        if (screen != null)
+            screen.SuspendForWorldCapture();
+
+        EnsureFlowCaptureHud();
+        SetFlowCaptureHudVisible(true);
+        RefreshFlowCaptureHud();
+        if (isNew)
+        {
+            SetStatus("Click stations in order for " + capturedFlow.flowName + ". Esc cancels.");
+        }
+        else if (capturedFlow.stations.Count == 0)
+        {
+            SetStatus("Editing " + capturedFlow.flowName + ": no saved stations — click the route from the start.");
+        }
+        else
+        {
+            SetStatus("Editing " + capturedFlow.flowName + ": click to extend, click a station on the path to trim, Esc restores.");
+        }
+    }
+
+    public void BeginFlowEdit(ProductionFlowPlan flow)
+    {
+        BeginFlowCapture(flow, isNew: false);
+    }
+
+    public bool FinishFlowCapture()
+    {
+        if (capturedFlow == null) return false;
+        ProductionFlowPlan finished = capturedFlow;
+        if (finished.stations.Count == 0)
+        {
+            SetStatus("A flow needs at least one station.");
+            RefreshFlowCaptureHud();
+            return false;
+        }
+        string routeProblem = WorkerFlowAssigner.ValidateStepOrder(finished.stepIds);
+        if (!string.IsNullOrEmpty(routeProblem))
+        {
+            SetStatus(routeProblem);
+            RefreshFlowCaptureHud();
+            return false;
+        }
+
+        capturedFlow = null;
+        capturingNewFlow = false;
+        capturedOriginalOutputs.Clear();
+        editBackupStations.Clear();
+        editBackupStepIds.Clear();
+        editBackupOutputs.Clear();
+        SetFlowCaptureHudVisible(false);
+
+        WorkerFlowAssigner.SynchronizeFlowRoute(finished);
+
+        ProductionManager production = ProductionManager.Instance;
+        if (production != null)
+        {
+            production.SyncLegacyFlowSelection();
+            production.lastFlowBalance = finished.workers.Count > 0
+                ? WorkerFlowAssigner.ApplyBalancedTeam(finished)
+                : new TeamBalanceResult { message = "Flow ready — assign workers from the list." };
+        }
+        SetStatus("Saved: " + WorkerFlowAssigner.FormatFlow(finished));
+        WorkerAssignmentLinkVisuals.SetFocusedFlow(finished);
+
+        var screen = FindObjectOfType<ManagementScreenController>();
+        if (screen != null)
+            screen.ResumeAfterWorldCapture();
+        RefreshWorkersUi();
+        return true;
+    }
+
+    public void CancelFlowCapture()
+    {
+        if (capturedFlow == null) return;
+        ProductionFlowPlan cancelled = capturedFlow;
+        bool wasNew = capturingNewFlow;
+        capturedFlow = null;
+        capturingNewFlow = false;
+
+        foreach (var original in capturedOriginalOutputs)
+        {
+            StationNode node = StationNode.EnsureOn(original.Key);
+            if (node != null) node.SetOutput(original.Value);
+        }
+        capturedOriginalOutputs.Clear();
+
+        ProductionManager production = ProductionManager.Instance;
+        if (wasNew)
+        {
+            if (production != null)
+                production.RemoveProductionFlow(cancelled);
+            SetStatus("Flow creation cancelled.");
+        }
+        else
+        {
+            cancelled.stations = new List<GameObject>(editBackupStations);
+            cancelled.stepIds = new List<string>(editBackupStepIds);
+            foreach (var pair in editBackupOutputs)
+            {
+                StationNode node = StationNode.EnsureOn(pair.Key);
+                if (node != null) node.SetOutput(pair.Value);
+            }
+            if (production != null && cancelled.workers.Count > 0)
+                production.lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(cancelled);
+            SetStatus("Flow edit cancelled — previous route restored.");
+        }
+
+        editBackupStations.Clear();
+        editBackupStepIds.Clear();
+        editBackupOutputs.Clear();
+        SetFlowCaptureHudVisible(false);
+
+        var screen = FindObjectOfType<ManagementScreenController>();
+        if (screen != null && modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage)
+            screen.ResumeAfterWorldCapture();
+        RefreshWorkersUi();
+    }
+
+    void AddCapturedFlowStation(StationNode node)
+    {
+        if (capturedFlow == null || node == null) return;
+        string stationId = WorkerFlowAssigner.GetStationId(node.gameObject);
+        if (string.IsNullOrEmpty(stationId))
+        {
+            SetStatus("That object cannot be used in a production flow.");
+            return;
+        }
+        ProductionManager production = ProductionManager.Instance;
+        if (production != null && production.IsStationOnOtherFlow(node.gameObject, capturedFlow))
+        {
+            SetStatus(node.DisplayName + " already belongs to another flow.");
+            return;
+        }
+        if (node.assignedWorker != null && !capturedFlow.workers.Contains(node.assignedWorker))
+        {
+            SetStatus(node.DisplayName + " is assigned to " + node.assignedWorker.employeeName + ". Remove that worker first.");
+            return;
+        }
+        if (capturedFlow.stations.Contains(node.gameObject))
+        {
+            int index = capturedFlow.stations.IndexOf(node.gameObject);
+            if (index < 0) return;
+
+            // Already on the path: trim after this station. Clicking the current end undoes it.
+            int removeDownTo = index == capturedFlow.stations.Count - 1 ? index : index + 1;
+            while (capturedFlow.stations.Count > removeDownTo)
+            {
+                GameObject removed = capturedFlow.stations[capturedFlow.stations.Count - 1];
+                capturedFlow.stations.RemoveAt(capturedFlow.stations.Count - 1);
+                if (capturedFlow.stepIds.Count > 0)
+                    capturedFlow.stepIds.RemoveAt(capturedFlow.stepIds.Count - 1);
+
+                if (capturedOriginalOutputs.TryGetValue(removed, out GameObject removedOriginal))
+                {
+                    StationNode.EnsureOn(removed).SetOutput(removedOriginal);
+                    capturedOriginalOutputs.Remove(removed);
+                }
+                else
+                    StationNode.EnsureOn(removed).ClearOutput();
+            }
+
+            if (capturedFlow.stations.Count > 0)
+            {
+                GameObject newLast = capturedFlow.stations[capturedFlow.stations.Count - 1];
+                if (capturedOriginalOutputs.TryGetValue(newLast, out GameObject originalOutput))
+                    StationNode.EnsureOn(newLast).SetOutput(originalOutput);
+                else
+                    StationNode.EnsureOn(newLast).ClearOutput();
+            }
+
+            WorkerFlowAssigner.RebuildStepIdsFromStations(capturedFlow);
+            StationOutputLinkVisuals.NotifyLinksChanged();
+            SetStatus(capturedFlow.stations.Count == 0
+                ? "Path cleared. Click the first station."
+                : "Path now ends at " + StationNode.EnsureOn(capturedFlow.stations[capturedFlow.stations.Count - 1]).DisplayName + ".");
+            RefreshFlowCaptureHud();
+            RefreshWorkersUi();
+            return;
+        }
+        if (capturedFlow.stations.Count >= WorkerFlowAssigner.MaxSteps)
+        {
+            SetStatus("This flow has reached the " + WorkerFlowAssigner.MaxSteps + " station limit.");
+            return;
+        }
+
+        if (capturedFlow.stations.Count > 0)
+        {
+            GameObject previous = capturedFlow.stations[capturedFlow.stations.Count - 1];
+            StationNode previousNode = StationNode.EnsureOn(previous);
+            if (!capturedOriginalOutputs.ContainsKey(previous))
+                capturedOriginalOutputs.Add(previous, previousNode.outputTarget);
+            previousNode.SetOutput(node.gameObject);
+        }
+        capturedFlow.stations.Add(node.gameObject);
+        capturedFlow.stepIds.Add(stationId);
+        WorkerFlowAssigner.RebuildStepIdsFromStations(capturedFlow);
+        StationOutputLinkVisuals.NotifyLinksChanged();
+        SetStatus("Added " + node.DisplayName + ". Keep clicking, then Finish.");
+        RefreshFlowCaptureHud();
+        RefreshWorkersUi();
+    }
+
+    static void RefreshWorkersUi()
+    {
+        WorkersUI workersUi = FindObjectOfType<WorkersUI>();
+        if (workersUi != null) workersUi.RefreshFlowOnly();
+    }
+
+    void EnsureFlowCaptureHud()
+    {
+        if (flowCaptureHud != null && flowCapturePath != null && flowCaptureFinishButton != null) return;
+        if (playerUICanvas == null)
+        {
+            var playerUi = GameObject.Find("PlayerUI");
+            if (playerUi != null) playerUICanvas = playerUi.GetComponent<Canvas>();
+            if (playerUICanvas == null) playerUICanvas = FindObjectOfType<Canvas>();
+        }
+        if (playerUICanvas == null) return;
+
+        Transform existing = playerUICanvas.transform.Find("FlowCaptureHUD");
+        if (existing != null)
+        {
+            flowCaptureHud = existing.gameObject;
+            flowCaptureTitle = existing.Find("Title")?.GetComponent<TextMeshProUGUI>();
+            flowCapturePath = existing.Find("Path")?.GetComponent<TextMeshProUGUI>();
+            flowCaptureFinishButton = existing.Find("Buttons/Finish")?.GetComponent<Button>();
+            flowCaptureCancelButton = existing.Find("Buttons/Cancel")?.GetComponent<Button>();
+            WireFlowCaptureButtons();
+            return;
+        }
+
+        flowCaptureHud = new GameObject("FlowCaptureHUD", typeof(RectTransform), typeof(Image));
+        flowCaptureHud.transform.SetParent(playerUICanvas.transform, false);
+        var rect = (RectTransform)flowCaptureHud.transform;
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -18f);
+        rect.sizeDelta = new Vector2(520f, 110f);
+        var bg = flowCaptureHud.GetComponent<Image>();
+        bg.color = new Color(0.1f, 0.12f, 0.18f, 0.94f);
+
+        var vlg = flowCaptureHud.AddComponent<VerticalLayoutGroup>();
+        vlg.padding = new RectOffset(14, 14, 10, 10);
+        vlg.spacing = 6;
+        vlg.childAlignment = TextAnchor.UpperCenter;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+
+        flowCaptureTitle = MakeCaptureLabel(flowCaptureHud.transform, "Title", "Create Flow — click stations in order", 15f, FontStyles.Bold);
+        flowCapturePath = MakeCaptureLabel(flowCaptureHud.transform, "Path", "No stations yet", 13f, FontStyles.Normal);
+
+        var buttons = new GameObject("Buttons", typeof(RectTransform));
+        buttons.transform.SetParent(flowCaptureHud.transform, false);
+        var hlg = buttons.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing = 10;
+        hlg.childAlignment = TextAnchor.MiddleCenter;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = true;
+        var buttonsLe = buttons.AddComponent<LayoutElement>();
+        buttonsLe.minHeight = 32f;
+        buttonsLe.preferredHeight = 32f;
+
+        flowCaptureFinishButton = MakeCaptureButton(buttons.transform, "Finish", new Color(0.28f, 0.5f, 0.34f, 1f));
+        flowCaptureCancelButton = MakeCaptureButton(buttons.transform, "Cancel", new Color(0.45f, 0.28f, 0.28f, 1f));
+        WireFlowCaptureButtons();
+        flowCaptureHud.transform.SetAsLastSibling();
+        flowCaptureHud.SetActive(false);
+    }
+
+    void WireFlowCaptureButtons()
+    {
+        if (flowCaptureFinishButton != null)
+        {
+            flowCaptureFinishButton.onClick.RemoveAllListeners();
+            flowCaptureFinishButton.onClick.AddListener(() => FinishFlowCapture());
+        }
+        if (flowCaptureCancelButton != null)
+        {
+            flowCaptureCancelButton.onClick.RemoveAllListeners();
+            flowCaptureCancelButton.onClick.AddListener(CancelFlowCapture);
+        }
+    }
+
+    static TextMeshProUGUI MakeCaptureLabel(Transform parent, string name, string text, float size, FontStyles style)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        tmp.text = text;
+        tmp.fontSize = size;
+        tmp.fontStyle = style;
+        tmp.color = Color.white;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.raycastTarget = false;
+        var le = go.AddComponent<LayoutElement>();
+        le.minHeight = size + 6f;
+        le.preferredHeight = size + 6f;
+        return tmp;
+    }
+
+    static Button MakeCaptureButton(Transform parent, string label, Color color)
+    {
+        var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        go.GetComponent<Image>().color = color;
+        var le = go.AddComponent<LayoutElement>();
+        le.minWidth = 110f;
+        le.preferredWidth = 110f;
+        le.minHeight = 30f;
+
+        var textGo = new GameObject("Text", typeof(RectTransform));
+        textGo.transform.SetParent(go.transform, false);
+        var rt = textGo.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        var tmp = textGo.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        tmp.text = label;
+        tmp.fontSize = 14f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.raycastTarget = false;
+        return go.GetComponent<Button>();
+    }
+
+    void RefreshFlowCaptureHud()
+    {
+        EnsureFlowCaptureHud();
+        if (flowCaptureHud == null || capturedFlow == null) return;
+        if (flowCaptureTitle != null)
+        {
+            string verb = capturingNewFlow ? "Creating" : "Editing";
+            flowCaptureTitle.text = verb + " \"" + capturedFlow.flowName + "\" — click stations in order";
+        }
+        if (flowCapturePath != null)
+        {
+            if (capturedFlow.stations.Count == 0)
+            {
+                flowCapturePath.text = capturingNewFlow
+                    ? "No stations yet — click the first station"
+                    : "Current path empty — click stations to rebuild, then Finish";
+            }
+            else
+            {
+                flowCapturePath.text = WorkerFlowAssigner.FormatFlow(capturedFlow)
+                    + (capturingNewFlow ? "" : "  (click a station on the path to trim)");
+            }
+        }
+        if (flowCaptureFinishButton != null)
+            flowCaptureFinishButton.interactable = capturedFlow.stations.Count > 0;
+    }
+
+    void SetFlowCaptureHudVisible(bool show)
+    {
+        EnsureFlowCaptureHud();
+        if (flowCaptureHud != null && flowCaptureHud.activeSelf != show)
+            flowCaptureHud.SetActive(show);
+    }
+
+    void RefreshWorkflowDecisionHud()
+    {
+        if (selectedEmployee == null)
+        {
+            SetWorkflowDecisionHudVisible(false);
+            return;
+        }
+
+        if (Time.unscaledTime < nextWorkflowHudRefresh) return;
+        nextWorkflowHudRefresh = Time.unscaledTime + 0.12f;
+
+        EnsureWorkflowDecisionHud();
+        if (workflowDecisionText == null) return;
+        string summary = WorkflowAnalysis.GetWorkerDecisionSummary(selectedEmployee);
+        StationNode hoveredStation = GetStationUnderPointer();
+        string preview = WorkflowAnalysis.GetAssignmentPreview(selectedEmployee, hoveredStation);
+        workflowDecisionText.text = string.IsNullOrEmpty(preview) ? summary : summary + "\n" + preview;
+        SetWorkflowDecisionHudVisible(true);
+    }
+
+    StationNode GetStationUnderPointer()
+    {
+        if (Camera.main == null || IsPointerOverUI()) return null;
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        return Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer)
+            ? StationNode.FindFromCollider(hit.collider)
+            : null;
+    }
+
+    void SetWorkflowDecisionHudVisible(bool show)
+    {
+        if (workflowDecisionHud != null && workflowDecisionHud.activeSelf != show)
+            workflowDecisionHud.SetActive(show);
     }
 
     void SetStatus(string msg)

@@ -58,6 +58,7 @@ public class KitchenEmployee : MonoBehaviour
     [Header("Assigned stations (max 3) — set via Management → click station → Assign Worker")]
     public List<GameObject> operatedStations = new List<GameObject>();
     [HideInInspector] public KitchenFlowKind assignedFlow = KitchenFlowKind.None;
+    [HideInInspector] public string assignedFlowName;
 
     [Header("Legacy")]
     public AssignmentRow[] assignmentRows = new AssignmentRow[4];
@@ -88,6 +89,35 @@ public class KitchenEmployee : MonoBehaviour
         return true;
     }
 
+    /// <summary>Legacy reorder helper — kept for compatibility; priority UI was removed.</summary>
+    public bool MoveStationPriority(int fromIndex, int toIndex)
+    {
+        if (operatedStations == null || fromIndex < 0 || fromIndex >= operatedStations.Count)
+            return false;
+        toIndex = Mathf.Clamp(toIndex, 0, operatedStations.Count - 1);
+        if (fromIndex == toIndex) return false;
+
+        GameObject station = operatedStations[fromIndex];
+        operatedStations.RemoveAt(fromIndex);
+        operatedStations.Insert(toIndex, station);
+        SyncFromOperatedStations();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        return true;
+    }
+
+    /// <summary>Returns list index of a station type on this worker, or int.MaxValue if missing.</summary>
+    public int GetStationPriority(StationType stationType)
+    {
+        if (operatedStations == null) return int.MaxValue;
+        for (int i = 0; i < operatedStations.Count; i++)
+        {
+            StationType? type = GetStationTypeFrom(operatedStations[i]);
+            if (type.HasValue && type.Value == stationType)
+                return i;
+        }
+        return int.MaxValue;
+    }
+
     public void RemoveOperatedStation(GameObject station)
     {
         if (operatedStations == null || station == null) return;
@@ -114,6 +144,7 @@ public class KitchenEmployee : MonoBehaviour
         }
 
         assignedFlow = KitchenFlowKind.None;
+        assignedFlowName = "";
         SyncFromOperatedStations();
     }
 
@@ -848,22 +879,11 @@ public class KitchenEmployee : MonoBehaviour
     }
 
     /// <summary>
-    /// Register-path workers deliver orders. Kitchen workers also run food to pickup
-    /// when heat-lamp items are ready so food does not sit while they keep cooking.
+    /// Only workers assigned to a register run customer delivery (not kitchen cooks).
     /// </summary>
     public bool ShouldDeliverInsteadOfCook()
     {
-        if (GetRegisterStation() != null || GetDrinkStation() != null)
-            return true;
-
-        var reg = GetServiceRegister();
-        if (reg == null || !reg.isEnabled) return false;
-
-        var customer = reg.GetPickupCustomer() ?? reg.GetFrontCustomer();
-        if (customer == null) return false;
-
-        return GetNextCashierFetch(customer.GetOrder(), drinksOnly: false, foodOnly: true) != null
-            || (cashierTray != null && cashierTray.Count > 0);
+        return GetRegisterStation() != null;
     }
 
     Vector3 GetIdleStandPosition(Register reg)
@@ -884,11 +904,8 @@ public class KitchenEmployee : MonoBehaviour
         ShowTaskBar = false;
         TaskProgress = 0f;
 
-        bool isCashier = GetRegisterStation() != null;
-        bool drinkRunner = GetDrinkStation() != null && !isCashier;
-        bool foodRunner = !isCashier && !drinkRunner && CanTakeJobs;
-
-        if (!isCashier && !drinkRunner && !foodRunner)
+        // Kitchen cooks never deliver to customers — only register-assigned workers.
+        if (GetRegisterStation() == null)
         {
             ClearCashierTray();
             return;
@@ -901,8 +918,8 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        cashierDrinksOnly = drinkRunner;
-        cashierFoodOnly = foodRunner;
+        cashierDrinksOnly = false;
+        cashierFoodOnly = false;
 
         if (step == Step.CashierGoDrink || step == Step.CashierAtDrink
             || step == Step.CashierGoFood || step == Step.CashierAtFood
@@ -912,16 +929,11 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        if (isCashier)
-        {
-            var ordering = reg.GetFrontCustomer();
-            if (ordering != null)
-                reg.SendCustomerToPickup(ordering);
-        }
+        var ordering = reg.GetFrontCustomer();
+        if (ordering != null)
+            reg.SendCustomerToPickup(ordering);
 
-        var customer = reg.GetPickupCustomer();
-        if (customer == null && isCashier)
-            customer = reg.GetFrontCustomer();
+        var customer = reg.GetPickupCustomer() ?? reg.GetFrontCustomer();
         if (customer == null)
         {
             if (cashierTray.Count == 0)
@@ -941,7 +953,8 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        if (cashierTray.Count > 0)
+        // Hold the full order on the tray before walking back to serve.
+        if (TrayFulfillsOrder(order))
         {
             step = Step.CashierReturnServe;
             stateTimer = 0f;
@@ -950,12 +963,13 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        var next = GetNextCashierFetch(order, cashierDrinksOnly, cashierFoodOnly);
+        var next = GetNextCashierFetch(order);
         if (next == null)
         {
+            // Partial tray or waiting on heat lamp / drinks — stay near the register.
             MoveToward(GetIdleStandPosition(reg));
-            ShowTaskBar = true;
-            TaskProgress = 0.25f;
+            ShowTaskBar = cashierTray.Count > 0;
+            TaskProgress = cashierTray.Count > 0 ? 0.5f : 0.25f;
             return;
         }
 
@@ -1000,12 +1014,7 @@ public class KitchenEmployee : MonoBehaviour
 
     bool TrayFulfillsOrder(CustomerOrder order) => TrayCoversLines(order, drinksOnly: false, foodOnly: false);
 
-    bool TrayReadyToServe(CustomerOrder order)
-    {
-        if (cashierDrinksOnly) return TrayCoversLines(order, drinksOnly: true, foodOnly: false);
-        if (cashierFoodOnly) return TrayCoversLines(order, drinksOnly: false, foodOnly: true);
-        return TrayFulfillsOrder(order);
-    }
+    bool TrayReadyToServe(CustomerOrder order) => TrayFulfillsOrder(order);
 
     bool TrayCoversLines(CustomerOrder order, bool drinksOnly, bool foodOnly)
     {
@@ -1073,13 +1082,13 @@ public class KitchenEmployee : MonoBehaviour
         path.Clear();
 
         var order = cashierCustomer != null ? cashierCustomer.GetOrder() : null;
-        if (cashierTray.Count > 0)
+        if (TrayFulfillsOrder(order))
         {
             step = Step.CashierReturnServe;
             return;
         }
 
-        var next = GetNextCashierFetch(order, cashierDrinksOnly, cashierFoodOnly);
+        var next = GetNextCashierFetch(order);
         if (next != null)
         {
             cashierFetchItem = next;
@@ -1088,6 +1097,7 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
+        // Still missing items that are not ready yet — wait near the register with the partial tray.
         step = Step.None;
         if (reg != null)
             MoveToward(GetIdleStandPosition(reg));
@@ -1190,6 +1200,14 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
 
+                var serveOrder = cashierCustomer.GetOrder();
+                if (!TrayFulfillsOrder(serveOrder))
+                {
+                    // Never hand over a partial order — resume collecting.
+                    ContinueCashierAfterPickup(reg);
+                    break;
+                }
+
                 // Serve from the register (employee side) — never walk through the counter to the customer.
                 Vector3 servePos = reg.GetInteractionPosition();
                 if (!MoveToward(servePos))
@@ -1205,6 +1223,7 @@ public class KitchenEmployee : MonoBehaviour
                 ShowTaskBar = true;
                 TaskProgress = 1f;
 
+                // Hand over the entire tray in one serve action.
                 while (cashierTray.Count > 0)
                 {
                     var item = cashierTray[0];

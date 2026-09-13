@@ -1,8 +1,11 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
-/// Draws world lines from the selected worker to their assigned stations while in Manage mode.
+/// Shows a selected worker's ordered station flow on the floor grid.
+/// Station focus still uses the elevated worker-to-station assignment link.
 /// </summary>
 public class WorkerAssignmentLinkVisuals : MonoBehaviour
 {
@@ -10,18 +13,40 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     public GameModeManager modeManager;
 
-    [Header("Line look")]
-    public Color lineColor = new Color(0.35f, 0.85f, 1f, 0.95f);
-    public float lineWidth = 0.07f;
-    [Tooltip("How high above the worker/station the bridge runs")]
+    [Header("Grid route look")]
+    public Color routeColor = new Color(0.2f, 0.9f, 1f, 0.95f);
+    public Color startColor = new Color(0.2f, 1f, 0.35f, 0.95f);
+    public Color stopColor = new Color(1f, 0.75f, 0.12f, 0.95f);
+    public Color endColor = new Color(1f, 0.25f, 0.2f, 0.95f);
+    public float lineWidth = 0.14f;
+    public float floorOffset = 0.08f;
+    [Range(0.2f, 0.9f)] public float markerTileScale = 0.58f;
+
+    [Header("Station assignment link")]
+    [Tooltip("How high above the worker/station the assignment bridge runs.")]
     public float raiseHeight = 1.35f;
 
     readonly List<LineRenderer> lines = new List<LineRenderer>();
+    readonly List<TextMeshPro> labels = new List<TextMeshPro>();
     Material lineMaterial;
-    Transform linesRoot;
+    Material startMaterial;
+    Material stopMaterial;
+    Material endMaterial;
+    Transform visualsRoot;
     bool visible;
     KitchenEmployee focusedWorker;
     StationNode focusedStation;
+    ProductionFlowPlan focusedFlow;
+
+    static readonly Color[] TeamColors =
+    {
+        new Color(0.2f, 0.9f, 1f, 0.95f),
+        new Color(1f, 0.55f, 0.18f, 0.95f),
+        new Color(0.72f, 0.4f, 1f, 0.95f),
+        new Color(0.25f, 1f, 0.45f, 0.95f)
+    };
+
+    public static bool HasFocusedWorker => Instance != null && Instance.focusedWorker != null;
 
     void Awake()
     {
@@ -33,25 +58,25 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        if (lineMaterial != null)
-            Destroy(lineMaterial);
+        DestroyMaterial(lineMaterial);
+        DestroyMaterial(startMaterial);
+        DestroyMaterial(stopMaterial);
+        DestroyMaterial(endMaterial);
     }
 
     void Update()
     {
         bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        bool show = manage && (focusedWorker != null || focusedStation != null);
+        bool show = manage && (focusedWorker != null || focusedStation != null || focusedFlow != null);
 
         if (show != visible)
         {
             visible = show;
             if (visible) Refresh();
-            else SetLinesEnabled(false);
+            else ClearVisuals();
         }
-        else if (visible && Time.frameCount % 10 == 0)
-        {
-            Refresh();
-        }
+
+        FaceLabelsTowardCamera();
     }
 
     public static void NotifyLinksChanged()
@@ -63,18 +88,27 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public static void SetFocusedWorker(KitchenEmployee worker)
     {
         if (Instance == null) return;
-
         Instance.focusedWorker = worker;
         Instance.focusedStation = null;
+        Instance.focusedFlow = null;
         Instance.ApplyFocus();
     }
 
     public static void SetFocusedStation(StationNode station)
     {
         if (Instance == null) return;
-
         Instance.focusedStation = station;
         Instance.focusedWorker = null;
+        Instance.focusedFlow = null;
+        Instance.ApplyFocus();
+    }
+
+    public static void SetFocusedFlow(ProductionFlowPlan flow)
+    {
+        if (Instance == null) return;
+        Instance.focusedFlow = flow;
+        Instance.focusedWorker = null;
+        Instance.focusedStation = null;
         Instance.ApplyFocus();
     }
 
@@ -83,27 +117,22 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         if (Instance == null) return;
         Instance.focusedWorker = null;
         Instance.focusedStation = null;
+        Instance.focusedFlow = null;
         Instance.visible = false;
-        Instance.SetLinesEnabled(false);
+        Instance.ClearVisuals();
     }
 
     void ApplyFocus()
     {
-        if (focusedWorker == null && focusedStation == null)
-        {
-            visible = false;
-            SetLinesEnabled(false);
-            return;
-        }
-
-        visible = true;
-        Refresh();
+        visible = focusedWorker != null || focusedStation != null || focusedFlow != null;
+        if (visible) Refresh();
+        else ClearVisuals();
     }
 
     public void Refresh()
     {
         EnsureRoot();
-        ClearLines();
+        ClearVisuals();
 
         if (modeManager == null || modeManager.CurrentMode != GameModeManager.Mode.Manage)
         {
@@ -111,67 +140,261 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-        if (focusedWorker != null && focusedWorker.operatedStations != null)
+        if (focusedWorker != null)
         {
-            visible = true;
-            foreach (var station in focusedWorker.operatedStations)
+            DrawWorkerFlow(focusedWorker, routeColor, false);
+            return;
+        }
+
+
+        if (focusedFlow != null && focusedFlow.workers != null)
+        {
+            if (focusedFlow.workers.Count == 0)
             {
-                if (station == null) continue;
-                CreateLink(focusedWorker.gameObject, station);
+                DrawDraftFlow(focusedFlow);
+                return;
             }
+            for (int i = 0; i < focusedFlow.workers.Count; i++)
+                if (focusedFlow.workers[i] != null)
+                    DrawWorkerFlow(focusedFlow.workers[i], TeamColors[i % TeamColors.Length], true);
             return;
         }
 
         if (focusedStation != null && focusedStation.assignedWorker != null)
-        {
-            visible = true;
-            CreateLink(focusedStation.assignedWorker.gameObject, focusedStation.gameObject);
-            return;
-        }
-
-        visible = false;
+            CreateAssignmentLink(focusedStation.assignedWorker.gameObject, focusedStation.gameObject);
     }
 
-    void CreateLink(GameObject fromWorker, GameObject toStation)
+    void DrawDraftFlow(ProductionFlowPlan flow)
     {
-        Vector3 a = GetAnchor(fromWorker);
-        Vector3 b = GetAnchor(toStation);
+        GridManager grid = GridManager.Instance;
+        if (grid == null || flow == null || flow.stations == null || flow.stations.Count == 0) return;
+        var points = new List<Vector3>();
+        for (int i = 0; i < flow.stations.Count; i++)
+        {
+            GameObject station = flow.stations[i];
+            if (station == null) continue;
+            Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
+            position.y = grid.Origin.y + floorOffset;
+            Color color = i == 0 ? startColor : i == flow.stations.Count - 1 ? endColor : stopColor;
+            CreateMarker(position, (i + 1) + "\n" + GetDisplayName(station), color, grid.cellSize);
+            if (i > 0)
+            {
+                Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(flow.stations[i - 1]));
+                AppendGridLeg(points, grid, previous, position);
+            }
+        }
+        if (points.Count >= 2)
+            CreateGridLine(points, flow.flowName + "_Draft", routeColor);
+    }
 
-        float bridgeY = Mathf.Max(a.y, b.y) + raiseHeight;
-        Vector3 up = new Vector3(a.x, bridgeY, a.z);
-        Vector3 across = new Vector3(b.x, bridgeY, b.z);
+    void DrawWorkerFlow(KitchenEmployee worker, Color workerColor, bool showOwner)
+    {
+        GridManager grid = worker.grid != null ? worker.grid : GridManager.Instance;
+        if (grid == null || worker.operatedStations == null || worker.operatedStations.Count == 0)
+            return;
 
-        var go = new GameObject("WorkerLink_" + fromWorker.name + "_to_" + toStation.name);
-        go.transform.SetParent(linesRoot, false);
+        List<List<GameObject>> chains = BuildFlowChains(worker);
+        for (int chainIndex = 0; chainIndex < chains.Count; chainIndex++)
+        {
+            List<GameObject> chain = chains[chainIndex];
+            if (chain.Count == 0) continue;
 
+            var routePoints = new List<Vector3>();
+            for (int i = 0; i < chain.Count; i++)
+            {
+                Vector3 stopPosition = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(chain[i]));
+                stopPosition.y = grid.Origin.y + floorOffset;
+
+                bool isStart = i == 0;
+                bool isEnd = i == chain.Count - 1;
+                StationNode stopNode = StationNode.EnsureOn(chain[i]);
+                bool isHandoff = isEnd && stopNode != null && stopNode.IsWorkStation && stopNode.assignedWorker != worker;
+                string role = isHandoff ? "HANDOFF" : isStart && isEnd ? "START / END" : isStart ? "START" : isEnd ? "END" : "STOP " + i;
+                Color markerColor = isStart ? startColor : isEnd ? endColor : stopColor;
+                string owner = showOwner ? worker.employeeName + "\n" : "";
+                CreateMarker(stopPosition, owner + role + "\n" + GetDisplayName(chain[i]), markerColor, grid.cellSize);
+
+                if (i == 0) continue;
+                Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(chain[i - 1]));
+                AppendGridLeg(routePoints, grid, previous, stopPosition);
+            }
+
+            if (routePoints.Count >= 2)
+                CreateGridLine(routePoints, worker.employeeName + "_Flow_" + chainIndex, workerColor);
+        }
+    }
+
+    static List<List<GameObject>> BuildFlowChains(KitchenEmployee worker)
+    {
+        var assigned = new List<GameObject>();
+        foreach (GameObject station in worker.operatedStations)
+            if (station != null && !assigned.Contains(station))
+                assigned.Add(station);
+
+        var targetedAssignedStations = new HashSet<GameObject>();
+        foreach (GameObject station in assigned)
+        {
+            StationNode node = StationNode.EnsureOn(station);
+            if (node != null && node.outputTarget != null && assigned.Contains(node.outputTarget))
+                targetedAssignedStations.Add(node.outputTarget);
+        }
+
+        var heads = new List<GameObject>();
+        foreach (GameObject station in assigned)
+            if (!targetedAssignedStations.Contains(station))
+                heads.Add(station);
+        if (heads.Count == 0 && assigned.Count > 0)
+            heads.Add(assigned[0]);
+
+        var chains = new List<List<GameObject>>();
+        var globallyVisited = new HashSet<GameObject>();
+        foreach (GameObject head in heads)
+            AddChain(worker, head, chains, globallyVisited);
+        foreach (GameObject station in assigned)
+            if (!globallyVisited.Contains(station))
+                AddChain(worker, station, chains, globallyVisited);
+        return chains;
+    }
+
+    static void AddChain(KitchenEmployee worker, GameObject head, List<List<GameObject>> chains, HashSet<GameObject> globallyVisited)
+    {
+        var chain = new List<GameObject>();
+        var chainVisited = new HashSet<GameObject>();
+        GameObject current = head;
+
+        while (current != null && chainVisited.Add(current))
+        {
+            chain.Add(current);
+            globallyVisited.Add(current);
+            StationNode node = StationNode.EnsureOn(current);
+            GameObject next = node != null ? node.outputTarget : null;
+            StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
+            if (nextNode != null && nextNode.IsWorkStation && nextNode.assignedWorker != worker)
+            {
+                chain.Add(next);
+                break;
+            }
+            current = next;
+        }
+
+        if (chain.Count > 0)
+            chains.Add(chain);
+    }
+
+    void AppendGridLeg(List<Vector3> points, GridManager grid, Vector3 from, Vector3 to)
+    {
+        from.y = grid.Origin.y + floorOffset;
+        to.y = grid.Origin.y + floorOffset;
+        AddPointIfDistinct(points, from);
+
+        List<Vector3> path = grid.GetPath(from, grid.GetCellCenter(to));
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 point = path[i];
+            point.y = grid.Origin.y + floorOffset;
+            AddPointIfDistinct(points, point);
+        }
+
+        AddPointIfDistinct(points, to);
+    }
+
+    static void AddPointIfDistinct(List<Vector3> points, Vector3 point)
+    {
+        if (points.Count == 0 || Vector3.SqrMagnitude(points[points.Count - 1] - point) > 0.001f)
+            points.Add(point);
+    }
+
+    void CreateGridLine(List<Vector3> points, string routeName, Color color)
+    {
+        var go = new GameObject(routeName);
+        go.transform.SetParent(visualsRoot, false);
         var lr = go.AddComponent<LineRenderer>();
         lr.useWorldSpace = true;
-        lr.positionCount = 4;
+        lr.positionCount = points.Count;
+        lr.SetPositions(points.ToArray());
         lr.startWidth = lineWidth;
-        lr.endWidth = lineWidth * 0.7f;
-        lr.numCapVertices = 4;
-        lr.numCornerVertices = 4;
+        lr.endWidth = lineWidth;
+        lr.numCapVertices = 5;
+        lr.numCornerVertices = 5;
         lr.material = GetLineMaterial();
-        lr.startColor = lineColor;
-        lr.endColor = lineColor;
+        lr.startColor = color;
+        lr.endColor = color;
         lr.textureMode = LineTextureMode.Stretch;
-        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.shadowCastingMode = ShadowCastingMode.Off;
         lr.receiveShadows = false;
-
-        if (lr.material != null && lr.material.HasProperty("_Color"))
-            lr.material.color = lineColor;
-        if (lr.material != null && lr.material.HasProperty("_BaseColor"))
-            lr.material.SetColor("_BaseColor", lineColor);
-
-        lr.SetPosition(0, a);
-        lr.SetPosition(1, up);
-        lr.SetPosition(2, across);
-        lr.SetPosition(3, b);
-
         lines.Add(lr);
     }
 
-    Vector3 GetAnchor(GameObject go)
+    void CreateMarker(Vector3 position, string text, Color color, float cellSize)
+    {
+        var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        marker.name = "FlowMarker_" + text.Replace("\n", "_");
+        marker.transform.SetParent(visualsRoot, true);
+        marker.transform.position = position;
+        float diameter = Mathf.Max(0.18f, cellSize * markerTileScale);
+        marker.transform.localScale = new Vector3(diameter, 0.025f, diameter);
+        var collider = marker.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
+        var renderer = marker.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = GetMarkerMaterial(color);
+
+        var labelObject = new GameObject("Label", typeof(RectTransform));
+        labelObject.transform.SetParent(visualsRoot, false);
+        labelObject.transform.position = position + Vector3.up * 0.18f;
+        var label = labelObject.AddComponent<TextMeshPro>();
+        label.text = text;
+        label.fontSize = 2.1f;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = Color.white;
+        label.fontStyle = FontStyles.Bold;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.rectTransform.sizeDelta = new Vector2(5f, 1.4f);
+        labels.Add(label);
+    }
+
+    Material GetMarkerMaterial(Color color)
+    {
+        if (Approximately(color, startColor))
+            return startMaterial != null ? startMaterial : startMaterial = CreateMaterial(startColor);
+        if (Approximately(color, endColor))
+            return endMaterial != null ? endMaterial : endMaterial = CreateMaterial(endColor);
+        return stopMaterial != null ? stopMaterial : stopMaterial = CreateMaterial(stopColor);
+    }
+
+    void CreateAssignmentLink(GameObject fromWorker, GameObject toStation)
+    {
+        Vector3 a = GetAnchor(fromWorker);
+        Vector3 b = GetAnchor(toStation);
+        float bridgeY = Mathf.Max(a.y, b.y) + raiseHeight;
+
+        var points = new List<Vector3>
+        {
+            a,
+            new Vector3(a.x, bridgeY, a.z),
+            new Vector3(b.x, bridgeY, b.z),
+            b
+        };
+        CreateGridLine(points, "WorkerLink_" + fromWorker.name + "_to_" + toStation.name, routeColor);
+    }
+
+    void FaceLabelsTowardCamera()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        for (int i = 0; i < labels.Count; i++)
+        {
+            if (labels[i] == null) continue;
+            labels[i].transform.rotation = Quaternion.LookRotation(labels[i].transform.position - cam.transform.position, cam.transform.up);
+        }
+    }
+
+    static string GetDisplayName(GameObject go)
+    {
+        StationNode node = StationNode.EnsureOn(go);
+        return node != null ? node.DisplayName : go.name;
+    }
+
+    static Vector3 GetAnchor(GameObject go)
     {
         Bounds b = GetBounds(go);
         return new Vector3(b.center.x, b.max.y + 0.1f, b.center.z);
@@ -180,66 +403,65 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     static Bounds GetBounds(GameObject go)
     {
         var renderers = go.GetComponentsInChildren<Renderer>();
-        if (renderers != null && renderers.Length > 0)
+        bool found = false;
+        Bounds bounds = new Bounds(go.transform.position, Vector3.one);
+        foreach (Renderer renderer in renderers)
         {
-            Bounds b = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-            {
-                if (renderers[i] == null) continue;
-                if (renderers[i].GetComponentInParent<Canvas>() != null) continue;
-                if (renderers[i] is LineRenderer) continue;
-                b.Encapsulate(renderers[i].bounds);
-            }
-            return b;
+            if (renderer == null || renderer is LineRenderer || renderer.GetComponentInParent<Canvas>() != null)
+                continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
         }
-
-        var col = go.GetComponentInChildren<Collider>();
-        if (col != null) return col.bounds;
-        return new Bounds(go.transform.position, Vector3.one);
+        if (found) return bounds;
+        Collider col = go.GetComponentInChildren<Collider>();
+        return col != null ? col.bounds : bounds;
     }
 
     Material GetLineMaterial()
     {
-        if (lineMaterial != null) return lineMaterial;
-        var shader = Shader.Find("Sprites/Default")
-                     ?? Shader.Find("Universal Render Pipeline/Unlit")
-                     ?? Shader.Find("Unlit/Color");
-        lineMaterial = new Material(shader);
-        lineMaterial.color = lineColor;
+        if (lineMaterial == null)
+            lineMaterial = CreateMaterial(Color.white);
         return lineMaterial;
+    }
+
+    static Material CreateMaterial(Color color)
+    {
+        Shader shader = Shader.Find("Sprites/Default")
+                        ?? Shader.Find("Universal Render Pipeline/Unlit")
+                        ?? Shader.Find("Unlit/Color");
+        var material = new Material(shader);
+        material.color = color;
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+        return material;
+    }
+
+    static bool Approximately(Color a, Color b)
+    {
+        return Mathf.Abs(a.r - b.r) < 0.001f
+            && Mathf.Abs(a.g - b.g) < 0.001f
+            && Mathf.Abs(a.b - b.b) < 0.001f;
     }
 
     void EnsureRoot()
     {
-        if (linesRoot != null) return;
-        var go = new GameObject("WorkerAssignmentLinks");
+        if (visualsRoot != null) return;
+        var go = new GameObject("WorkerFlowVisuals");
         go.transform.SetParent(transform, false);
-        linesRoot = go.transform;
+        visualsRoot = go.transform;
     }
 
-    void ClearLines()
+    void ClearVisuals()
     {
-        for (int i = lines.Count - 1; i >= 0; i--)
-        {
-            if (lines[i] != null)
-                Destroy(lines[i].gameObject);
-        }
         lines.Clear();
-
-        if (linesRoot != null)
-        {
-            for (int i = linesRoot.childCount - 1; i >= 0; i--)
-                Destroy(linesRoot.GetChild(i).gameObject);
-        }
+        labels.Clear();
+        if (visualsRoot == null) return;
+        for (int i = visualsRoot.childCount - 1; i >= 0; i--)
+            Destroy(visualsRoot.GetChild(i).gameObject);
     }
 
-    void SetLinesEnabled(bool enabled)
+    static void DestroyMaterial(Material material)
     {
-        foreach (var lr in lines)
-        {
-            if (lr != null) lr.enabled = enabled;
-        }
-        if (!enabled)
-            ClearLines();
+        if (material != null)
+            Destroy(material);
     }
 }
