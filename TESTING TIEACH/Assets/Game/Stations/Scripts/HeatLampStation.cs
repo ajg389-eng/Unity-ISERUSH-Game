@@ -21,7 +21,8 @@ public class HeldMeal
 }
 
 /// <summary>
-/// Fast-food holding area. Kitchen delivers finished meals here; registers serve from this stock.
+/// Fast-food holding / pass-through. Kitchen workers deliver finished meals here;
+/// customers grab matching orders from the lobby side of the counter.
 /// Meals expire if held too long — overproducing wastes food.
 /// Inventory is viewed in Manage mode by clicking the heat lamp.
 /// </summary>
@@ -41,6 +42,12 @@ public class HeatLampStation : MonoBehaviour
 
     [Header("Interaction")]
     public Vector3 interactionOffset = Vector3.zero;
+
+    [Header("Customer pickup (lobby / pass-through side)")]
+    [Tooltip("Offset from the heat lamp to the customer stand. Leave zero to auto-place opposite the worker tile.")]
+    public Vector3 customerPickupOffset = Vector3.zero;
+    [Tooltip("Spacing between customers waiting at the pass.")]
+    public float customerPickupSpacing = 1.15f;
 
     [Header("Optional UI")]
     [Tooltip("Optional TMP label if you want a custom HUD readout.")]
@@ -88,6 +95,73 @@ public class HeatLampStation : MonoBehaviour
         var tiles = GetComponent<StationInteractionTiles>();
         if (tiles != null) return tiles.GetFirstInteractionPosition();
         return transform.position + interactionOffset;
+    }
+
+    /// <summary>Direction from the lamp into the lobby (customer side).</summary>
+    public Vector3 GetCustomerQueueDirection()
+    {
+        Vector3 offset = GetCustomerSideOffset();
+        if (offset.sqrMagnitude < 0.01f) return -transform.forward;
+        return offset.normalized;
+    }
+
+    /// <summary>World stand point for a customer at the pass (index 0 = at the counter).</summary>
+    public Vector3 GetCustomerPickupPosition(int index = 0)
+    {
+        Vector3 offset = GetCustomerSideOffset();
+        Vector3 origin = transform.position + offset;
+        Vector3 intoLobby = offset.sqrMagnitude > 0.01f ? offset.normalized : GetCustomerQueueDirection();
+        Vector3 pos = origin + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
+        return SnapPickupToGround(pos);
+    }
+
+    /// <summary>Pickup stand near a register, still on the customer side of this lamp.</summary>
+    public Vector3 GetCustomerPickupPositionNear(Vector3 nearWorld, int index = 0)
+    {
+        Vector3 offset = GetCustomerSideOffset();
+        Vector3 origin = transform.position + offset;
+        Vector3 alongCounter = Vector3.Cross(Vector3.up, offset);
+        if (alongCounter.sqrMagnitude < 0.01f)
+            alongCounter = transform.right;
+        alongCounter.Normalize();
+
+        Vector3 toNear = nearWorld - origin;
+        toNear.y = 0f;
+        float lateral = Vector3.Dot(toNear, alongCounter);
+        // Keep customers clustered near the pass, not stretched across the whole lobby.
+        lateral = Mathf.Clamp(lateral, -2.5f, 2.5f);
+
+        Vector3 intoLobby = offset.sqrMagnitude > 0.01f ? offset.normalized : GetCustomerQueueDirection();
+        Vector3 pos = origin + alongCounter * lateral + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
+        return SnapPickupToGround(pos);
+    }
+
+    Vector3 GetCustomerSideOffset()
+    {
+        if (customerPickupOffset.sqrMagnitude > 0.01f)
+            return customerPickupOffset;
+
+        // Place customers opposite the worker interaction tile (kitchen side → lobby side).
+        Vector3 worker = GetInteractionPosition();
+        Vector3 throughLamp = transform.position - worker;
+        throughLamp.y = 0f;
+        if (throughLamp.sqrMagnitude < 0.01f)
+        {
+            // Prefab worker quad sits at local +Z; customers stand at local -Z.
+            throughLamp = -transform.TransformDirection(Vector3.forward);
+            throughLamp.y = 0f;
+        }
+        float dist = Mathf.Max(1f, throughLamp.magnitude);
+        return throughLamp.normalized * dist;
+    }
+
+    static Vector3 SnapPickupToGround(Vector3 world)
+    {
+        GridManager grid = GridManager.Instance;
+        if (grid == null) return world;
+        Vector3 cell = grid.GetCellCenter(world);
+        cell.y = grid.Origin.y;
+        return cell;
     }
 
     /// <summary>Seconds left before this meal expires (0 if already expired / no expiry).</summary>
@@ -243,6 +317,8 @@ public class HeatLampStation : MonoBehaviour
         foreach (var line in order.lines)
         {
             if (line.item == null) continue;
+            var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+            if (config != null && config.IsDrink(line.item)) continue;
             for (int q = 0; q < line.quantity; q++)
             {
                 int idx = FindSingleItemIndex(line.item);
@@ -254,6 +330,18 @@ public class HeatLampStation : MonoBehaviour
         totalSold++;
         RefreshStatusLabel();
         return order.Clone();
+    }
+
+    /// <summary>
+    /// Customer grab from the pass: removes food for this order from the lamp.
+    /// Drinks are not stored under the lamp (customer fountain / included at pickup).
+    /// </summary>
+    public bool TryCustomerTakeOrder(CustomerOrder order)
+    {
+        if (order == null) return false;
+        if (!CanFulfill(order) && FindMatchingIndex(order) < 0)
+            return false;
+        return TryTakeMatching(order) != null;
     }
 
     int FindSingleItemIndex(ItemDefinition item)
@@ -325,5 +413,9 @@ public class HeatLampStation : MonoBehaviour
         Gizmos.color = new Color(1f, 0.55f, 0.1f, 0.85f);
         Gizmos.DrawWireCube(transform.position + Vector3.up * 0.5f, new Vector3(1.2f, 1f, 1.2f));
         Gizmos.DrawSphere(GetInteractionPosition(), 0.15f);
+
+        Gizmos.color = new Color(0.2f, 0.9f, 0.35f, 0.9f);
+        for (int i = 0; i < 4; i++)
+            Gizmos.DrawSphere(GetCustomerPickupPosition(i), 0.12f);
     }
 }

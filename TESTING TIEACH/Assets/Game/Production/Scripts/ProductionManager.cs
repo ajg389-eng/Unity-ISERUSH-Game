@@ -395,9 +395,16 @@ public class ProductionManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// True if this station is locked to a different flow.
+    /// Heat lamps are shared pass-throughs and may appear on multiple flows.
+    /// </summary>
     public bool IsStationOnOtherFlow(GameObject station, ProductionFlowPlan except)
     {
         if (station == null || productionFlows == null) return false;
+        if (station.GetComponent<HeatLampStation>() != null)
+            return false;
+
         foreach (ProductionFlowPlan flow in productionFlows)
             if (flow != null && flow != except && flow.stations != null && flow.stations.Contains(station))
                 return true;
@@ -517,6 +524,13 @@ public class ProductionManager : MonoBehaviour
         AssignJobsToEmployees();
     }
 
+    /// <summary>Run job collection now (e.g. right after a cook finishes a delivery).</summary>
+    public void RequestImmediateProduction()
+    {
+        RefreshStations();
+        CollectProductionJobs();
+    }
+
     void RefreshStations()
     {
         if (freezer == null) freezer = FindObjectOfType<FreezerStation>();
@@ -541,6 +555,13 @@ public class ProductionManager : MonoBehaviour
         if (cookable.Count == 0) return;
 
         var stockCounts = CountInFlightByItem();
+
+        // Keep assigned cooks cycling: if someone is idle and can cook, raise the
+        // production target so they immediately start another flow loop.
+        int idleCookSlots = CountIdleCookSlots(cookable);
+        if (idleCookSlots > 0)
+            target = Mathf.Min(heatLamp.maxCapacity, Mathf.Max(target, heatLamp.Count + pendingJobs.Count + idleCookSlots));
+
         while (openSlots > 0 && heatLamp.Count + pendingJobs.Count < target)
         {
             ItemDefinition item = PickLeastStockedItem(cookable, stockCounts);
@@ -551,6 +572,9 @@ public class ProductionManager : MonoBehaviour
             stockCounts[item] = stockCounts.TryGetValue(item, out int c) ? c + 1 : 1;
             openSlots--;
         }
+
+        // Prefer matching pending jobs to the cooks who can run them.
+        EnsurePendingJobsForIdleCooks(cookable, stockCounts, ref openSlots);
 
         // Extra demand from live customers can push production up to max capacity.
         if (openSlots <= 0) return;
@@ -639,6 +663,76 @@ public class ProductionManager : MonoBehaviour
         return list;
     }
 
+    int CountIdleCookSlots(List<ItemDefinition> cookable)
+    {
+        if (cookable == null || cookable.Count == 0) return 0;
+        int n = 0;
+        foreach (var e in employees)
+        {
+            if (e == null || !e.IsIdle || !e.CanTakeJobs) continue;
+            if (e.ShouldDeliverInsteadOfCook()) continue;
+            if (PickItemWorkerCanCook(e, cookable) != null)
+                n++;
+        }
+        return n;
+    }
+
+    void EnsurePendingJobsForIdleCooks(
+        List<ItemDefinition> cookable,
+        Dictionary<ItemDefinition, int> stockCounts,
+        ref int openSlots)
+    {
+        if (openSlots <= 0 || cookable == null || cookable.Count == 0) return;
+
+        foreach (var e in employees)
+        {
+            if (openSlots <= 0) return;
+            if (e == null || !e.IsIdle || !e.CanTakeJobs) continue;
+            if (e.ShouldDeliverInsteadOfCook()) continue;
+
+            bool alreadyQueued = false;
+            foreach (var job in pendingJobs)
+            {
+                if (job == null || job.assignedTo != null) continue;
+                if (!e.CanTakeJobStep(job)) continue;
+                alreadyQueued = true;
+                break;
+            }
+            if (alreadyQueued) continue;
+
+            ItemDefinition item = PickItemWorkerCanCook(e, cookable);
+            if (item == null) continue;
+            var jobNew = CreateJob(CustomerOrder.FromItem(item, 1));
+            if (jobNew == null) continue;
+            pendingJobs.Add(jobNew);
+            stockCounts[item] = stockCounts.TryGetValue(item, out int c) ? c + 1 : 1;
+            openSlots--;
+        }
+    }
+
+    ItemDefinition PickItemWorkerCanCook(KitchenEmployee employee, List<ItemDefinition> cookable)
+    {
+        if (employee == null || cookable == null) return null;
+        ItemDefinition best = null;
+        int bestCount = int.MaxValue;
+        var stockCounts = CountInFlightByItem();
+        for (int i = 0; i < cookable.Count; i++)
+        {
+            ItemDefinition item = cookable[i];
+            if (item == null) continue;
+            var probe = CreateJob(CustomerOrder.FromItem(item, 1));
+            if (probe == null) continue;
+            if (!employee.CanTakeJobStep(probe)) continue;
+            stockCounts.TryGetValue(item, out int count);
+            if (best == null || count < bestCount)
+            {
+                best = item;
+                bestCount = count;
+            }
+        }
+        return best;
+    }
+
     Dictionary<ItemDefinition, int> CountInFlightByItem()
     {
         var counts = new Dictionary<ItemDefinition, int>();
@@ -718,23 +812,28 @@ public class ProductionManager : MonoBehaviour
     void AssignJobsToEmployees()
     {
         foreach (var e in employees)
+            TryAssignJobTo(e);
+    }
+
+    /// <summary>Assign the next suitable pending job to an idle cook, if any.</summary>
+    public bool TryAssignJobTo(KitchenEmployee employee)
+    {
+        if (employee == null || !employee.IsIdle || !employee.CanTakeJobs) return false;
+        if (employee.ShouldDeliverInsteadOfCook()) return false;
+
+        ProductionJob bestJob = null;
+        foreach (var job in pendingJobs)
         {
-            if (e == null || !e.IsIdle || !e.CanTakeJobs) continue;
-            if (e.ShouldDeliverInsteadOfCook()) continue;
-
-            ProductionJob bestJob = null;
-            foreach (var job in pendingJobs)
-            {
-                if (job.assignedTo != null) continue;
-                if (!e.CanTakeJobStep(job)) continue;
-                bestJob = job;
-                break;
-            }
-
-            if (bestJob == null) continue;
-            bestJob.assignedTo = e;
-            e.AssignJob(bestJob);
+            if (job == null || job.assignedTo != null) continue;
+            if (!employee.CanTakeJobStep(job)) continue;
+            bestJob = job;
+            break;
         }
+
+        if (bestJob == null) return false;
+        bestJob.assignedTo = employee;
+        employee.AssignJob(bestJob);
+        return true;
     }
 
     public void ReleaseJob(ProductionJob job)

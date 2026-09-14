@@ -16,7 +16,7 @@ public class Register : MonoBehaviour
     public int maxQueue = 6;
 
     [Header("Pickup line")]
-    [Tooltip("Where customers wait after ordering. If empty, a line is placed beside the order queue, into the kitchen.")]
+    [Tooltip("Where customers wait to grab food from the heat lamp pass. If empty, uses the customer side of the heat lamp.")]
     public Transform pickupStart;
     public Vector3 pickupDirection = Vector3.zero;
     public int maxPickup = 8;
@@ -219,6 +219,9 @@ public class Register : MonoBehaviour
         return HeatLampStation.Instance;
     }
 
+    /// <summary>Heat lamp used for customer self-serve pickup at the pass.</summary>
+    public HeatLampStation GetHeatLampForPickup() => GetHeatLamp();
+
     public void DeliverOrder(CustomerOrder order)
     {
         var lamp = GetHeatLamp();
@@ -320,7 +323,8 @@ public class Register : MonoBehaviour
 
     void Update()
     {
-        // Serving is cashier-driven via KitchenEmployee.
+        // Food handoff is customer self-serve at the heat lamp pass.
+        // Register workers only take the order and send guests to pickup.
     }
 
     Vector3 QueueDir
@@ -429,6 +433,11 @@ public class Register : MonoBehaviour
     {
         if (pickupStart != null) return pickupStart.position;
 
+        // Default: customer side of the heat lamp pass (self-serve).
+        var lamp = GetHeatLamp();
+        if (lamp != null)
+            return lamp.GetCustomerPickupPositionNear(transform.position, 0);
+
         Vector3 lobby = GetLobbyDir();
         Vector3 side = Vector3.Cross(Vector3.up, lobby);
         if (side.sqrMagnitude < 0.01f) side = Vector3.right;
@@ -450,6 +459,11 @@ public class Register : MonoBehaviour
                 return GetLobbyDir();
             return custom;
         }
+
+        var lamp = GetHeatLamp();
+        if (lamp != null)
+            return lamp.GetCustomerQueueDirection();
+
         return GetLobbyDir();
     }
 

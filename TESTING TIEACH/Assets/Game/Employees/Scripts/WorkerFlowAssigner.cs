@@ -468,8 +468,13 @@ public static class WorkerFlowAssigner
 
         var workStations = new List<GameObject>();
         foreach (GameObject station in route)
+        {
+            if (station == null) continue;
+            // Heat lamps are shared pass-throughs — never assign labor to them.
+            if (station.GetComponent<HeatLampStation>() != null) continue;
             if (StationNode.EnsureOn(station).IsWorkStation)
                 workStations.Add(station);
+        }
 
         if (workStations.Count == 0)
         {
@@ -491,11 +496,13 @@ public static class WorkerFlowAssigner
                 worker.ClearAllOperatedStations();
 
         ConfigureProducts(flow.kind, route);
-        for (int i = 0; i < route.Count; i++)
+        // Wire consecutive stations. Never clear the last output — fryer/assembly may
+        // already target a shared heat lamp (and clearing it stops the loop).
+        for (int i = 0; i < route.Count - 1; i++)
         {
             StationNode node = StationNode.EnsureOn(route[i]);
-            if (i + 1 < route.Count) node.SetOutput(route[i + 1]);
-            else node.ClearOutput();
+            if (node != null)
+                node.SetOutput(route[i + 1]);
         }
 
         int start = 0;
@@ -536,9 +543,12 @@ public static class WorkerFlowAssigner
         for (int i = 0; i < activeWorkers; i++)
             result.estimatedCycleSeconds = Mathf.Max(result.estimatedCycleSeconds,
                 WorkflowAnalysis.GetEstimatedCycleSeconds(flow.workers[i]));
-        result.estimatedThroughputPerMinute = result.estimatedCycleSeconds > 0f
-            ? 60f / result.estimatedCycleSeconds
-            : 0f;
+        float stationBottleneck = WorkflowAnalysis.GetFlowBottleneckOutputPerMinute(flow);
+        result.estimatedThroughputPerMinute = stationBottleneck > 0.01f
+            ? stationBottleneck
+            : (result.estimatedCycleSeconds > 0f ? 60f / result.estimatedCycleSeconds : 0f);
+        if (stationBottleneck > 0.01f)
+            result.estimatedCycleSeconds = 60f / stationBottleneck;
         result.handoffs = Mathf.Max(0, activeWorkers - 1);
         GameObject slowest = workStations[0];
         foreach (GameObject station in workStations)
@@ -865,9 +875,10 @@ public static class WorkflowAnalysis
 
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         var inventory = Object.FindFirstObjectByType<KitchenInventory>();
-        float cycle = EstimateFlowCycleSeconds(flow);
-        string cycleLabel = cycle > 0.05f
-            ? cycle.ToString("0.0") + "s  (~" + (60f / cycle).ToString("0.0") + "/min)"
+        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
+        float cycle = perMinute > 0.01f ? 60f / perMinute : 0f;
+        string cycleLabel = perMinute > 0.01f
+            ? cycle.ToString("0.0") + "s  (~" + FormatRate(perMinute) + "/min)"
             : "—";
 
         var products = new List<ItemDefinition>();
@@ -919,6 +930,65 @@ public static class WorkflowAnalysis
     }
 
     public static float EstimateFlowCycleSeconds(ProductionFlowPlan flow)
+    {
+        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
+        if (perMinute > 0.01f)
+            return 60f / perMinute;
+        return EstimateFlowCycleSecondsFromTiming(flow);
+    }
+
+    /// <summary>
+    /// Flow throughput is limited by the slowest station output on the route
+    /// (e.g. grill 5/min with assembly 10/min → 5/min).
+    /// </summary>
+    public static float GetFlowBottleneckOutputPerMinute(ProductionFlowPlan flow)
+    {
+        if (flow == null) return 0f;
+        flow.Clean();
+
+        if (flow.stations == null || flow.stations.Count == 0)
+            WorkerFlowAssigner.SynchronizeFlowRoute(flow);
+
+        float minOut = float.MaxValue;
+        bool any = false;
+
+        if (flow.stations != null)
+        {
+            foreach (GameObject station in flow.stations)
+            {
+                if (!TryGetStationOutputPerMinute(station, out float output)) continue;
+                minOut = Mathf.Min(minOut, output);
+                any = true;
+            }
+        }
+
+        return any ? minOut : 0f;
+    }
+
+    static bool TryGetStationOutputPerMinute(GameObject station, out float outputPerMinute)
+    {
+        outputPerMinute = 0f;
+        if (station == null) return false;
+        if (station.GetComponent<HeatLampStation>() != null) return false;
+        if (station.GetComponent<Register>() != null) return false;
+
+        StationNode node = StationNode.EnsureOn(station);
+        if (node == null) return false;
+        node.EnsureIoDefaults();
+        if (node.outputAmountPerMinute <= 0.01f) return false;
+
+        outputPerMinute = node.outputAmountPerMinute;
+        return true;
+    }
+
+    static string FormatRate(float rate)
+    {
+        if (Mathf.Approximately(rate, Mathf.Round(rate))) return rate.ToString("0");
+        if (rate >= 10f) return rate.ToString("0");
+        return rate.ToString("0.0");
+    }
+
+    public static float EstimateFlowCycleSecondsFromTiming(ProductionFlowPlan flow)
     {
         if (flow == null) return 0f;
         flow.Clean();

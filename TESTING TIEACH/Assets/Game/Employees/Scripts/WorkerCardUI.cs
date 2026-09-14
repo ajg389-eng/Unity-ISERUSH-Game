@@ -9,6 +9,7 @@ public class WorkerCardUI : MonoBehaviour
 {
     public KitchenEmployee employee;
     public GameObject nameInputObject;
+    public Button customizeButton;
     public Button fireButton;
     public TextMeshProUGUI currentTaskText;
     public TextMeshProUGUI assignmentsText;
@@ -49,6 +50,11 @@ public class WorkerCardUI : MonoBehaviour
             var t = transform.Find("Button_Fire") ?? transform.Find("Row1/Button_Fire");
             if (t != null) fireButton = t.GetComponent<Button>();
         }
+        if (customizeButton == null)
+        {
+            var t = transform.Find("Button_Customize") ?? transform.Find("Row1/Button_Customize");
+            if (t != null) customizeButton = t.GetComponent<Button>();
+        }
         if (stationsLabel == null)
         {
             var t = transform.Find("StationsLabel") ?? transform.Find("Row2/StationsLabel");
@@ -75,6 +81,8 @@ public class WorkerCardUI : MonoBehaviour
         RemoveNameListener();
         if (fireButton != null)
             fireButton.onClick.RemoveListener(OnFireClicked);
+        if (customizeButton != null)
+            customizeButton.onClick.RemoveListener(OnCustomizeClicked);
 
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
@@ -93,6 +101,11 @@ public class WorkerCardUI : MonoBehaviour
         SetNameText(emp.employeeName ?? "Worker");
         LockNameField();
         RefreshDetails();
+        if (customizeButton != null)
+        {
+            customizeButton.interactable = true;
+            customizeButton.onClick.AddListener(OnCustomizeClicked);
+        }
         if (fireButton != null)
         {
             fireButton.interactable = true;
@@ -117,7 +130,12 @@ public class WorkerCardUI : MonoBehaviour
         string flowPrefix = !string.IsNullOrEmpty(employee.assignedFlowName)
             ? "FLOW: " + employee.assignedFlowName + "\n"
             : "";
-        SetDetailText(assignmentsText, flowPrefix + "Stations: " + employee.GetAssignedStationsSummary());
+        float transport = Mathf.Max(0.1f, employee.transportItemsPerMinute);
+        SetDetailText(
+            assignmentsText,
+            flowPrefix
+            + "Transport: " + FormatRate(transport) + " items / min\n"
+            + "Stations: " + employee.GetAssignedStationsSummary());
 
         string held = employee.GetHeldInventoryDisplay();
         bool carrying = !string.IsNullOrEmpty(held);
@@ -130,6 +148,12 @@ public class WorkerCardUI : MonoBehaviour
             stationsLabel.gameObject.SetActive(false);
 
         EnsureAssignmentControls();
+    }
+
+    static string FormatRate(float rate)
+    {
+        if (rate >= 10f) return rate.ToString("0");
+        return rate.ToString("0.0");
     }
 
     static string FormatAssignments(string detailText)
@@ -208,8 +232,20 @@ public class WorkerCardUI : MonoBehaviour
                 var nameLe = nameInputObject.GetComponent<LayoutElement>();
                 if (nameLe == null) nameLe = nameInputObject.AddComponent<LayoutElement>();
                 nameLe.flexibleWidth = 1;
-                nameLe.minWidth = 160;
+                nameLe.minWidth = 120;
                 nameLe.preferredWidth = -1;
+            }
+
+            EnsureCustomizeButton(row1);
+
+            if (customizeButton != null)
+            {
+                customizeButton.transform.SetAsLastSibling();
+                var customizeLe = customizeButton.GetComponent<LayoutElement>();
+                if (customizeLe == null) customizeLe = customizeButton.gameObject.AddComponent<LayoutElement>();
+                customizeLe.minWidth = 96;
+                customizeLe.preferredWidth = 96;
+                customizeLe.flexibleWidth = 0;
             }
 
             if (fireButton != null)
@@ -398,9 +434,55 @@ public class WorkerCardUI : MonoBehaviour
             employee.employeeName = string.IsNullOrWhiteSpace(value) ? "Worker" : value.Trim();
     }
 
+    void EnsureCustomizeButton(Transform row1)
+    {
+        if (row1 == null) return;
+        if (customizeButton != null) return;
+
+        var existing = row1.Find("Button_Customize");
+        if (existing != null)
+        {
+            customizeButton = existing.GetComponent<Button>();
+            return;
+        }
+
+        var go = new GameObject("Button_Customize", typeof(RectTransform));
+        go.transform.SetParent(row1, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.minWidth = 96;
+        le.preferredWidth = 96;
+        le.minHeight = 28;
+        le.preferredHeight = 28;
+        le.flexibleWidth = 0;
+        go.AddComponent<Image>().color = new Color(0.28f, 0.4f, 0.55f, 1f);
+        customizeButton = go.AddComponent<Button>();
+
+        var textGo = new GameObject("Text", typeof(RectTransform));
+        textGo.transform.SetParent(go.transform, false);
+        var tr = (RectTransform)textGo.transform;
+        tr.anchorMin = Vector2.zero;
+        tr.anchorMax = Vector2.one;
+        tr.offsetMin = Vector2.zero;
+        tr.offsetMax = Vector2.zero;
+        var tmp = textGo.AddComponent<TextMeshProUGUI>();
+        tmp.text = "Customize";
+        tmp.fontSize = 12;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+    }
+
+    void OnCustomizeClicked()
+    {
+        if (employee == null) return;
+        WorkerCustomizePopup.Show(employee);
+    }
+
     void OnFireClicked()
     {
         if (employee == null || production == null) return;
+        WorkerCustomizePopup.Hide();
         production.FireWorker(employee);
         employee = null;
         var workersUI = GetComponentInParent<WorkersUI>();

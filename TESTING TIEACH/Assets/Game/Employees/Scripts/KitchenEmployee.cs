@@ -22,6 +22,8 @@ public class KitchenEmployee : MonoBehaviour
     public float moveSpeed = 3f;
     [Tooltip("Unused for grid travel (workers move cell-to-cell). Kept for inspector compatibility.")]
     public float moveSmoothTime = 0.12f;
+    [Tooltip("How many finished items this worker can move between stations per minute.")]
+    public float transportItemsPerMinute = 10f;
     public float groundHeight;
     public GridManager grid;
     [Tooltip("How close to a cell center counts as arrived (then snaps exactly to center).")]
@@ -611,6 +613,9 @@ public class KitchenEmployee : MonoBehaviour
         if (GetComponent<EmployeeInventoryLabel>() == null)
             gameObject.AddComponent<EmployeeInventoryLabel>();
         PartyCharacterAnimator.EnsureOn(gameObject);
+        var look = PartyCharacterRandomizer.EnsureOn(gameObject);
+        if (look != null)
+            look.hatChance = 0.85f;
     }
 
     void OnGridChanged()
@@ -799,10 +804,19 @@ public class KitchenEmployee : MonoBehaviour
                 return;
             }
             ClearHeldInventory();
-            manager.CompleteJob(currentJob);
+            awaitingOutputDelivery = false;
+            heldDeliveryItem = null;
+            ProductionJob finished = currentJob;
             currentJob = null;
             deliverTarget = null;
             step = Step.None;
+            stateTimer = 0f;
+            path.Clear();
+            pathDestination = Vector3.zero;
+            manager.CompleteJob(finished);
+            // Immediately queue/start the next cycle so cooks don't stand idle after a delivery.
+            manager.RequestImmediateProduction();
+            manager.TryAssignJobTo(this);
             return;
         }
 
@@ -879,7 +893,8 @@ public class KitchenEmployee : MonoBehaviour
     }
 
     /// <summary>
-    /// Only workers assigned to a register run customer delivery (not kitchen cooks).
+    /// Register-assigned workers stay at the counter (order taking). Kitchen cooks never do this —
+    /// guests grab finished food from the heat lamp pass themselves.
     /// </summary>
     public bool ShouldDeliverInsteadOfCook()
     {
@@ -904,7 +919,7 @@ public class KitchenEmployee : MonoBehaviour
         ShowTaskBar = false;
         TaskProgress = 0f;
 
-        // Kitchen cooks never deliver to customers — only register-assigned workers.
+        // Kitchen cooks never run the register — only register-assigned workers.
         if (GetRegisterStation() == null)
         {
             ClearCashierTray();
@@ -918,67 +933,24 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        cashierDrinksOnly = false;
-        cashierFoodOnly = false;
-
+        // Abort legacy fetch/serve paths — guests grab food from the heat lamp themselves.
         if (step == Step.CashierGoDrink || step == Step.CashierAtDrink
             || step == Step.CashierGoFood || step == Step.CashierAtFood
             || step == Step.CashierReturnServe)
         {
-            RunCashierStep(reg);
-            return;
+            ClearCashierTray();
         }
 
+        // Take the order: move the front guest to the heat-lamp pickup line.
         var ordering = reg.GetFrontCustomer();
         if (ordering != null)
             reg.SendCustomerToPickup(ordering);
 
-        var customer = reg.GetPickupCustomer() ?? reg.GetFrontCustomer();
-        if (customer == null)
-        {
-            if (cashierTray.Count == 0)
-                ClearCashierTray();
-            MoveToward(GetIdleStandPosition(reg));
-            return;
-        }
-
-        EnsureCashierCustomer(customer);
-        var order = customer.GetOrder();
-        if (order == null || order.GetTotalQuantity() <= 0)
-        {
-            if (customer.IsOrderFullyDelivered)
-                reg.CompleteServe(customer, order);
-            ClearCashierTray();
-            MoveToward(GetIdleStandPosition(reg));
-            return;
-        }
-
-        // Hold the full order on the tray before walking back to serve.
-        if (TrayFulfillsOrder(order))
-        {
-            step = Step.CashierReturnServe;
-            stateTimer = 0f;
-            path.Clear();
-            RunCashierStep(reg);
-            return;
-        }
-
-        var next = GetNextCashierFetch(order);
-        if (next == null)
-        {
-            // Partial tray or waiting on heat lamp / drinks — stay near the register.
-            MoveToward(GetIdleStandPosition(reg));
-            ShowTaskBar = cashierTray.Count > 0;
-            TaskProgress = cashierTray.Count > 0 ? 0.5f : 0.25f;
-            return;
-        }
-
-        cashierFetchItem = next;
-        bool isDrink = manager != null && manager.orderConfig != null && manager.orderConfig.IsDrink(next);
-        step = isDrink ? Step.CashierGoDrink : Step.CashierGoFood;
-        stateTimer = 0f;
-        path.Clear();
-        RunCashierStep(reg);
+        Vector3 idle = GetIdleStandPosition(reg);
+        if (CloseEnough(idle, 0.35f))
+            FaceStationObject(reg.gameObject);
+        else
+            MoveToward(idle);
     }
 
     void EnsureCashierCustomer(CustomerAI front)
@@ -1134,6 +1106,7 @@ public class KitchenEmployee : MonoBehaviour
 
             case Step.CashierAtDrink:
             {
+                FaceStationObject(GetOperatedStationObject(StationType.Drink) ?? GetDrinkStation()?.gameObject);
                 Vector3 drinkPos = manager.GetDrinkStationPosition(this);
                 if (!CloseEnough(drinkPos, 1.1f) && !manager.IsEmployeeOnDrinkTile(transform.position, this))
                 {
@@ -1176,6 +1149,7 @@ public class KitchenEmployee : MonoBehaviour
 
             case Step.CashierAtFood:
             {
+                FaceStationObject(manager != null && manager.HeatLamp != null ? manager.HeatLamp.gameObject : null);
                 ShowTaskBar = true;
                 TaskProgress = 1f;
                 var lamp = manager.HeatLamp;
@@ -1263,6 +1237,7 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.AtFreezer:
+                FaceStationObject(GetOperatedStationObject(StationType.Freezer) ?? GetFreezerStation()?.gameObject);
                 if (!manager.IsEmployeeOnFreezerTile(transform.position, this))
                 {
                     step = Step.GoToFreezer;
@@ -1308,6 +1283,7 @@ public class KitchenEmployee : MonoBehaviour
                         if (grill != null && !grill.CanProcess(currentJob != null ? currentJob.product : null))
                         {
                             // Wrong product selected — wait
+                            FaceStationObject(grill.gameObject);
                             ShowTaskBar = true;
                             TaskProgress = 0f;
                             break;
@@ -1325,6 +1301,7 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.AtGrill:
+                FaceStationObject(GetOperatedStationObject(StationType.Grill) ?? GetGrillStation()?.gameObject);
                 if (!manager.IsEmployeeOnGrillTile(transform.position, this))
                 {
                     step = Step.GoToGrill;
@@ -1374,6 +1351,7 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.AtAssembly:
+                FaceStationObject(GetOperatedStationObject(StationType.Assembly) ?? GetAssemblyStation()?.gameObject);
                 if (!manager.IsEmployeeOnAssemblyTile(transform.position, this))
                 {
                     step = Step.GoToAssembly;
@@ -1403,6 +1381,7 @@ public class KitchenEmployee : MonoBehaviour
                     {
                         if (!manager.HasFriesInStock())
                         {
+                            FaceStationObject(GetOperatedStationObject(StationType.Fryer) ?? GetFryerStation()?.gameObject);
                             ShowTaskBar = true;
                             TaskProgress = 0f;
                             break;
@@ -1419,6 +1398,7 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.AtFryer:
+                FaceStationObject(GetOperatedStationObject(StationType.Fryer) ?? GetFryerStation()?.gameObject);
                 if (!manager.IsEmployeeOnFryerTile(transform.position, this))
                 {
                     step = Step.GoToFryer;
@@ -1472,6 +1452,7 @@ public class KitchenEmployee : MonoBehaviour
             }
 
             case Step.AtOutput:
+                FaceStationObject(deliverTarget);
                 ShowTaskBar = true;
                 TaskProgress = 1f;
                 CompleteOutputDelivery();
@@ -1592,6 +1573,7 @@ public class KitchenEmployee : MonoBehaviour
         Vector3 nextPos = Vector3.MoveTowards(pos, waypoint, step);
         nextPos.y = GroundY;
         transform.position = nextPos;
+        FaceMoveTarget(waypoint);
         moveVelocity = Vector3.zero;
         return false;
     }
@@ -1618,6 +1600,22 @@ public class KitchenEmployee : MonoBehaviour
         Vector3 nextPos = Vector3.MoveTowards(pos, target, step);
         nextPos.y = GroundY;
         transform.position = nextPos;
+        FaceMoveTarget(target);
         return false;
+    }
+
+    void FaceMoveTarget(Vector3 worldPoint)
+    {
+        var facing = PartyCharacterAnimator.EnsureOn(gameObject);
+        if (facing != null)
+            facing.FaceTowardAdjacent(worldPoint, smooth: true);
+    }
+
+    void FaceStationObject(GameObject station)
+    {
+        if (station == null) return;
+        var facing = PartyCharacterAnimator.EnsureOn(gameObject);
+        if (facing != null)
+            facing.FaceTowardAdjacentObject(station, smooth: true);
     }
 }

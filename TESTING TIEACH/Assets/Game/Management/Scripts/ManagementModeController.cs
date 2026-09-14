@@ -154,13 +154,15 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        // Keep heat lamp inventory readout live while selected
+        // Keep heat lamp inventory / recipe-station rates live while selected
         if (selectedStation != null
-            && selectedStation.GetComponent<HeatLampStation>() != null
             && stationPopup != null
             && stationPopup.activeSelf)
         {
-            RefreshHeatLampInventory();
+            if (selectedStation.GetComponent<HeatLampStation>() != null)
+                RefreshHeatLampInventory();
+            else
+                RefreshRecipeStationRatesLive();
         }
 
         if (Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
@@ -552,21 +554,13 @@ public class ManagementModeController : MonoBehaviour
 
         var t = node != null ? node.StationType : null;
         if (node != null && node.GetComponent<HeatLampStation>() != null)
-            SetStatus("Holding finished food for the cashier to serve.");
+            SetStatus("Holding finished food for customers to pick up.");
+        else if (node != null && (node.GetComponent<GrillStation>() != null || node.GetComponent<AssemblyStation>() != null))
+            SetStatus("Choose a recipe. Input / output amounts are set on this station.");
         else if (t == StationType.Register)
-            SetStatus("Assign a cashier to serve customers.");
-        else if (t.HasValue)
-        {
-            bool hasOut = node.HasOutput;
-            string workerBit = node.assignedWorker != null
-                ? $" Worker: {node.assignedWorker.employeeName}."
-                : " No worker assigned.";
-            SetStatus(hasOut
-                ? $"Output → {StationNode.EnsureOn(node.outputTarget)?.DisplayName}.{workerBit}"
-                : $"Required: Assign Output — drag to another station.{workerBit}");
-        }
+            SetStatus("Takes orders — customers pick up at the heat lamp.");
         else
-            SetStatus("Assign a worker or set this station's output.");
+            SetStatus("Input and output amounts for this station.");
     }
 
     void RefreshPopup()
@@ -578,46 +572,81 @@ public class ManagementModeController : MonoBehaviour
 
         bool isHeatLamp = selectedStation.GetComponent<HeatLampStation>() != null;
 
+        // Flows own worker/output assignment — hide these controls on every station.
+        if (assignWorkerButton != null) assignWorkerButton.gameObject.SetActive(false);
+        if (clearWorkerButton != null) clearWorkerButton.gameObject.SetActive(false);
+        if (assignOutputButton != null) assignOutputButton.gameObject.SetActive(false);
+        if (clearOutputButton != null) clearOutputButton.gameObject.SetActive(false);
+        if (workerListContainer != null) workerListContainer.gameObject.SetActive(false);
+
+        if (isHeatLamp)
+        {
+            if (workerInfoText != null) workerInfoText.gameObject.SetActive(false);
+            if (outputInfoText != null) outputInfoText.gameObject.SetActive(false);
+        }
+        else
+        {
+            ApplyStationRateLabels(selectedStation);
+        }
+
+        RefreshProductSection();
+        RefreshHeatLampInventory();
+        ApplyPanelLayout(isHeatLamp);
+    }
+
+    void RefreshRecipeStationRatesLive()
+    {
+        if (selectedStation == null) return;
+        if (selectedStation.GetComponent<HeatLampStation>() != null) return;
+        ApplyStationRateLabels(selectedStation);
+    }
+
+    void ApplyStationRateLabels(StationNode node)
+    {
+        if (node == null) return;
+        node.EnsureIoDefaults(force: true);
+
+        string outUnit = string.IsNullOrEmpty(node.outputUnit) ? "items" : node.outputUnit;
+
         if (workerInfoText != null)
         {
-            workerInfoText.gameObject.SetActive(!isHeatLamp);
-            if (!isHeatLamp)
+            if (node.HasInputAmount)
             {
-                if (selectedStation.assignedWorker != null)
-                    workerInfoText.text = "Worker: " + (selectedStation.assignedWorker.employeeName ?? "Worker");
-                else
-                    workerInfoText.text = "Worker: Unassigned";
+                string inUnit = string.IsNullOrEmpty(node.inputUnit) ? "items" : node.inputUnit;
+                workerInfoText.gameObject.SetActive(true);
+                workerInfoText.alignment = TextAlignmentOptions.Left;
+                workerInfoText.text = "Input: " + FormatPerMinute(node.inputAmountPerMinute) + " " + inUnit + " / min";
+                TightenLabel(workerInfoText, 22f);
+            }
+            else
+            {
+                workerInfoText.gameObject.SetActive(false);
             }
         }
 
         if (outputInfoText != null)
         {
-            outputInfoText.gameObject.SetActive(!isHeatLamp);
-            if (!isHeatLamp)
-            {
-                if (selectedStation.outputTarget != null)
-                {
-                    var outNode = StationNode.EnsureOn(selectedStation.outputTarget);
-                    outputInfoText.text = "Output → " + (outNode != null ? outNode.DisplayName : selectedStation.outputTarget.name);
-                }
-                else
-                    outputInfoText.text = "Output → (none)";
-            }
+            outputInfoText.gameObject.SetActive(true);
+            outputInfoText.text = "Output: " + FormatPerMinute(node.outputAmountPerMinute) + " " + outUnit + " / min";
+            TightenLabel(outputInfoText, 22f);
         }
+    }
 
-        if (assignWorkerButton != null) assignWorkerButton.gameObject.SetActive(!isHeatLamp);
-        if (clearWorkerButton != null) clearWorkerButton.gameObject.SetActive(!isHeatLamp);
-        if (assignOutputButton != null) assignOutputButton.gameObject.SetActive(!isHeatLamp);
-        if (clearOutputButton != null) clearOutputButton.gameObject.SetActive(!isHeatLamp);
+    static void TightenLabel(TextMeshProUGUI label, float height)
+    {
+        if (label == null) return;
+        var le = label.GetComponent<LayoutElement>();
+        if (le == null) le = label.gameObject.AddComponent<LayoutElement>();
+        le.minHeight = height;
+        le.preferredHeight = height;
+        le.flexibleHeight = 0;
+    }
 
-        if (workerListContainer != null)
-            workerListContainer.gameObject.SetActive(!isHeatLamp);
-
-        ApplyPanelLayout(isHeatLamp);
-        RefreshProductSection();
-        RefreshHeatLampInventory();
-        if (!isHeatLamp)
-            RebuildWorkerList(false);
+    static string FormatPerMinute(float rate)
+    {
+        if (Mathf.Approximately(rate, Mathf.Round(rate))) return rate.ToString("0");
+        if (rate >= 10f) return rate.ToString("0");
+        return rate.ToString("0.0");
     }
 
     void ApplyPopupLayout(RectTransform rt, float height)
@@ -634,65 +663,103 @@ public class ManagementModeController : MonoBehaviour
     {
         if (stationPopup == null) return;
 
+        bool hasRecipe = selectedStation != null
+            && (selectedStation.GetComponent<GrillStation>() != null
+                || selectedStation.GetComponent<AssemblyStation>() != null);
+        bool hasInput = selectedStation != null
+            && !heatLampCompact
+            && selectedStation.HasInputAmount;
+
         var rt = (RectTransform)stationPopup.transform;
         var vlg = stationPopup.GetComponent<VerticalLayoutGroup>();
         if (vlg != null)
         {
-            vlg.padding = heatLampCompact
-                ? new RectOffset(14, 14, 8, 12)
-                : new RectOffset(14, 14, 14, 14);
-            vlg.spacing = heatLampCompact ? 6 : 8;
+            vlg.padding = new RectOffset(12, 12, 10, 10);
+            vlg.spacing = 4;
             vlg.childAlignment = TextAnchor.UpperCenter;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
         }
 
-        if (!usingScenePopup)
-            ApplyPopupLayout(rt, heatLampCompact ? 280f : 520f);
+        // Collapse leftover assign-button space and worker list.
+        CollapseInactiveLayout(assignWorkerButton != null ? assignWorkerButton.gameObject : null);
+        CollapseInactiveLayout(clearWorkerButton != null ? clearWorkerButton.gameObject : null);
+        CollapseInactiveLayout(assignOutputButton != null ? assignOutputButton.gameObject : null);
+        CollapseInactiveLayout(clearOutputButton != null ? clearOutputButton.gameObject : null);
+        CollapseInactiveLayout(workerListContainer != null ? workerListContainer.gameObject : null);
+        CollapseInactiveLayout(workerInfoText != null ? workerInfoText.gameObject : null);
+        CollapseInactiveLayout(productInfoText != null ? productInfoText.gameObject : null);
+        CollapseInactiveLayout(productListContainer != null ? productListContainer.gameObject : null);
+        CollapseInactiveLayout(inventoryInfoText != null ? inventoryInfoText.gameObject : null);
+
+        float height;
+        if (heatLampCompact)
+            height = 260f;
+        else if (hasRecipe)
+            height = 250f;
+        else if (hasInput)
+            height = 150f;
         else
-            rt.sizeDelta = new Vector2(rt.sizeDelta.x, heatLampCompact ? 280f : 520f);
+            height = 130f;
+
+        if (!usingScenePopup)
+            ApplyPopupLayout(rt, height);
+        else
+            rt.sizeDelta = new Vector2(rt.sizeDelta.x > 10f ? rt.sizeDelta.x : 300f, height);
 
         if (stationTitleText != null)
         {
-            stationTitleText.fontSize = heatLampCompact ? 24 : 22;
-            var titleLe = stationTitleText.GetComponent<LayoutElement>();
-            if (titleLe != null)
-            {
-                titleLe.minHeight = heatLampCompact ? 26 : 30;
-                titleLe.preferredHeight = titleLe.minHeight;
-                titleLe.flexibleHeight = 0;
-            }
+            stationTitleText.fontSize = 22;
+            TightenLabel(stationTitleText, 28f);
         }
 
         if (statusText != null)
         {
-            statusText.fontSize = heatLampCompact ? 15 : 13;
-            statusText.alignment = heatLampCompact ? TextAlignmentOptions.Center : TextAlignmentOptions.Left;
+            statusText.fontSize = 12;
+            statusText.alignment = TextAlignmentOptions.Center;
             var statusLe = statusText.GetComponent<LayoutElement>();
-            if (statusLe != null)
-            {
-                statusLe.minHeight = heatLampCompact ? 36 : 21;
-                statusLe.flexibleHeight = 0;
-            }
+            if (statusLe == null) statusLe = statusText.gameObject.AddComponent<LayoutElement>();
+            statusLe.minHeight = 28;
+            statusLe.preferredHeight = 32;
+            statusLe.flexibleHeight = 0;
         }
 
-        if (workerListContainer != null)
+        if (productInfoText != null && productInfoText.gameObject.activeSelf)
+            TightenLabel(productInfoText, 22f);
+
+        if (productListContainer != null && productListContainer.gameObject.activeSelf)
         {
-            var listLe = workerListContainer.GetComponent<LayoutElement>();
-            if (listLe != null)
-            {
-                listLe.flexibleHeight = heatLampCompact ? 0 : 1;
-                listLe.minHeight = heatLampCompact ? 0 : 80;
-            }
+            var listLe = productListContainer.GetComponent<LayoutElement>();
+            if (listLe == null) listLe = productListContainer.gameObject.AddComponent<LayoutElement>();
+            listLe.minHeight = 32;
+            listLe.preferredHeight = 36;
+            listLe.flexibleHeight = 0;
         }
 
-        if (inventoryInfoText != null && !heatLampCompact)
+        if (inventoryInfoText != null && inventoryInfoText.gameObject.activeSelf)
         {
             var invLe = inventoryInfoText.GetComponent<LayoutElement>();
             if (invLe != null)
             {
+                invLe.minHeight = 140;
+                invLe.preferredHeight = 140;
                 invLe.flexibleHeight = 0;
-                invLe.minHeight = 0;
             }
         }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+    }
+
+    static void CollapseInactiveLayout(GameObject go)
+    {
+        if (go == null || go.activeSelf) return;
+        var le = go.GetComponent<LayoutElement>();
+        if (le == null) return;
+        le.minHeight = 0;
+        le.preferredHeight = 0;
+        le.flexibleHeight = 0;
     }
 
     void RefreshHeatLampInventory()
@@ -754,7 +821,7 @@ public class ManagementModeController : MonoBehaviour
         string currentName = current != null
             ? (!string.IsNullOrEmpty(current.itemName) ? current.itemName : current.name)
             : "(none — pick below)";
-        productInfoText.text = "Produces: " + currentName;
+        productInfoText.text = "Recipe: " + currentName;
 
         for (int i = productListContainer.childCount - 1; i >= 0; i--)
             Destroy(productListContainer.GetChild(i).gameObject);
@@ -827,7 +894,10 @@ public class ManagementModeController : MonoBehaviour
         img.color = new Color(0.28f, 0.4f, 0.32f, 1f);
         var btn = go.AddComponent<Button>();
         btn.interactable = interactable;
-        go.AddComponent<LayoutElement>().minHeight = 28;
+        var btnLe = go.AddComponent<LayoutElement>();
+        btnLe.minHeight = 32;
+        btnLe.preferredHeight = 32;
+        btnLe.flexibleHeight = 0;
 
         var textGo = new GameObject("Text", typeof(RectTransform));
         textGo.transform.SetParent(go.transform, false);

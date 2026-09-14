@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Builds one-shot 3D thumbnails for inventory cards from ItemDefinition prefabs.
+/// Builds one-shot 3D thumbnails for inventory cards and customize previews from prefabs.
 /// </summary>
 public static class ItemPreviewThumbnails
 {
@@ -17,39 +17,47 @@ public static class ItemPreviewThumbnails
     {
         if (item == null || item.prefab == null)
             return null;
+        return GetPrefab(item.prefab, item.itemName);
+    }
 
-        int key = item.GetInstanceID();
+    public static Texture GetPrefab(GameObject prefab, string displayName = null)
+    {
+        if (prefab == null)
+            return null;
+
+        int key = prefab.GetInstanceID();
         if (cache.TryGetValue(key, out var existing) && existing != null)
             return existing;
 
         EnsureStage();
+        string label = !string.IsNullOrEmpty(displayName) ? displayName : prefab.name;
         var rt = new RenderTexture(Size, Size, 16, RenderTextureFormat.ARGB32)
         {
             antiAliasing = 2,
             filterMode = FilterMode.Bilinear,
-            name = "Preview_" + item.itemName
+            name = "Preview_" + label
         };
 
         GameObject instance = null;
         try
         {
-            instance = Object.Instantiate(item.prefab, stage);
-            instance.name = "PreviewInstance_" + item.itemName;
+            instance = Object.Instantiate(prefab, stage);
+            instance.name = "PreviewInstance_" + label;
             SetLayerRecursively(instance, stage.gameObject.layer);
 
-            // Neutral pose for top-down-ish shop view
             instance.transform.localPosition = Vector3.zero;
-            instance.transform.localRotation = Quaternion.Euler(20f, 140f, 0f);
+            instance.transform.localRotation = Quaternion.Euler(15f, 150f, 0f);
             instance.transform.localScale = Vector3.one;
 
             Bounds bounds = CalculateBounds(instance);
-            float radius = Mathf.Max(0.35f, bounds.extents.magnitude);
+            // Party-character hats are authored in cm-scale; normalize tiny/huge meshes.
+            float radius = Mathf.Max(0.05f, bounds.extents.magnitude);
             Vector3 center = bounds.center;
 
             previewCamera.targetTexture = rt;
             previewCamera.orthographic = true;
-            previewCamera.orthographicSize = radius * 1.15f;
-            previewCamera.transform.position = center + new Vector3(0f, radius * 0.55f, -radius * 2.2f);
+            previewCamera.orthographicSize = Mathf.Max(0.08f, radius * 1.2f);
+            previewCamera.transform.position = center + new Vector3(0f, radius * 0.35f, -radius * 2.4f);
             previewCamera.transform.LookAt(center);
             previewCamera.Render();
             previewCamera.targetTexture = null;

@@ -12,6 +12,64 @@ public class StationNode : MonoBehaviour
     [Tooltip("Where product from this station is sent (e.g. Pantry → Grill)")]
     public GameObject outputTarget;
 
+    [Header("I/O Amounts")]
+    [Tooltip("How many input items this station consumes per minute.")]
+    public float inputAmountPerMinute = 10f;
+    [Tooltip("How many output items this station produces per minute.")]
+    public float outputAmountPerMinute = 10f;
+    [Tooltip("Unit label for input (e.g. patties).")]
+    public string inputUnit = "";
+    [Tooltip("Unit label for output (e.g. cooked patties).")]
+    public string outputUnit = "";
+
+    void Awake()
+    {
+        // Re-apply balance defaults each run so rates stay consistent.
+        EnsureIoDefaults(force: true);
+    }
+
+    void Reset()
+    {
+        EnsureIoDefaults(force: true);
+    }
+
+    /// <summary>
+    /// Fills I/O amounts from station type. Use force to overwrite existing values.
+    /// </summary>
+    public void EnsureIoDefaults(bool force = false)
+    {
+        if (!force && !string.IsNullOrEmpty(outputUnit))
+            return;
+
+        // inputAmount 0 = no input shown (source stations)
+        if (GetComponent<GrillStation>() != null)
+            SetIo(5f, 5f, "patties", "cooked patties");
+        else if (GetComponent<AssemblyStation>() != null)
+            SetIo(10f, 10f, "cooked patties", "burgers");
+        else if (GetComponent<FreezerStation>() != null)
+            SetIo(0f, 5f, "-", "patties");
+        else if (GetComponent<FryerStation>() != null)
+            SetIo(10f, 10f, "raw fries", "cooked fries");
+        else if (GetComponent<DrinkStation>() != null)
+            SetIo(0f, 10f, "-", "drinks");
+        else if (GetComponent<PantryStation>() != null)
+            SetIo(0f, 10f, "-", "ingredients");
+        else if (GetComponent<Register>() != null)
+            SetIo(0f, 10f, "-", "orders");
+        else
+            SetIo(0f, 10f, "-", "items");
+    }
+
+    void SetIo(float input, float output, string inUnit, string outUnit)
+    {
+        inputAmountPerMinute = input;
+        outputAmountPerMinute = output;
+        inputUnit = inUnit;
+        outputUnit = outUnit;
+    }
+
+    public bool HasInputAmount => inputAmountPerMinute > 0.01f;
+
     public string DisplayName
     {
         get

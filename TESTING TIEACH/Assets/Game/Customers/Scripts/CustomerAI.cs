@@ -337,11 +337,58 @@ public class CustomerAI : MonoBehaviour
 
         SnapXZ(targetPos);
 
+        FaceLineFront();
+
         if (!patienceStarted)
             BeginQueueWait();
 
+        // After ordering at the register, move to the heat-lamp pass (customer side).
         if (!waitingForPickup && isFront && reg != null)
             reg.SendCustomerToPickup(this);
+
+        // Self-serve: grab matching food from the pass when at the front of pickup.
+        if (waitingForPickup)
+            TrySelfServeFromHeatLamp();
+    }
+
+    void FaceLineFront()
+    {
+        var facing = PartyCharacterAnimator.EnsureOn(gameObject);
+        if (facing == null) return;
+
+        if (waitingForPickup)
+        {
+            HeatLampStation lamp = reg != null ? reg.GetHeatLampForPickup() : null;
+            if (lamp != null)
+                facing.FaceTowardAdjacentObject(lamp.gameObject, smooth: true);
+            else if (reg != null)
+                facing.FaceTowardAdjacentObject(reg.gameObject, smooth: true);
+        }
+        else if (reg != null)
+        {
+            facing.FaceTowardAdjacentObject(reg.gameObject, smooth: true);
+        }
+    }
+
+    void TrySelfServeFromHeatLamp()
+    {
+        if (reg == null || leaving || !isFront) return;
+        if (IsOrderFullyDelivered)
+        {
+            reg.CompleteServe(this, order);
+            return;
+        }
+
+        HeatLampStation lamp = reg.GetHeatLampForPickup();
+        if (lamp == null) return;
+        if (!lamp.TryCustomerTakeOrder(order)) return;
+
+        // Food came from the lamp; drinks are taken at the pass (no cashier handoff).
+        if (order?.lines != null)
+            order.lines.Clear();
+        RefreshOrderLabel();
+        Sfx.Play(SfxId.ItemDelivered);
+        reg.CompleteServe(this, order);
     }
 
     void UpdateLeaving()
@@ -367,6 +414,9 @@ public class CustomerAI : MonoBehaviour
         }
 
         transform.position = Vector3.MoveTowards(pos, target, moveSpeed * Time.deltaTime);
+        var facing = PartyCharacterAnimator.EnsureOn(gameObject);
+        if (facing != null)
+            facing.FaceTowardAdjacent(target, smooth: true);
         return HorizontalDist(transform.position, target) <= arrivalDistance;
     }
 

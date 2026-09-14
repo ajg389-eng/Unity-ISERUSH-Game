@@ -23,7 +23,7 @@ public class StationManagePopup : MonoBehaviour
     public Vector2 anchor = new Vector2(1f, 0.5f);
     public Vector2 pivot = new Vector2(1f, 0.5f);
     public Vector2 anchoredPosition = new Vector2(-24f, 0f);
-    public Vector2 size = new Vector2(300f, 520f);
+    public Vector2 size = new Vector2(300f, 250f);
 
     [Header("References")]
     public TextMeshProUGUI stationTitleText;
@@ -128,10 +128,12 @@ public class StationManagePopup : MonoBehaviour
 
         var vlg = gameObject.GetComponent<VerticalLayoutGroup>();
         if (vlg == null) vlg = gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(14, 14, 14, 14);
-        vlg.spacing = 8;
+        vlg.padding = new RectOffset(12, 12, 10, 10);
+        vlg.spacing = 4;
         vlg.childControlHeight = true;
+        vlg.childControlWidth = true;
         vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
         vlg.childAlignment = TextAnchor.UpperCenter;
 
         stationTitleText = CreateLabel(transform, StationTitleName, "Station", 22);

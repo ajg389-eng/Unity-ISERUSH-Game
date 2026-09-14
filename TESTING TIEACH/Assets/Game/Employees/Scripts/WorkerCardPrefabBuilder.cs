@@ -32,11 +32,12 @@ public static class WorkerCardPrefabBuilder
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
-        var row1 = CreateHeaderRow(cardGo.transform, out var nameInputGo, out var fireBtn);
+        var row1 = CreateHeaderRow(cardGo.transform, out var nameInputGo, out var customizeBtn, out var fireBtn);
         BuildDetailsSection(cardGo.transform, out var currentTask, out var assignments, out var heldItems);
 
         var cardUI = cardGo.AddComponent<WorkerCardUI>();
         cardUI.nameInputObject = nameInputGo;
+        cardUI.customizeButton = customizeBtn;
         cardUI.fireButton = fireBtn;
         cardUI.currentTaskText = currentTask;
         cardUI.assignmentsText = assignments;
@@ -79,7 +80,7 @@ public static class WorkerCardPrefabBuilder
         heldItems = CreateBodyLabel(carryingSection, "HeldItems", "Nothing", 13, MutedColor, minHeight: 20);
     }
 
-    static Transform CreateHeaderRow(Transform parent, out GameObject nameInputGo, out Button fireBtn)
+    static Transform CreateHeaderRow(Transform parent, out GameObject nameInputGo, out Button customizeBtn, out Button fireBtn)
     {
         var row1 = new GameObject("Row1", typeof(RectTransform));
         row1.transform.SetParent(parent, false);
@@ -87,7 +88,7 @@ public static class WorkerCardPrefabBuilder
         rowLe.minHeight = 36;
         rowLe.preferredHeight = 36;
         var hlg = row1.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 12;
+        hlg.spacing = 8;
         hlg.childAlignment = TextAnchor.MiddleLeft;
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
@@ -95,7 +96,8 @@ public static class WorkerCardPrefabBuilder
         hlg.childForceExpandHeight = true;
 
         nameInputGo = CreateNameInput(row1.transform);
-        fireBtn = CreateButton(row1.transform, "Fire", new Color(0.62f, 0.22f, 0.22f, 1f));
+        customizeBtn = CreateButton(row1.transform, "Customize", new Color(0.28f, 0.4f, 0.55f, 1f), 96f);
+        fireBtn = CreateButton(row1.transform, "Fire", new Color(0.62f, 0.22f, 0.22f, 1f), 72f);
         return row1.transform;
     }
 
@@ -199,13 +201,13 @@ public static class WorkerCardPrefabBuilder
         return go;
     }
 
-    static Button CreateButton(Transform parent, string label, Color color)
+    static Button CreateButton(Transform parent, string label, Color color, float width = 72f)
     {
         var go = new GameObject("Button_" + label, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var le = go.AddComponent<LayoutElement>();
-        le.minWidth = 72;
-        le.preferredWidth = 72;
+        le.minWidth = width;
+        le.preferredWidth = width;
         le.minHeight = 32;
         le.preferredHeight = 32;
         le.flexibleWidth = 0;
@@ -222,7 +224,7 @@ public static class WorkerCardPrefabBuilder
         textRect.offsetMax = Vector2.zero;
         var tmp = textGo.AddComponent<TextMeshProUGUI>();
         tmp.text = label;
-        tmp.fontSize = 14;
+        tmp.fontSize = 13;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
