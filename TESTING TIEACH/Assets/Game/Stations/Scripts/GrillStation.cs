@@ -23,6 +23,8 @@ public class GrillStation : MonoBehaviour
     float cookTimer;
 
     public bool HasProductSelected => selectedProduct != null;
+    public bool HasPattyOnGrill => hasPatty;
+    public bool IsCookingPatty => hasPatty && cookTimer < cookTimeSeconds;
 
     public bool CanProcess(ItemDefinition product) =>
         product != null && selectedProduct != null && product == selectedProduct;

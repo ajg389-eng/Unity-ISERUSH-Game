@@ -146,17 +146,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-
-        if (focusedFlow != null && focusedFlow.workers != null)
+        // Flow focus (including live flow capture): always draw the station route on the grid.
+        if (focusedFlow != null)
         {
-            if (focusedFlow.workers.Count == 0)
-            {
-                DrawDraftFlow(focusedFlow);
-                return;
-            }
-            for (int i = 0; i < focusedFlow.workers.Count; i++)
-                if (focusedFlow.workers[i] != null)
-                    DrawWorkerFlow(focusedFlow.workers[i], TeamColors[i % TeamColors.Length], true);
+            DrawDraftFlow(focusedFlow);
             return;
         }
 
@@ -167,24 +160,52 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void DrawDraftFlow(ProductionFlowPlan flow)
     {
         GridManager grid = GridManager.Instance;
-        if (grid == null || flow == null || flow.stations == null || flow.stations.Count == 0) return;
+        if (grid == null || flow == null || flow.stations == null || flow.stations.Count == 0)
+            return;
+
         var points = new List<Vector3>();
+        int drawn = 0;
         for (int i = 0; i < flow.stations.Count; i++)
         {
             GameObject station = flow.stations[i];
             if (station == null) continue;
+
             Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
             position.y = grid.Origin.y + floorOffset;
-            Color color = i == 0 ? startColor : i == flow.stations.Count - 1 ? endColor : stopColor;
-            CreateMarker(position, (i + 1) + "\n" + GetDisplayName(station), color, grid.cellSize);
-            if (i > 0)
+            Color color = drawn == 0
+                ? startColor
+                : (i == flow.stations.Count - 1 || IsLastNonNullStation(flow, i) ? endColor : stopColor);
+            CreateMarker(position, (drawn + 1) + "\n" + GetDisplayName(station), color, grid.cellSize);
+
+            if (drawn > 0)
             {
-                Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(flow.stations[i - 1]));
-                AppendGridLeg(points, grid, previous, position);
+                GameObject previousStation = null;
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    if (flow.stations[j] != null)
+                    {
+                        previousStation = flow.stations[j];
+                        break;
+                    }
+                }
+                if (previousStation != null)
+                {
+                    Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(previousStation));
+                    AppendGridLeg(points, grid, previous, position);
+                }
             }
+            drawn++;
         }
+
         if (points.Count >= 2)
-            CreateGridLine(points, flow.flowName + "_Draft", routeColor);
+            CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName) + "_Draft", routeColor);
+    }
+
+    static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)
+    {
+        for (int i = index + 1; i < flow.stations.Count; i++)
+            if (flow.stations[i] != null) return false;
+        return true;
     }
 
     void DrawWorkerFlow(KitchenEmployee worker, Color workerColor, bool showOwner)
@@ -288,11 +309,20 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         AddPointIfDistinct(points, from);
 
         List<Vector3> path = grid.GetPath(from, grid.GetCellCenter(to));
-        for (int i = 0; i < path.Count; i++)
+        if (path != null && path.Count > 0)
         {
-            Vector3 point = path[i];
-            point.y = grid.Origin.y + floorOffset;
-            AddPointIfDistinct(points, point);
+            for (int i = 0; i < path.Count; i++)
+            {
+                Vector3 point = path[i];
+                point.y = grid.Origin.y + floorOffset;
+                AddPointIfDistinct(points, point);
+            }
+        }
+        else
+        {
+            // Fallback: Manhattan corridor so the draft still shows if pathing fails mid-capture.
+            Vector3 mid = new Vector3(to.x, from.y, from.z);
+            AddPointIfDistinct(points, mid);
         }
 
         AddPointIfDistinct(points, to);

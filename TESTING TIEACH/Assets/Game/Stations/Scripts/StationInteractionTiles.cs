@@ -73,7 +73,200 @@ public class StationInteractionTiles : MonoBehaviour
     {
         if (buildModeHighlight == null)
             TryAutoFindHighlight();
+        if (buildModeHighlight == null)
+            CreateDefaultHighlightQuads();
         ApplyHighlightVisibility(force: true);
+    }
+
+    /// <summary>
+    /// Builds the same neon-green floor stand tiles used by grill / heat lamp / etc.
+    /// when this station has none in the prefab (registers).
+    /// </summary>
+    void CreateDefaultHighlightQuads()
+    {
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+
+        Material mat = ResolveHighlightMaterial();
+        if (mat == null) return;
+
+        float cell = grid != null ? Mathf.Max(0.5f, grid.cellSize) : 1f;
+        float y = grid != null ? grid.Origin.y + 0.02f : transform.position.y + 0.02f;
+
+        var root = new GameObject("InteractionHighlight");
+        root.transform.SetParent(transform, false);
+        root.transform.localPosition = Vector3.zero;
+        root.transform.localRotation = Quaternion.identity;
+        root.transform.localScale = Vector3.one;
+
+        var standPositions = GetDefaultHighlightWorldPositions(cell);
+        for (int i = 0; i < standPositions.Count; i++)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = standPositions.Count > 1 ? $"Quad ({i})" : "Quad";
+            Object.Destroy(quad.GetComponent<Collider>());
+
+            quad.transform.SetParent(root.transform, true);
+            Vector3 p = standPositions[i];
+            p.y = y;
+            quad.transform.position = p;
+            quad.transform.rotation = Quaternion.Euler(90f, transform.eulerAngles.y, 0f);
+            quad.transform.localScale = Vector3.one * (cell * 0.92f);
+
+            var renderer = quad.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = mat;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
+        }
+
+        buildModeHighlight = root;
+    }
+
+    List<Vector3> GetDefaultHighlightWorldPositions(float cell)
+    {
+        var list = new List<Vector3>();
+
+        // Prefer configured grid offsets when a grid exists.
+        var fromOffsets = GetInteractionTileWorldPositions();
+        if (fromOffsets != null && fromOffsets.Count > 0)
+        {
+            list.AddRange(fromOffsets);
+            return list;
+        }
+
+        // Registers / stations without offsets: one stand tile on the worker side of the counter.
+        Vector3 kitchenDir = ResolveKitchenStandDirection();
+        Vector3 center = transform.position + kitchenDir * cell;
+        if (grid != null)
+            center = grid.GetCellCenter(center);
+
+        list.Add(center);
+
+        var fp = footprint != null ? footprint : GetComponent<BuildFootprint>();
+        int width = fp != null ? Mathf.Max(1, fp.sizeX) : 1;
+        if (width >= 2)
+        {
+            Vector3 along = Vector3.Cross(Vector3.up, kitchenDir).normalized;
+            list.Clear();
+            list.Add(center - along * (cell * 0.5f));
+            list.Add(center + along * (cell * 0.5f));
+            if (grid != null)
+            {
+                for (int i = 0; i < list.Count; i++)
+                    list[i] = grid.GetCellCenter(list[i]);
+            }
+        }
+
+        return list;
+    }
+
+    Vector3 ResolveKitchenStandDirection()
+    {
+        // Match the side other stations already use for their green stand tiles.
+        Vector3 peerDir = ResolveStandDirectionFromPeerStations();
+        if (peerDir.sqrMagnitude > 0.01f)
+            return peerDir;
+
+        var reg = GetComponent<Register>();
+        if (reg != null)
+        {
+            Vector3 lobby = reg.GetLobbyDirection();
+            lobby.y = 0f;
+            if (lobby.sqrMagnitude > 0.01f)
+                return -lobby.normalized;
+        }
+
+        Vector3 localFwd = transform.TransformDirection(Vector3.forward);
+        localFwd.y = 0f;
+        if (localFwd.sqrMagnitude > 0.01f)
+            return localFwd.normalized;
+
+        return Vector3.forward;
+    }
+
+    Vector3 ResolveStandDirectionFromPeerStations()
+    {
+        var peers = FindObjectsOfType<StationInteractionTiles>();
+        for (int i = 0; i < peers.Length; i++)
+        {
+            var peer = peers[i];
+            if (peer == null || peer == this || peer.buildModeHighlight == null)
+                continue;
+            // Prefer heat lamp / kitchen stations that already have authored quads.
+            if (peer.GetComponent<Register>() != null)
+                continue;
+
+            var centers = peer.GetInteractionPositionsFromModel();
+            if (centers == null || centers.Count == 0)
+                continue;
+
+            Vector3 toQuad = centers[0] - peer.transform.position;
+            toQuad.y = 0f;
+            if (toQuad.sqrMagnitude > 0.05f)
+                return toQuad.normalized;
+        }
+        return Vector3.zero;
+    }
+
+    static Material sharedHighlightMaterial;
+
+    static Material ResolveHighlightMaterial()
+    {
+        if (sharedHighlightMaterial != null)
+            return sharedHighlightMaterial;
+
+        // Prefer the project InteractionHighlight material already used by other stations.
+        var existing = FindObjectsOfType<StationInteractionTiles>();
+        for (int i = 0; i < existing.Length; i++)
+        {
+            var tiles = existing[i];
+            if (tiles == null || tiles.buildModeHighlight == null) continue;
+            var renderers = tiles.buildModeHighlight.GetComponentsInChildren<Renderer>(true);
+            for (int r = 0; r < renderers.Length; r++)
+            {
+                if (renderers[r] != null && renderers[r].sharedMaterial != null
+                    && renderers[r].sharedMaterial.name.IndexOf("InteractionHighlight", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    sharedHighlightMaterial = renderers[r].sharedMaterial;
+                    return sharedHighlightMaterial;
+                }
+            }
+            for (int r = 0; r < renderers.Length; r++)
+            {
+                if (renderers[r] != null && renderers[r].sharedMaterial != null)
+                {
+                    sharedHighlightMaterial = renderers[r].sharedMaterial;
+                    return sharedHighlightMaterial;
+                }
+            }
+        }
+
+#if UNITY_EDITOR
+        sharedHighlightMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(
+            "Assets/Game/Stations/Materials/InteractionHighlight.mat");
+        if (sharedHighlightMaterial != null)
+            return sharedHighlightMaterial;
+#endif
+
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            return null;
+
+        sharedHighlightMaterial = new Material(shader)
+        {
+            name = "InteractionHighlight_Runtime",
+            color = new Color(0.15f, 1f, 0.35f, 0.85f)
+        };
+        if (sharedHighlightMaterial.HasProperty("_BaseColor"))
+            sharedHighlightMaterial.SetColor("_BaseColor", new Color(0.15f, 1f, 0.35f, 0.85f));
+        if (sharedHighlightMaterial.HasProperty("_Surface"))
+            sharedHighlightMaterial.SetFloat("_Surface", 1f);
+        return sharedHighlightMaterial;
     }
 
     void Update()

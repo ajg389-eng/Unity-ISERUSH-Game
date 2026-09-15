@@ -342,9 +342,8 @@ public class CustomerAI : MonoBehaviour
         if (!patienceStarted)
             BeginQueueWait();
 
-        // After ordering at the register, move to the heat-lamp pass (customer side).
-        if (!waitingForPickup && isFront && reg != null)
-            reg.SendCustomerToPickup(this);
+        // Stay in the register order line until the register finishes taking the order.
+        // (Register / cashier moves them to the heat-lamp pickup line.)
 
         // Self-serve: grab matching food from the pass when at the front of pickup.
         if (waitingForPickup)
@@ -372,6 +371,7 @@ public class CustomerAI : MonoBehaviour
 
     void TrySelfServeFromHeatLamp()
     {
+        // No interaction tiles / quads — front of the pickup line can take a ready order.
         if (reg == null || leaving || !isFront) return;
         if (IsOrderFullyDelivered)
         {
@@ -383,7 +383,6 @@ public class CustomerAI : MonoBehaviour
         if (lamp == null) return;
         if (!lamp.TryCustomerTakeOrder(order)) return;
 
-        // Food came from the lamp; drinks are taken at the pass (no cashier handoff).
         if (order?.lines != null)
             order.lines.Clear();
         RefreshOrderLabel();

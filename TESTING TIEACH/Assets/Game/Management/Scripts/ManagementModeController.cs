@@ -190,7 +190,7 @@ public class ManagementModeController : MonoBehaviour
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
-            if (pending == PendingAction.None)
+            if (pending == PendingAction.None && !IsCapturingFlow)
             {
                 ClearEmployeeSelection();
                 ClearSelection();
@@ -201,7 +201,7 @@ public class ManagementModeController : MonoBehaviour
 
         // Click worker first: select them for station assignment.
         var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
-        if (clickedEmployee != null)
+        if (clickedEmployee != null && !IsCapturingFlow)
         {
             CancelOutputDrag();
             SelectEmployeeForAssignment(clickedEmployee);
@@ -211,7 +211,7 @@ public class ManagementModeController : MonoBehaviour
         var node = StationNode.FindFromCollider(hit.collider);
         if (node == null)
         {
-            if (pending == PendingAction.None)
+            if (pending == PendingAction.None && !IsCapturingFlow)
             {
                 ClearEmployeeSelection();
                 ClearSelection();
@@ -1044,7 +1044,9 @@ public class ManagementModeController : MonoBehaviour
         selectedStation = null;
         selectedHighlight = null;
         HidePopup();
-        if (selectedEmployee != null)
+        if (IsCapturingFlow && capturedFlow != null)
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(capturedFlow);
+        else if (selectedEmployee != null)
             WorkerAssignmentLinkVisuals.SetFocusedWorker(selectedEmployee);
         else
             WorkerAssignmentLinkVisuals.ClearFocus();
@@ -1214,6 +1216,7 @@ public class ManagementModeController : MonoBehaviour
         EnsureFlowCaptureHud();
         SetFlowCaptureHudVisible(true);
         RefreshFlowCaptureHud();
+        WorkerAssignmentLinkVisuals.SetFocusedFlow(capturedFlow);
         if (isNew)
         {
             SetStatus("Click stations in order for " + capturedFlow.flowName + ". Esc cancels.");
@@ -1574,20 +1577,24 @@ public class ManagementModeController : MonoBehaviour
     void RefreshFlowCaptureHighlights()
     {
         ClearFlowCaptureHighlights();
-        if (capturedFlow == null || capturedFlow.stations == null) return;
+        if (capturedFlow == null) return;
 
-        for (int i = 0; i < capturedFlow.stations.Count; i++)
+        if (capturedFlow.stations != null)
         {
-            GameObject station = capturedFlow.stations[i];
-            if (station == null) continue;
+            for (int i = 0; i < capturedFlow.stations.Count; i++)
+            {
+                GameObject station = capturedFlow.stations[i];
+                if (station == null) continue;
 
-            var highlight = StationSelectionHighlight.EnsureOn(station);
-            if (highlight == null) continue;
+                var highlight = StationSelectionHighlight.EnsureOn(station);
+                if (highlight == null) continue;
 
-            highlight.SetSelected(true);
-            flowCaptureHighlights.Add(highlight);
+                highlight.SetSelected(true);
+                flowCaptureHighlights.Add(highlight);
+            }
         }
 
+        // Live draft path on the kitchen floor as stations are clicked.
         WorkerAssignmentLinkVisuals.SetFocusedFlow(capturedFlow);
     }
 

@@ -16,9 +16,7 @@ public class Register : MonoBehaviour
     public int maxQueue = 6;
 
     [Header("Pickup line")]
-    [Tooltip("Where customers wait to grab food from the heat lamp pass. If empty, uses the customer side of the heat lamp.")]
-    public Transform pickupStart;
-    public Vector3 pickupDirection = Vector3.zero;
+    [Tooltip("Customers wait in front of the heat lamp linked to this register (customer / lobby side).")]
     public int maxPickup = 8;
 
     readonly List<CustomerAI> queue = new List<CustomerAI>();
@@ -31,7 +29,7 @@ public class Register : MonoBehaviour
     CustomerOrder preparedOrder;
     [Tooltip("Where customers walk to after being served")]
     public Transform storeExit;
-    [Tooltip("Shared holding area. If unset, uses HeatLampStation.Instance.")]
+    [Tooltip("Shared holding area. If unset, uses the nearest HeatLampStation.")]
     public HeatLampStation heatLamp;
 
     [Header("Worker station")]
@@ -40,7 +38,13 @@ public class Register : MonoBehaviour
     [Tooltip("How close the assigned worker must be to serve customers")]
     public float workerDutyRadius = 1.25f;
 
+    [Header("Ordering")]
+    [Tooltip("Seconds the front customer spends ordering before moving to the heat-lamp pickup line.")]
+    public float orderTakeSeconds = 1.25f;
+
+    float orderTimer;
     MoneyManager moneyManager;
+    HeatLampStation cachedHeatLamp;
     static bool raisedFirstCustomerEvent;
     static bool raisedFirstOrderServedEvent;
     bool queueGrowingRaised;
@@ -56,6 +60,7 @@ public class Register : MonoBehaviour
         var tiles = GetComponent<StationInteractionTiles>();
         if (tiles == null)
             tiles = gameObject.AddComponent<StationInteractionTiles>();
+        // Creates neon-green stand quads when the register prefab has none.
         tiles.EnsureHighlightReference();
     }
 
@@ -167,7 +172,40 @@ public class Register : MonoBehaviour
 
         queue.Remove(customer);
         pickup.Add(customer);
+        orderTimer = 0f;
         UpdateQueueTargets();
+        Sfx.Play(SfxId.CustomerArrive);
+    }
+
+    /// <summary>
+    /// Front-of-line order handoff → heat-lamp pickup line.
+    /// Requires a cashier on the stand when one is assigned.
+    /// </summary>
+    public bool TryTakeFrontOrder()
+    {
+        if (!isEnabled) return false;
+        if (pickup.Count >= EffectiveMaxPickup) return false;
+
+        var front = GetFrontCustomer();
+        if (front == null || !IsFrontCustomerReady())
+        {
+            orderTimer = 0f;
+            return false;
+        }
+
+        // If a worker is assigned to this register, they must be on duty to take orders.
+        if (AssignedWorker != null && !HasWorkerOnDuty())
+        {
+            orderTimer = 0f;
+            return false;
+        }
+
+        orderTimer += Time.deltaTime;
+        if (orderTimer < Mathf.Max(0.15f, orderTakeSeconds))
+            return false;
+
+        SendCustomerToPickup(front);
+        return true;
     }
 
     public KitchenEmployee AssignedWorker
@@ -215,8 +253,54 @@ public class Register : MonoBehaviour
 
     HeatLampStation GetHeatLamp()
     {
-        if (heatLamp != null) return heatLamp;
-        return HeatLampStation.Instance;
+        if (heatLamp != null)
+        {
+            cachedHeatLamp = heatLamp;
+            return heatLamp;
+        }
+
+        if (cachedHeatLamp != null)
+            return cachedHeatLamp;
+
+        // Prefer the nearest placed heat lamp so multi-counter layouts stay local.
+        cachedHeatLamp = FindNearestHeatLamp();
+        if (cachedHeatLamp != null) return cachedHeatLamp;
+
+        if (HeatLampStation.Instance != null)
+        {
+            cachedHeatLamp = HeatLampStation.Instance;
+            return cachedHeatLamp;
+        }
+
+        var pm = ProductionManager.Instance;
+        if (pm != null && pm.HeatLamp != null)
+        {
+            cachedHeatLamp = pm.HeatLamp;
+            return cachedHeatLamp;
+        }
+
+        cachedHeatLamp = FindObjectOfType<HeatLampStation>();
+        return cachedHeatLamp;
+    }
+
+    HeatLampStation FindNearestHeatLamp()
+    {
+        var lamps = FindObjectsOfType<HeatLampStation>();
+        if (lamps == null || lamps.Length == 0) return null;
+
+        HeatLampStation best = null;
+        float bestDist = float.MaxValue;
+        Vector3 origin = transform.position;
+        for (int i = 0; i < lamps.Length; i++)
+        {
+            var lamp = lamps[i];
+            if (lamp == null) continue;
+            float d = (lamp.transform.position - origin).sqrMagnitude;
+            if (d >= bestDist) continue;
+            bestDist = d;
+            best = lamp;
+        }
+        return best;
     }
 
     /// <summary>Heat lamp used for customer self-serve pickup at the pass.</summary>
@@ -323,8 +407,8 @@ public class Register : MonoBehaviour
 
     void Update()
     {
-        // Food handoff is customer self-serve at the heat lamp pass.
-        // Register workers only take the order and send guests to pickup.
+        // Line 1: order at register. Line 2: wait at heat lamp for food.
+        TryTakeFrontOrder();
     }
 
     Vector3 QueueDir
@@ -372,9 +456,13 @@ public class Register : MonoBehaviour
             + Mathf.Abs(dir.z) * bounds.extents.z;
     }
 
-    /// <summary>From the register toward the kitchen (worker stand / heat lamp), never the door.</summary>
+    /// <summary>From the register toward the kitchen (worker stand), never the door.</summary>
     Vector3 GetKitchenDir()
     {
+        // Lobby is defined by queueDirection; kitchen is the opposite side of the counter.
+        if (queueDirection.sqrMagnitude > 0.0001f)
+            return -queueDirection.normalized;
+
         Vector3 kitchen = Vector3.zero;
 
         Vector3 worker = GetInteractionPosition() - transform.position;
@@ -407,8 +495,19 @@ public class Register : MonoBehaviour
     }
 
     /// <summary>From the register toward the lobby — opposite the kitchen, never into it.</summary>
+    public Vector3 GetLobbyDirection() => GetLobbyDir();
+
+    /// <summary>World position of the front order-queue stand (lobby side).</summary>
+    public Vector3 GetFrontQueueWorldPosition() => GetQueueSlot(0);
+
+    /// <summary>
+    /// Customer / lobby side of the counter. Uses the register's queueDirection
+    /// (order-line direction) — never worker interaction quads.
+    /// </summary>
     Vector3 GetLobbyDir()
     {
+        if (queueDirection.sqrMagnitude > 0.0001f)
+            return queueDirection.normalized;
         return -GetKitchenDir();
     }
 
@@ -429,47 +528,38 @@ public class Register : MonoBehaviour
         return SlotHeight(first) + lobby * (spacing * Mathf.Max(0, index));
     }
 
-    Vector3 GetPickupOrigin()
-    {
-        if (pickupStart != null) return pickupStart.position;
-
-        // Default: customer side of the heat lamp pass (self-serve).
-        var lamp = GetHeatLamp();
-        if (lamp != null)
-            return lamp.GetCustomerPickupPositionNear(transform.position, 0);
-
-        Vector3 lobby = GetLobbyDir();
-        Vector3 side = Vector3.Cross(Vector3.up, lobby);
-        if (side.sqrMagnitude < 0.01f) side = Vector3.right;
-        side.Normalize();
-
-        Bounds bounds = GetRegisterBounds();
-        Vector3 origin = bounds.center
-            + lobby * (ExtentAlong(bounds, lobby) + Mathf.Max(1.15f, queueFrontOffset))
-            + side * 1.15f;
-        return SlotHeight(origin);
-    }
-
-    Vector3 GetPickupDir()
-    {
-        if (pickupDirection.sqrMagnitude > 0.01f)
-        {
-            Vector3 custom = pickupDirection.normalized;
-            if (Vector3.Dot(custom, GetKitchenDir()) > 0.2f)
-                return GetLobbyDir();
-            return custom;
-        }
-
-        var lamp = GetHeatLamp();
-        if (lamp != null)
-            return lamp.GetCustomerQueueDirection();
-
-        return GetLobbyDir();
-    }
-
+    /// <summary>
+    /// Pickup line on the customer side of the heat lamp.
+    /// Anchored to the same lobby depth as the register order line (cyan dots), then
+    /// shifted along the counter to the heat lamp — never uses worker quads / kitchen tiles.
+    /// </summary>
     Vector3 GetPickupSlot(int index)
     {
-        return GetPickupOrigin() + GetPickupDir() * (spacing * Mathf.Max(0, index));
+        Vector3 lobby = GetLobbyDir();
+        Vector3 alongCounter = Vector3.Cross(Vector3.up, lobby);
+        if (alongCounter.sqrMagnitude < 0.01f)
+            alongCounter = Vector3.right;
+        alongCounter.Normalize();
+
+        // Same customer-side depth as the front of the order line.
+        Vector3 orderFront = GetQueueSlot(0);
+        Vector3 anchor = orderFront;
+
+        var lamp = GetHeatLamp();
+        if (lamp != null)
+        {
+            // Slide along the counter so the line sits in front of the heat lamp.
+            float lateral = Vector3.Dot(lamp.transform.position - orderFront, alongCounter);
+            anchor = orderFront + alongCounter * lateral;
+        }
+        else
+        {
+            anchor = orderFront + alongCounter * spacing;
+        }
+
+        // Extend further into the lobby for people waiting behind the front of pickup.
+        Vector3 pos = anchor + lobby * (spacing * Mathf.Max(0, index));
+        return SlotHeight(pos);
     }
 
     void UpdateQueueTargets()
@@ -498,9 +588,17 @@ public class Register : MonoBehaviour
                 Gizmos.DrawSphere(GetQueueSlot(i), 0.15f);
         }
 
+        // Pickup line sits on the lobby side of the linked heat lamp.
         Gizmos.color = Color.magenta;
         for (int i = 0; i < 4; i++)
             Gizmos.DrawSphere(GetPickupSlot(i), 0.12f);
+
+        var lamp = GetHeatLamp();
+        if (lamp != null)
+        {
+            Gizmos.color = new Color(1f, 0.55f, 0.15f, 0.9f);
+            Gizmos.DrawLine(transform.position + Vector3.up * 0.4f, lamp.transform.position + Vector3.up * 0.4f);
+        }
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(GetInteractionPosition(), 0.2f);

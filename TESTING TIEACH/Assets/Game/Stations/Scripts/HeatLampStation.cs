@@ -101,16 +101,16 @@ public class HeatLampStation : MonoBehaviour
     public Vector3 GetCustomerQueueDirection()
     {
         Vector3 offset = GetCustomerSideOffset();
-        if (offset.sqrMagnitude < 0.01f) return -transform.forward;
+        if (offset.sqrMagnitude < 0.01f) return Vector3.back;
         return offset.normalized;
     }
 
     /// <summary>World stand point for a customer at the pass (index 0 = at the counter).</summary>
     public Vector3 GetCustomerPickupPosition(int index = 0)
     {
-        Vector3 offset = GetCustomerSideOffset();
-        Vector3 origin = transform.position + offset;
-        Vector3 intoLobby = offset.sqrMagnitude > 0.01f ? offset.normalized : GetCustomerQueueDirection();
+        Vector3 intoLobby = GetCustomerQueueDirection();
+        float standOff = GetCustomerStandDistance();
+        Vector3 origin = transform.position + intoLobby * standOff;
         Vector3 pos = origin + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
         return SnapPickupToGround(pos);
     }
@@ -118,22 +118,33 @@ public class HeatLampStation : MonoBehaviour
     /// <summary>Pickup stand near a register, still on the customer side of this lamp.</summary>
     public Vector3 GetCustomerPickupPositionNear(Vector3 nearWorld, int index = 0)
     {
-        Vector3 offset = GetCustomerSideOffset();
-        Vector3 origin = transform.position + offset;
-        Vector3 alongCounter = Vector3.Cross(Vector3.up, offset);
+        Vector3 intoLobby = GetCustomerQueueDirection();
+        float standOff = GetCustomerStandDistance();
+        Vector3 origin = transform.position + intoLobby * standOff;
+
+        Vector3 alongCounter = Vector3.Cross(Vector3.up, intoLobby);
         if (alongCounter.sqrMagnitude < 0.01f)
             alongCounter = transform.right;
         alongCounter.Normalize();
 
         Vector3 toNear = nearWorld - origin;
         toNear.y = 0f;
-        float lateral = Vector3.Dot(toNear, alongCounter);
-        // Keep customers clustered near the pass, not stretched across the whole lobby.
-        lateral = Mathf.Clamp(lateral, -2.5f, 2.5f);
+        float lateral = Mathf.Clamp(Vector3.Dot(toNear, alongCounter), -2.5f, 2.5f);
 
-        Vector3 intoLobby = offset.sqrMagnitude > 0.01f ? offset.normalized : GetCustomerQueueDirection();
         Vector3 pos = origin + alongCounter * lateral + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
         return SnapPickupToGround(pos);
+    }
+
+    float GetCustomerStandDistance()
+    {
+        float cell = 1f;
+        if (GridManager.Instance != null)
+            cell = Mathf.Max(0.5f, GridManager.Instance.cellSize);
+
+        // Clear the station footprint, then one stand cell into the lobby.
+        var fp = GetComponent<BuildFootprint>();
+        int depth = fp != null ? Mathf.Max(1, Mathf.Max(fp.sizeX, fp.sizeY)) : 2;
+        return Mathf.Max(customerPickupSpacing, cell * (depth * 0.5f + 0.75f));
     }
 
     Vector3 GetCustomerSideOffset()
@@ -141,18 +152,65 @@ public class HeatLampStation : MonoBehaviour
         if (customerPickupOffset.sqrMagnitude > 0.01f)
             return customerPickupOffset;
 
-        // Place customers opposite the worker interaction tile (kitchen side → lobby side).
+        return ResolveLobbySideDirection() * GetCustomerStandDistance();
+    }
+
+    /// <summary>
+    /// Customer / lobby side of the pass = opposite the green worker stand,
+    /// forced to agree with the nearest register's lobby direction.
+    /// </summary>
+    Vector3 ResolveLobbySideDirection()
+    {
         Vector3 worker = GetInteractionPosition();
-        Vector3 throughLamp = transform.position - worker;
-        throughLamp.y = 0f;
-        if (throughLamp.sqrMagnitude < 0.01f)
+        Vector3 awayFromWorker = transform.position - worker;
+        awayFromWorker.y = 0f;
+
+        Vector3 dir;
+        if (awayFromWorker.sqrMagnitude > 0.05f)
+            dir = awayFromWorker.normalized;
+        else
         {
-            // Prefab worker quad sits at local +Z; customers stand at local -Z.
-            throughLamp = -transform.TransformDirection(Vector3.forward);
-            throughLamp.y = 0f;
+            // Prefab worker quad sits at local +Z.
+            dir = -transform.TransformDirection(Vector3.forward);
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.01f)
+                dir = Vector3.back;
+            else
+                dir.Normalize();
         }
-        float dist = Mathf.Max(1f, throughLamp.magnitude);
-        return throughLamp.normalized * dist;
+
+        // Registers already know which way the lobby is (order queue side).
+        // If "opposite worker" disagrees, flip — fixes lamps whose pivot sits on the kitchen half.
+        Register nearest = FindNearestRegister();
+        if (nearest != null)
+        {
+            Vector3 lobby = nearest.GetLobbyDirection();
+            lobby.y = 0f;
+            if (lobby.sqrMagnitude > 0.01f && Vector3.Dot(dir, lobby.normalized) < 0f)
+                dir = -dir;
+        }
+
+        return dir;
+    }
+
+    Register FindNearestRegister()
+    {
+        var registers = FindObjectsOfType<Register>();
+        if (registers == null || registers.Length == 0) return null;
+
+        Register best = null;
+        float bestDist = float.MaxValue;
+        Vector3 origin = transform.position;
+        for (int i = 0; i < registers.Length; i++)
+        {
+            var reg = registers[i];
+            if (reg == null) continue;
+            float d = (reg.transform.position - origin).sqrMagnitude;
+            if (d >= bestDist) continue;
+            bestDist = d;
+            best = reg;
+        }
+        return best;
     }
 
     static Vector3 SnapPickupToGround(Vector3 world)

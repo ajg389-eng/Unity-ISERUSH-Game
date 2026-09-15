@@ -1026,11 +1026,8 @@ public class KitchenEmployee : MonoBehaviour
             ClearCashierTray();
         }
 
-        // Take the order: move the front guest to the heat-lamp pickup line.
-        var ordering = reg.GetFrontCustomer();
-        if (ordering != null)
-            reg.SendCustomerToPickup(ordering);
-
+        // Cashier presence is required to take orders (Register.TryTakeFrontOrder).
+        // Stay on the stand so guests can finish ordering and move to the heat lamp.
         Vector3 idle = GetIdleStandPosition(reg);
         if (CloseEnough(idle, 0.35f))
         {
@@ -1388,13 +1385,39 @@ public class KitchenEmployee : MonoBehaviour
                             TaskProgress = 0f;
                             break;
                         }
+
+                        // Salvage a leftover cooked patty so a previous stuck cycle can't block forever.
+                        if (grill != null && grill.IsCooked())
+                        {
+                            if (manager.TakePattyFromGrill(this))
+                            {
+                                if (heldUnits <= 0)
+                                    heldUnits = 1;
+                                SyncHasPattyFlag();
+                                FinishStepAndHandoff();
+                                break;
+                            }
+                        }
+
                         if (heldUnits > 0 && manager.PlacePattyOnGrill(this))
                         {
-                            // Batch stays with the worker; grill processes one at a time visually.
                             step = Step.AtGrill;
                             stateTimer = 0f;
                         }
-                        else { path.Clear(); pathDestination = Vector3.zero; }
+                        else if (grill != null && grill.HasPattyOnGrill)
+                        {
+                            // Already cooking — watch this cycle instead of path-thrashing.
+                            FaceStationObject(grill.gameObject);
+                            step = Step.AtGrill;
+                            stateTimer = 0f;
+                            ShowTaskBar = true;
+                            TaskProgress = 0f;
+                        }
+                        else
+                        {
+                            path.Clear();
+                            pathDestination = Vector3.zero;
+                        }
                     }
                     else { path.Clear(); pathDestination = Vector3.zero; }
                 }
@@ -1411,26 +1434,41 @@ public class KitchenEmployee : MonoBehaviour
                     pathDestination = Vector3.zero;
                     break;
                 }
+
+                if (awaitingOutputDelivery)
+                {
+                    ShowTaskBar = true;
+                    TaskProgress = 1f;
+                    FinishStepAndHandoff();
+                    break;
+                }
+
                 stateTimer += Time.deltaTime;
-                float grillTotal = (manager.GetGrillPlaceTime(this) + manager.GetGrillCookTime(this)
-                    + manager.GetGrillWaitAfterCookedTime(this) + manager.GetGrillTakeTime(this))
-                    * BatchSize;
+                float oneGrillCycle = manager.GetGrillPlaceTime(this) + manager.GetGrillCookTime(this)
+                    + manager.GetGrillWaitAfterCookedTime(this) + manager.GetGrillTakeTime(this);
+                // Grill cooks one patty at a time; batch size only scales total wait for multi-carry.
+                float grillTotal = oneGrillCycle * Mathf.Max(1, BatchSize);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, grillTotal));
-                if (stateTimer >= grillTotal)
+
+                var grillNow = manager.GetGrillFor(this);
+                bool readyToTake = grillNow != null && grillNow.IsCooked()
+                    && stateTimer >= oneGrillCycle;
+
+                if (readyToTake || stateTimer >= grillTotal)
                 {
-                    // Already took cooked item — retry handoff without taking again
-                    if (heldUnits > 0 || awaitingOutputDelivery)
-                    {
-                        TaskProgress = 1f;
-                        FinishStepAndHandoff();
-                        break;
-                    }
+                    // Always take the cooked patty off the grill before handoff.
+                    // (heldUnits stays > 0 during cooking for batch carry — do not treat that as "already done".)
                     if (manager.TakePattyFromGrill(this))
                     {
                         if (heldUnits <= 0)
                             heldUnits = 1;
                         SyncHasPattyFlag();
+                        FinishStepAndHandoff();
+                    }
+                    else if (grillNow != null && !grillNow.HasPattyOnGrill && heldUnits > 0)
+                    {
+                        // Nothing on grill but we're holding food — continue the route.
                         FinishStepAndHandoff();
                     }
                 }
