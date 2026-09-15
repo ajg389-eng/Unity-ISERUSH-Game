@@ -77,6 +77,7 @@ public class ManagementModeController : MonoBehaviour
     readonly List<GameObject> editBackupStations = new List<GameObject>();
     readonly List<string> editBackupStepIds = new List<string>();
     readonly Dictionary<GameObject, GameObject> editBackupOutputs = new Dictionary<GameObject, GameObject>();
+    readonly List<StationSelectionHighlight> flowCaptureHighlights = new List<StationSelectionHighlight>();
 
     public bool IsCapturingFlow => capturedFlow != null;
     public ProductionFlowPlan CapturedFlow => capturedFlow;
@@ -1256,6 +1257,7 @@ public class ManagementModeController : MonoBehaviour
         editBackupStations.Clear();
         editBackupStepIds.Clear();
         editBackupOutputs.Clear();
+        ClearFlowCaptureHighlights();
         SetFlowCaptureHudVisible(false);
 
         WorkerFlowAssigner.SynchronizeFlowRoute(finished);
@@ -1317,6 +1319,7 @@ public class ManagementModeController : MonoBehaviour
         editBackupStations.Clear();
         editBackupStepIds.Clear();
         editBackupOutputs.Clear();
+        ClearFlowCaptureHighlights();
         SetFlowCaptureHudVisible(false);
 
         var screen = FindObjectOfType<ManagementScreenController>();
@@ -1543,6 +1546,7 @@ public class ManagementModeController : MonoBehaviour
     void RefreshFlowCaptureHud()
     {
         EnsureFlowCaptureHud();
+        RefreshFlowCaptureHighlights();
         if (flowCaptureHud == null || capturedFlow == null) return;
         if (flowCaptureTitle != null)
         {
@@ -1565,6 +1569,36 @@ public class ManagementModeController : MonoBehaviour
         }
         if (flowCaptureFinishButton != null)
             flowCaptureFinishButton.interactable = capturedFlow.stations.Count > 0;
+    }
+
+    void RefreshFlowCaptureHighlights()
+    {
+        ClearFlowCaptureHighlights();
+        if (capturedFlow == null || capturedFlow.stations == null) return;
+
+        for (int i = 0; i < capturedFlow.stations.Count; i++)
+        {
+            GameObject station = capturedFlow.stations[i];
+            if (station == null) continue;
+
+            var highlight = StationSelectionHighlight.EnsureOn(station);
+            if (highlight == null) continue;
+
+            highlight.SetSelected(true);
+            flowCaptureHighlights.Add(highlight);
+        }
+
+        WorkerAssignmentLinkVisuals.SetFocusedFlow(capturedFlow);
+    }
+
+    void ClearFlowCaptureHighlights()
+    {
+        for (int i = 0; i < flowCaptureHighlights.Count; i++)
+        {
+            if (flowCaptureHighlights[i] != null)
+                flowCaptureHighlights[i].SetSelected(false);
+        }
+        flowCaptureHighlights.Clear();
     }
 
     void SetFlowCaptureHudVisible(bool show)

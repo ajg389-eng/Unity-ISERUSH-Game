@@ -300,6 +300,8 @@ public class PurchaseUndoManager : MonoBehaviour
         {
             if (!RemovePlacedStation(rec.placed))
                 return false;
+            if (inventory != null)
+                inventory.NotifyPurchaseUndone(rec.item);
             if (money != null)
                 money.AddMoney(rec.paid);
             return true;
@@ -309,6 +311,7 @@ public class PurchaseUndoManager : MonoBehaviour
             return false;
         if (!inventory.TryConsumeOne(rec.item))
             return false;
+        inventory.NotifyPurchaseUndone(rec.item);
         if (money != null)
             money.AddMoney(rec.paid);
         return true;

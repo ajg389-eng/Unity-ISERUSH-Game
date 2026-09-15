@@ -20,7 +20,8 @@ public static class WorkerCardPrefabBuilder
         var cardGo = new GameObject("WorkerCard", typeof(RectTransform));
         cardGo.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
         var le = cardGo.AddComponent<LayoutElement>();
-        le.minHeight = 210;
+        le.minHeight = 44;
+        le.preferredHeight = 44;
         le.flexibleWidth = 1;
 
         var vlg = cardGo.AddComponent<VerticalLayoutGroup>();
@@ -95,10 +96,43 @@ public static class WorkerCardPrefabBuilder
         hlg.childForceExpandWidth = true;
         hlg.childForceExpandHeight = true;
 
+        CreateExpandArrow(row1.transform);
         nameInputGo = CreateNameInput(row1.transform);
         customizeBtn = CreateButton(row1.transform, "Customize", new Color(0.28f, 0.4f, 0.55f, 1f), 96f);
         fireBtn = CreateButton(row1.transform, "Fire", new Color(0.62f, 0.22f, 0.22f, 1f), 72f);
         return row1.transform;
+    }
+
+    static Button CreateExpandArrow(Transform parent)
+    {
+        var go = new GameObject("ExpandArrow", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.minWidth = 28;
+        le.preferredWidth = 28;
+        le.minHeight = 28;
+        le.preferredHeight = 28;
+        le.flexibleWidth = 0;
+        le.flexibleHeight = 0;
+        go.AddComponent<Image>().color = new Color(0.14f, 0.16f, 0.22f, 1f);
+        var btn = go.AddComponent<Button>();
+
+        var textGo = new GameObject("Label", typeof(RectTransform));
+        textGo.transform.SetParent(go.transform, false);
+        var textRect = (RectTransform)textGo.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        var tmp = textGo.AddComponent<TextMeshProUGUI>();
+        tmp.text = ">";
+        tmp.fontSize = 18;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        tmp.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        return btn;
     }
 
     static Transform CreateSection(Transform parent, string name, float minHeight)

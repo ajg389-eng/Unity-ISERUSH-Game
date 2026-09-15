@@ -26,6 +26,9 @@ public class WorkerCardUI : MonoBehaviour
     ProductionManager production;
     Transform assignmentControls;
     string assignmentSignature;
+    bool detailsExpanded;
+    Button expandButton;
+    TextMeshProUGUI expandArrowLabel;
 
     void OnValidate()
     {
@@ -83,9 +86,12 @@ public class WorkerCardUI : MonoBehaviour
             fireButton.onClick.RemoveListener(OnFireClicked);
         if (customizeButton != null)
             customizeButton.onClick.RemoveListener(OnCustomizeClicked);
+        if (expandButton != null)
+            expandButton.onClick.RemoveListener(ToggleDetailsExpanded);
 
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
+        detailsExpanded = false;
 
         HideLegacyUi();
         EnsureLayout();
@@ -95,12 +101,15 @@ public class WorkerCardUI : MonoBehaviour
         {
             SetNameText("");
             RefreshDetails();
+            ApplyExpandedState();
             return;
         }
 
         SetNameText(emp.employeeName ?? "Worker");
-        LockNameField();
+        EnableNameEditing();
+        EnsureExpandArrow();
         RefreshDetails();
+        ApplyExpandedState();
         if (customizeButton != null)
         {
             customizeButton.interactable = true;
@@ -134,7 +143,9 @@ public class WorkerCardUI : MonoBehaviour
         SetDetailText(
             assignmentsText,
             flowPrefix
-            + "Transport: " + FormatRate(transport) + " items / min\n"
+            + FormatUpgradeStars(employee.UpgradeLevel)
+            + "  Carry " + employee.CarryCapacity
+            + "  ·  Transport: " + FormatRate(transport) + " items / min\n"
             + "Stations: " + employee.GetAssignedStationsSummary());
 
         string held = employee.GetHeldInventoryDisplay();
@@ -148,6 +159,14 @@ public class WorkerCardUI : MonoBehaviour
             stationsLabel.gameObject.SetActive(false);
 
         EnsureAssignmentControls();
+        RefreshUpgradeButton();
+    }
+
+    static string FormatUpgradeStars(int level)
+    {
+        level = Mathf.Clamp(level, 0, KitchenEmployee.MaxUpgradeLevel);
+        // ASCII-safe star readout (avoids missing TMP glyphs).
+        return "[" + level + "/" + KitchenEmployee.MaxUpgradeLevel + "]";
     }
 
     static string FormatRate(float rate)
@@ -179,15 +198,140 @@ public class WorkerCardUI : MonoBehaviour
 
         ApplyCardLayout();
         BindReferences();
+        EnsureExpandArrow();
+
+        var detailsRoot = transform.Find("WorkerDetails");
+        if (detailsRoot != null && detailsRoot.gameObject.activeSelf != detailsExpanded)
+            detailsRoot.gameObject.SetActive(detailsExpanded);
+    }
+
+    void EnsureExpandArrow()
+    {
+        var row1 = transform.Find("Row1");
+        if (row1 == null) return;
+
+        // Remove old name overlay that blocked editing.
+        if (nameInputObject != null)
+        {
+            Transform oldHit = nameInputObject.transform.Find("ExpandHit");
+            if (oldHit != null)
+                Destroy(oldHit.gameObject);
+        }
+
+        Transform existing = row1.Find("ExpandArrow");
+        if (existing == null)
+        {
+            var go = new GameObject("ExpandArrow", typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(row1, false);
+            go.transform.SetAsFirstSibling();
+            var le = go.AddComponent<LayoutElement>();
+            le.minWidth = 28;
+            le.preferredWidth = 28;
+            le.minHeight = 28;
+            le.preferredHeight = 28;
+            le.flexibleWidth = 0;
+            le.flexibleHeight = 0;
+            go.GetComponent<Image>().color = new Color(0.14f, 0.16f, 0.22f, 1f);
+            expandButton = go.GetComponent<Button>();
+
+            var textGo = new GameObject("Label", typeof(RectTransform));
+            textGo.transform.SetParent(go.transform, false);
+            var tr = (RectTransform)textGo.transform;
+            tr.anchorMin = Vector2.zero;
+            tr.anchorMax = Vector2.one;
+            tr.offsetMin = Vector2.zero;
+            tr.offsetMax = Vector2.zero;
+            expandArrowLabel = textGo.AddComponent<TextMeshProUGUI>();
+            expandArrowLabel.text = ">";
+            expandArrowLabel.fontSize = 18;
+            expandArrowLabel.fontStyle = FontStyles.Bold;
+            expandArrowLabel.alignment = TextAlignmentOptions.Center;
+            expandArrowLabel.color = Color.white;
+            expandArrowLabel.raycastTarget = false;
+            if (TMP_Settings.defaultFontAsset != null)
+                expandArrowLabel.font = TMP_Settings.defaultFontAsset;
+        }
+        else
+        {
+            existing.SetAsFirstSibling();
+            expandButton = existing.GetComponent<Button>();
+            if (expandArrowLabel == null)
+                expandArrowLabel = existing.Find("Label")?.GetComponent<TextMeshProUGUI>();
+            var le = existing.GetComponent<LayoutElement>();
+            if (le == null) le = existing.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 28;
+            le.preferredWidth = 28;
+            le.minHeight = 28;
+            le.preferredHeight = 28;
+            le.flexibleWidth = 0;
+            le.flexibleHeight = 0;
+            if (expandArrowLabel != null)
+            {
+                expandArrowLabel.text = ">";
+                expandArrowLabel.fontSize = 18;
+                expandArrowLabel.fontStyle = FontStyles.Bold;
+            }
+        }
+
+        if (expandButton != null)
+        {
+            expandButton.onClick.RemoveListener(ToggleDetailsExpanded);
+            expandButton.onClick.AddListener(ToggleDetailsExpanded);
+        }
+
+        UpdateExpandArrowLabel();
+    }
+
+    void ToggleDetailsExpanded()
+    {
+        detailsExpanded = !detailsExpanded;
+        ApplyExpandedState();
+    }
+
+    void ApplyExpandedState()
+    {
+        var details = transform.Find("WorkerDetails");
+        if (details != null && details.gameObject.activeSelf != detailsExpanded)
+            details.gameObject.SetActive(detailsExpanded);
+
+        var cardLe = GetComponent<LayoutElement>();
+        if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
+        if (detailsExpanded)
+        {
+            cardLe.minHeight = 96;
+            cardLe.preferredHeight = -1;
+        }
+        else
+        {
+            cardLe.minHeight = 44;
+            cardLe.preferredHeight = 44;
+        }
+
+        UpdateExpandArrowLabel();
+
+        if (transform is RectTransform cardRect)
+            LayoutRebuilder.MarkLayoutForRebuild(cardRect);
+        var parentRect = transform.parent as RectTransform;
+        if (parentRect != null)
+            LayoutRebuilder.MarkLayoutForRebuild(parentRect);
+    }
+
+    void UpdateExpandArrowLabel()
+    {
+        if (expandArrowLabel == null) return;
+        expandArrowLabel.text = ">";
+        // Rotate a reliable ">" glyph: right when collapsed, down when expanded.
+        expandArrowLabel.rectTransform.localEulerAngles = detailsExpanded
+            ? new Vector3(0f, 0f, -90f)
+            : Vector3.zero;
     }
 
     void ApplyCardLayout()
     {
         var cardLe = GetComponent<LayoutElement>();
         if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
-        cardLe.minHeight = 96;
-        cardLe.preferredHeight = -1;
         cardLe.flexibleWidth = 1;
+        // Height is driven by ApplyExpandedState (collapsed header vs full details).
 
         var cardImage = GetComponent<Image>();
         if (cardImage != null)
@@ -227,8 +371,23 @@ public class WorkerCardUI : MonoBehaviour
             hlg.childForceExpandWidth = true;
             hlg.childForceExpandHeight = true;
 
+            EnsureExpandArrow();
+
+            if (expandButton != null)
+            {
+                var expandLe = expandButton.GetComponent<LayoutElement>();
+                if (expandLe == null) expandLe = expandButton.gameObject.AddComponent<LayoutElement>();
+                expandLe.minWidth = 28;
+                expandLe.preferredWidth = 28;
+                expandLe.minHeight = 28;
+                expandLe.preferredHeight = 28;
+                expandLe.flexibleWidth = 0;
+                expandLe.flexibleHeight = 0;
+            }
+
             if (nameInputObject != null)
             {
+                nameInputObject.transform.SetSiblingIndex(1);
                 var nameLe = nameInputObject.GetComponent<LayoutElement>();
                 if (nameLe == null) nameLe = nameInputObject.AddComponent<LayoutElement>();
                 nameLe.flexibleWidth = 1;
@@ -286,6 +445,8 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         string signature = employee == null ? "none" : employee.GetInstanceID().ToString();
+        if (employee != null)
+            signature += ":u" + employee.UpgradeLevel;
         if (employee != null && employee.operatedStations != null)
             foreach (GameObject station in employee.operatedStations)
                 signature += ":" + (station != null ? station.GetInstanceID().ToString() : "null");
@@ -305,8 +466,13 @@ public class WorkerCardUI : MonoBehaviour
         vertical.childForceExpandWidth = true;
         vertical.childForceExpandHeight = false;
         var rootLayout = root.AddComponent<LayoutElement>();
-        rootLayout.minHeight = 61f;
+        rootLayout.minHeight = 92f;
         rootLayout.preferredHeight = rootLayout.minHeight;
+
+        Button upgrade = CreateControlButton(assignmentControls, GetUpgradeButtonLabel(), 28f);
+        upgrade.name = "UpgradeTransport";
+        upgrade.onClick.AddListener(OnUpgradeClicked);
+        ApplyUpgradeButtonStyle(upgrade);
 
         Button inspect = CreateControlButton(assignmentControls, "Inspect / Assign on Grid", 28f);
         inspect.onClick.AddListener(() =>
@@ -327,7 +493,62 @@ public class WorkerCardUI : MonoBehaviour
             WorkersUI workersUi = FindObjectOfType<WorkersUI>();
             if (workersUi != null) workersUi.Refresh();
         });
+    }
 
+    string GetUpgradeButtonLabel()
+    {
+        if (employee == null) return "Upgrade";
+        if (employee.IsMaxUpgraded)
+            return "Carry Max " + FormatUpgradeStars(employee.UpgradeLevel);
+        int cost = employee.GetNextUpgradeCost();
+        return "Upgrade Carry  $" + cost + "  → " + FormatUpgradeStars(employee.UpgradeLevel + 1)
+            + " (" + (employee.UpgradeLevel + 2) + " items)";
+    }
+
+    void RefreshUpgradeButton()
+    {
+        if (assignmentControls == null) return;
+        Transform t = assignmentControls.Find("UpgradeTransport");
+        if (t == null) return;
+        var btn = t.GetComponent<Button>();
+        if (btn == null) return;
+        var label = t.Find("Text")?.GetComponent<TextMeshProUGUI>();
+        if (label != null)
+            label.text = GetUpgradeButtonLabel();
+        ApplyUpgradeButtonStyle(btn);
+    }
+
+    void ApplyUpgradeButtonStyle(Button btn)
+    {
+        if (btn == null) return;
+        var img = btn.GetComponent<Image>();
+        var money = FindObjectOfType<MoneyManager>();
+        bool maxed = employee != null && employee.IsMaxUpgraded;
+        int cost = employee != null ? employee.GetNextUpgradeCost() : -1;
+        bool canPay = maxed || cost <= 0 || money == null || money.CanAfford(cost);
+        btn.interactable = employee != null && !maxed && canPay;
+        if (img != null)
+        {
+            if (maxed)
+                img.color = new Color(0.22f, 0.28f, 0.34f, 0.98f);
+            else if (!canPay)
+                img.color = new Color(0.32f, 0.24f, 0.24f, 0.98f);
+            else
+                img.color = new Color(0.28f, 0.42f, 0.36f, 0.98f);
+        }
+    }
+
+    void OnUpgradeClicked()
+    {
+        if (employee == null) return;
+        if (!employee.TryUpgrade())
+        {
+            Sfx.Play(SfxId.UiError);
+            RefreshUpgradeButton();
+            return;
+        }
+        assignmentSignature = null; // force rebuild so label/level update
+        RefreshDetails();
     }
 
     static Button CreateControlButton(Transform parent, string text, float height)
@@ -394,20 +615,33 @@ public class WorkerCardUI : MonoBehaviour
             row2.gameObject.SetActive(false);
     }
 
-    void AddNameListener() { }
+    void AddNameListener()
+    {
+        if (nameInputObject == null) return;
+        var tmpInput = nameInputObject.GetComponent<TMP_InputField>();
+        var legacyInput = nameInputObject.GetComponent<InputField>();
+        if (tmpInput != null) tmpInput.onEndEdit.AddListener(OnNameChanged);
+        if (legacyInput != null) legacyInput.onEndEdit.AddListener(OnNameChanged);
+    }
 
-    void LockNameField()
+    void EnableNameEditing()
     {
         if (nameInputObject == null) return;
         var tmpInput = nameInputObject.GetComponent<TMP_InputField>();
         if (tmpInput != null)
         {
-            tmpInput.readOnly = true;
-            tmpInput.interactable = false;
+            tmpInput.readOnly = false;
+            tmpInput.interactable = true;
+            tmpInput.enabled = true;
         }
         var legacyInput = nameInputObject.GetComponent<InputField>();
         if (legacyInput != null)
-            legacyInput.interactable = false;
+        {
+            legacyInput.interactable = true;
+            legacyInput.enabled = true;
+        }
+        RemoveNameListener();
+        AddNameListener();
     }
 
     void RemoveNameListener()
@@ -430,8 +664,13 @@ public class WorkerCardUI : MonoBehaviour
 
     void OnNameChanged(string value)
     {
-        if (employee != null)
-            employee.employeeName = string.IsNullOrWhiteSpace(value) ? "Worker" : value.Trim();
+        if (employee == null) return;
+        string cleaned = string.IsNullOrWhiteSpace(value) ? "Worker" : value.Trim();
+        if (cleaned.StartsWith("▾ ") || cleaned.StartsWith("▸ "))
+            cleaned = cleaned.Substring(2).Trim();
+        if (string.IsNullOrEmpty(cleaned)) cleaned = "Worker";
+        employee.employeeName = cleaned;
+        SetNameText(cleaned);
     }
 
     void EnsureCustomizeButton(Transform row1)

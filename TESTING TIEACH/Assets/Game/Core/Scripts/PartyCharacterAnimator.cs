@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -9,12 +10,45 @@ using UnityEngine;
 public class PartyCharacterAnimator : MonoBehaviour
 {
     const string DefaultControllerResourceName = "char_AC";
+    const string HumanoidAvatarResourceName = "party_character_humanoid";
+    const string SpatulaResourceName = "Prop_Spatula_05";
+
+    /// <summary>Work clip played while a worker is actively using a station.</summary>
+    public enum StationWorkKind
+    {
+        None = 0,
+        Grill,
+        Fryer,
+        Assembly,
+        Freezer,
+        Drink,
+        Register,
+        Plating
+    }
 
     [Tooltip("Animator on the party character. Auto-found in children if empty.")]
     public Animator animator;
 
     [Tooltip("Optional: assign Assets/Imported/FREE/Pack_FREE_PartyCharacters/Animations/char_AC")]
     public RuntimeAnimatorController controller;
+
+    [Tooltip("Optional override for grill cooking. Defaults to Resources/grilling_a_meat_party.")]
+    public RuntimeAnimatorController grillCookingController;
+
+    [Tooltip("Humanoid avatar used only while working a station (keeps Generic idle/run intact).")]
+    public Avatar cookHumanoidAvatar;
+
+    [Tooltip("Spatula shown in the worker's hand while grilling.")]
+    public GameObject spatulaPrefab;
+
+    [Tooltip("Local position of the spatula on the right hand.")]
+    public Vector3 spatulaLocalPosition = new Vector3(0.02f, 0.04f, 0.08f);
+
+    [Tooltip("Local euler angles of the spatula on the right hand.")]
+    public Vector3 spatulaLocalEuler = new Vector3(0f, 90f, 90f);
+
+    [Tooltip("Target world-space length of the spatula (meters).")]
+    public float spatulaWorldLength = 0.55f;
 
     [Tooltip("Transform that faces move direction (usually the visible character child).")]
     public Transform visualRoot;
@@ -34,6 +68,14 @@ public class PartyCharacterAnimator : MonoBehaviour
     bool hasRun;
     int lockFacingFrames;
     Vector3 lockedFaceDir = Vector3.forward;
+    RuntimeAnimatorController locomotionController;
+    Avatar locomotionAvatar;
+    StationWorkKind activeWork;
+    GameObject spatulaInstance;
+    static readonly Dictionary<StationWorkKind, RuntimeAnimatorController> cachedWorkControllers =
+        new Dictionary<StationWorkKind, RuntimeAnimatorController>();
+    static Avatar cachedHumanoidAvatar;
+    static GameObject cachedSpatulaPrefab;
 
     /// <summary>Add this component for facing (and optional run/idle animation).</summary>
     public static PartyCharacterAnimator EnsureOn(GameObject go)
@@ -144,6 +186,7 @@ public class PartyCharacterAnimator : MonoBehaviour
 
     void UpdateAnimTriggers(bool movingNow)
     {
+        if (activeWork != StationWorkKind.None) return;
         if (animator == null || animator.runtimeAnimatorController == null)
         {
             isMoving = movingNow;
@@ -163,6 +206,246 @@ public class PartyCharacterAnimator : MonoBehaviour
             if (hasRun) animator.ResetTrigger(RunTrigger);
             if (hasIdle) animator.SetTrigger(IdleTrigger);
         }
+    }
+
+    /// <summary>
+    /// Play a remapped EEJANAI cooking clip while a worker is at a station.
+    /// Temporarily swaps to a Humanoid avatar so muscle curves work, then restores
+    /// the Generic avatar + locomotion controller for idle/run.
+    /// </summary>
+    public void SetStationWork(StationWorkKind work)
+    {
+        if (animator == null)
+            ResolveRefs();
+        if (animator == null) return;
+        if (work == activeWork) return;
+
+        bool wasWorking = activeWork != StationWorkKind.None;
+        StationWorkKind previous = activeWork;
+        activeWork = work;
+
+        if (previous == StationWorkKind.Grill)
+            ShowSpatula(false);
+
+        if (work == StationWorkKind.None)
+        {
+            if (!wasWorking) return;
+            RestoreLocomotion();
+            return;
+        }
+
+        if (locomotionController == null)
+            locomotionController = animator.runtimeAnimatorController;
+        if (locomotionAvatar == null)
+            locomotionAvatar = animator.avatar;
+
+        var cook = ResolveWorkController(work);
+        var humanoid = ResolveCookHumanoidAvatar();
+        if (cook != null)
+        {
+            if (humanoid != null)
+                animator.avatar = humanoid;
+            animator.runtimeAnimatorController = cook;
+            animator.applyRootMotion = false;
+            animator.Rebind();
+            animator.Update(0f);
+            animator.Play(0, 0, 0f);
+        }
+
+        if (work == StationWorkKind.Grill)
+            ShowSpatula(true);
+    }
+
+    /// <summary>Legacy alias — grill cooking with spatula.</summary>
+    public void SetCookUsingPan(bool on)
+    {
+        SetGrillCooking(on);
+    }
+
+    public void SetGrillCooking(bool on)
+    {
+        SetStationWork(on ? StationWorkKind.Grill : StationWorkKind.None);
+    }
+
+    void RestoreLocomotion()
+    {
+        ShowSpatula(false);
+        if (locomotionAvatar != null)
+            animator.avatar = locomotionAvatar;
+        if (locomotionController != null)
+            animator.runtimeAnimatorController = locomotionController;
+        else
+            EnsureController();
+
+        animator.applyRootMotion = false;
+        animator.Rebind();
+        animator.Update(0f);
+        CacheParams();
+        isMoving = false;
+        if (hasRun) animator.ResetTrigger(RunTrigger);
+        if (hasIdle)
+        {
+            animator.ResetTrigger(IdleTrigger);
+            animator.SetTrigger(IdleTrigger);
+        }
+    }
+
+    static string WorkControllerResourceName(StationWorkKind work)
+    {
+        switch (work)
+        {
+            case StationWorkKind.Grill: return "grilling_a_meat_party";
+            case StationWorkKind.Fryer: return "cook_using_pan_party";
+            case StationWorkKind.Assembly: return "cutting_vegetables_party";
+            case StationWorkKind.Freezer: return "washing_vegetables_party";
+            case StationWorkKind.Drink: return "pouring_water_party";
+            case StationWorkKind.Register: return "plating_food_party";
+            case StationWorkKind.Plating: return "plating_food_party";
+            default: return null;
+        }
+    }
+
+    RuntimeAnimatorController ResolveWorkController(StationWorkKind work)
+    {
+        if (work == StationWorkKind.Grill && grillCookingController != null)
+            return grillCookingController;
+
+        if (cachedWorkControllers.TryGetValue(work, out var cached) && cached != null)
+            return cached;
+
+        string resource = WorkControllerResourceName(work);
+        if (string.IsNullOrEmpty(resource)) return null;
+
+        var loaded = Resources.Load<RuntimeAnimatorController>(resource);
+        if (loaded != null)
+            cachedWorkControllers[work] = loaded;
+        return loaded;
+    }
+
+    void ShowSpatula(bool on)
+    {
+        if (!on)
+        {
+            if (spatulaInstance != null)
+            {
+                Destroy(spatulaInstance);
+                spatulaInstance = null;
+            }
+            return;
+        }
+
+        if (spatulaInstance != null) return;
+
+        var prefab = ResolveSpatulaPrefab();
+        Transform hand = FindRightHand();
+        if (prefab == null || hand == null) return;
+
+        spatulaInstance = Instantiate(prefab, hand, false);
+        spatulaInstance.name = "GrillSpatula";
+        spatulaInstance.transform.localPosition = spatulaLocalPosition;
+        spatulaInstance.transform.localRotation = Quaternion.Euler(spatulaLocalEuler);
+        spatulaInstance.transform.localScale = Vector3.one;
+        FitSpatulaWorldSize(spatulaInstance.transform, Mathf.Max(0.05f, spatulaWorldLength));
+
+        // Props shouldn't collide with kitchen geometry.
+        var cols = spatulaInstance.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < cols.Length; i++)
+        {
+            if (cols[i] != null)
+                cols[i].enabled = false;
+        }
+    }
+
+    static void FitSpatulaWorldSize(Transform spatula, float targetWorldLength)
+    {
+        if (spatula == null) return;
+
+        var renderers = spatula.GetComponentsInChildren<Renderer>();
+        float current = 0f;
+        if (renderers != null && renderers.Length > 0)
+        {
+            Bounds b = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null && renderers[i].enabled)
+                    b.Encapsulate(renderers[i].bounds);
+            }
+            current = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
+        }
+
+        if (current < 1e-5f)
+        {
+            // Fallback when mesh bounds aren't ready: match hat-socket cm correction.
+            float parentScale = spatula.parent != null
+                ? Mathf.Max(1e-4f, Mathf.Abs(spatula.parent.lossyScale.x))
+                : 1f;
+            spatula.localScale = Vector3.one * (targetWorldLength / parentScale);
+            return;
+        }
+
+        spatula.localScale *= targetWorldLength / current;
+    }
+
+    GameObject ResolveSpatulaPrefab()
+    {
+        if (spatulaPrefab != null) return spatulaPrefab;
+        if (cachedSpatulaPrefab == null)
+            cachedSpatulaPrefab = Resources.Load<GameObject>(SpatulaResourceName);
+        return cachedSpatulaPrefab;
+    }
+
+    Transform FindRightHand()
+    {
+        if (animator != null)
+        {
+            Transform bone = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            if (bone != null) return bone;
+        }
+
+        Transform root = visualRoot != null ? visualRoot : transform;
+        return FindDeepChild(root, "RightHand");
+    }
+
+    static Transform FindDeepChild(Transform root, string name)
+    {
+        if (root == null) return null;
+        if (root.name == name) return root;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            var found = FindDeepChild(root.GetChild(i), name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    Avatar ResolveCookHumanoidAvatar()
+    {
+        if (cookHumanoidAvatar != null)
+            return cookHumanoidAvatar;
+        if (cachedHumanoidAvatar != null)
+            return cachedHumanoidAvatar;
+
+        var avatars = Resources.LoadAll<Avatar>(HumanoidAvatarResourceName);
+        if (avatars != null)
+        {
+            for (int i = 0; i < avatars.Length; i++)
+            {
+                if (avatars[i] != null && avatars[i].isHuman)
+                {
+                    cachedHumanoidAvatar = avatars[i];
+                    return cachedHumanoidAvatar;
+                }
+            }
+            if (avatars.Length > 0)
+                cachedHumanoidAvatar = avatars[0];
+        }
+        return cachedHumanoidAvatar;
+    }
+
+    void OnDestroy()
+    {
+        if (spatulaInstance != null)
+            Destroy(spatulaInstance);
     }
 
     void FaceDirection(Vector3 dir, bool smooth)

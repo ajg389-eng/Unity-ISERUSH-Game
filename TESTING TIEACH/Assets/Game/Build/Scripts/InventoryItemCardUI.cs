@@ -19,7 +19,8 @@ public class InventoryItemCardUI : MonoBehaviour
         ItemDefinition item,
         int quantity,
         System.Action onSelect,
-        System.Action onBuy)
+        System.Action onBuy,
+        int? displayPrice = null)
     {
         if (item == null) return;
 
@@ -29,8 +30,7 @@ public class InventoryItemCardUI : MonoBehaviour
         if (qtyText != null)
             qtyText.text = quantity.ToString();
 
-        if (priceText != null)
-            priceText.text = "$" + item.price;
+        SetPrice(displayPrice ?? item.price);
 
         ApplyPreview(item);
 
@@ -59,6 +59,12 @@ public class InventoryItemCardUI : MonoBehaviour
             qtyText.text = quantity.ToString();
     }
 
+    public void SetPrice(int price)
+    {
+        if (priceText == null) return;
+        priceText.text = price <= 0 ? "FREE" : "$" + price;
+    }
+
     void ApplyPreview(ItemDefinition item)
     {
         bool hasSprite = item.previewIcon != null;
@@ -84,7 +90,21 @@ public class InventoryItemCardUI : MonoBehaviour
                 previewRawImage.enabled = tex != null;
                 previewRawImage.texture = tex;
                 previewRawImage.color = Color.white;
+                EnsurePreviewAspect(previewRawImage);
             }
         }
+    }
+
+    static void EnsurePreviewAspect(RawImage raw)
+    {
+        if (raw == null) return;
+        var fitter = raw.GetComponent<AspectRatioFitter>();
+        if (fitter == null)
+            fitter = raw.gameObject.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        if (raw.texture != null && raw.texture.height > 0)
+            fitter.aspectRatio = (float)raw.texture.width / raw.texture.height;
+        else
+            fitter.aspectRatio = 1f;
     }
 }

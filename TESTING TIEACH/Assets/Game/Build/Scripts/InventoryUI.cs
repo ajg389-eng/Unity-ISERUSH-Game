@@ -372,11 +372,13 @@ public class InventoryUI : MonoBehaviour
                 if (bought)
                 {
                     card.SetQuantity(inventory.GetCount(captured));
+                    card.SetPrice(inventory.GetPurchasePrice(captured));
                     Sfx.Play(SfxId.Purchase);
                 }
                 else
                     Sfx.Play(SfxId.UiError);
-            });
+            },
+            displayPrice: inventory.GetPurchasePrice(captured));
     }
 
     void CreateLegacyRow(ItemDefinition item)
@@ -391,7 +393,8 @@ public class InventoryUI : MonoBehaviour
 
         nameText.text = item.itemName;
         qtyText.text = inventory.GetCount(item).ToString();
-        priceText.text = "$" + item.price;
+        int price = inventory.GetPurchasePrice(item);
+        priceText.text = price <= 0 ? "FREE" : "$" + price;
 
         ItemDefinition captured = item;
         nameButton.onClick.AddListener(() =>
@@ -407,6 +410,8 @@ public class InventoryUI : MonoBehaviour
             if (bought)
             {
                 qtyText.text = inventory.GetCount(captured).ToString();
+                int nextPrice = inventory.GetPurchasePrice(captured);
+                priceText.text = nextPrice <= 0 ? "FREE" : "$" + nextPrice;
                 Sfx.Play(SfxId.Purchase);
             }
             else

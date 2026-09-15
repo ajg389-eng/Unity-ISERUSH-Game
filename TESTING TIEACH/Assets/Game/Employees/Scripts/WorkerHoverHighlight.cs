@@ -1,16 +1,17 @@
 using UnityEngine;
 
 /// <summary>
-/// Makes a worker's materials glow while hovered in Manage mode.
+/// Stable glow on a worker while hovered or selected in Manage mode.
+/// Uses material emission (not mesh baking) so skinned characters don't flicker.
 /// </summary>
 public class WorkerHoverHighlight : MonoBehaviour
 {
     [Header("Glow")]
-    public Color glowColor = new Color(0.35f, 0.85f, 1.2f, 1f);
+    public Color glowColor = new Color(0.35f, 0.9f, 1.35f, 1f);
     [Tooltip("Multiplies emission while hovered.")]
-    public float emissionBoost = 2.2f;
+    public float emissionBoost = 1.8f;
     [Tooltip("Also brightens the base albedo slightly.")]
-    public float albedoBrighten = 0.35f;
+    public float albedoBrighten = 0.22f;
 
     static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -24,6 +25,9 @@ public class WorkerHoverHighlight : MonoBehaviour
     bool hovering;
     bool cached;
 
+    // Disable any leftover silhouette baker from earlier highlight versions.
+    SelectionOutlineEffect legacyOutline;
+
     public static WorkerHoverHighlight EnsureOn(KitchenEmployee employee)
     {
         if (employee == null) return null;
@@ -35,6 +39,11 @@ public class WorkerHoverHighlight : MonoBehaviour
 
     public void SetHovered(bool on)
     {
+        if (legacyOutline == null)
+            legacyOutline = GetComponent<SelectionOutlineEffect>();
+        if (legacyOutline != null)
+            legacyOutline.SetActive(false);
+
         if (hovering == on) return;
         hovering = on;
         EnsureCache();
@@ -48,11 +57,6 @@ public class WorkerHoverHighlight : MonoBehaviour
             hovering = false;
             Apply(false);
         }
-    }
-
-    void OnDestroy()
-    {
-        // Instance materials are cleaned up with the object.
     }
 
     void EnsureCache()
@@ -74,7 +78,6 @@ public class WorkerHoverHighlight : MonoBehaviour
                 continue;
             }
 
-            // Instance materials so we don't mutate shared assets.
             var mats = renderer.materials;
             materialInstances[r] = mats;
             originalAlbedo[r] = new Color[mats.Length];
@@ -116,15 +119,12 @@ public class WorkerHoverHighlight : MonoBehaviour
 
                 if (on)
                 {
-                    Color brightAlbedo = Color.Lerp(albedo, Color.white, albedoBrighten);
-                    WriteAlbedo(mat, brightAlbedo);
+                    WriteAlbedo(mat, Color.Lerp(albedo, Color.white, albedoBrighten));
 
                     if (mat.HasProperty(EmissionColorId))
                     {
                         mat.EnableKeyword("_EMISSION");
-                        // HDR-ish emission so URP/Built-in both read as a glow.
-                        Color glow = glowColor * emissionBoost;
-                        mat.SetColor(EmissionColorId, glow + emission);
+                        mat.SetColor(EmissionColorId, glowColor * emissionBoost + emission);
                         mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
                     }
                 }
@@ -159,10 +159,11 @@ public class WorkerHoverHighlight : MonoBehaviour
     {
         if (renderer == null) return true;
         if (renderer is LineRenderer) return true;
+        if (renderer is MeshRenderer && renderer.gameObject.name.Contains("_Rim")) return true;
         if (renderer.GetComponentInParent<Canvas>() != null) return true;
         if (!renderer.enabled) return true;
         string n = renderer.gameObject.name;
-        if (n.Contains("TaskBar") || n.Contains("Label") || n.Contains("Highlight"))
+        if (n.Contains("TaskBar") || n.Contains("Label") || n.Contains("Highlight") || n.Contains("_Rim"))
             return true;
         return false;
     }

@@ -70,12 +70,19 @@ public static class InventoryItemCardBuilder
         card.previewImage.raycastTarget = false;
         card.previewImage.enabled = false;
 
-        var rawGo = new GameObject("Raw", typeof(RectTransform), typeof(RawImage));
+        var rawGo = new GameObject("Raw", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
         rawGo.transform.SetParent(previewGo.transform, false);
-        Stretch(rawGo.transform as RectTransform, 8f);
+        var rawRect = rawGo.transform as RectTransform;
+        rawRect.anchorMin = Vector2.zero;
+        rawRect.anchorMax = Vector2.one;
+        rawRect.offsetMin = new Vector2(8f, 8f);
+        rawRect.offsetMax = new Vector2(-8f, -8f);
         card.previewRawImage = rawGo.GetComponent<RawImage>();
         card.previewRawImage.color = Color.white;
         card.previewRawImage.raycastTarget = false;
+        var aspect = rawGo.GetComponent<AspectRatioFitter>();
+        aspect.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        aspect.aspectRatio = 1f;
 
         card.selectButtons = new[] { nameBtn, previewBtn };
 

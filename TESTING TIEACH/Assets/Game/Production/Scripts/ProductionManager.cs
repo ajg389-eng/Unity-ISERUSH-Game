@@ -26,6 +26,8 @@ public class ProductionJob
     public int currentStepIndex;
     public KitchenEmployee assignedTo;
     public bool hasPatty;
+    /// <summary>Batch size carried between stations (upgraded workers hold more).</summary>
+    public int heldUnits;
     public readonly List<ItemDefinition> ingredientsHeld = new List<ItemDefinition>();
     /// <summary>Heat lamp this job must deliver to (from the last station's Assign Output link).</summary>
     public HeatLampStation deliveryHeatLamp;
@@ -71,6 +73,7 @@ public class ProductionJob
         currentStepIndex = 0;
         assignedTo = null;
         hasPatty = false;
+        heldUnits = 0;
         deliveryHeatLamp = null;
     }
 }
@@ -466,9 +469,12 @@ public class ProductionManager : MonoBehaviour
             Debug.LogWarning("ProductionManager: no employeePrefab assigned. Use Production > Create Default Employee Prefab and assign it.");
             return null;
         }
-        if (moneyManager != null && !moneyManager.TrySpend(hireCost))
+
+        int cost = GetHireCost();
+        if (cost > 0 && moneyManager != null && !moneyManager.TrySpend(cost))
             return null;
-        Sfx.Play(SfxId.SpendMoney);
+        if (cost > 0)
+            Sfx.Play(SfxId.SpendMoney);
 
         Vector3 pos = spawnPoint != null ? spawnPoint.position : transform.position;
         GameObject go = Instantiate(employeePrefab, pos, Quaternion.identity);
@@ -481,14 +487,21 @@ public class ProductionManager : MonoBehaviour
             AddWorkerToSelectedFlow(emp);
             Sfx.Play(SfxId.HireWorker);
             RaiseFirstWorkerHiredEvent();
-            int paid = moneyManager != null ? hireCost : 0;
+            int paid = cost;
             var undo = PurchaseUndoManager.Ensure();
             if (undo != null)
                 undo.RecordWorkerHire(emp, paid);
         }
-        else if (moneyManager != null)
-            moneyManager.AddMoney(hireCost);
+        else if (cost > 0 && moneyManager != null)
+            moneyManager.AddMoney(cost);
         return emp;
+    }
+
+    /// <summary>First worker is free; later hires use hireCost.</summary>
+    public int GetHireCost()
+    {
+        int count = employees != null ? employees.Count : 0;
+        return count <= 0 ? 0 : Mathf.Max(0, hireCost);
     }
 
     static bool raisedFirstWorkerEvent;

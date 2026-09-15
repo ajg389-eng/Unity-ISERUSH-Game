@@ -7,6 +7,7 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
+    const int CacheVersion = 2;
     const string RootName = "__ItemPreviewThumbnails";
 
     static readonly Dictionary<int, RenderTexture> cache = new Dictionary<int, RenderTexture>();
@@ -25,7 +26,7 @@ public static class ItemPreviewThumbnails
         if (prefab == null)
             return null;
 
-        int key = prefab.GetInstanceID();
+        int key = prefab.GetInstanceID() ^ (CacheVersion * 397);
         if (cache.TryGetValue(key, out var existing) && existing != null)
             return existing;
 
@@ -50,14 +51,17 @@ public static class ItemPreviewThumbnails
             instance.transform.localScale = Vector3.one;
 
             Bounds bounds = CalculateBounds(instance);
-            // Party-character hats are authored in cm-scale; normalize tiny/huge meshes.
-            float radius = Mathf.Max(0.05f, bounds.extents.magnitude);
+            // Frame so the longest side fits — keeps stations to scale in a square render.
+            float halfW = Mathf.Max(bounds.extents.x, bounds.extents.z, 0.05f);
+            float halfH = Mathf.Max(bounds.extents.y, 0.05f);
+            float ortho = Mathf.Max(halfW, halfH) * 1.2f;
             Vector3 center = bounds.center;
 
             previewCamera.targetTexture = rt;
+            previewCamera.aspect = 1f;
             previewCamera.orthographic = true;
-            previewCamera.orthographicSize = Mathf.Max(0.08f, radius * 1.2f);
-            previewCamera.transform.position = center + new Vector3(0f, radius * 0.35f, -radius * 2.4f);
+            previewCamera.orthographicSize = ortho;
+            previewCamera.transform.position = center + new Vector3(0f, halfH * 0.35f, -Mathf.Max(halfW, halfH) * 2.6f);
             previewCamera.transform.LookAt(center);
             previewCamera.Render();
             previewCamera.targetTexture = null;
