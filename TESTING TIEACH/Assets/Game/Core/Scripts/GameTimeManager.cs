@@ -22,6 +22,7 @@ public class GameTimeManager : MonoBehaviour
     public const string PauseTitleScreen = "TitleScreen";
     public const string PauseManagement = "Management";
     public const string PauseMenu = "PauseMenu";
+    public const string PauseOnboarding = "OnboardingTutorial";
 
     [Header("Day schedule")]
     [Tooltip("Hour the shift starts (24h). Default 10 = 10 AM.")]

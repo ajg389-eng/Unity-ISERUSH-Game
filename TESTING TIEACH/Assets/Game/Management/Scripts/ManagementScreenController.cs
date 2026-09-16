@@ -274,6 +274,21 @@ public class ManagementScreenController : MonoBehaviour
         }
     }
 
+    public void OpenIngredientsTab()
+    {
+        if (!isOpen)
+            Open();
+        if (tabPanels == null) return;
+        for (int i = 0; i < tabPanels.Length; i++)
+        {
+            if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<IngredientsOrderUI>(true) != null)
+            {
+                SelectTab(i);
+                return;
+            }
+        }
+    }
+
     public void Close()
     {
         if (managementPanel == null) return;

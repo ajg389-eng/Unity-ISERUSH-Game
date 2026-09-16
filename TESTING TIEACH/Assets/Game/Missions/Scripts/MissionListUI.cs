@@ -105,6 +105,15 @@ public class MissionListUI : MonoBehaviour
     public void SelectTab(SideTab tab, bool playSound = true)
     {
         EnsureUI();
+
+        if (tab == SideTab.Progression && OnboardingTutorial.BlocksProgression)
+        {
+            if (playSound)
+                Sfx.Play(SfxId.UiError);
+            tab = SideTab.Tasks;
+            playSound = false;
+        }
+
         activeTab = tab;
 
         if (tasksPage != null) tasksPage.SetActive(tab == SideTab.Tasks);
@@ -114,7 +123,12 @@ public class MissionListUI : MonoBehaviour
         SetTabVisual(progressionTabButton, tab == SideTab.Progression);
 
         if (headerText != null)
-            headerText.text = tab == SideTab.Tasks ? "Tasks" : "Progression";
+        {
+            if (tab == SideTab.Tasks && OnboardingTutorial.BlocksProgression)
+                headerText.text = "Tasks  (finish tutorial first)";
+            else
+                headerText.text = tab == SideTab.Tasks ? "Tasks" : "Progression";
+        }
 
         if (tab == SideTab.Tasks)
             RefreshTasks();

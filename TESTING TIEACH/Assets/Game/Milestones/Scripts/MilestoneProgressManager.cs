@@ -224,6 +224,16 @@ public class MilestoneProgressManager : MonoBehaviour
 
     void EvaluateActiveMilestone()
     {
+        if (OnboardingTutorial.BlocksProgression)
+        {
+            if (quizReady)
+            {
+                quizReady = false;
+                OnMilestonesChanged?.Invoke();
+            }
+            return;
+        }
+
         if (string.IsNullOrEmpty(activeMilestoneId)) return;
         if (completedMilestoneIds.Contains(activeMilestoneId)) return;
 
@@ -239,6 +249,13 @@ public class MilestoneProgressManager : MonoBehaviour
         {
             OnMilestonesChanged?.Invoke();
         }
+    }
+
+    /// <summary>Called when the first-run kitchen tour is finished or skipped.</summary>
+    public void NotifyOnboardingFinished()
+    {
+        EvaluateActiveMilestone();
+        OnMilestonesChanged?.Invoke();
     }
 
     void GrantUnlocks(MilestoneDefinition milestone)

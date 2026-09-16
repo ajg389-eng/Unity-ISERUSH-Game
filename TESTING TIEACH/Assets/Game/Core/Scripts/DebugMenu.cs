@@ -137,7 +137,7 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 640f);
+        prt.sizeDelta = new Vector2(320f, 720f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
@@ -233,6 +233,11 @@ public class DebugMenu : MonoBehaviour
         });
         CreateButton(panel.transform, "Open Milestone Map", () =>
         {
+            if (OnboardingTutorial.BlocksProgression)
+            {
+                Toast("Finish the tutorial first");
+                return;
+            }
             if (MissionListUI.Instance != null)
             {
                 MissionListUI.Instance.ShowProgressionTab();
@@ -248,6 +253,23 @@ public class DebugMenu : MonoBehaviour
             GameTimeManager.Instance?.TogglePausePlay();
             var t = GameTimeManager.Instance;
             Toast(t != null && t.CurrentSpeed == GameTimeManager.SpeedMode.Paused ? "Paused" : "Unpaused");
+            RefreshStatus();
+        });
+
+        CreateButton(panel.transform, "Skip Tutorial", () =>
+        {
+            var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
+            if (tutorial == null) { Toast("No tutorial"); return; }
+            tutorial.Skip();
+            Toast("Tutorial skipped");
+            RefreshStatus();
+        });
+        CreateButton(panel.transform, "Restart Tutorial", () =>
+        {
+            var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
+            if (tutorial == null) { Toast("No tutorial"); return; }
+            tutorial.Restart();
+            Toast("Tutorial restarted");
             RefreshStatus();
         });
 

@@ -82,6 +82,7 @@ public class CustomerSpawner : MonoBehaviour
     void Update()
     {
         timer += Time.deltaTime;
+        if (OnboardingTutorial.BlocksAutoCustomers) return;
         if (timer < EffectiveSpawnInterval()) return;
         timer = 0f;
         TrySpawn();

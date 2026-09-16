@@ -73,10 +73,20 @@ public class HeatLampStation : MonoBehaviour
         }
         Instance = this;
 
-        // Remove leftover world label from older builds
         var leftover = transform.Find("HeatLampInventoryLabel");
         if (leftover != null)
             Destroy(leftover.gameObject);
+    }
+
+    void OnEnable()
+    {
+        Instance = this;
+    }
+
+    void OnDisable()
+    {
+        if (Instance == this)
+            Instance = null;
     }
 
     void OnDestroy()

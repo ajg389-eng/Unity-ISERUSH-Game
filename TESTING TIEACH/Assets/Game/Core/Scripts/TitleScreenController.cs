@@ -99,6 +99,12 @@ public class TitleScreenController : MonoBehaviour
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.BeginDay();
+
+        var onboarding = OnboardingTutorial.Instance != null
+            ? OnboardingTutorial.Instance
+            : FindFirstObjectByType<OnboardingTutorial>();
+        if (onboarding != null)
+            onboarding.NotifyGameStarted();
     }
 
     void OnSettings()

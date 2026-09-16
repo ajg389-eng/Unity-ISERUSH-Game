@@ -146,6 +146,29 @@ public class KitchenInventory : MonoBehaviour
             AddStock(item, amount);
     }
 
+    /// <summary>Zero all ingredient stock (used by the first-run tutorial).</summary>
+    public void ClearAllStock()
+    {
+        EnsureCatalogStock();
+        foreach (var e in stock)
+        {
+            if (e != null)
+                e.quantity = 0;
+        }
+    }
+
+    /// <summary>Reset catalog items to their starting quantities.</summary>
+    public void RestoreStartingStock()
+    {
+        EnsureCatalogStock();
+        foreach (var item in GetOrderableItems())
+        {
+            var entry = EnsureEntry(item);
+            int start = item != null && item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
+            entry.quantity = Mathf.Max(0, start);
+        }
+    }
+
     public int GetPackSize(ItemDefinition item)
     {
         if (item == null) return 10;

@@ -31,6 +31,9 @@ public class MainHudTabs : MonoBehaviour
     Button managementTabButton;
     bool built;
 
+    public Transform InventoryTabTransform => inventoryTabButton != null ? inventoryTabButton.transform : null;
+    public Transform ManagementTabTransform => managementTabButton != null ? managementTabButton.transform : null;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {

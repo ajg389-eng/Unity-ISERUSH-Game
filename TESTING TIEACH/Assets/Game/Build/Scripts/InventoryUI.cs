@@ -92,6 +92,12 @@ public class InventoryUI : MonoBehaviour
         }
     }
 
+    public void OpenPanel()
+    {
+        if (panel != null && !panel.activeSelf)
+            TogglePanel();
+    }
+
     public void TogglePanel()
     {
         if (!panel) return;
