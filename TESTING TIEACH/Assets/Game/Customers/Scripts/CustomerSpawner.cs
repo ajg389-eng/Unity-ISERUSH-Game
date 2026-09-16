@@ -98,6 +98,9 @@ public class CustomerSpawner : MonoBehaviour
     bool TrySpawn()
     {
         if (customerPrefab == null) return false;
+        CustomerOrder generatedOrder = orderConfig != null ? orderConfig.GenerateRandomOrder() : null;
+        if (orderConfig != null && (generatedOrder == null || generatedOrder.lines == null || generatedOrder.lines.Count == 0))
+            return false;
         ResolveEntryPathIfNeeded();
 
         Register r = GetBestRegister();
@@ -113,7 +116,7 @@ public class CustomerSpawner : MonoBehaviour
         if (ai == null) return true;
 
         if (orderConfig != null)
-            ai.SetOrder(orderConfig.GenerateRandomOrder());
+            ai.SetOrder(generatedOrder);
         else
             ai.SetOrder(new CustomerOrder());
 

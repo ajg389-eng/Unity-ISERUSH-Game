@@ -10,7 +10,7 @@ public class IngredientStockEntry
 }
 
 /// <summary>
-/// Kitchen ingredient stock. Players buy packs from the Management > Ingredients tab.
+/// Kitchen ingredient stock. Players buy packs from the Management > Food tab.
 /// Freezer/Pantry consume from this inventory when workers grab items.
 /// </summary>
 public class KitchenInventory : MonoBehaviour

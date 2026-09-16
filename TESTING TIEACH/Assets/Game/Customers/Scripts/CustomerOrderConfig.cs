@@ -27,9 +27,34 @@ public class CustomerOrderConfig : ScriptableObject
     [Tooltip("Chance the customer wants a drink")]
     public float drinkChance = 0.55f;
 
+    // Runtime menu choices. These deliberately are not serialized back into the shared asset.
+    [System.NonSerialized] bool burgerEnabled = true;
+    [System.NonSerialized] bool friesEnabled = true;
+    [System.NonSerialized] bool drinkEnabled = true;
+
     public bool IsBurger(ItemDefinition item) => item != null && item == burgerBase;
     public bool IsFries(ItemDefinition item) => item != null && item == friesItem;
     public bool IsDrink(ItemDefinition item) => item != null && item == drinkItem;
+
+    public bool IsItemEnabled(ItemDefinition item)
+    {
+        if (IsBurger(item)) return burgerEnabled;
+        if (IsFries(item)) return friesEnabled;
+        if (IsDrink(item)) return drinkEnabled;
+        return false;
+    }
+
+    public void SetItemEnabled(ItemDefinition item, bool enabled)
+    {
+        if (IsBurger(item)) burgerEnabled = enabled;
+        else if (IsFries(item)) friesEnabled = enabled;
+        else if (IsDrink(item)) drinkEnabled = enabled;
+    }
+
+    public bool HasEnabledItems =>
+        (burgerBase != null && burgerEnabled)
+        || (friesItem != null && friesEnabled)
+        || (drinkItem != null && drinkEnabled);
 
     public enum ProductKind { None, Burger, Fries, Drink }
 
@@ -78,15 +103,15 @@ public class CustomerOrderConfig : ScriptableObject
     {
         var order = new CustomerOrder();
 
-        bool wantBurger = burgerBase != null && Random.value < burgerChance;
-        bool wantFries = friesItem != null && Random.value < friesChance;
-        bool wantDrink = drinkItem != null && Random.value < drinkChance;
+        bool wantBurger = burgerBase != null && burgerEnabled && Random.value < burgerChance;
+        bool wantFries = friesItem != null && friesEnabled && Random.value < friesChance;
+        bool wantDrink = drinkItem != null && drinkEnabled && Random.value < drinkChance;
 
         if (!wantBurger && !wantFries && !wantDrink)
         {
-            if (burgerBase != null) wantBurger = true;
-            else if (friesItem != null) wantFries = true;
-            else if (drinkItem != null) wantDrink = true;
+            if (burgerBase != null && burgerEnabled) wantBurger = true;
+            else if (friesItem != null && friesEnabled) wantFries = true;
+            else if (drinkItem != null && drinkEnabled) wantDrink = true;
         }
 
         if (wantBurger)
@@ -103,8 +128,8 @@ public class CustomerOrderConfig : ScriptableObject
     public CustomerOrder GenerateRandomSingleItemOrder()
     {
         var options = new List<ItemDefinition>();
-        if (burgerBase != null) options.Add(burgerBase);
-        if (friesItem != null) options.Add(friesItem);
+        if (burgerBase != null && burgerEnabled) options.Add(burgerBase);
+        if (friesItem != null && friesEnabled) options.Add(friesItem);
         if (options.Count == 0) return new CustomerOrder();
 
         var pick = options[Random.Range(0, options.Count)];
@@ -116,5 +141,12 @@ public class CustomerOrderConfig : ScriptableObject
         if (burgerBase != null) yield return burgerBase;
         if (friesItem != null) yield return friesItem;
         if (drinkItem != null) yield return drinkItem;
+    }
+
+    public IEnumerable<ItemDefinition> GetEnabledMenuItems()
+    {
+        foreach (ItemDefinition item in GetMenuItems())
+            if (IsItemEnabled(item))
+                yield return item;
     }
 }

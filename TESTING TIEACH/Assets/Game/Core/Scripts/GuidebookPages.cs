@@ -36,7 +36,7 @@ public static class GuidebookPages
             "• Stations — assign workers and where food goes next\n" +
             "• Store Stats — live numbers that show bottlenecks\n" +
             "• Workers — hire staff\n" +
-            "• Ingredients — keep the pantry stocked\n\n" +
+            "• Food — choose what to sell and keep the pantry stocked\n\n" +
             "Tip: Inventory changes the layout. Management runs the layout. You need both."),
         new Page(
             "Inventory",
@@ -82,7 +82,7 @@ public static class GuidebookPages
             "• Stations (assign people and outputs in the world)\n" +
             "• Store Stats (how healthy the system is)\n" +
             "• Workers (hire)\n" +
-            "• Ingredients (order stock)\n\n" +
+            "• Food (choose menu items and order stock)\n\n" +
             "Closing Management returns you to Play. Inventory and Management cannot stay open together."),
         new Page(
             "Management",
@@ -120,8 +120,8 @@ public static class GuidebookPages
             "Undo under the list can reverse a hire if you clicked too soon."),
         new Page(
             "Management",
-            "Ingredients",
-            "The Ingredients tab shows kitchen stock and lets you buy packs with cash.\n\n" +
+            "Food",
+            "The Food tab lets you choose which items your store sells, shows kitchen stock, and lets you buy packs with cash. Unchecked items will not be ordered by new customers.\n\n" +
             "Stations cannot cook what you do not have. If a station looks assigned but nothing moves, check this list before you rebuild the layout.\n\n" +
             "Order a little ahead of the rush so cook stations do not starve. Ordering huge piles of food that never cook is wasted money — the same idea as heat-lamp waste, just earlier in the chain.\n\n" +
             "Undo works here too if you ordered the wrong pack."),
@@ -132,7 +132,7 @@ public static class GuidebookPages
             "2. Inventory → Floor: expand if you have no walking room.\n" +
             "3. Management → Workers: hire at least one person.\n" +
             "4. Management → Stations: assign that worker and set outputs toward the heat lamp / register.\n" +
-            "5. Management → Ingredients: buy starter stock.\n" +
+            "5. Management → Food: choose your menu and buy starter stock.\n" +
             "6. Close Management and serve.\n" +
             "7. When the line grows, open Store Stats and fix the slowest step — do not buy everything at once."),
         new Page(

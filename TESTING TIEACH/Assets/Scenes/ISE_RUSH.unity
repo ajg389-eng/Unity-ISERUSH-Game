@@ -4947,7 +4947,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Ingredients
+  m_text: Food
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -8193,7 +8193,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Order Ingredients
+  m_text: Food
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -16083,7 +16083,7 @@ GameObject:
   - component: {fileID: 1703027995}
   - component: {fileID: 1703027999}
   m_Layer: 0
-  m_Name: Tab_Ingredients
+  m_Name: Tab_Food
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -16966,7 +16966,7 @@ GameObject:
   - component: {fileID: 1771794270}
   - component: {fileID: 1771794269}
   m_Layer: 0
-  m_Name: IngredientsPanel
+  m_Name: FoodPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -17010,6 +17010,9 @@ MonoBehaviour:
   moneyHintText: {fileID: 1670613558}
   inventory: {fileID: 1011475397}
   money: {fileID: 0}
+  burgerPreviewPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
+  friesPreviewPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
+  drinkPreviewPrefab: {fileID: 103920410066052846, guid: c21890caac874da4181fef610b3c7c8a, type: 3}
   refreshInterval: 0.35
 --- !u!114 &1771794270
 MonoBehaviour:

@@ -14,7 +14,7 @@ public class ItemDefinition : ScriptableObject
     [Tooltip("Optional 2D icon for inventory cards. If empty, a 3D thumbnail is generated from the prefab.")]
     public Sprite previewIcon;
 
-    [Header("Kitchen ordering (Management > Ingredients)")]
+    [Header("Kitchen ordering (Management > Food)")]
     [Tooltip("How many units arrive when the player orders one pack")]
     public int orderPackSize = 10;
     [Tooltip("Cost in money to order one pack. If 0, uses price * packSize / 2.")]
