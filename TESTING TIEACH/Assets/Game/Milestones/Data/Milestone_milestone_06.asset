@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d6f36f76393b34386043860fe93167, type: 3}
+  m_Name: Milestone_milestone_06
+  m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
+  milestoneId: milestone_06
+  displayName: Systems Integration
+  description: 'See the restaurant as one interconnected system of people, process,
+    and technology.
+
+
+    Topics: Systems Engineering, Information Engineering, Engineering
+    Management'
+  isTutorial: 0
+  missions:
+  - {fileID: 11400000, guid: 9928d40b8412459f96a7298963f813da, type: 2}
+  - {fileID: 11400000, guid: 026c9aacc1474635afcdbd56f458e762, type: 2}
+  - {fileID: 11400000, guid: 2cd413fad3d341ed87db0b594605b85d, type: 2}
+  - {fileID: 11400000, guid: be5e084d8bc54ef192eeeb5f70b4981f, type: 2}
+  - {fileID: 11400000, guid: f4dd5e7666294f548dd18355eb390375, type: 2}
+  - {fileID: 11400000, guid: 109707ca1821467a86081718a699152d, type: 2}
+  missionDatabase: {fileID: 0}
+  quiz: {fileID: 11400000, guid: 05b2b754f2efa444b97aef876ed80267, type: 2}
+  unlocks:
+  - kind: 3
+    unlockId: milestone_06_complete
+    displayName: Systems Integration Complete

@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd62bf0e9b3a5eb45846a85a8561b632, type: 3}
+  m_Name: Quiz_milestone_06
+  m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
+  quizId: milestone_06_quiz
+  title: Systems Integration Quiz
+  introText: Answer every question correctly to unlock the next milestone.
+  questions:
+  - prompt: The kitchen increases cooking output, but customers are not served any
+      faster because assembly cannot keep up. What does this demonstrate?
+    choices:
+    - Improving one component does not necessarily improve the entire system
+    - More cooking capacity always reduces throughput
+    - Customer demand no longer matters
+    - Inventory should always be eliminated
+    correctChoiceIndex: 0
+  - prompt: Which dashboard would be most useful for making system-level decisions?
+    choices:
+    - Profit only
+    - Customer count only
+    - Throughput, wait time, utilization, inventory, quality, and profit together
+    - Employee names only
+    correctChoiceIndex: 2
+  - prompt: A catering contract is highly profitable but would use most kitchen capacity
+      during the lunch rush. What should the player consider?
+    choices:
+    - Catering revenue only
+    - Effects on regular customers, capacity, costs, and total profit
+    - Whether the catering order contains burgers
+    - Only the number of employees
+    correctChoiceIndex: 1
+  - prompt: Which statement best describes Industrial & Systems Engineering after
+      completing the game?
+    choices:
+    - It is primarily about manufacturing machines
+    - It is primarily about managing employees
+    - It involves designing and improving interconnected systems of people, processes,
+      resources, information, and technology
+    - It is primarily about reducing customer queues
+    correctChoiceIndex: 2

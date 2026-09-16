@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd62bf0e9b3a5eb45846a85a8561b632, type: 3}
+  m_Name: Quiz_milestone_05
+  m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
+  quizId: milestone_05_quiz
+  title: Quality & Reliability Quiz
+  introText: Answer every question correctly to unlock the next milestone.
+  questions:
+  - prompt: Increasing service speed causes the order-error rate to rise significantly.
+      What does this demonstrate?
+    choices:
+    - A quality-throughput trade-off
+    - A supplier lead-time problem
+    - A forecasting error
+    - A facility expansion problem
+    correctChoiceIndex: 0
+  - prompt: What is the purpose of preventive maintenance?
+    choices:
+    - Increase demand
+    - Reduce the likelihood or impact of equipment failures
+    - Increase inventory
+    - Reduce employee wages
+    correctChoiceIndex: 1
+  - prompt: A grill frequently fails during rush periods. Which information would
+      be most useful when evaluating the problem?
+    choices:
+    - Failure frequency and repair time
+    - Customer menu preferences only
+    - Restaurant decoration cost
+    - Pantry location only
+    correctChoiceIndex: 0
+  - prompt: Which restaurant is performing better overall?
+    choices:
+    - Restaurant A serves 120 orders with 20% errors
+    - Restaurant B serves 110 orders with 1% errors and higher overall profit
+    - Restaurant A because throughput is always the only objective
+    - They are automatically equal
+    correctChoiceIndex: 1

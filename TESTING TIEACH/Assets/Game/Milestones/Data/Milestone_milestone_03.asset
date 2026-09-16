@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d6f36f76393b34386043860fe93167, type: 3}
+  m_Name: Milestone_milestone_03
+  m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
+  milestoneId: milestone_03
+  displayName: Production & Economics
+  description: 'Connect production decisions to cost, profit, and scheduling.
+
+
+    Topics:
+    Production Planning & Control, Engineering Economics'
+  isTutorial: 0
+  missions:
+  - {fileID: 11400000, guid: e5621d6c34624c468ba8caa9bd54a043, type: 2}
+  - {fileID: 11400000, guid: fa0f0eef045444ab9132797853f07ced, type: 2}
+  - {fileID: 11400000, guid: e85ffb3a5a24494ea67f8ccb7f4a3842, type: 2}
+  - {fileID: 11400000, guid: 720b3bc1d4e94236af25b99cfc37e39a, type: 2}
+  missionDatabase: {fileID: 0}
+  quiz: {fileID: 11400000, guid: 585ae384468413b4d8a77a404601f5db, type: 2}
+  unlocks:
+  - kind: 3
+    unlockId: milestone_03_complete
+    displayName: Production & Economics Complete

@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d6f36f76393b34386043860fe93167, type: 3}
+  m_Name: Milestone_milestone_02
+  m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
+  milestoneId: milestone_02
+  displayName: Capacity & Optimization
+  description: 'Find bottlenecks, allocate capacity, and balance labor.
+
+
+    Topics:
+    Operations Research, Capacity Planning, Human Factors'
+  isTutorial: 0
+  missions:
+  - {fileID: 11400000, guid: 87cc280dfbb24cef9721503379b0be4b, type: 2}
+  - {fileID: 11400000, guid: 8051162f612243b4b7b1e9bcdfaecb6b, type: 2}
+  - {fileID: 11400000, guid: d1be50ffdb1743fd9372bd1d477f336f, type: 2}
+  - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}
+  missionDatabase: {fileID: 0}
+  quiz: {fileID: 11400000, guid: a376ab041dc589340952ec3cd15b1f53, type: 2}
+  unlocks:
+  - kind: 3
+    unlockId: milestone_02_complete
+    displayName: Capacity & Optimization Complete

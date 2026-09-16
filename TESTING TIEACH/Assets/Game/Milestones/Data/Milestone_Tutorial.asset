@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d6f36f76393b34386043860fe93167, type: 3}
+  m_Name: Milestone_Tutorial
+  m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
+  milestoneId: tutorial
+  displayName: Restaurant Basics
+  description: 'Learn the controls and complete your first service loop.
+
+
+    Topics:
+    Onboarding'
+  isTutorial: 1
+  missions: []
+  missionDatabase: {fileID: 11400000, guid: 52859d47b8862bc4ca163b279226ec17, type: 2}
+  quiz: {fileID: 0}
+  unlocks:
+  - kind: 3
+    unlockId: tutorial_complete
+    displayName: Tutorial Complete
