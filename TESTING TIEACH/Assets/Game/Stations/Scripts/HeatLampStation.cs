@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
@@ -52,11 +53,21 @@ public class HeatLampStation : MonoBehaviour
     [Header("Optional UI")]
     [Tooltip("Optional TMP label if you want a custom HUD readout.")]
     public TextMeshProUGUI statusLabel;
+    [Tooltip("World-space position of the supply-shortfall warning above the lamp.")]
+    public Vector3 cautionIndicatorOffset = new Vector3(0f, 2.5f, 0f);
+    [Tooltip("World-space width and height of the caution indicator.")]
+    public float cautionIndicatorSize = 0.85f;
 
     readonly List<HeldMeal> meals = new List<HeldMeal>();
     int totalWasted;
     int totalDelivered;
     int totalSold;
+    GameObject cautionIndicator;
+    RectTransform cautionIndicatorRect;
+    TextMeshProUGUI cautionMessage;
+    CanvasGroup cautionMessageGroup;
+    float cautionMessageShownAt = float.NegativeInfinity;
+    float nextCautionRefresh;
 
     public int Count => meals.Count;
     public int TotalWasted => totalWasted;
@@ -88,6 +99,21 @@ public class HeatLampStation : MonoBehaviour
     void Update()
     {
         ExpireStaleMeals();
+        if (Time.unscaledTime >= nextCautionRefresh)
+        {
+            nextCautionRefresh = Time.unscaledTime + 0.5f;
+            RefreshCautionIndicator();
+        }
+        HandleCautionClick();
+        UpdateCautionMessageFade();
+    }
+
+    void LateUpdate()
+    {
+        if (cautionIndicator == null || !cautionIndicator.activeSelf) return;
+        Camera cam = Camera.main;
+        if (cam != null)
+            cautionIndicator.transform.rotation = cam.transform.rotation;
     }
 
     public Vector3 GetInteractionPosition()
@@ -265,10 +291,245 @@ public class HeatLampStation : MonoBehaviour
 
     public string GetManagePanelText()
     {
-        string text = $"Stock: {meals.Count}/{maxCapacity}\n{GetInventoryDisplay()}";
+        string text = $"Stock: {meals.Count}/{maxCapacity}\n{GetIncomingRateDisplay()}\n{GetCustomerDemandRateDisplay()}\n{GetInventoryDisplay()}";
         if (totalWasted > 0)
             text += $"\nWaste: {totalWasted}";
         return text;
+    }
+
+    /// <summary>
+    /// Configured production throughput for every food flow that feeds this lamp.
+    /// Multiple lines producing the same item are added together.
+    /// </summary>
+    public string GetIncomingRateDisplay()
+    {
+        Dictionary<ItemDefinition, float> rates = GetIncomingRates();
+
+        if (rates.Count == 0)
+            return "Incoming: None";
+
+        var parts = new List<string>();
+        foreach (var pair in rates)
+            parts.Add(GetItemDisplayName(pair.Key) + ": " + FormatRate(pair.Value) + "/min");
+        parts.Sort(System.StringComparer.OrdinalIgnoreCase);
+        return "Incoming: " + string.Join(", ", parts);
+    }
+
+    Dictionary<ItemDefinition, float> GetIncomingRates()
+    {
+        var rates = new Dictionary<ItemDefinition, float>();
+        var production = ProductionManager.Instance;
+        if (production == null || production.productionFlows == null)
+            return rates;
+
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow == null || flow.stations == null) continue;
+
+            int lampIndex = flow.stations.IndexOf(gameObject);
+            if (lampIndex < 0) continue;
+
+            float rate = WorkflowAnalysis.GetFlowBottleneckOutputPerMinute(flow);
+            if (rate <= 0.01f) continue;
+
+            foreach (ItemDefinition item in GetFlowProducts(flow, lampIndex))
+                rates[item] = rates.TryGetValue(item, out float current) ? current + rate : rate;
+        }
+        return rates;
+    }
+
+    public bool HasProductionShortfall()
+    {
+        return TryGetProductionShortfallDetails(out _);
+    }
+
+    bool TryGetProductionShortfallDetails(out string details)
+    {
+        details = "";
+        var production = ProductionManager.Instance;
+        if (production == null) return false;
+
+        Dictionary<ItemDefinition, float> incoming = GetIncomingRates();
+
+        var shortfalls = new List<string>();
+        foreach (ProductionManager.ItemOutputNeed need in production.GetRequiredOutputByItem(includeDrinks: true))
+        {
+            if (need.item == null || need.requiredPerMinute <= 0.01f) continue;
+            incoming.TryGetValue(need.item, out float supplied);
+            if (supplied + 0.01f < need.requiredPerMinute)
+                shortfalls.Add(GetItemDisplayName(need.item) + " is underproducing");
+        }
+        if (shortfalls.Count == 0) return false;
+        details = string.Join("\n", shortfalls);
+        return true;
+    }
+
+    void RefreshCautionIndicator()
+    {
+        bool show = HasProductionShortfall();
+        if (show && cautionIndicator == null)
+            cautionIndicator = CreateCautionIndicator();
+        if (cautionIndicator != null)
+        {
+            cautionIndicator.transform.localPosition = cautionIndicatorOffset;
+            cautionIndicator.SetActive(show);
+        }
+    }
+
+    void HandleCautionClick()
+    {
+        if (cautionIndicator == null || !cautionIndicator.activeSelf || cautionIndicatorRect == null)
+            return;
+        if (!Input.GetMouseButtonDown(0)) return;
+
+        Camera cam = Camera.main;
+        if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(cautionIndicatorRect, Input.mousePosition, cam))
+            return;
+        if (!TryGetProductionShortfallDetails(out string details))
+            return;
+
+        cautionMessage.text = details;
+        cautionMessageGroup.alpha = 1f;
+        cautionMessageGroup.gameObject.SetActive(true);
+        cautionMessageShownAt = Time.unscaledTime;
+    }
+
+    void UpdateCautionMessageFade()
+    {
+        if (cautionMessageGroup == null || !cautionMessageGroup.gameObject.activeSelf) return;
+        float age = Time.unscaledTime - cautionMessageShownAt;
+        if (age >= 5f)
+        {
+            cautionMessageGroup.alpha = 0f;
+            cautionMessageGroup.gameObject.SetActive(false);
+            return;
+        }
+        cautionMessageGroup.alpha = age <= 4f ? 1f : 1f - (age - 4f);
+    }
+
+    GameObject CreateCautionIndicator()
+    {
+        Texture2D texture = Resources.Load<Texture2D>("UI/HeatLampCaution");
+        if (texture == null)
+        {
+            Debug.LogWarning("Heat lamp caution icon was not found at Resources/UI/HeatLampCaution.", this);
+            return null;
+        }
+
+        var root = new GameObject("ProductionShortfallCaution", typeof(RectTransform), typeof(Canvas));
+        root.transform.SetParent(transform, false);
+        root.transform.localPosition = cautionIndicatorOffset;
+
+        var canvas = root.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 100;
+
+        var rect = root.GetComponent<RectTransform>();
+        rect.sizeDelta = Vector2.one * 100f;
+        rect.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
+        cautionIndicatorRect = rect;
+
+        var imageObject = new GameObject("Icon", typeof(RectTransform), typeof(RawImage));
+        imageObject.transform.SetParent(root.transform, false);
+        var imageRect = imageObject.GetComponent<RectTransform>();
+        imageRect.anchorMin = Vector2.zero;
+        imageRect.anchorMax = Vector2.one;
+        imageRect.offsetMin = Vector2.zero;
+        imageRect.offsetMax = Vector2.zero;
+
+        var image = imageObject.GetComponent<RawImage>();
+        image.texture = texture;
+        image.raycastTarget = false;
+
+        var messageObject = new GameObject("ShortfallMessage", typeof(RectTransform), typeof(CanvasGroup), typeof(TextMeshProUGUI));
+        messageObject.transform.SetParent(root.transform, false);
+        var messageRect = messageObject.GetComponent<RectTransform>();
+        messageRect.anchorMin = new Vector2(0.5f, 1f);
+        messageRect.anchorMax = new Vector2(0.5f, 1f);
+        messageRect.pivot = new Vector2(0.5f, 0f);
+        messageRect.anchoredPosition = new Vector2(0f, 12f);
+        messageRect.sizeDelta = new Vector2(360f, 95f);
+
+        cautionMessageGroup = messageObject.GetComponent<CanvasGroup>();
+        cautionMessageGroup.alpha = 0f;
+        cautionMessageGroup.interactable = false;
+        cautionMessageGroup.blocksRaycasts = false;
+
+        cautionMessage = messageObject.GetComponent<TextMeshProUGUI>();
+        cautionMessage.fontSize = 25f;
+        cautionMessage.fontStyle = FontStyles.Bold;
+        cautionMessage.alignment = TextAlignmentOptions.Bottom;
+        cautionMessage.color = Color.white;
+        cautionMessage.outlineColor = new Color32(35, 38, 40, 255);
+        cautionMessage.outlineWidth = 0.28f;
+        cautionMessage.enableWordWrapping = true;
+        cautionMessage.raycastTarget = false;
+        messageObject.SetActive(false);
+        return root;
+    }
+
+    /// <summary>Full menu demand at this pickup point, including cashier-served drinks.</summary>
+    public string GetCustomerDemandRateDisplay()
+    {
+        var production = ProductionManager.Instance;
+        if (production == null)
+            return "Customer demand: None";
+
+        var parts = new List<string>();
+        foreach (ProductionManager.ItemOutputNeed need in production.GetRequiredOutputByItem(includeDrinks: true))
+        {
+            if (need.item == null) continue;
+            parts.Add(GetItemDisplayName(need.item) + ": " + FormatRate(need.requiredPerMinute) + "/min");
+        }
+
+        if (parts.Count == 0)
+            return "Customer demand: None";
+
+        parts.Sort(System.StringComparer.OrdinalIgnoreCase);
+        return "Customer demand: " + string.Join(", ", parts);
+    }
+
+    IEnumerable<ItemDefinition> GetFlowProducts(ProductionFlowPlan flow, int lampIndex)
+    {
+        var found = new HashSet<ItemDefinition>();
+        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+
+        // Only stations before this lamp can contribute food to it.
+        for (int i = 0; i < lampIndex; i++)
+        {
+            GameObject station = flow.stations[i];
+            if (station == null) continue;
+
+            var assembly = station.GetComponent<AssemblyStation>();
+            var grill = station.GetComponent<GrillStation>();
+            ItemDefinition burger = assembly != null ? assembly.selectedProduct
+                : grill != null ? grill.selectedProduct
+                : null;
+            if (burger == null && (assembly != null || grill != null) && config != null)
+                burger = config.burgerBase;
+            if (burger != null)
+                found.Add(burger);
+
+            if (station.GetComponent<FryerStation>() != null && config != null && config.friesItem != null)
+                found.Add(config.friesItem);
+        }
+
+        return found;
+    }
+
+    static string GetItemDisplayName(ItemDefinition item)
+    {
+        if (item == null) return "Item";
+        var inventory = KitchenInventory.Instance;
+        if (inventory != null) return inventory.GetDisplayName(item);
+        return !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+    }
+
+    static string FormatRate(float rate)
+    {
+        if (Mathf.Approximately(rate, Mathf.Round(rate))) return rate.ToString("0");
+        if (rate >= 10f) return rate.ToString("0");
+        return rate.ToString("0.0");
     }
 
     public bool DeliverMeal(CustomerOrder order)

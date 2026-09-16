@@ -22,6 +22,7 @@ public class BuildPlacer : MonoBehaviour
 
     private GameObject draggingObject;
     private BuildFootprint dragFootprint;
+    private StationSelectionHighlight dragSelectionHighlight;
     private int dragOrigX, dragOrigY;
     /// <summary>0, 1, 2, 3 = 0�, 90�, 180�, 270� while dragging.</summary>
     private int dragRotation;
@@ -314,6 +315,7 @@ public class BuildPlacer : MonoBehaviour
             grid.SetOccupied(ox, oy, sizeX, sizeY, false);
             draggingObject = root;
             dragFootprint = fp;
+            SetDraggedObjectHighlighted(root);
             dragOrigX = ox;
             dragOrigY = oy;
             dragRotation = rot;
@@ -360,9 +362,25 @@ public class BuildPlacer : MonoBehaviour
 
     void EndDrag()
     {
+        ClearDraggedObjectHighlight();
         draggingObject = null;
         dragFootprint = null;
         SetHint(IsPlacing);
+    }
+
+    void SetDraggedObjectHighlighted(GameObject selectedObject)
+    {
+        ClearDraggedObjectHighlight();
+        dragSelectionHighlight = StationSelectionHighlight.EnsureOn(selectedObject);
+        if (dragSelectionHighlight != null)
+            dragSelectionHighlight.SetSelected(true);
+    }
+
+    void ClearDraggedObjectHighlight()
+    {
+        if (dragSelectionHighlight != null)
+            dragSelectionHighlight.SetSelected(false);
+        dragSelectionHighlight = null;
     }
 
     void RemoveDraggedAndReturnToInventory()
@@ -373,6 +391,7 @@ public class BuildPlacer : MonoBehaviour
         if (pbi != null && pbi.itemDefinition != null && inventory != null)
             inventory.AddOne(pbi.itemDefinition);
 
+        ClearDraggedObjectHighlight();
         Object.Destroy(draggingObject);
         draggingObject = null;
         dragFootprint = null;

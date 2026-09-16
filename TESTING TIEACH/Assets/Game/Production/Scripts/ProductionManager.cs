@@ -142,7 +142,7 @@ public class ProductionManager : MonoBehaviour
         public float requiredPerMinute;
     }
 
-    public List<ItemOutputNeed> GetRequiredOutputByItem()
+    public List<ItemOutputNeed> GetRequiredOutputByItem(bool includeDrinks = false)
     {
         var requested = new Dictionary<ItemDefinition, int>();
         foreach (var order in GetAllQueuedOrders())
@@ -151,7 +151,7 @@ public class ProductionManager : MonoBehaviour
             foreach (var line in order.lines)
             {
                 if (line.item == null || line.quantity <= 0) continue;
-                if (orderConfig != null && orderConfig.IsDrink(line.item)) continue;
+                if (!includeDrinks && orderConfig != null && orderConfig.IsDrink(line.item)) continue;
                 requested[line.item] = requested.TryGetValue(line.item, out int c)
                     ? c + line.quantity
                     : line.quantity;
@@ -177,7 +177,7 @@ public class ProductionManager : MonoBehaviour
         }
 
         float customersPerMinute = EstimateCustomersPerMinute();
-        var chanceByItem = EstimateOrderChanceByItem();
+        var chanceByItem = EstimateOrderChanceByItem(includeDrinks);
 
         var items = new HashSet<ItemDefinition>();
         foreach (var kv in requested) items.Add(kv.Key);
@@ -236,29 +236,33 @@ public class ProductionManager : MonoBehaviour
         return 10f;
     }
 
-    Dictionary<ItemDefinition, float> EstimateOrderChanceByItem()
+    Dictionary<ItemDefinition, float> EstimateOrderChanceByItem(bool includeDrinks = false)
     {
         var chances = new Dictionary<ItemDefinition, float>();
         if (orderConfig == null) return chances;
 
         // Matches GenerateRandomOrder: independent rolls, with fallback to at least one item.
-        float b = orderConfig.burgerBase != null ? Mathf.Clamp01(orderConfig.burgerChance) : 0f;
-        float f = orderConfig.friesItem != null ? Mathf.Clamp01(orderConfig.friesChance) : 0f;
-        float d = orderConfig.drinkItem != null ? Mathf.Clamp01(orderConfig.drinkChance) : 0f;
+        float b = orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase) ? Mathf.Clamp01(orderConfig.burgerChance) : 0f;
+        float f = orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem) ? Mathf.Clamp01(orderConfig.friesChance) : 0f;
+        float d = orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem) ? Mathf.Clamp01(orderConfig.drinkChance) : 0f;
         float none = (1f - b) * (1f - f) * (1f - d);
 
         float burgerP = b;
         float friesP = f;
+        float drinkP = d;
         if (none > 0f)
         {
-            if (orderConfig.burgerBase != null) burgerP += none;
-            else if (orderConfig.friesItem != null) friesP += none;
+            if (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase)) burgerP += none;
+            else if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem)) friesP += none;
+            else if (orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem)) drinkP += none;
         }
 
-        if (orderConfig.burgerBase != null)
+        if (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
             chances[orderConfig.burgerBase] = burgerP;
-        if (orderConfig.friesItem != null)
+        if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             chances[orderConfig.friesItem] = friesP;
+        if (includeDrinks && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
+            chances[orderConfig.drinkItem] = drinkP;
         return chances;
     }
 
@@ -669,9 +673,9 @@ public class ProductionManager : MonoBehaviour
             canFries = fryer != null || FindObjectOfType<FryerStation>() != null;
         }
 
-        if (canBurger && orderConfig.burgerBase != null)
+        if (canBurger && orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
             list.Add(orderConfig.burgerBase);
-        if (canFries && orderConfig.friesItem != null)
+        if (canFries && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             list.Add(orderConfig.friesItem);
         return list;
     }

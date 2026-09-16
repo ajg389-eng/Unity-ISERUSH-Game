@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Management tab: view kitchen stock and order ingredient packs with money.
+/// Management Food tab: choose the items sold and order ingredient packs.
 /// </summary>
 public class IngredientsOrderUI : MonoBehaviour
 {
@@ -13,6 +13,11 @@ public class IngredientsOrderUI : MonoBehaviour
     public TextMeshProUGUI moneyHintText;
     public KitchenInventory inventory;
     public MoneyManager money;
+
+    [Header("Menu preview prefabs")]
+    public GameObject burgerPreviewPrefab;
+    public GameObject friesPreviewPrefab;
+    public GameObject drinkPreviewPrefab;
 
     public float refreshInterval = 0.35f;
     float nextRefresh;
@@ -43,6 +48,7 @@ public class IngredientsOrderUI : MonoBehaviour
             var t = transform.Find("Title");
             if (t != null) headerText = t.GetComponent<TextMeshProUGUI>();
         }
+        if (headerText != null) headerText.text = "Food";
     }
 
     void EnsureList()
@@ -128,6 +134,15 @@ public class IngredientsOrderUI : MonoBehaviour
             return;
         }
 
+        CustomerOrderConfig menu = inventory.orderConfig;
+        if (menu != null)
+        {
+            CreateSectionHeader("Items to sell");
+            foreach (var item in menu.GetMenuItems())
+                if (item != null) CreateMenuToggleRow(menu, item);
+        }
+
+        CreateSectionHeader("Buy ingredients");
         foreach (var item in inventory.GetOrderableItems())
         {
             if (item == null) continue;
@@ -135,6 +150,112 @@ public class IngredientsOrderUI : MonoBehaviour
         }
 
         built = true;
+    }
+
+    void CreateSectionHeader(string label)
+    {
+        var go = new GameObject(label.Replace(" ", ""), typeof(RectTransform));
+        go.transform.SetParent(listContainer, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.minHeight = 30;
+        le.preferredHeight = 30;
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = label;
+        tmp.fontSize = 17;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.color = new Color(1f, 0.82f, 0.38f, 1f);
+        tmp.alignment = TextAlignmentOptions.BottomLeft;
+        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+    }
+
+    void CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item)
+    {
+        var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+        row.transform.SetParent(listContainer, false);
+        var le = row.AddComponent<LayoutElement>();
+        le.minHeight = 68;
+        le.preferredHeight = 68;
+        row.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
+
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(10, 12, 6, 6);
+        layout.spacing = 10;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
+        previewGo.transform.SetParent(row.transform, false);
+        var previewLe = previewGo.GetComponent<LayoutElement>();
+        previewLe.minWidth = 56;
+        previewLe.preferredWidth = 56;
+        previewLe.minHeight = 56;
+        previewLe.preferredHeight = 56;
+        var preview = previewGo.GetComponent<RawImage>();
+        preview.texture = ItemPreviewThumbnails.GetPrefab(GetPreviewPrefab(menu, item), item.itemName);
+        preview.color = Color.white;
+        preview.raycastTarget = false;
+
+        var nameGo = new GameObject("Name", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        nameGo.transform.SetParent(row.transform, false);
+        nameGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        var nameText = nameGo.GetComponent<TextMeshProUGUI>();
+        nameText.text = inventory.GetDisplayName(item);
+        nameText.fontSize = 16;
+        nameText.color = Color.white;
+        nameText.alignment = TextAlignmentOptions.Left;
+        if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
+
+        Toggle toggle = CreateCheckbox(row.transform);
+        toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
+        ItemDefinition captured = item;
+        toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
+    }
+
+    GameObject GetPreviewPrefab(CustomerOrderConfig menu, ItemDefinition item)
+    {
+        if (menu == null || item == null) return null;
+        if (menu.IsBurger(item)) return burgerPreviewPrefab;
+        if (menu.IsFries(item)) return friesPreviewPrefab;
+        if (menu.IsDrink(item)) return drinkPreviewPrefab;
+        return null;
+    }
+
+    static Toggle CreateCheckbox(Transform parent)
+    {
+        var toggleGo = new GameObject("SellToggle", typeof(RectTransform), typeof(LayoutElement), typeof(Toggle));
+        toggleGo.transform.SetParent(parent, false);
+        var le = toggleGo.GetComponent<LayoutElement>();
+        le.minWidth = 34;
+        le.preferredWidth = 34;
+        le.minHeight = 34;
+        le.preferredHeight = 34;
+
+        var backgroundGo = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        backgroundGo.transform.SetParent(toggleGo.transform, false);
+        var bgRect = (RectTransform)backgroundGo.transform;
+        bgRect.anchorMin = new Vector2(0.5f, 0.5f);
+        bgRect.anchorMax = new Vector2(0.5f, 0.5f);
+        bgRect.sizeDelta = new Vector2(30f, 30f);
+        var background = backgroundGo.GetComponent<Image>();
+        background.color = new Color(0.1f, 0.11f, 0.14f, 1f);
+
+        var checkGo = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
+        checkGo.transform.SetParent(backgroundGo.transform, false);
+        var checkRect = (RectTransform)checkGo.transform;
+        checkRect.anchorMin = new Vector2(0.18f, 0.18f);
+        checkRect.anchorMax = new Vector2(0.82f, 0.82f);
+        checkRect.offsetMin = Vector2.zero;
+        checkRect.offsetMax = Vector2.zero;
+        var check = checkGo.GetComponent<Image>();
+        check.color = new Color(0.32f, 0.9f, 0.42f, 1f);
+
+        var toggle = toggleGo.GetComponent<Toggle>();
+        toggle.targetGraphic = background;
+        toggle.graphic = check;
+        return toggle;
     }
 
     void CreateInfoRow(string message)
