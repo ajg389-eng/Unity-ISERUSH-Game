@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using TMPro;
 
 public class PlayerCameraController : MonoBehaviour
 {
@@ -15,12 +16,21 @@ public class PlayerCameraController : MonoBehaviour
     public float zoomSmoothTime = 0.1f;
     float zoomVelocity;
     public float rotationSpeed = 5f;
+    [Tooltip("Time for the camera to pan to a selected worker or flow.")]
+    public float focusSmoothTime = 0.28f;
 
     public float minY = 8f;
     public float maxY = 40f;
 
+    [Header("Movement Bounds")]
+    [Tooltip("Extra radius beyond the work floor's corners.")]
+    [Min(0f)] public float movementBoundsMargin = 3f;
+
     float targetZoomY;
     Vector3 currentMoveVelocity;
+    Vector3 focusVelocity;
+    Vector3 focusTargetPosition;
+    bool isFocusing;
 
     void Start()
     {
@@ -37,9 +47,109 @@ public class PlayerCameraController : MonoBehaviour
             return;
         }
 
-        Move();
+        if (UIInputFocusGuard.IsTyping)
+        {
+            currentMoveVelocity = Vector3.zero;
+            if (isFocusing)
+                UpdateFocusPan();
+            return;
+        }
+
+        bool manualMove = Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.01f
+            || Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.01f;
+        if (isFocusing && !manualMove)
+            UpdateFocusPan();
+        else
+        {
+            if (manualMove) isFocusing = false;
+            Move();
+        }
         Zoom();
         Rotate();
+        ClampToPlayableBounds();
+    }
+
+    public void PanTo(Vector3 worldPoint)
+    {
+        Vector3 cameraPosition = transform.position;
+        Vector3 forward = transform.forward;
+        Vector3 currentCenter = cameraPosition;
+
+        if (Mathf.Abs(forward.y) > 0.001f)
+        {
+            float distanceToPlane = (worldPoint.y - cameraPosition.y) / forward.y;
+            if (distanceToPlane > 0f)
+                currentCenter = cameraPosition + forward * distanceToPlane;
+        }
+
+        Vector3 offset = worldPoint - currentCenter;
+        focusTargetPosition = new Vector3(
+            cameraPosition.x + offset.x,
+            cameraPosition.y,
+            cameraPosition.z + offset.z);
+        focusTargetPosition = ClampPositionToPlayableBounds(focusTargetPosition);
+        focusVelocity = Vector3.zero;
+        currentMoveVelocity = Vector3.zero;
+        isFocusing = true;
+    }
+
+    public void PanTo(Transform target)
+    {
+        if (target != null)
+            PanTo(target.position);
+    }
+
+    public void PanTo(ProductionFlowPlan flow)
+    {
+        if (flow == null) return;
+
+        Vector3 total = Vector3.zero;
+        int count = 0;
+        if (flow.stations != null)
+        {
+            foreach (GameObject station in flow.stations)
+            {
+                if (station == null) continue;
+                total += station.transform.position;
+                count++;
+            }
+        }
+
+        if (count == 0 && flow.workers != null)
+        {
+            foreach (KitchenEmployee worker in flow.workers)
+            {
+                if (worker == null) continue;
+                total += worker.transform.position;
+                count++;
+            }
+        }
+
+        if (count > 0)
+            PanTo(total / count);
+    }
+
+    void UpdateFocusPan()
+    {
+        float dt = InteractionDeltaTime;
+        if (dt <= 0f) return;
+
+        transform.position = Vector3.SmoothDamp(
+            transform.position,
+            focusTargetPosition,
+            ref focusVelocity,
+            Mathf.Max(0.05f, focusSmoothTime),
+            Mathf.Infinity,
+            dt);
+        ClampToPlayableBounds();
+
+        if ((transform.position - focusTargetPosition).sqrMagnitude < 0.0025f
+            && focusVelocity.sqrMagnitude < 0.0025f)
+        {
+            transform.position = focusTargetPosition;
+            focusVelocity = Vector3.zero;
+            isFocusing = false;
+        }
     }
 
     void Move()
@@ -73,6 +183,7 @@ public class PlayerCameraController : MonoBehaviour
         Vector3 pos = transform.position;
         pos += currentMoveVelocity * dt;
         transform.position = pos;
+        ClampToPlayableBounds();
     }
 
     void Zoom()
@@ -108,6 +219,44 @@ public class PlayerCameraController : MonoBehaviour
         }
     }
 
+    void ClampToPlayableBounds()
+    {
+        transform.position = ClampPositionToPlayableBounds(transform.position);
+    }
+
+    Vector3 ClampPositionToPlayableBounds(Vector3 cameraPosition)
+    {
+        GridManager grid = GridManager.Instance;
+        if (grid == null || grid.Width <= 0 || grid.Height <= 0)
+            return cameraPosition;
+
+        Vector3 forward = transform.forward;
+        Vector3 viewCenter = cameraPosition;
+        if (Mathf.Abs(forward.y) > 0.001f)
+        {
+            float distanceToFloor = (grid.Origin.y - cameraPosition.y) / forward.y;
+            if (distanceToFloor > 0f)
+                viewCenter = cameraPosition + forward * distanceToFloor;
+        }
+
+        float floorWidth = grid.Width * grid.cellSize;
+        float floorDepth = grid.Height * grid.cellSize;
+        Vector2 floorCenter = new Vector2(
+            grid.Origin.x + floorWidth * 0.5f,
+            grid.Origin.z + floorDepth * 0.5f);
+        float floorCornerRadius = 0.5f * Mathf.Sqrt(floorWidth * floorWidth + floorDepth * floorDepth);
+        float allowedRadius = floorCornerRadius + Mathf.Max(0f, movementBoundsMargin);
+
+        Vector2 centerOffset = new Vector2(viewCenter.x, viewCenter.z) - floorCenter;
+        if (centerOffset.sqrMagnitude > allowedRadius * allowedRadius)
+        {
+            Vector2 clampedCenter = floorCenter + centerOffset.normalized * allowedRadius;
+            cameraPosition.x += clampedCenter.x - viewCenter.x;
+            cameraPosition.z += clampedCenter.y - viewCenter.z;
+        }
+        return cameraPosition;
+    }
+
     /// <summary>Real-time delta so camera keeps moving while simulation is paused.</summary>
     static float InteractionDeltaTime => Time.unscaledDeltaTime;
 
@@ -131,4 +280,24 @@ public class PlayerCameraController : MonoBehaviour
 
         return false;
     }
+}
+
+public static class UIInputFocusGuard
+{
+    public static bool IsTyping
+    {
+        get
+        {
+            var eventSystem = EventSystem.current;
+            GameObject selected = eventSystem != null ? eventSystem.currentSelectedGameObject : null;
+            if (selected == null) return false;
+
+            var tmpInput = selected.GetComponentInParent<TMP_InputField>();
+            if (tmpInput != null && tmpInput.isFocused) return true;
+
+            var legacyInput = selected.GetComponentInParent<InputField>();
+            return legacyInput != null && legacyInput.isFocused;
+        }
+    }
+
 }

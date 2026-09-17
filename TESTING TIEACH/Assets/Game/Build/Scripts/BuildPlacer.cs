@@ -75,7 +75,7 @@ public class BuildPlacer : MonoBehaviour
 
         // Cancel (placement or drag). Only consume Escape when there is something to cancel
         // so the pause menu can still open in Build mode.
-        if (Input.GetKeyDown(KeyCode.Escape) && (IsDragging || IsPlacing))
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && (IsDragging || IsPlacing))
         {
             if (PauseMenuUI.IsOpen)
                 return;
@@ -96,7 +96,7 @@ public class BuildPlacer : MonoBehaviour
                 RemoveDraggedAndReturnToInventory();
                 return;
             }
-            if (Input.GetKeyDown(KeyCode.R) && !IsCurrentDragRotationLocked())
+            if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsCurrentDragRotationLocked())
             {
                 dragRotation = (dragRotation + 1) % 4;
                 ApplyDraggedRotation();
@@ -137,7 +137,7 @@ public class BuildPlacer : MonoBehaviour
 
         if (placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
         {
-            if (Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
+            if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
             {
                 placementRotation = (placementRotation + 1) % 4;
                 Sfx.Play(SfxId.BuildRotate);
@@ -153,7 +153,7 @@ public class BuildPlacer : MonoBehaviour
         }
 
         // R = rotate while placing
-        if (Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
         {
             placementRotation = (placementRotation + 1) % 4;
             if (ghost)

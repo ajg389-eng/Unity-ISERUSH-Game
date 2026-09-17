@@ -81,6 +81,7 @@ public class ManagementModeController : MonoBehaviour
 
     public bool IsCapturingFlow => capturedFlow != null;
     public ProductionFlowPlan CapturedFlow => capturedFlow;
+    public KitchenEmployee SelectedEmployee => selectedEmployee;
 
     void Awake()
     {
@@ -148,7 +149,7 @@ public class ManagementModeController : MonoBehaviour
         UpdateOutputDragPreview();
         RefreshWorkflowDecisionHud();
 
-        if (Input.GetKeyDown(KeyCode.Escape) && IsCapturingFlow)
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && IsCapturingFlow)
         {
             CancelFlowCapture();
             PauseMenuUI.MarkEscapeHandled();
@@ -166,7 +167,7 @@ public class ManagementModeController : MonoBehaviour
                 RefreshRecipeStationRatesLive();
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
         {
             if (PauseMenuUI.IsOpen)
                 return;

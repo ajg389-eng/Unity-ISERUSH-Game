@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
 
@@ -29,6 +31,8 @@ public class WorkerCardUI : MonoBehaviour
     bool detailsExpanded;
     Button expandButton;
     TextMeshProUGUI expandArrowLabel;
+    Image cardImage;
+    Outline selectionOutline;
 
     void OnValidate()
     {
@@ -37,8 +41,63 @@ public class WorkerCardUI : MonoBehaviour
 
     void Update()
     {
+        TrySelectFromCardClick();
         if (employee != null)
             RefreshDetails();
+        RefreshSelectionHighlight();
+    }
+
+    void TrySelectFromCardClick()
+    {
+        if (employee == null || !Input.GetMouseButtonDown(0)) return;
+        var management = ManagementModeController.Instance;
+        if (management == null || !management.IsManageMode) return;
+        if (EventSystem.current == null) return;
+
+        var pointer = new PointerEventData(EventSystem.current)
+        {
+            position = Input.mousePosition
+        };
+        var hits = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(pointer, hits);
+        if (hits.Count == 0 || hits[0].gameObject == null) return;
+
+        Transform clicked = hits[0].gameObject.transform;
+        if (clicked == transform || clicked.IsChildOf(transform))
+        {
+            management.SelectWorker(employee);
+            var cameraController = FindObjectOfType<PlayerCameraController>();
+            if (cameraController != null)
+                cameraController.PanTo(employee.transform);
+        }
+    }
+
+    void RefreshSelectionHighlight()
+    {
+        if (cardImage == null)
+            cardImage = GetComponent<Image>();
+
+        bool selected = employee != null
+            && ManagementModeController.Instance != null
+            && ManagementModeController.Instance.SelectedEmployee == employee;
+
+        if (selectionOutline == null)
+            selectionOutline = GetComponent<Outline>();
+        if (selected && selectionOutline == null)
+            selectionOutline = gameObject.AddComponent<Outline>();
+
+        if (cardImage != null)
+            cardImage.color = selected
+                ? new Color(0.20f, 0.38f, 0.62f, 1f)
+                : new Color(0.18f, 0.2f, 0.26f, 0.98f);
+
+        if (selectionOutline != null)
+        {
+            selectionOutline.enabled = selected;
+            selectionOutline.effectColor = new Color(0.25f, 0.88f, 1f, 1f);
+            selectionOutline.effectDistance = new Vector2(3f, -3f);
+            selectionOutline.useGraphicAlpha = false;
+        }
     }
 
     void BindReferences()
@@ -68,10 +127,12 @@ public class WorkerCardUI : MonoBehaviour
         if (details != null)
         {
             if (currentTaskText == null)
-                currentTaskText = details.Find("TaskSection/CurrentTask")?.GetComponent<TextMeshProUGUI>()
+                currentTaskText = details.Find("StatusRow/TaskSection/CurrentTask")?.GetComponent<TextMeshProUGUI>()
+                    ?? details.Find("TaskSection/CurrentTask")?.GetComponent<TextMeshProUGUI>()
                     ?? details.Find("CurrentTask")?.GetComponent<TextMeshProUGUI>();
             if (assignmentsText == null)
-                assignmentsText = details.Find("StationsSection/Assignments")?.GetComponent<TextMeshProUGUI>()
+                assignmentsText = details.Find("StatusRow/StationsSection/Assignments")?.GetComponent<TextMeshProUGUI>()
+                    ?? details.Find("StationsSection/Assignments")?.GetComponent<TextMeshProUGUI>()
                     ?? details.Find("Assignments")?.GetComponent<TextMeshProUGUI>();
             if (heldItemsText == null)
                 heldItemsText = details.Find("CarryingSection/HeldItems")?.GetComponent<TextMeshProUGUI>()
@@ -129,24 +190,17 @@ public class WorkerCardUI : MonoBehaviour
         if (employee == null)
         {
             SetDetailText(currentTaskText, "—");
-            SetDetailText(assignmentsText, "No stations assigned");
+            SetDetailText(assignmentsText, "FLOW: Unassigned");
             SetDetailText(heldItemsText, "Nothing");
             if (stationsLabel != null) stationsLabel.text = "—";
             return;
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
-        string flowPrefix = !string.IsNullOrEmpty(employee.assignedFlowName)
-            ? "FLOW: " + employee.assignedFlowName + "\n"
-            : "";
-        float transport = Mathf.Max(0.1f, employee.transportItemsPerMinute);
-        SetDetailText(
-            assignmentsText,
-            flowPrefix
-            + FormatUpgradeStars(employee.UpgradeLevel)
-            + "  Carry " + employee.CarryCapacity
-            + "  ·  Transport: " + FormatRate(transport) + " items / min\n"
-            + "Stations: " + employee.GetAssignedStationsSummary());
+        string flowName = !string.IsNullOrEmpty(employee.assignedFlowName)
+            ? employee.assignedFlowName
+            : "Unassigned";
+        SetDetailText(assignmentsText, "FLOW: " + flowName);
 
         string held = employee.GetHeldInventoryDisplay();
         bool carrying = !string.IsNullOrEmpty(held);
@@ -188,7 +242,7 @@ public class WorkerCardUI : MonoBehaviour
         HideLegacyUi();
 
         var details = transform.Find("WorkerDetails");
-        if (details == null || details.Find("TaskSection") == null)
+        if (details == null || (details.Find("TaskSection") == null && details.Find("StatusRow/TaskSection") == null))
         {
             if (details != null)
                 Destroy(details.gameObject);
@@ -422,13 +476,67 @@ public class WorkerCardUI : MonoBehaviour
         if (details != null)
         {
             details.SetAsLastSibling();
+            Transform statusRow = EnsureStatusRow(details);
+            var detailsLe = details.GetComponent<LayoutElement>();
+            if (detailsLe == null) detailsLe = details.gameObject.AddComponent<LayoutElement>();
+            detailsLe.minHeight = 0;
+            detailsLe.preferredHeight = -1;
             var detailsVlg = details.GetComponent<VerticalLayoutGroup>();
             if (detailsVlg != null)
                 detailsVlg.spacing = 4;
-            CompactSection(details.Find("TaskSection"), 36);
-            CompactSection(details.Find("StationsSection"), 32);
+            CompactSection(statusRow != null ? statusRow.Find("TaskSection") : null, 28);
+            CompactSection(statusRow != null ? statusRow.Find("StationsSection") : null, 28);
             CompactSection(details.Find("CarryingSection"), 28);
         }
+    }
+
+    static Transform EnsureStatusRow(Transform details)
+    {
+        if (details == null) return null;
+
+        Transform statusRow = details.Find("StatusRow");
+        if (statusRow == null)
+        {
+            var row = new GameObject("StatusRow", typeof(RectTransform));
+            row.transform.SetParent(details, false);
+            statusRow = row.transform;
+        }
+
+        var rowLe = statusRow.GetComponent<LayoutElement>();
+        if (rowLe == null) rowLe = statusRow.gameObject.AddComponent<LayoutElement>();
+        rowLe.minHeight = 28;
+        rowLe.preferredHeight = 28;
+        rowLe.flexibleWidth = 1;
+
+        var rowLayout = statusRow.GetComponent<HorizontalLayoutGroup>();
+        if (rowLayout == null) rowLayout = statusRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+        rowLayout.padding = new RectOffset(0, 0, 0, 0);
+        rowLayout.spacing = 4;
+        rowLayout.childAlignment = TextAnchor.MiddleLeft;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = true;
+
+        Transform flowSection = statusRow.Find("StationsSection") ?? details.Find("StationsSection");
+        Transform taskSection = statusRow.Find("TaskSection") ?? details.Find("TaskSection");
+        if (flowSection != null)
+        {
+            flowSection.SetParent(statusRow, false);
+            flowSection.SetSiblingIndex(0);
+            var flowLe = flowSection.GetComponent<LayoutElement>();
+            if (flowLe != null) flowLe.flexibleWidth = 0.8f;
+        }
+        if (taskSection != null)
+        {
+            taskSection.SetParent(statusRow, false);
+            taskSection.SetSiblingIndex(1);
+            var taskLe = taskSection.GetComponent<LayoutElement>();
+            if (taskLe != null) taskLe.flexibleWidth = 1.2f;
+        }
+
+        statusRow.SetAsFirstSibling();
+        return statusRow;
     }
 
     void EnsureAssignmentControls()
@@ -466,33 +574,13 @@ public class WorkerCardUI : MonoBehaviour
         vertical.childForceExpandWidth = true;
         vertical.childForceExpandHeight = false;
         var rootLayout = root.AddComponent<LayoutElement>();
-        rootLayout.minHeight = 92f;
+        rootLayout.minHeight = 28f;
         rootLayout.preferredHeight = rootLayout.minHeight;
 
         Button upgrade = CreateControlButton(assignmentControls, GetUpgradeButtonLabel(), 28f);
         upgrade.name = "UpgradeTransport";
         upgrade.onClick.AddListener(OnUpgradeClicked);
         ApplyUpgradeButtonStyle(upgrade);
-
-        Button inspect = CreateControlButton(assignmentControls, "Inspect / Assign on Grid", 28f);
-        inspect.onClick.AddListener(() =>
-        {
-            if (employee != null && ManagementModeController.Instance != null)
-                ManagementModeController.Instance.SelectWorker(employee);
-        });
-
-        Button assignFlow = CreateControlButton(assignmentControls, "Assign to Current Flow", 28f);
-        assignFlow.onClick.AddListener(() =>
-        {
-            if (employee == null) return;
-            ProductionManager manager = ProductionManager.Instance != null
-                ? ProductionManager.Instance
-                : FindObjectOfType<ProductionManager>();
-            if (manager == null) return;
-            manager.AddWorkerToSelectedFlow(employee);
-            WorkersUI workersUi = FindObjectOfType<WorkersUI>();
-            if (workersUi != null) workersUi.Refresh();
-        });
     }
 
     string GetUpgradeButtonLabel()
@@ -591,10 +679,22 @@ public class WorkerCardUI : MonoBehaviour
             header.gameObject.SetActive(false);
         var le = section.GetComponent<LayoutElement>();
         if (le != null)
+        {
             le.minHeight = minHeight;
+            le.preferredHeight = minHeight;
+        }
         var vlg = section.GetComponent<VerticalLayoutGroup>();
         if (vlg != null)
             vlg.padding = new RectOffset(8, 8, 4, 4);
+
+        foreach (var label in section.GetComponentsInChildren<TextMeshProUGUI>(true))
+        {
+            if (label.transform == header) continue;
+            var labelLayout = label.GetComponent<LayoutElement>();
+            if (labelLayout == null) continue;
+            labelLayout.minHeight = 20;
+            labelLayout.preferredHeight = 20;
+        }
     }
 
     static void SetDetailText(TextMeshProUGUI label, string text)

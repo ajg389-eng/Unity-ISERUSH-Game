@@ -250,7 +250,7 @@ public class ManagementTabInfoUI : MonoBehaviour
 
     void Update()
     {
-        if (overlay != null && overlay.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+        if (overlay != null && overlay.activeSelf && !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape))
             Close();
     }
 

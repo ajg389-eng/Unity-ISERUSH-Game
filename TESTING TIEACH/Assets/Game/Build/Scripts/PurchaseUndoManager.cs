@@ -137,6 +137,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     void Update()
     {
+        if (UIInputFocusGuard.IsTyping) return;
         if ((Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && Input.GetKeyDown(KeyCode.Z))
             TryUndo();
     }

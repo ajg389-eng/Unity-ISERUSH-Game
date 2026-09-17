@@ -4,6 +4,8 @@ using UnityEngine;
 [System.Serializable]
 public class ProductionFlowPlan
 {
+    public const int MaxNameLength = 15;
+
     public string flowName = "Flow";
     public KitchenFlowKind kind = KitchenFlowKind.Custom;
     public List<string> stepIds = new List<string>();
@@ -12,11 +14,23 @@ public class ProductionFlowPlan
 
     public void Clean()
     {
+        flowName = NormalizeName(flowName, "Flow");
         if (stepIds == null) stepIds = new List<string>();
         if (stations == null) stations = new List<GameObject>();
         stations.RemoveAll(station => station == null);
         if (workers == null) workers = new List<KitchenEmployee>();
         workers.RemoveAll(worker => worker == null);
+    }
+
+    public void SetName(string value)
+    {
+        flowName = NormalizeName(value, "Unnamed Flow");
+    }
+
+    public static string NormalizeName(string value, string fallback)
+    {
+        string clean = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        return clean.Length <= MaxNameLength ? clean : clean.Substring(0, MaxNameLength);
     }
 }
 
@@ -837,6 +851,7 @@ public static class WorkflowAnalysis
     {
         public string summary = "";
         public readonly List<string> lines = new List<string>();
+        public readonly List<ItemDefinition> requiredResources = new List<ItemDefinition>();
     }
 
     /// <summary>
@@ -864,17 +879,19 @@ public static class WorkflowAnalysis
             || FlowHas(flow, "Grill", typeof(GrillStation))
             || FlowHas(flow, "Assembly", typeof(AssemblyStation));
         bool canFries = FlowHas(flow, "Fryer", typeof(FryerStation));
+        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+        var inventory = Object.FindFirstObjectByType<KitchenInventory>();
 
         if (hasRegister && !canBurger && !canFries)
         {
             result.summary = hasDrink
                 ? "Service flow — serves full orders (food + drinks) to customers."
                 : "Service flow — register hands finished food to customers.";
+            if (hasDrink && config != null && config.drinkItem != null)
+                result.requiredResources.Add(config.drinkItem);
             return result;
         }
 
-        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
-        var inventory = Object.FindFirstObjectByType<KitchenInventory>();
         float perMinute = GetFlowBottleneckOutputPerMinute(flow);
         float cycle = perMinute > 0.01f ? 60f / perMinute : 0f;
         string cycleLabel = perMinute > 0.01f
@@ -894,6 +911,10 @@ public static class WorkflowAnalysis
             result.summary = "Cycle " + cycleLabel + " — no cookable menu item detected on this route.";
             return result;
         }
+
+        foreach (ItemDefinition product in products)
+            if (product != null && !result.requiredResources.Contains(product))
+                result.requiredResources.Add(product);
 
         result.summary = "Cycle " + cycleLabel;
         foreach (ItemDefinition item in products)

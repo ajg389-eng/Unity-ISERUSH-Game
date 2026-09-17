@@ -205,6 +205,7 @@ public class ManagementScreenController : MonoBehaviour
 
     void Update()
     {
+        if (UIInputFocusGuard.IsTyping) return;
         if (Input.GetKeyDown(toggleKey))
             Toggle();
     }

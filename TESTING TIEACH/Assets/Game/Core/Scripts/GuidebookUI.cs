@@ -60,6 +60,7 @@ public class GuidebookUI : MonoBehaviour
     void Update()
     {
         if (!visible) return;
+        if (UIInputFocusGuard.IsTyping) return;
         if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
             Turn(-1);
         else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))

@@ -5,7 +5,7 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Shows a selected worker's ordered station flow on the floor grid.
-/// Station focus still uses the elevated worker-to-station assignment link.
+/// Selecting a station does not create an additional world-space link.
 /// </summary>
 public class WorkerAssignmentLinkVisuals : MonoBehaviour
 {
@@ -67,7 +67,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void Update()
     {
         bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        bool show = manage && (focusedWorker != null || focusedStation != null || focusedFlow != null);
+        bool show = manage && (focusedWorker != null || focusedFlow != null);
 
         if (show != visible)
         {
@@ -124,7 +124,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void ApplyFocus()
     {
-        visible = focusedWorker != null || focusedStation != null || focusedFlow != null;
+        visible = focusedWorker != null || focusedFlow != null;
         if (visible) Refresh();
         else ClearVisuals();
     }
@@ -153,8 +153,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-        if (focusedStation != null && focusedStation.assignedWorker != null)
-            CreateAssignmentLink(focusedStation.assignedWorker.gameObject, focusedStation.gameObject);
     }
 
     void DrawDraftFlow(ProductionFlowPlan flow)

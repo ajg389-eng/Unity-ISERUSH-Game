@@ -20,6 +20,7 @@ public class MilestoneMapUI : MonoBehaviour
 
     void Update()
     {
+        if (UIInputFocusGuard.IsTyping) return;
         if (!Input.GetKeyDown(toggleKey)) return;
         OpenProgressionTab();
     }

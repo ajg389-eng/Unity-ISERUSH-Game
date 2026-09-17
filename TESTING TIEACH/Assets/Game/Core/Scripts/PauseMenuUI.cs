@@ -91,7 +91,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void LateUpdate()
     {
-        bool escape = Input.GetKeyDown(KeyCode.Escape);
+        bool escape = !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape);
         if (escape && !EscapeHandledThisFrame && !IsTitleVisible())
         {
             if (!visible)

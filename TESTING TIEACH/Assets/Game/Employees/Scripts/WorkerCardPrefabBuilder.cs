@@ -56,25 +56,37 @@ public static class WorkerCardPrefabBuilder
         detailsGo.transform.SetParent(cardTransform, false);
         var detailsLe = detailsGo.AddComponent<LayoutElement>();
         detailsLe.flexibleWidth = 1;
-        detailsLe.minHeight = 140;
+        detailsLe.minHeight = 0;
 
         var detailsVlg = detailsGo.AddComponent<VerticalLayoutGroup>();
-        detailsVlg.spacing = 10;
+        detailsVlg.spacing = 4;
         detailsVlg.childAlignment = TextAnchor.UpperLeft;
         detailsVlg.childControlWidth = true;
         detailsVlg.childControlHeight = true;
         detailsVlg.childForceExpandWidth = true;
         detailsVlg.childForceExpandHeight = false;
 
-        var taskSection = CreateSection(detailsGo.transform, "TaskSection", minHeight: 52);
-        CreateSectionHeader(taskSection, "CURRENT TASK");
-        currentTask = CreateBodyLabel(taskSection, "CurrentTask", "—", 14, TaskColor, minHeight: 22);
+        var statusRow = new GameObject("StatusRow", typeof(RectTransform));
+        statusRow.transform.SetParent(detailsGo.transform, false);
+        var statusRowLe = statusRow.AddComponent<LayoutElement>();
+        statusRowLe.minHeight = 28;
+        statusRowLe.preferredHeight = 28;
+        var statusRowLayout = statusRow.AddComponent<HorizontalLayoutGroup>();
+        statusRowLayout.spacing = 4;
+        statusRowLayout.childControlWidth = true;
+        statusRowLayout.childControlHeight = true;
+        statusRowLayout.childForceExpandWidth = true;
+        statusRowLayout.childForceExpandHeight = true;
 
-        var stationsSection = CreateSection(detailsGo.transform, "StationsSection", minHeight: 88);
+        var stationsSection = CreateSection(statusRow.transform, "StationsSection", minHeight: 28);
         CreateSectionHeader(stationsSection, "STATIONS");
-        assignments = CreateBodyLabel(stationsSection, "Assignments", "No stations assigned", 13, BodyColor, minHeight: 56);
+        assignments = CreateBodyLabel(stationsSection, "Assignments", "FLOW: Unassigned", 13, BodyColor, minHeight: 20);
         assignments.lineSpacing = 6;
         assignments.paragraphSpacing = 4;
+
+        var taskSection = CreateSection(statusRow.transform, "TaskSection", minHeight: 28);
+        CreateSectionHeader(taskSection, "CURRENT TASK");
+        currentTask = CreateBodyLabel(taskSection, "CurrentTask", "—", 14, TaskColor, minHeight: 22);
 
         var carryingSection = CreateSection(detailsGo.transform, "CarryingSection", minHeight: 48);
         CreateSectionHeader(carryingSection, "CARRYING");

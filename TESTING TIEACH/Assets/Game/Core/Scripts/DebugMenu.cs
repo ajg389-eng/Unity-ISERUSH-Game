@@ -55,7 +55,7 @@ public class DebugMenu : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt))
+        if (!UIInputFocusGuard.IsTyping && (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt)))
             SetVisible(!visible);
 
         if (visible)
