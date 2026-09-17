@@ -96,7 +96,7 @@ public class BuildPlacer : MonoBehaviour
                 RemoveDraggedAndReturnToInventory();
                 return;
             }
-            if (Input.GetKeyDown(KeyCode.R))
+            if (Input.GetKeyDown(KeyCode.R) && !IsCurrentDragRotationLocked())
             {
                 dragRotation = (dragRotation + 1) % 4;
                 ApplyDraggedRotation();
@@ -137,7 +137,7 @@ public class BuildPlacer : MonoBehaviour
 
         if (placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
         {
-            if (Input.GetKeyDown(KeyCode.R))
+            if (Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
             {
                 placementRotation = (placementRotation + 1) % 4;
                 Sfx.Play(SfxId.BuildRotate);
@@ -153,7 +153,7 @@ public class BuildPlacer : MonoBehaviour
         }
 
         // R = rotate while placing
-        if (Input.GetKeyDown(KeyCode.R))
+        if (Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
         {
             placementRotation = (placementRotation + 1) % 4;
             if (ghost)
@@ -244,11 +244,42 @@ public class BuildPlacer : MonoBehaviour
             ? hintParent.gameObject
             : placementHintText.gameObject;
         hintRoot.SetActive(show);
-        if (show) placementHintText.text = dragging
-            ? "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel"
-            : placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter
-                ? "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel"
+        if (!show) return;
+
+        bool rotationLocked = dragging
+            ? IsCurrentDragRotationLocked()
+            : IsRotationLocked(placingItem, ghost);
+        if (dragging)
+            placementHintText.text = rotationLocked
+                ? "LMB: Place    RMB: Remove & return to inventory    ESC: Cancel"
+                : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
+        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
+            placementHintText.text = rotationLocked
+                ? "Hover a free counter    LMB: Place    ESC: Cancel"
+                : "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel";
+        else
+            placementHintText.text = rotationLocked
+                ? "LMB: Place    ESC: Cancel"
                 : "LMB: Place    R: Rotate    ESC: Cancel";
+    }
+
+    bool IsCurrentDragRotationLocked()
+    {
+        ItemDefinition item = draggingMountedItem != null
+            ? draggingMountedItem.itemDefinition
+            : draggingObject != null ? draggingObject.GetComponent<PlacedBuildItem>()?.itemDefinition : null;
+        return IsRotationLocked(item, draggingObject);
+    }
+
+    static bool IsRotationLocked(ItemDefinition item, GameObject instance)
+    {
+        if (instance != null
+            && (instance.GetComponent<Register>() != null || instance.GetComponent<HeatLampStation>() != null))
+            return true;
+        if (item == null) return false;
+        if (item.buildFunction == ItemDefinition.BuildFunction.Register)
+            return true;
+        return item.prefab != null && item.prefab.GetComponent<HeatLampStation>() != null;
     }
 
     /// <summary>Combined bounds of all renderers (or colliders) in world space.</summary>
@@ -431,6 +462,8 @@ public class BuildPlacer : MonoBehaviour
                 float surfaceY = dragOriginalSurface != null ? dragOriginalSurface.transform.eulerAngles.y : 0f;
                 float relativeY = Mathf.DeltaAngle(surfaceY + authoredY, draggingObject.transform.eulerAngles.y);
                 dragRotation = (Mathf.RoundToInt(relativeY / 90f) % 4 + 4) % 4;
+                if (IsRotationLocked(mounted.itemDefinition, draggingObject))
+                    dragRotation = 0;
                 if (dragOriginalSurface != null)
                     dragOriginalSurface.Release(mounted);
                 draggingObject.transform.SetParent(null, true);

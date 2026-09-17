@@ -134,6 +134,7 @@ MonoBehaviour:
   grid: {fileID: 0}
   cellArrivalDistance: 0.04
   employeeName: Worker
+  attentionWaveClip: {fileID: 8993902097722301239, guid: 9a94582701fc845479af9ddbfe169e88, type: 3}
   operatedStations: []
   assignedFlow: 0
   assignmentRows:

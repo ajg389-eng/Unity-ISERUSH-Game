@@ -37,6 +37,8 @@ public class KitchenEmployee : MonoBehaviour
 
     [Header("Identity")]
     public string employeeName = "Worker";
+    [Tooltip("Wave played while this worker needs player attention.")]
+    public AnimationClip attentionWaveClip;
 
     static readonly string[] FirstNames =
     {
@@ -947,6 +949,17 @@ public class KitchenEmployee : MonoBehaviour
         if (manager == null)
             manager = ProductionManager.Instance;
 
+        bool needsAttention = NeedsPlayerAttention();
+        SetAttentionWave(needsAttention);
+        if (needsAttention)
+        {
+            ShowTaskBar = false;
+            TaskProgress = 0f;
+            path.Clear();
+            pathDestination = Vector3.zero;
+            return;
+        }
+
         if (currentJob != null)
         {
             RunWorkflow();
@@ -954,6 +967,47 @@ public class KitchenEmployee : MonoBehaviour
         }
 
         RunRegisterDuty();
+    }
+
+    bool NeedsPlayerAttention()
+    {
+        if (!CanTakeJobs)
+            return true;
+        if (manager == null || currentJob == null)
+            return false;
+
+        if (step == Step.AtFreezer && heldUnits <= 0 && !manager.HasPattyInStock())
+            return true;
+
+        if (step == Step.GoToFryer
+            && manager.IsEmployeeOnFryerTile(transform.position, this)
+            && !manager.HasFriesInStock())
+            return true;
+
+        if (step == Step.AtDrink && heldUnits <= 0 && !manager.HasDrinkInStock())
+            return true;
+
+        if (awaitingOutputDelivery && deliverTarget == null)
+            return true;
+
+        if (step == Step.GoToOutput && deliverTarget == null)
+            return true;
+
+        if (step == Step.AtOutput && deliverTarget != null)
+        {
+            var lamp = deliverTarget.GetComponent<HeatLampStation>();
+            if (lamp != null && !lamp.HasSpace)
+                return true;
+        }
+
+        return false;
+    }
+
+    void SetAttentionWave(bool on)
+    {
+        var character = PartyCharacterAnimator.EnsureOn(gameObject);
+        if (character != null)
+            character.SetAttentionWave(on, attentionWaveClip);
     }
 
     Register GetServiceRegister()

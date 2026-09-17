@@ -69,6 +69,7 @@ public class HeatLampStation : MonoBehaviour
     public float foodDisplayScale = 0.42f;
 
     readonly List<HeldMeal> meals = new List<HeldMeal>();
+    readonly List<CustomerAI> customerPickupQueue = new List<CustomerAI>();
     int totalWasted;
     int totalDelivered;
     int totalSold;
@@ -87,6 +88,7 @@ public class HeatLampStation : MonoBehaviour
     public int TotalSold => totalSold;
     public bool HasSpace => meals.Count < maxCapacity;
     public IReadOnlyList<HeldMeal> Meals => meals;
+    public int PickupQueueCount => customerPickupQueue.Count;
 
     void Awake()
     {
@@ -111,6 +113,10 @@ public class HeatLampStation : MonoBehaviour
     {
         if (Instance == this)
             Instance = null;
+        CustomerAI[] waiting = customerPickupQueue.ToArray();
+        customerPickupQueue.Clear();
+        foreach (CustomerAI customer in waiting)
+            if (customer != null) customer.OnPickupStationUnavailable(this);
     }
 
     void OnDestroy()
@@ -223,6 +229,8 @@ public class HeatLampStation : MonoBehaviour
 
     void Update()
     {
+        if (customerPickupQueue.RemoveAll(customer => customer == null) > 0)
+            RefreshPickupQueueTargets();
         ExpireStaleMeals();
         if (Time.unscaledTime >= nextCautionRefresh)
         {
@@ -265,9 +273,9 @@ public class HeatLampStation : MonoBehaviour
     /// <summary>Direction from the lamp into the lobby (customer side).</summary>
     public Vector3 GetCustomerQueueDirection()
     {
-        Vector3 offset = GetCustomerSideOffset();
-        if (offset.sqrMagnitude < 0.01f) return Vector3.back;
-        return offset.normalized;
+        // Customer floor is always on the world-east side of the counter.
+        // Keep this independent of the prefab rotation and worker stand tiles.
+        return Vector3.right;
     }
 
     /// <summary>World stand point for a customer at the pass (index 0 = at the counter).</summary>
@@ -276,8 +284,100 @@ public class HeatLampStation : MonoBehaviour
         Vector3 intoLobby = GetCustomerQueueDirection();
         float standOff = GetCustomerStandDistance();
         Vector3 origin = transform.position + intoLobby * standOff;
-        Vector3 pos = origin + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
+        float queueStep = GridManager.Instance != null
+            ? Mathf.Max(0.01f, GridManager.Instance.cellSize)
+            : customerPickupSpacing;
+        // Stand on the customer side, then form the waiting line toward world east.
+        Vector3 pos = origin + Vector3.right * (queueStep * Mathf.Max(0, index));
         return SnapPickupToGround(pos);
+    }
+
+    public bool TryJoinPickupQueue(CustomerAI customer)
+    {
+        if (customer == null) return false;
+        if (!customerPickupQueue.Contains(customer))
+            customerPickupQueue.Add(customer);
+        RefreshPickupQueueTargets();
+        return true;
+    }
+
+    public void LeavePickupQueue(CustomerAI customer)
+    {
+        if (customer == null) return;
+        if (customerPickupQueue.Remove(customer))
+            RefreshPickupQueueTargets();
+    }
+
+    void RefreshPickupQueueTargets()
+    {
+        for (int i = 0; i < customerPickupQueue.Count; i++)
+        {
+            CustomerAI customer = customerPickupQueue[i];
+            if (customer != null)
+                customer.SetPickupSlot(this, GetCustomerPickupPosition(i), i == 0);
+        }
+    }
+
+    public static HeatLampStation FindBestPickupFor(ItemDefinition item, Vector3 customerPosition)
+    {
+        if (item == null) return null;
+        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        HeatLampStation best = null;
+        int bestQueue = int.MaxValue;
+        float bestDistance = float.MaxValue;
+
+        for (int pass = 0; pass < 2 && best == null; pass++)
+        {
+            foreach (HeatLampStation station in stations)
+            {
+                if (station == null) continue;
+                bool suitable = station.CanProvideItem(item);
+                if (pass == 0 && !suitable) continue;
+
+                int queue = station.PickupQueueCount;
+                float distance = (station.transform.position - customerPosition).sqrMagnitude;
+                if (queue > bestQueue || (queue == bestQueue && distance >= bestDistance)) continue;
+                best = station;
+                bestQueue = queue;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Nearest pass that already has the requested item ready for collection.</summary>
+    public static HeatLampStation FindReadyPickupFor(ItemDefinition item, Vector3 customerPosition)
+    {
+        if (item == null) return null;
+        HeatLampStation best = null;
+        float bestDistance = float.MaxValue;
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (station == null || !station.HasSingleItem(item)) continue;
+            float distance = (station.transform.position - customerPosition).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            best = station;
+        }
+        return best;
+    }
+
+    public bool CanProvideItem(ItemDefinition item)
+    {
+        if (item == null) return false;
+        if (HasSingleItem(item)) return true;
+        var production = ProductionManager.Instance;
+        if (production == null || production.productionFlows == null) return false;
+
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow == null || flow.stations == null) continue;
+            int lampIndex = flow.stations.IndexOf(gameObject);
+            if (lampIndex < 0) continue;
+            foreach (ItemDefinition product in GetFlowProducts(flow, lampIndex))
+                if (product == item) return true;
+        }
+        return false;
     }
 
     /// <summary>Pickup stand near a register, still on the customer side of this lamp.</summary>
@@ -296,7 +396,10 @@ public class HeatLampStation : MonoBehaviour
         toNear.y = 0f;
         float lateral = Mathf.Clamp(Vector3.Dot(toNear, alongCounter), -2.5f, 2.5f);
 
-        Vector3 pos = origin + alongCounter * lateral + intoLobby * (customerPickupSpacing * Mathf.Max(0, index));
+        float queueStep = GridManager.Instance != null
+            ? Mathf.Max(0.01f, GridManager.Instance.cellSize)
+            : customerPickupSpacing;
+        Vector3 pos = origin + alongCounter * lateral + Vector3.right * (queueStep * Mathf.Max(0, index));
         return SnapPickupToGround(pos);
     }
 
@@ -382,9 +485,16 @@ public class HeatLampStation : MonoBehaviour
     {
         GridManager grid = GridManager.Instance;
         if (grid == null) return world;
-        Vector3 cell = grid.GetCellCenter(world);
-        cell.y = grid.Origin.y;
-        return cell;
+
+        // Use the work grid's alignment without clamping to its bounds. Customer
+        // pickup cells live on the separate customer floor east of that grid.
+        float size = Mathf.Max(0.01f, grid.cellSize);
+        int x = Mathf.FloorToInt((world.x - grid.Origin.x) / size);
+        int z = Mathf.FloorToInt((world.z - grid.Origin.z) / size);
+        return new Vector3(
+            grid.Origin.x + (x + 0.5f) * size,
+            grid.Origin.y,
+            grid.Origin.z + (z + 0.5f) * size);
     }
 
     /// <summary>Seconds left before this meal expires (0 if already expired / no expiry).</summary>
@@ -650,6 +760,8 @@ public class HeatLampStation : MonoBehaviour
 
             if (station.GetComponent<FryerStation>() != null && config != null && config.friesItem != null)
                 found.Add(config.friesItem);
+            if (station.GetComponent<DrinkStation>() != null && config != null && config.drinkItem != null)
+                found.Add(config.drinkItem);
         }
 
         return found;
@@ -733,6 +845,14 @@ public class HeatLampStation : MonoBehaviour
         meals.RemoveAt(idx);
         RefreshStatusLabel();
         return meal.order;
+    }
+
+    public bool TryCustomerTakeSingleItem(ItemDefinition item)
+    {
+        CustomerOrder taken = TryTakeSingleItem(item);
+        if (taken == null) return false;
+        totalSold++;
+        return true;
     }
 
     public bool HasMatching(CustomerOrder order)

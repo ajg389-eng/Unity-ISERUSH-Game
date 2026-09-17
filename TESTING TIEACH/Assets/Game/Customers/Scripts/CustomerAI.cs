@@ -41,6 +41,9 @@ public class CustomerAI : MonoBehaviour
     int salePrice;
     bool waitingInQueue;
     bool waitingForPickup;
+    bool waitingAtDesignatedArea;
+    bool hasWaitAreaReservation;
+    HeatLampStation pickupStation;
     bool leaving;
     bool leavingImpatient;
 
@@ -108,7 +111,24 @@ public class CustomerAI : MonoBehaviour
     {
         order = o != null ? o.Clone() : new CustomerOrder();
         salePrice = order.GetSalePrice();
+        if (orderLabel != null)
+        {
+            orderLabel.EnsureHierarchy();
+            if (orderLabel.labelRoot != null) orderLabel.labelRoot.SetActive(true);
+        }
         RefreshOrderLabel();
+    }
+
+    public void ClearOrder()
+    {
+        order = null;
+        salePrice = 0;
+        if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
+        if (orderLabel != null)
+        {
+            orderLabel.EnsureHierarchy();
+            if (orderLabel.labelRoot != null) orderLabel.labelRoot.SetActive(false);
+        }
     }
 
     public bool TryReceiveItem(ItemDefinition item)
@@ -166,11 +186,14 @@ public class CustomerAI : MonoBehaviour
 
     public void LeaveImpatient(Transform exit)
     {
+        ReleaseWaitAreaReservation();
         StopPatienceMeter();
         reg = null;
         hasTarget = false;
         hasQueueSlot = false;
         waitingForPickup = false;
+        if (pickupStation != null) pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
         leaving = true;
         leavingImpatient = true;
         BeginLeaveRoute(exit);
@@ -198,6 +221,69 @@ public class CustomerAI : MonoBehaviour
     public void SetPickupSlot(Register register, Vector3 slotPos, bool front)
     {
         ApplySlot(register, slotPos, front, pickup: true);
+    }
+
+    public void SetPickupSlot(HeatLampStation station, Vector3 slotPos, bool front)
+    {
+        if (phase == Phase.Leaving) return;
+        pickupStation = station;
+        queuedSlotPos = slotPos;
+        queuedIsFront = front;
+        hasQueueSlot = true;
+        isFront = front;
+        waitingForPickup = true;
+        if (phase != Phase.Entering)
+            ApplyQueueSlotMovement();
+    }
+
+    public void BeginPickupJourney()
+    {
+        CustomerWaitAreaManager areas = CustomerWaitAreaManager.Instance;
+        if (areas != null && areas.TryReserveNearestWaitPosition(this, transform.position, out Vector3 waitPosition))
+        {
+            // Ordered customers wait on the customer floor, not in front of a pass.
+            pickupStation = null;
+            waitingAtDesignatedArea = true;
+            hasWaitAreaReservation = true;
+            waitingForPickup = false;
+            queuedSlotPos = waitPosition;
+            queuedIsFront = false;
+            hasQueueSlot = true;
+            ApplyQueueSlotMovement();
+            return;
+        }
+        JoinNextPickupStation();
+    }
+
+    void JoinNextPickupStation()
+    {
+        if (pickupStation != null)
+            pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
+
+        ItemDefinition nextItem = order != null ? order.PrimaryItem : null;
+        if (nextItem == null)
+        {
+            if (reg != null) reg.CompleteServe(this, order);
+            return;
+        }
+
+        HeatLampStation next = HeatLampStation.FindBestPickupFor(nextItem, transform.position);
+        if (next == null || !next.TryJoinPickupQueue(this))
+        {
+            hasQueueSlot = false;
+            hasTarget = false;
+            waitingForPickup = true;
+        }
+    }
+
+    public void OnPickupStationUnavailable(HeatLampStation station)
+    {
+        if (pickupStation != station) return;
+        pickupStation = null;
+        hasQueueSlot = false;
+        hasTarget = false;
+        BeginPickupJourney();
     }
 
     void ApplySlot(Register register, Vector3 slotPos, bool front, bool pickup)
@@ -235,8 +321,11 @@ public class CustomerAI : MonoBehaviour
 
     public void OnServed(Transform exit)
     {
+        ReleaseWaitAreaReservation();
         StopPatienceMeter();
         waitingForPickup = false;
+        if (pickupStation != null) pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
         reg = null;
         hasTarget = false;
         hasQueueSlot = false;
@@ -248,6 +337,8 @@ public class CustomerAI : MonoBehaviour
     public void OnRegisterDisabled()
     {
         StopPatienceMeter();
+        if (pickupStation != null) pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
         Destroy(gameObject);
     }
 
@@ -313,6 +404,10 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
+        // Keep a wait tile reserved until this customer has begun leaving it.
+        if (hasWaitAreaReservation && !waitingAtDesignatedArea && HorizontalDist(transform.position, targetPos) > 0.6f)
+            ReleaseWaitAreaReservation();
+
         // Direct move to the register's queue point so customers line up correctly.
         if (MoveStraightTo(targetPos))
         {
@@ -323,6 +418,21 @@ public class CustomerAI : MonoBehaviour
 
     void UpdateWaiting()
     {
+        if (waitingAtDesignatedArea)
+        {
+            ItemDefinition nextItem = order != null ? order.PrimaryItem : null;
+            HeatLampStation ready = HeatLampStation.FindReadyPickupFor(nextItem, transform.position);
+            if (ready != null && ready.TryJoinPickupQueue(this))
+            {
+                waitingAtDesignatedArea = false;
+            }
+            return;
+        }
+        if (waitingForPickup && pickupStation == null)
+        {
+            JoinNextPickupStation();
+            return;
+        }
         if (!hasQueueSlot) return;
 
         // Keep locked to the current queue slot if the line shifts forward.
@@ -357,7 +467,7 @@ public class CustomerAI : MonoBehaviour
 
         if (waitingForPickup)
         {
-            HeatLampStation lamp = reg != null ? reg.GetHeatLampForPickup() : null;
+            HeatLampStation lamp = pickupStation;
             if (lamp != null)
                 facing.FaceTowardAdjacentObject(lamp.gameObject, smooth: true);
             else if (reg != null)
@@ -372,22 +482,33 @@ public class CustomerAI : MonoBehaviour
     void TrySelfServeFromHeatLamp()
     {
         // No interaction tiles / quads — front of the pickup line can take a ready order.
-        if (reg == null || leaving || !isFront) return;
+        if (reg == null || pickupStation == null || leaving || !isFront) return;
         if (IsOrderFullyDelivered)
         {
             reg.CompleteServe(this, order);
             return;
         }
 
-        HeatLampStation lamp = reg.GetHeatLampForPickup();
-        if (lamp == null) return;
-        if (!lamp.TryCustomerTakeOrder(order)) return;
+        ItemDefinition item = order != null ? order.PrimaryItem : null;
+        if (item == null) return;
+        if (!pickupStation.TryCustomerTakeSingleItem(item)) return;
+        if (!order.TryRemoveOne(item)) return;
 
-        if (order?.lines != null)
-            order.lines.Clear();
         RefreshOrderLabel();
         Sfx.Play(SfxId.ItemDelivered);
-        reg.CompleteServe(this, order);
+        pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
+        if (IsOrderFullyDelivered)
+            reg.CompleteServe(this, order);
+        else
+            BeginPickupJourney();
+    }
+
+    void ReleaseWaitAreaReservation()
+    {
+        if (!hasWaitAreaReservation) return;
+        CustomerWaitAreaManager.Instance?.Release(this);
+        hasWaitAreaReservation = false;
     }
 
     void UpdateLeaving()

@@ -219,9 +219,7 @@ public class ManagementScreenController : MonoBehaviour
 
         managementPanel.SetActive(true);
         Sfx.Play(SfxId.UiOpen);
-        // Let clicks on empty overlay pass through to stations (like Build mode)
-        var panelImg = managementPanel.GetComponent<Image>();
-        if (panelImg != null) panelImg.raycastTarget = false;
+        EnsurePanelClickBlocker(managementPanel);
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
@@ -327,4 +325,20 @@ public class ManagementScreenController : MonoBehaviour
     }
 
     public bool IsOpen => isOpen;
+
+    /// <summary>
+    /// The panel's full visible rect must receive pointer events, even in empty
+    /// space between controls, so world station selection cannot leak through it.
+    /// </summary>
+    static void EnsurePanelClickBlocker(GameObject panel)
+    {
+        if (panel == null) return;
+        Image image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.AddComponent<Image>();
+            image.color = Color.clear;
+        }
+        image.raycastTarget = true;
+    }
 }

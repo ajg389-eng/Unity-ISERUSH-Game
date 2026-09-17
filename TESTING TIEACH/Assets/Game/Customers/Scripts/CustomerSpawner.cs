@@ -98,8 +98,7 @@ public class CustomerSpawner : MonoBehaviour
     bool TrySpawn()
     {
         if (customerPrefab == null) return false;
-        CustomerOrder generatedOrder = orderConfig != null ? orderConfig.GenerateRandomOrder() : null;
-        if (orderConfig != null && (generatedOrder == null || generatedOrder.lines == null || generatedOrder.lines.Count == 0))
+        if (orderConfig != null && !orderConfig.HasEnabledItems)
             return false;
         ResolveEntryPathIfNeeded();
 
@@ -115,10 +114,8 @@ public class CustomerSpawner : MonoBehaviour
         var ai = c.GetComponent<CustomerAI>();
         if (ai == null) return true;
 
-        if (orderConfig != null)
-            ai.SetOrder(generatedOrder);
-        else
-            ai.SetOrder(new CustomerOrder());
+        // Customers choose from the currently enabled menu only after reaching the register.
+        ai.ClearOrder();
 
         // 1) Start entry walk  2) Join queue immediately so a lineup slot is reserved
         ai.BeginEntryRoute(entryPointsBuffer, grid, exitPath);

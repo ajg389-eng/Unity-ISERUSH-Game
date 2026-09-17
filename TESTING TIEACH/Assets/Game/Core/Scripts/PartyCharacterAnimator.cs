@@ -23,7 +23,8 @@ public class PartyCharacterAnimator : MonoBehaviour
         Freezer,
         Drink,
         Register,
-        Plating
+        Plating,
+        Attention
     }
 
     [Tooltip("Animator on the party character. Auto-found in children if empty.")]
@@ -72,6 +73,10 @@ public class PartyCharacterAnimator : MonoBehaviour
     Avatar locomotionAvatar;
     StationWorkKind activeWork;
     GameObject spatulaInstance;
+    AnimationClip attentionWaveClip;
+    RuntimeAnimatorController attentionWaveController;
+    AnimatorUpdateMode attentionPreviousUpdateMode;
+    bool attentionUpdateModeSaved;
     static readonly Dictionary<StationWorkKind, RuntimeAnimatorController> cachedWorkControllers =
         new Dictionary<StationWorkKind, RuntimeAnimatorController>();
     static Avatar cachedHumanoidAvatar;
@@ -160,6 +165,21 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (dt > 0.0001f)
             movingNow = (delta.magnitude / dt) >= moveThreshold;
 
+        // Workers asking for help keep facing the player, including while
+        // Management mode pauses scaled game time.
+        if (activeWork == StationWorkKind.Attention)
+        {
+            Camera playerCamera = Camera.main;
+            if (playerCamera != null)
+            {
+                Vector3 towardCamera = playerCamera.transform.position - visualRoot.position;
+                towardCamera.y = 0f;
+                FaceDirection(towardCamera, smooth: true);
+            }
+            lastPos = pos;
+            return;
+        }
+
         // Held look (station / queue / path) — turn toward locked heading, but still
         // drive run/idle from real movement so walking keeps the run animation.
         if (lockFacingFrames > 0)
@@ -234,6 +254,12 @@ public class PartyCharacterAnimator : MonoBehaviour
             return;
         }
 
+        if (work == StationWorkKind.Attention && !attentionUpdateModeSaved)
+        {
+            attentionPreviousUpdateMode = animator.updateMode;
+            attentionUpdateModeSaved = true;
+        }
+
         if (locomotionController == null)
             locomotionController = animator.runtimeAnimatorController;
         if (locomotionAvatar == null)
@@ -246,6 +272,8 @@ public class PartyCharacterAnimator : MonoBehaviour
             if (humanoid != null)
                 animator.avatar = humanoid;
             animator.runtimeAnimatorController = cook;
+            if (work == StationWorkKind.Attention)
+                animator.updateMode = AnimatorUpdateMode.UnscaledTime;
             animator.applyRootMotion = false;
             animator.Rebind();
             animator.Update(0f);
@@ -267,9 +295,25 @@ public class PartyCharacterAnimator : MonoBehaviour
         SetStationWork(on ? StationWorkKind.Grill : StationWorkKind.None);
     }
 
+    /// <summary>Loop a humanoid wave until the worker's blocking condition is resolved.</summary>
+    public void SetAttentionWave(bool on, AnimationClip waveClip)
+    {
+        if (waveClip != null && attentionWaveClip != waveClip)
+        {
+            attentionWaveClip = waveClip;
+            attentionWaveController = null;
+        }
+        SetStationWork(on ? StationWorkKind.Attention : StationWorkKind.None);
+    }
+
     void RestoreLocomotion()
     {
         ShowSpatula(false);
+        if (attentionUpdateModeSaved)
+        {
+            animator.updateMode = attentionPreviousUpdateMode;
+            attentionUpdateModeSaved = false;
+        }
         if (locomotionAvatar != null)
             animator.avatar = locomotionAvatar;
         if (locomotionController != null)
@@ -307,6 +351,9 @@ public class PartyCharacterAnimator : MonoBehaviour
 
     RuntimeAnimatorController ResolveWorkController(StationWorkKind work)
     {
+        if (work == StationWorkKind.Attention)
+            return ResolveAttentionWaveController();
+
         if (work == StationWorkKind.Grill && grillCookingController != null)
             return grillCookingController;
 
@@ -320,6 +367,24 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (loaded != null)
             cachedWorkControllers[work] = loaded;
         return loaded;
+    }
+
+    RuntimeAnimatorController ResolveAttentionWaveController()
+    {
+        if (attentionWaveController != null) return attentionWaveController;
+        if (attentionWaveClip == null) return null;
+
+        var baseController = Resources.Load<RuntimeAnimatorController>("plating_food_party");
+        if (baseController == null) return null;
+
+        var replacement = new AnimatorOverrideController(baseController);
+        var overrides = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+        replacement.GetOverrides(overrides);
+        for (int i = 0; i < overrides.Count; i++)
+            overrides[i] = new KeyValuePair<AnimationClip, AnimationClip>(overrides[i].Key, attentionWaveClip);
+        replacement.ApplyOverrides(overrides);
+        attentionWaveController = replacement;
+        return attentionWaveController;
     }
 
     void ShowSpatula(bool on)
@@ -446,6 +511,8 @@ public class PartyCharacterAnimator : MonoBehaviour
     {
         if (spatulaInstance != null)
             Destroy(spatulaInstance);
+        if (attentionWaveController != null)
+            Destroy(attentionWaveController);
     }
 
     void FaceDirection(Vector3 dir, bool smooth)

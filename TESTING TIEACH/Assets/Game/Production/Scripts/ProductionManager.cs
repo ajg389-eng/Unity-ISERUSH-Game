@@ -160,9 +160,10 @@ public class ProductionManager : MonoBehaviour
 
         var ready = new Dictionary<ItemDefinition, int>();
         var cooking = new Dictionary<ItemDefinition, int>();
-        if (heatLamp != null)
+        foreach (HeatLampStation lamp in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
         {
-            foreach (var meal in heatLamp.Meals)
+            if (lamp == null) continue;
+            foreach (var meal in lamp.Meals)
             {
                 ItemDefinition item = meal?.order != null ? meal.order.PrimaryItem : null;
                 if (item == null) continue;
@@ -564,14 +565,28 @@ public class ProductionManager : MonoBehaviour
 
     void CollectProductionJobs()
     {
-        if (heatLamp == null || orderConfig == null) return;
+        if (orderConfig == null) return;
 
-        int inFlight = heatLamp.Count + pendingJobs.Count;
-        int openSlots = heatLamp.maxCapacity - inFlight;
+        HeatLampStation[] lamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        if (lamps == null || lamps.Length == 0) return;
+
+        int heldCount = 0;
+        int totalCapacity = 0;
+        int target = 0;
+        foreach (HeatLampStation lamp in lamps)
+        {
+            if (lamp == null) continue;
+            heldCount += lamp.Count;
+            totalCapacity += Mathf.Max(0, lamp.maxCapacity);
+            target += Mathf.Clamp(lamp.targetStock, 1, lamp.maxCapacity);
+        }
+
+        int inFlight = heldCount + pendingJobs.Count;
+        int openSlots = totalCapacity - inFlight;
         if (openSlots <= 0) return;
 
         // Always keep stock up — kitchen produces without waiting for customers.
-        int target = Mathf.Clamp(heatLamp.targetStock, 1, heatLamp.maxCapacity);
+        target = Mathf.Clamp(target, 1, totalCapacity);
         var cookable = GetCookableMenuItems();
         if (cookable.Count == 0) return;
 
@@ -581,9 +596,9 @@ public class ProductionManager : MonoBehaviour
         // production target so they immediately start another flow loop.
         int idleCookSlots = CountIdleCookSlots(cookable);
         if (idleCookSlots > 0)
-            target = Mathf.Min(heatLamp.maxCapacity, Mathf.Max(target, heatLamp.Count + pendingJobs.Count + idleCookSlots));
+            target = Mathf.Min(totalCapacity, Mathf.Max(target, heldCount + pendingJobs.Count + idleCookSlots));
 
-        while (openSlots > 0 && heatLamp.Count + pendingJobs.Count < target)
+        while (openSlots > 0 && heldCount + pendingJobs.Count < target)
         {
             ItemDefinition item = PickLeastStockedItem(cookable, stockCounts);
             if (item == null) break;
@@ -599,7 +614,9 @@ public class ProductionManager : MonoBehaviour
 
         // Extra demand from live customers can push production up to max capacity.
         if (openSlots <= 0) return;
-        var available = heatLamp.GetHeldOrderClones();
+        var available = new List<CustomerOrder>();
+        foreach (HeatLampStation lamp in lamps)
+            if (lamp != null) available.AddRange(lamp.GetHeldOrderClones());
         foreach (var job in pendingJobs)
         {
             if (job?.order != null)
@@ -764,9 +781,10 @@ public class ProductionManager : MonoBehaviour
     Dictionary<ItemDefinition, int> CountInFlightByItem()
     {
         var counts = new Dictionary<ItemDefinition, int>();
-        if (heatLamp != null)
+        foreach (HeatLampStation lamp in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
         {
-            foreach (var meal in heatLamp.Meals)
+            if (lamp == null) continue;
+            foreach (var meal in lamp.Meals)
             {
                 ItemDefinition item = meal?.order != null ? meal.order.PrimaryItem : null;
                 if (item == null) continue;

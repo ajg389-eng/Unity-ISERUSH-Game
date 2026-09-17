@@ -41,6 +41,8 @@ public class Register : MonoBehaviour
     [Header("Ordering")]
     [Tooltip("Seconds the front customer spends ordering before moving to the Pickup Station line.")]
     public float orderTakeSeconds = 1.25f;
+    [Tooltip("Menu used when the customer finishes ordering. Defaults to ProductionManager.orderConfig.")]
+    public CustomerOrderConfig orderConfig;
 
     float orderTimer;
     MoneyManager moneyManager;
@@ -84,9 +86,9 @@ public class Register : MonoBehaviour
     static bool IsDayOne =>
         GameTimeManager.Instance == null || GameTimeManager.Instance.CurrentDay <= 1;
 
-    int EffectiveMaxQueue => Mathf.Min(maxQueue, 4);
+    int EffectiveMaxQueue => Mathf.Min(maxQueue, 5);
     int EffectiveMaxPickup => Mathf.Min(maxPickup, IsDayOne ? 2 : 3);
-    int EffectiveMaxInside => IsDayOne ? 4 : 6;
+    int EffectiveMaxInside => IsDayOne ? 5 : 8;
 
     public bool HasSpace()
     {
@@ -191,6 +193,7 @@ public class Register : MonoBehaviour
         pickup.Add(customer);
         orderTimer = 0f;
         UpdateQueueTargets();
+        customer.BeginPickupJourney();
         Sfx.Play(SfxId.CustomerArrive);
     }
 
@@ -221,8 +224,28 @@ public class Register : MonoBehaviour
         if (orderTimer < Mathf.Max(0.15f, orderTakeSeconds))
             return false;
 
+        CustomerOrderConfig menu = ResolveOrderConfig();
+        CustomerOrder selectedOrder = menu != null ? menu.GenerateRandomOrder() : null;
+        if (selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0)
+        {
+            orderTimer = 0f;
+            return false;
+        }
+
+        front.SetOrder(selectedOrder);
         SendCustomerToPickup(front);
         return true;
+    }
+
+    CustomerOrderConfig ResolveOrderConfig()
+    {
+        if (orderConfig != null) return orderConfig;
+        if (ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null)
+            orderConfig = ProductionManager.Instance.orderConfig;
+        if (orderConfig != null) return orderConfig;
+        CustomerSpawner spawner = FindObjectOfType<CustomerSpawner>();
+        if (spawner != null) orderConfig = spawner.orderConfig;
+        return orderConfig;
     }
 
     public KitchenEmployee AssignedWorker
@@ -517,15 +540,20 @@ public class Register : MonoBehaviour
     /// <summary>World position of the front order-queue stand (lobby side).</summary>
     public Vector3 GetFrontQueueWorldPosition() => GetQueueSlot(0);
 
+    /// <summary>World position used by build-mode customer queue previews.</summary>
+    public Vector3 GetQueuePreviewPosition(int index) => GetQueueSlot(Mathf.Max(0, index));
+
+    public int QueuePreviewCount => EffectiveMaxQueue;
+
     /// <summary>
     /// Customer / lobby side of the counter. Uses the register's queueDirection
     /// (order-line direction) — never worker interaction quads.
     /// </summary>
     Vector3 GetLobbyDir()
     {
-        if (queueDirection.sqrMagnitude > 0.0001f)
-            return queueDirection.normalized;
-        return -GetKitchenDir();
+        // Customer floor is always on the world-east side of the counter.
+        // Keep this independent of the prefab rotation and worker stand tiles.
+        return Vector3.right;
     }
 
     Vector3 SlotHeight(Vector3 pos)
@@ -539,10 +567,20 @@ public class Register : MonoBehaviour
 
     Vector3 GetQueueSlot(int index)
     {
-        Vector3 lobby = GetLobbyDir();
         Bounds bounds = GetRegisterBounds();
-        Vector3 first = bounds.center + lobby * (ExtentAlong(bounds, lobby) + Mathf.Max(1.15f, queueFrontOffset));
-        return SlotHeight(first) + lobby * (spacing * Mathf.Max(0, index));
+        GridManager placementGrid = GridManager.Instance;
+        float cell = placementGrid != null ? Mathf.Max(0.01f, placementGrid.cellSize) : 1f;
+        Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
+
+        // First cell immediately east of the register, aligned to the same grid as
+        // the customer floor. Every following customer occupies the next cell east.
+        int firstX = Mathf.FloorToInt((bounds.max.x + 0.01f - origin.x) / cell);
+        int rowZ = Mathf.FloorToInt((bounds.center.z - origin.z) / cell);
+        Vector3 slot = new Vector3(
+            origin.x + (firstX + Mathf.Max(0, index) + 0.5f) * cell,
+            transform.position.y,
+            origin.z + (rowZ + 0.5f) * cell);
+        return SlotHeight(slot);
     }
 
     /// <summary>
@@ -574,8 +612,8 @@ public class Register : MonoBehaviour
             anchor = orderFront + alongCounter * spacing;
         }
 
-        // Extend further into the lobby for people waiting behind the front of pickup.
-        Vector3 pos = anchor + lobby * (spacing * Mathf.Max(0, index));
+        // Pickup queues use the same eastbound customer-side lineup.
+        Vector3 pos = anchor + Vector3.right * (spacing * Mathf.Max(0, index));
         return SlotHeight(pos);
     }
 
@@ -588,12 +626,7 @@ public class Register : MonoBehaviour
             c.SetQueueSlot(this, GetQueueSlot(i), i == 0);
         }
 
-        for (int i = 0; i < pickup.Count; i++)
-        {
-            var c = pickup[i];
-            if (c == null) continue;
-            c.SetPickupSlot(this, GetPickupSlot(i), i == 0);
-        }
+        // Ordered customers are positioned by their product-specific pickup stations.
     }
 
     void OnDrawGizmosSelected()

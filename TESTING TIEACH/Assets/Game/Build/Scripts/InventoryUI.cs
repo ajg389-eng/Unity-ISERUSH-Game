@@ -8,6 +8,7 @@ public class InventoryUI : MonoBehaviour
     public const string TabBarName = "TabBar";
     public const string StationsPanelName = "StationsPanel";
     public const string FloorPanelName = "FloorPanel";
+    public const string CustomerManagementPanelName = "CustomerManagementPanel";
 
     public GameModeManager modeManager;
     public InventoryManager inventory;
@@ -77,6 +78,11 @@ public class InventoryUI : MonoBehaviour
         ApplyModeState();
         RefreshExpandButton();
 
+        // Management can close Inventory directly; never leave customer-tile
+        // editing active after its tab is hidden.
+        if (!IsPanelOpen && CustomerWaitAreaManager.Instance != null)
+            CustomerWaitAreaManager.Instance.SetEditing(false);
+
         int completed = MilestoneProgressManager.Instance != null
             ? MilestoneProgressManager.Instance.CompletedMilestoneCount
             : 0;
@@ -115,9 +121,12 @@ public class InventoryUI : MonoBehaviour
         if (!opening && tabInfoUI != null)
             tabInfoUI.Close();
         panel.SetActive(opening);
+        if (!opening && CustomerWaitAreaManager.Instance != null)
+            CustomerWaitAreaManager.Instance.SetEditing(false);
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            EnsurePanelClickBlocker();
             var mgmt = FindObjectOfType<ManagementScreenController>();
             if (mgmt != null && mgmt.IsOpen)
                 mgmt.Close();
@@ -133,6 +142,19 @@ public class InventoryUI : MonoBehaviour
     }
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
+
+    /// <summary>Consumes clicks anywhere in the inventory panel's visible rect.</summary>
+    void EnsurePanelClickBlocker()
+    {
+        if (panel == null) return;
+        Image image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.AddComponent<Image>();
+            image.color = Color.clear;
+        }
+        image.raycastTarget = true;
+    }
 
     /// <summary>Editor / runtime: create Inventory ContentBox + tabs under the panel.</summary>
     public void SetupSceneTabs(bool forceDefaultLayout = true)
@@ -171,6 +193,8 @@ public class InventoryUI : MonoBehaviour
             EnsureUndoFooter();
         if (stationUndoFooter != null)
             stationUndoFooter.gameObject.SetActive(activeTab == 0);
+
+        CustomerWaitAreaManager.Ensure().SetEditing(activeTab == 2 && IsPanelOpen);
 
         if (activeTab == 0)
             RefreshAll();
@@ -496,17 +520,20 @@ public class InventoryUI : MonoBehaviour
         var tabBar = contentBox.Find(TabBarName);
         var stationsPanel = contentBox.Find(StationsPanelName);
         var floorPanel = contentBox.Find(FloorPanelName);
-        if (tabBar == null || stationsPanel == null || floorPanel == null)
+        var customerPanel = contentBox.Find(CustomerManagementPanelName);
+        if (tabBar == null || stationsPanel == null || floorPanel == null || customerPanel == null)
             return false;
 
         var stationsTab = tabBar.Find("Tab_Stations")?.GetComponent<Button>();
         var floorTab = tabBar.Find("Tab_Floor")?.GetComponent<Button>();
-        if (stationsTab == null || floorTab == null)
+        var customerTab = tabBar.Find("Tab_CustomerManagement")?.GetComponent<Button>();
+        if (stationsTab == null || floorTab == null || customerTab == null)
             return false;
 
-        tabButtons = new[] { stationsTab, floorTab };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
+        tabButtons = new[] { stationsTab, floorTab, customerTab };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customerPanel.gameObject };
         floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
+        ConfigureCustomerManagementPanel(customerPanel);
 
         var scrollContent = stationsPanel.Find("Scroll View/Viewport/Content")
             ?? stationsPanel.Find("Scroll View/Content");
@@ -610,6 +637,20 @@ public class InventoryUI : MonoBehaviour
             floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
         }
 
+        Transform customerPanel = contentBox.Find(CustomerManagementPanelName);
+        if (customerPanel == null)
+        {
+            var customerGo = new GameObject(CustomerManagementPanelName, typeof(RectTransform), typeof(Image));
+            customerPanel = customerGo.transform;
+            customerPanel.SetParent(contentBox, false);
+            StretchFull((RectTransform)customerPanel);
+            ((RectTransform)customerPanel).offsetMax = new Vector2(0f, -86f);
+            ((RectTransform)customerPanel).offsetMin = new Vector2(20f, 72f);
+            customerGo.GetComponent<Image>().color = Color.clear;
+            customerGo.GetComponent<Image>().raycastTarget = false;
+        }
+        ConfigureCustomerManagementPanel(customerPanel);
+
         Transform tabBar = contentBox.Find(TabBarName);
         if (tabBar == null)
         {
@@ -641,13 +682,48 @@ public class InventoryUI : MonoBehaviour
 
         EnsureTabButton(tabBar, "Tab_Stations", "Stations");
         EnsureTabButton(tabBar, "Tab_Floor", "Floor");
+        EnsureTabButton(tabBar, "Tab_CustomerManagement", "Customers");
 
         tabButtons = new[]
         {
             tabBar.Find("Tab_Stations").GetComponent<Button>(),
-            tabBar.Find("Tab_Floor").GetComponent<Button>()
+            tabBar.Find("Tab_Floor").GetComponent<Button>(),
+            tabBar.Find("Tab_CustomerManagement").GetComponent<Button>()
         };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customerPanel.gameObject };
+    }
+
+    void ConfigureCustomerManagementPanel(Transform customerPanel)
+    {
+        if (customerPanel == null) return;
+        var title = customerPanel.Find("Instructions")?.GetComponent<TextMeshProUGUI>();
+        if (title == null)
+        {
+            var go = new GameObject("Instructions", typeof(RectTransform));
+            go.transform.SetParent(customerPanel, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(.5f, 1f); rt.anchoredPosition = new Vector2(0f, -28f); rt.sizeDelta = new Vector2(-48f, 120f);
+            title = go.AddComponent<TextMeshProUGUI>();
+            title.fontSize = 20f; title.alignment = TextAlignmentOptions.TopLeft; title.color = Color.white;
+        }
+        title.text = "Customer Management\n\nClick and drag across the customer grid to create a rectangular waiting area. Click one tile to toggle it. Blue tiles are places customers can wait after ordering.";
+
+        var clear = customerPanel.Find("ClearWaitAreas")?.GetComponent<Button>();
+        if (clear == null)
+        {
+            var go = new GameObject("ClearWaitAreas", typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(customerPanel, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(.5f, 1f); rt.pivot = new Vector2(.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -180f); rt.sizeDelta = new Vector2(260f, 46f);
+            go.GetComponent<Image>().color = HudTabColors.Idle;
+            clear = go.GetComponent<Button>();
+            var labelGo = new GameObject("Label", typeof(RectTransform)); labelGo.transform.SetParent(go.transform, false); StretchFull((RectTransform)labelGo.transform);
+            var label = labelGo.AddComponent<TextMeshProUGUI>(); label.text = "Clear Wait Areas"; label.fontSize = 18f; label.alignment = TextAlignmentOptions.Center; label.color = Color.white;
+        }
+        clear.onClick.RemoveAllListeners();
+        clear.onClick.AddListener(() => CustomerWaitAreaManager.Ensure().ClearAreas());
     }
 
     void WireTabButtons()
