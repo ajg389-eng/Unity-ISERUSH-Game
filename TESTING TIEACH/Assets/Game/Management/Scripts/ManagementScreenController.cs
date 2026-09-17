@@ -263,6 +263,8 @@ public class ManagementScreenController : MonoBehaviour
 
     public void OpenWorkersTab()
     {
+        if (!isOpen)
+            Open();
         if (tabPanels == null) return;
         for (int i = 0; i < tabPanels.Length; i++)
         {

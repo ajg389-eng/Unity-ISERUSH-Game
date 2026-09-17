@@ -133,9 +133,15 @@ public class MilestoneProgressManager : MonoBehaviour
     public bool TryCompleteActiveQuiz()
     {
         if (!quizReady) return false;
+        return CompleteActiveMilestone();
+    }
 
+    /// <summary>Advance the active milestone with no quiz UI (tutorial / empty quiz).</summary>
+    bool CompleteActiveMilestone()
+    {
         var current = GetActiveMilestone();
         if (current == null) return false;
+        if (completedMilestoneIds.Contains(current.milestoneId)) return false;
 
         completedMilestoneIds.Add(current.milestoneId);
         GrantUnlocks(current);
@@ -239,6 +245,13 @@ public class MilestoneProgressManager : MonoBehaviour
 
         bool wasReady = quizReady;
         quizReady = AreActiveMissionsComplete();
+
+        var current = GetActiveMilestone();
+        if (quizReady && current != null && (current.isTutorial || !current.HasQuiz))
+        {
+            CompleteActiveMilestone();
+            return;
+        }
 
         if (quizReady && !wasReady)
         {

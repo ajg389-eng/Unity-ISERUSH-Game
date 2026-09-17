@@ -385,6 +385,9 @@ public class InventoryUI : MonoBehaviour
                     Sfx.Play(SfxId.UiError);
             },
             displayPrice: inventory.GetPurchasePrice(captured));
+        card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured));
+        if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
+            card.transform.SetAsFirstSibling();
     }
 
     void CreateLegacyRow(ItemDefinition item)

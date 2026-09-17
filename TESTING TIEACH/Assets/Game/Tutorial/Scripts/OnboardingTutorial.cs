@@ -36,6 +36,7 @@ public class OnboardingTutorial : MonoBehaviour
     TextMeshProUGUI nextLabel;
     GameObject highlight;
     Transform highlightTarget;
+    Highlight currentHighlight;
 
     enum Highlight
     {
@@ -62,8 +63,12 @@ public class OnboardingTutorial : MonoBehaviour
         public Highlight highlight;
         public bool openInventory;
         public bool openIngredients;
+        public bool openWorkers;
         public bool requirePlaced;
         public bool requireAllStations;
+        public bool requireFlow;
+        public bool requireWorkerOnFlow;
+        public bool requireHiredWorker;
 
         public Step(
             string title,
@@ -74,8 +79,12 @@ public class OnboardingTutorial : MonoBehaviour
             bool liveCustomer = false,
             bool openInventory = false,
             bool openIngredients = false,
+            bool openWorkers = false,
             bool requirePlaced = false,
-            bool requireAllStations = false)
+            bool requireAllStations = false,
+            bool requireFlow = false,
+            bool requireWorkerOnFlow = false,
+            bool requireHiredWorker = false)
         {
             this.title = title;
             this.body = body;
@@ -85,8 +94,12 @@ public class OnboardingTutorial : MonoBehaviour
             this.liveCustomer = liveCustomer;
             this.openInventory = openInventory;
             this.openIngredients = openIngredients;
+            this.openWorkers = openWorkers;
             this.requirePlaced = requirePlaced;
             this.requireAllStations = requireAllStations;
+            this.requireFlow = requireFlow;
+            this.requireWorkerOnFlow = requireWorkerOnFlow;
+            this.requireHiredWorker = requireHiredWorker;
         }
     }
 
@@ -149,20 +162,43 @@ public class OnboardingTutorial : MonoBehaviour
             "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash and fill kitchen stock the freezer and pantry use.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
+            "Hire workers",
+            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press M).\n\n" +
+            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. A worker can cover up to three stations; extra people you do not assign will stand idle.\n\n" +
+            "Hire at least one worker to continue.",
+            "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
+        new Step(
+            "Create a flow",
+            "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
+            "Click stations <b>in cooking order</b>. Example burger line: freezer → grill → assembly → heat lamp. Confirm when the path looks right.\n\n" +
+            "You can make more flows later for fries and drinks. Next stays locked until a flow has at least two stations.",
+            "Next", Highlight.Management, openWorkers: true, requireFlow: true),
+        new Step(
+            "Edit a flow",
+            "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
+            "Click a station already on the path to trim it back. Click a new station to extend the route. Press Esc to restore the previous path.\n\n" +
+            "Use Edit when a station was clicked in the wrong order or you want a second line (fryer → heat lamp).",
+            "Next", Highlight.Management, openWorkers: true),
+        new Step(
+            "Assign workers to a flow",
+            "Select the flow, then on a worker card click <b>Assign to Current Flow</b>.\n\n" +
+            "That worker's name appears on the flow. Click the name chip to unassign. The kitchen will not cook until at least one worker is on a flow.\n\n" +
+            "Next stays locked until a flow has a worker assigned.",
+            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true),
+        new Step(
             "One customer loop",
-            "Here is the basic flow:\n\n" +
+            "Here is the basic service loop:\n\n" +
             "1. Customer arrives and orders at the register.\n" +
-            "2. Workers run the matching path — freezer → grill → assembly for burgers, fryer for fries, drinks for drinks.\n" +
+            "2. Workers follow the flow you built — freezer → grill → assembly for burgers, fryer for fries, drinks for drinks.\n" +
             "3. Finished items wait at the heat lamp.\n" +
-            "4. Food is handed off and the customer leaves.\n\n" +
-            "In Management, hire or assign workers and set station outputs toward the heat lamp.",
-            "Try one customer", Highlight.None, requireAllStations: true),
+            "4. Food is handed off and the customer leaves.",
+            "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
         new Step(
             "Serve one order",
             "The clock is running. Only <b>one customer</b> will come in so you can watch the loop.\n\n" +
             "If nobody is cooking, check workers, outputs, and that you bought ingredient packs.\n\n" +
             "Serve that order, then click Finish. Extra customers stay away until the tutorial ends.",
-            "Finish", Highlight.Register, liveCustomer: true, requireAllStations: true),
+            "Finish", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -301,6 +337,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
 
+        if (canvasRoot != null)
+            canvasRoot.SetActive(true);
         if (panel != null)
             panel.SetActive(true);
         if (titleText != null)
@@ -315,13 +353,18 @@ public class OnboardingTutorial : MonoBehaviour
             backButton.interactable = stepIndex > 0;
 
         ApplyPause(step.pauseSim);
+        currentHighlight = step.highlight;
         UpdateHighlight(step.highlight);
 
         if (step.openInventory)
         {
             var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inv != null)
+            {
                 inv.OpenPanel();
+                inv.SelectTab(0);
+                inv.RefreshAll();
+            }
         }
 
         if (step.openIngredients)
@@ -331,10 +374,29 @@ public class OnboardingTutorial : MonoBehaviour
                 mgmt.OpenIngredientsTab();
         }
 
+        if (step.openWorkers)
+        {
+            var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (mgmt != null)
+                mgmt.OpenWorkersTab();
+        }
+
         if (step.liveCustomer)
             SpawnPracticeCustomer();
 
+        RebuildTutorialLayout();
         RefreshAdvanceGate();
+    }
+
+    void RebuildTutorialLayout()
+    {
+        if (panel == null) return;
+        if (titleText != null)
+            titleText.ForceMeshUpdate();
+        if (bodyText != null)
+            bodyText.ForceMeshUpdate();
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)panel.transform);
     }
 
     void RefreshAdvanceGate()
@@ -357,6 +419,12 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
+        if (step.requireHiredWorker)
+            return "Hire a worker";
+        if (step.requireWorkerOnFlow)
+            return "Assign a worker";
+        if (step.requireFlow)
+            return "Create a flow";
         if (step.requireAllStations)
             return "Place all stations";
         switch (step.highlight)
@@ -380,7 +448,55 @@ public class OnboardingTutorial : MonoBehaviour
             return false;
         if (step.requirePlaced && !HasPlacedStation(step.highlight))
             return false;
+        if (step.requireHiredWorker && !HasHiredWorker())
+            return false;
+        if (step.requireFlow && !HasTutorialFlow())
+            return false;
+        if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+            return false;
         return true;
+    }
+
+    bool HasHiredWorker()
+    {
+        var production = ProductionManager.Instance != null ? ProductionManager.Instance : FindFirstObjectByType<ProductionManager>();
+        if (production == null || production.employees == null) return false;
+        for (int i = 0; i < production.employees.Count; i++)
+        {
+            if (production.employees[i] != null)
+                return true;
+        }
+        return false;
+    }
+
+    bool HasTutorialFlow()
+    {
+        var production = ProductionManager.Instance != null ? ProductionManager.Instance : FindFirstObjectByType<ProductionManager>();
+        if (production == null || production.productionFlows == null) return false;
+        for (int i = 0; i < production.productionFlows.Count; i++)
+        {
+            var flow = production.productionFlows[i];
+            if (flow == null) continue;
+            flow.Clean();
+            if (flow.stations != null && flow.stations.Count >= 2)
+                return true;
+        }
+        return false;
+    }
+
+    bool HasWorkerOnFlow()
+    {
+        var production = ProductionManager.Instance != null ? ProductionManager.Instance : FindFirstObjectByType<ProductionManager>();
+        if (production == null || production.productionFlows == null) return false;
+        for (int i = 0; i < production.productionFlows.Count; i++)
+        {
+            var flow = production.productionFlows[i];
+            if (flow == null) continue;
+            flow.Clean();
+            if (flow.workers != null && flow.workers.Count > 0)
+                return true;
+        }
+        return false;
     }
 
     bool AllTutorialStationsPlaced()
@@ -449,6 +565,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         running = false;
         pendingStart = false;
+        currentHighlight = Highlight.None;
         PlayerPrefs.SetInt(PrefsCompleteKey, 1);
         PlayerPrefs.Save();
 
@@ -601,6 +718,34 @@ public class OnboardingTutorial : MonoBehaviour
         highlight.transform.localScale = Vector3.one * pulse;
     }
 
+    public static bool ShouldHighlightInventoryItem(ItemDefinition item)
+    {
+        if (item == null || Instance == null || !Instance.running)
+            return false;
+        return ItemMatchesHighlight(item, Instance.currentHighlight);
+    }
+
+    static bool ItemMatchesHighlight(ItemDefinition item, Highlight kind)
+    {
+        string name = (item.itemName ?? item.name ?? "").ToLowerInvariant();
+        switch (kind)
+        {
+            case Highlight.Freezer: return name.Contains("freezer");
+            case Highlight.Grill: return name.Contains("grill");
+            case Highlight.Fryer: return name.Contains("fryer");
+            case Highlight.Drink: return name.Contains("drink");
+            case Highlight.Assembly: return name.Contains("assembly");
+            case Highlight.HeatLamp: return name.Contains("heat");
+            case Highlight.Pantry: return name.Contains("pantry");
+            case Highlight.Inventory:
+                return name.Contains("freezer") || name.Contains("grill") || name.Contains("fryer")
+                    || name.Contains("drink") || name.Contains("assembly") || name.Contains("heat")
+                    || name.Contains("pantry");
+            default:
+                return false;
+        }
+    }
+
     Transform FindHighlightTarget(Highlight kind)
     {
         switch (kind)
@@ -649,13 +794,23 @@ public class OnboardingTutorial : MonoBehaviour
 
     void HideUI()
     {
-        if (panel != null)
+        if (canvasRoot != null)
+            canvasRoot.SetActive(false);
+        else if (panel != null)
             panel.SetActive(false);
     }
 
     void EnsureUI()
     {
-        if (panel != null) return;
+        if (canvasRoot != null && nextButton != null && nextButton.transform.parent == canvasRoot.transform)
+        {
+            canvasRoot.SetActive(true);
+            if (panel != null) panel.SetActive(true);
+            return;
+        }
+
+        if (canvasRoot != null)
+            Destroy(canvasRoot);
 
         canvasRoot = new GameObject("OnboardingTutorialCanvas", typeof(RectTransform));
         canvasRoot.transform.SetParent(transform, false);
@@ -674,44 +829,35 @@ public class OnboardingTutorial : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 0f);
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
-        rt.anchoredPosition = new Vector2(0f, 28f);
-        rt.sizeDelta = new Vector2(780f, 300f);
+        rt.anchoredPosition = new Vector2(0f, 24f);
+        rt.sizeDelta = new Vector2(720f, 0f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
         bg.raycastTarget = true;
 
         var layout = panel.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(22, 22, 16, 16);
-        layout.spacing = 8f;
+        layout.padding = new RectOffset(24, 24, 18, 18);
+        layout.spacing = 10f;
         layout.childAlignment = TextAnchor.UpperCenter;
         layout.childControlHeight = true;
         layout.childControlWidth = true;
         layout.childForceExpandHeight = false;
         layout.childForceExpandWidth = true;
 
+        var fitter = panel.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
         stepLabel = CreateLabel(panel.transform, "", 14, FontStyles.Normal, new Color(0.7f, 0.75f, 0.85f));
-        titleText = CreateLabel(panel.transform, "", 26, FontStyles.Bold, Color.white);
-        bodyText = CreateLabel(panel.transform, "", 18, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
-        bodyText.alignment = TextAlignmentOptions.Left;
+        titleText = CreateLabel(panel.transform, "", 24, FontStyles.Bold, Color.white);
+        bodyText = CreateLabel(panel.transform, "", 17, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
+        bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
-        var bodyLe = bodyText.GetComponent<LayoutElement>();
-        bodyLe.minHeight = 148f;
-        bodyLe.flexibleHeight = 1f;
+        bodyText.overflowMode = TextOverflowModes.Overflow;
 
-        var row = new GameObject("Buttons", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        row.transform.SetParent(panel.transform, false);
-        row.GetComponent<LayoutElement>().minHeight = 44f;
-        var h = row.GetComponent<HorizontalLayoutGroup>();
-        h.spacing = 12f;
-        h.childAlignment = TextAnchor.MiddleCenter;
-        h.childControlHeight = true;
-        h.childControlWidth = true;
-        h.childForceExpandHeight = true;
-        h.childForceExpandWidth = true;
-
-        backButton = CreateButton(row.transform, "Back", OnBack, new Color(0.28f, 0.32f, 0.4f, 1f));
-        nextButton = CreateButton(row.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f));
+        backButton = CreateSideButton(canvasRoot.transform, "Back", OnBack, new Color(0.28f, 0.32f, 0.4f, 1f), -1);
+        nextButton = CreateSideButton(canvasRoot.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f), 1);
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
     }
 
@@ -726,18 +872,31 @@ public class OnboardingTutorial : MonoBehaviour
         tmp.color = color;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.raycastTarget = false;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
+        tmp.overflowMode = TextOverflowModes.Overflow;
+        tmp.enableAutoSizing = false;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
-        go.AddComponent<LayoutElement>().minHeight = size + 4f;
+        var le = go.AddComponent<LayoutElement>();
+        le.minHeight = 0f;
+        le.flexibleHeight = 0f;
+        var csf = go.AddComponent<ContentSizeFitter>();
+        csf.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         return tmp;
     }
 
-    static Button CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick, Color color)
+    static Button CreateSideButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick, Color color, int side)
     {
-        var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
         go.transform.SetParent(parent, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = new Vector2(0.5f, 0f);
+        rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(188f, 52f);
+        rt.anchoredPosition = new Vector2(side < 0 ? -470f : 470f, 78f);
         go.GetComponent<Image>().color = color;
-        go.GetComponent<LayoutElement>().minHeight = 44f;
         var btn = go.GetComponent<Button>();
         btn.onClick.AddListener(onClick);
 
@@ -755,6 +914,7 @@ public class OnboardingTutorial : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
         return btn;

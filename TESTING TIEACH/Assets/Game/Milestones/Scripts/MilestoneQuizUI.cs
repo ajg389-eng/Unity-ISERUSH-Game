@@ -53,6 +53,11 @@ public class MilestoneQuizUI : MonoBehaviour
 
     public void Show()
     {
+        var milestones = MilestoneProgressManager.Instance;
+        var current = milestones != null ? milestones.GetActiveMilestone() : null;
+        if (current != null && (current.isTutorial || !current.HasQuiz))
+            return;
+
         EnsurePanel();
         BuildQuestions();
         if (panelRoot != null)

@@ -15,6 +15,11 @@ public class InventoryItemCardUI : MonoBehaviour
     public Button buyButton;
     public Button[] selectButtons;
 
+    bool tutorialHighlight;
+    Image cardImage;
+    Color cardBaseColor = new Color(0.92f, 0.93f, 0.95f, 1f);
+    Outline cardOutline;
+
     public void Bind(
         ItemDefinition item,
         int quantity,
@@ -106,5 +111,51 @@ public class InventoryItemCardUI : MonoBehaviour
             fitter.aspectRatio = (float)raw.texture.width / raw.texture.height;
         else
             fitter.aspectRatio = 1f;
+    }
+
+    public void SetTutorialHighlight(bool on)
+    {
+        tutorialHighlight = on;
+        if (cardImage == null)
+        {
+            cardImage = GetComponent<Image>();
+            if (cardImage != null)
+                cardBaseColor = cardImage.color;
+        }
+
+        if (cardImage != null && cardOutline == null)
+        {
+            cardOutline = cardImage.GetComponent<Outline>();
+            if (cardOutline == null)
+                cardOutline = cardImage.gameObject.AddComponent<Outline>();
+        }
+
+        if (!on)
+        {
+            if (cardImage != null)
+                cardImage.color = cardBaseColor;
+            if (cardOutline != null)
+            {
+                cardOutline.enabled = false;
+                cardOutline.effectColor = Color.clear;
+            }
+            return;
+        }
+
+        if (cardOutline != null)
+        {
+            cardOutline.enabled = true;
+            cardOutline.effectDistance = new Vector2(6f, -6f);
+            cardOutline.effectColor = new Color(1f, 0.82f, 0.15f, 0.95f);
+        }
+    }
+
+    void Update()
+    {
+        if (!tutorialHighlight || cardImage == null) return;
+        float pulse = 0.55f + Mathf.PingPong(Time.unscaledTime * 2.2f, 0.45f);
+        cardImage.color = Color.Lerp(cardBaseColor, new Color(1f, 0.92f, 0.35f, 1f), pulse);
+        if (cardOutline != null)
+            cardOutline.effectColor = new Color(1f, 0.75f, 0.1f, pulse);
     }
 }
