@@ -45,7 +45,7 @@ public class HeatLampStation : MonoBehaviour
     public Vector3 interactionOffset = Vector3.zero;
 
     [Header("Customer pickup (lobby / pass-through side)")]
-    [Tooltip("Offset from the heat lamp to the customer stand. Leave zero to auto-place opposite the worker tile.")]
+    [Tooltip("Offset from the Pickup Station to the customer stand. Leave zero to auto-place opposite the worker tile.")]
     public Vector3 customerPickupOffset = Vector3.zero;
     [Tooltip("Spacing between customers waiting at the pass.")]
     public float customerPickupSpacing = 1.15f;
@@ -59,11 +59,11 @@ public class HeatLampStation : MonoBehaviour
     public float cautionIndicatorSize = 0.85f;
 
     [Header("Food display")]
-    [Tooltip("Finished burger model shown on an occupied heat-lamp tile.")]
+    [Tooltip("Finished burger model shown on an occupied Pickup Station tile.")]
     public GameObject burgerDisplayPrefab;
-    [Tooltip("Finished fries model shown on an occupied heat-lamp tile.")]
+    [Tooltip("Finished fries model shown on an occupied Pickup Station tile.")]
     public GameObject friesDisplayPrefab;
-    [Tooltip("Height of the food models above the heat-lamp root.")]
+    [Tooltip("Height of product models above the Pickup Station root.")]
     public float foodDisplayHeight = 0.55f;
     [Tooltip("Uniform world-space scale used by displayed food models.")]
     public float foodDisplayScale = 0.42f;
@@ -117,6 +117,8 @@ public class HeatLampStation : MonoBehaviour
     {
         if (Instance == this)
             Instance = null;
+        if (cautionIndicator != null)
+            Destroy(cautionIndicator);
     }
 
     /// <summary>
@@ -234,9 +236,23 @@ public class HeatLampStation : MonoBehaviour
     void LateUpdate()
     {
         if (cautionIndicator == null || !cautionIndicator.activeSelf) return;
+        UpdateCautionIndicatorTransform();
+    }
+
+    void UpdateCautionIndicatorTransform()
+    {
+        if (cautionIndicator == null) return;
+
+        Transform indicator = cautionIndicator.transform;
+        indicator.position = transform.position + cautionIndicatorOffset;
+        indicator.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
+
         Camera cam = Camera.main;
-        if (cam != null)
-            cautionIndicator.transform.rotation = cam.transform.rotation;
+        if (cam == null) return;
+
+        Vector3 cameraToIndicator = indicator.position - cam.transform.position;
+        if (cameraToIndicator.sqrMagnitude > 0.0001f)
+            indicator.rotation = Quaternion.LookRotation(cameraToIndicator.normalized, cam.transform.up);
     }
 
     public Vector3 GetInteractionPosition()
@@ -494,7 +510,7 @@ public class HeatLampStation : MonoBehaviour
             cautionIndicator = CreateCautionIndicator();
         if (cautionIndicator != null)
         {
-            cautionIndicator.transform.localPosition = cautionIndicatorOffset;
+            UpdateCautionIndicatorTransform();
             cautionIndicator.SetActive(show);
         }
     }
@@ -540,8 +556,7 @@ public class HeatLampStation : MonoBehaviour
         }
 
         var root = new GameObject("ProductionShortfallCaution", typeof(RectTransform), typeof(Canvas));
-        root.transform.SetParent(transform, false);
-        root.transform.localPosition = cautionIndicatorOffset;
+        root.transform.position = transform.position + cautionIndicatorOffset;
 
         var canvas = root.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
@@ -591,7 +606,7 @@ public class HeatLampStation : MonoBehaviour
         return root;
     }
 
-    /// <summary>Full menu demand at this pickup point, including cashier-served drinks.</summary>
+    /// <summary>Full menu demand at this pickup point, including worker-delivered drinks.</summary>
     public string GetCustomerDemandRateDisplay()
     {
         var production = ProductionManager.Instance;
@@ -677,12 +692,10 @@ public class HeatLampStation : MonoBehaviour
     public int CountMissing(CustomerOrder order)
     {
         if (order?.lines == null) return 0;
-        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         var need = new Dictionary<ItemDefinition, int>();
         foreach (var line in order.lines)
         {
             if (line.item == null || line.quantity <= 0) continue;
-            if (config != null && config.IsDrink(line.item)) continue;
             need[line.item] = need.TryGetValue(line.item, out int c) ? c + line.quantity : line.quantity;
         }
 
@@ -759,8 +772,6 @@ public class HeatLampStation : MonoBehaviour
         foreach (var line in order.lines)
         {
             if (line.item == null) continue;
-            var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
-            if (config != null && config.IsDrink(line.item)) continue;
             for (int q = 0; q < line.quantity; q++)
             {
                 int idx = FindSingleItemIndex(line.item);
@@ -775,8 +786,8 @@ public class HeatLampStation : MonoBehaviour
     }
 
     /// <summary>
-    /// Customer grab from the pass: removes food for this order from the lamp.
-    /// Drinks are not stored under the lamp (customer fountain / included at pickup).
+    /// Customer grab from the pickup station: removes every stored product needed
+    /// for the order, including drinks and future menu item types.
     /// </summary>
     public bool TryCustomerTakeOrder(CustomerOrder order)
     {

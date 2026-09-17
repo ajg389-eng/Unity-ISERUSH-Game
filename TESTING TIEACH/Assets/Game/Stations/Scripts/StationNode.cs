@@ -76,7 +76,7 @@ public class StationNode : MonoBehaviour
         {
             var t = KitchenEmployee.GetStationTypeFrom(gameObject);
             if (t.HasValue) return t.Value.ToString();
-            if (GetComponent<HeatLampStation>() != null) return "Heat Lamp";
+            if (GetComponent<HeatLampStation>() != null) return "Pickup Station";
             return gameObject.name;
         }
     }

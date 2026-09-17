@@ -555,11 +555,11 @@ public class ManagementModeController : MonoBehaviour
 
         var t = node != null ? node.StationType : null;
         if (node != null && node.GetComponent<HeatLampStation>() != null)
-            SetStatus("Holding finished food for customers to pick up.");
+            SetStatus("Holding finished items for customers to pick up.");
         else if (node != null && (node.GetComponent<GrillStation>() != null || node.GetComponent<AssemblyStation>() != null))
             SetStatus("Choose a recipe. Input / output amounts are set on this station.");
         else if (t == StationType.Register)
-            SetStatus("Takes orders — customers pick up at the heat lamp.");
+            SetStatus("Takes orders — customers collect items at the Pickup Station.");
         else
             SetStatus("Input and output amounts for this station.");
     }

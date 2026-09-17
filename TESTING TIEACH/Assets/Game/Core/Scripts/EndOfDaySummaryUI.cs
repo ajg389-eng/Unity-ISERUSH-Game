@@ -166,7 +166,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
             notes.Add("<color=#7DDB8A>Flow:</color> customer waiting remained controlled during the shift.");
 
         if (waste > 0)
-            notes.Add("<color=#F2C66D>Overproduction:</color> lower heat-lamp target stock or improve demand matching.");
+            notes.Add("<color=#F2C66D>Overproduction:</color> lower Pickup Station target stock or improve demand matching.");
         if (cashChange < 0)
             notes.Add("<color=#F2C66D>Economics:</color> spending exceeded revenue. Check whether added capacity produced enough throughput.");
 

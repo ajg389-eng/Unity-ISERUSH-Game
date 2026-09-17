@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: Register
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Register
-  prefab: {fileID: 9153867216066621692, guid: 4f2bbe3a2f1a9bd4581b2d9d53ed42ca, type: 3}
+  prefab: {fileID: 4887153391482828649, guid: e00f780aca3fa324db784dba4ee5a06e, type: 3}
   price: 75
   startingQuantity: 0
   placementSurface: 1
   footprintX: 1
   footprintY: 1
-  placementScale: {x: 2, y: 2, z: 2}
-  placementEuler: {x: 0, y: -90, z: 0}
+  placementScale: {x: 1, y: 1, z: 1}
+  placementEuler: {x: 0, y: 0, z: 0}
   counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}
   counterSlotSpan: 1

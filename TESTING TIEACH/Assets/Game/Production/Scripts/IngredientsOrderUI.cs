@@ -173,8 +173,8 @@ public class IngredientsOrderUI : MonoBehaviour
         var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
         row.transform.SetParent(listContainer, false);
         var le = row.AddComponent<LayoutElement>();
-        le.minHeight = 68;
-        le.preferredHeight = 68;
+        le.minHeight = 104;
+        le.preferredHeight = 104;
         row.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
 
         var layout = row.GetComponent<HorizontalLayoutGroup>();
@@ -198,20 +198,74 @@ public class IngredientsOrderUI : MonoBehaviour
         preview.color = Color.white;
         preview.raycastTarget = false;
 
+        var detailsGo = new GameObject("Details", typeof(RectTransform), typeof(LayoutElement), typeof(VerticalLayoutGroup));
+        detailsGo.transform.SetParent(row.transform, false);
+        var detailsLe = detailsGo.GetComponent<LayoutElement>();
+        detailsLe.flexibleWidth = 1f;
+        detailsLe.minHeight = 88f;
+        detailsLe.preferredHeight = 88f;
+        var detailsLayout = detailsGo.GetComponent<VerticalLayoutGroup>();
+        detailsLayout.spacing = 3f;
+        detailsLayout.childAlignment = TextAnchor.MiddleLeft;
+        detailsLayout.childControlWidth = true;
+        detailsLayout.childControlHeight = true;
+        detailsLayout.childForceExpandWidth = true;
+        detailsLayout.childForceExpandHeight = false;
+
         var nameGo = new GameObject("Name", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
-        nameGo.transform.SetParent(row.transform, false);
-        nameGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        nameGo.transform.SetParent(detailsGo.transform, false);
+        var nameLe = nameGo.GetComponent<LayoutElement>();
+        nameLe.minHeight = 23f;
+        nameLe.preferredHeight = 23f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
         nameText.text = inventory.GetDisplayName(item);
         nameText.fontSize = 16;
+        nameText.fontStyle = FontStyles.Bold;
         nameText.color = Color.white;
         nameText.alignment = TextAlignmentOptions.Left;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
+
+        var workflowGo = new GameObject("Workflow", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        workflowGo.transform.SetParent(detailsGo.transform, false);
+        var workflowLe = workflowGo.GetComponent<LayoutElement>();
+        workflowLe.minHeight = 58f;
+        workflowLe.preferredHeight = 58f;
+        var workflowText = workflowGo.GetComponent<TextMeshProUGUI>();
+        workflowText.text = GetWorkflowDescription(menu, item);
+        workflowText.fontSize = 11.5f;
+        workflowText.color = new Color(0.78f, 0.84f, 0.94f, 1f);
+        workflowText.alignment = TextAlignmentOptions.TopLeft;
+        workflowText.enableWordWrapping = true;
+        workflowText.overflowMode = TextOverflowModes.Ellipsis;
+        workflowText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) workflowText.font = TMP_Settings.defaultFontAsset;
 
         Toggle toggle = CreateCheckbox(row.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
         ItemDefinition captured = item;
         toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
+    }
+
+    static string GetWorkflowDescription(CustomerOrderConfig menu, ItemDefinition item)
+    {
+        if (menu == null || item == null) return "";
+
+        const string label = "<color=#91A4C3>FLOW + MATERIAL</color>  ";
+        const string arrow = "  <color=#7E8CA6>→</color>  ";
+        string Step(string station, string material) =>
+            "<b>" + station + "</b> <color=#7FEA9A>[" + material + "]</color>";
+
+        if (menu.IsBurger(item))
+            return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
+                + "\n" + Step("Assembly", "Cooked patty") + arrow + Step("Pickup Station", "Burger");
+
+        if (menu.IsFries(item))
+            return label + Step("Fryer", "Frozen fries") + arrow + Step("Pickup Station", "Cooked fries");
+
+        if (menu.IsDrink(item))
+            return label + Step("Drink Fountain", "Drink stock") + arrow + Step("Pickup Station", "Filled drink");
+
+        return label + "No workflow configured";
     }
 
     GameObject GetPreviewPrefab(CustomerOrderConfig menu, ItemDefinition item)

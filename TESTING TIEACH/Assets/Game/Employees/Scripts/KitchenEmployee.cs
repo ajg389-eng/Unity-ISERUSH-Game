@@ -253,6 +253,8 @@ public class KitchenEmployee : MonoBehaviour
             case Step.AtAssembly: return FormatTask("Assembling order", product);
             case Step.GoToFryer: return FormatTask("Walking to Fryer", product);
             case Step.AtFryer: return FormatTask("Frying at Fryer", product);
+            case Step.GoToDrink: return FormatTask("Walking to Drink Fountain", product);
+            case Step.AtDrink: return FormatTask("Pouring at Drink Fountain", product);
             case Step.GoToOutput:
             case Step.GoToHeatLamp:
                 return FormatTask("Walking to deliver at " + GetDeliverTargetLabel(), product);
@@ -261,7 +263,7 @@ public class KitchenEmployee : MonoBehaviour
                 return FormatTask("Delivering to " + GetDeliverTargetLabel(), product);
             case Step.CashierGoDrink: return "Cashier — walking to drink station";
             case Step.CashierAtDrink: return "Cashier — pouring drink";
-            case Step.CashierGoFood: return "Cashier — walking to heat lamp";
+            case Step.CashierGoFood: return "Cashier — walking to Pickup Station";
             case Step.CashierAtFood: return "Cashier — picking up food";
             case Step.CashierReturnServe: return "Cashier — serving full order";
         }
@@ -552,6 +554,7 @@ public class KitchenEmployee : MonoBehaviour
         GoToGrill, AtGrill,
         GoToAssembly, AtAssembly,
         GoToFryer, AtFryer,
+        GoToDrink, AtDrink,
         GoToHeatLamp, AtHeatLamp, // legacy aliases unused — delivery uses GoToOutput
         GoToOutput, AtOutput,
         // Cashier fetch / serve
@@ -728,6 +731,7 @@ public class KitchenEmployee : MonoBehaviour
             StationType.Grill => Step.GoToGrill,
             StationType.Assembly => Step.GoToAssembly,
             StationType.Fryer => Step.GoToFryer,
+            StationType.Drink => Step.GoToDrink,
             _ => Step.GoToHeatLamp
         };
     }
@@ -1585,6 +1589,61 @@ public class KitchenEmployee : MonoBehaviour
                         SyncHasPattyFlag();
                         FinishStepAndHandoff();
                     }
+                }
+                break;
+
+            case Step.GoToDrink:
+                if (MoveToward(manager.GetDrinkStationPosition(this)))
+                {
+                    if (manager.IsEmployeeOnDrinkTile(transform.position, this))
+                    {
+                        step = Step.AtDrink;
+                        stateTimer = 0f;
+                    }
+                    else { path.Clear(); pathDestination = Vector3.zero; }
+                }
+                break;
+
+            case Step.AtDrink:
+                FaceStationObject(GetOperatedStationObject(StationType.Drink) ?? GetDrinkStation()?.gameObject);
+                SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.Drink);
+                if (!manager.IsEmployeeOnDrinkTile(transform.position, this))
+                {
+                    SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
+                    step = Step.GoToDrink;
+                    path.Clear();
+                    pathDestination = Vector3.zero;
+                    break;
+                }
+                if (heldUnits > 0 || awaitingOutputDelivery)
+                {
+                    ShowTaskBar = true;
+                    TaskProgress = 1f;
+                    FinishStepAndHandoff();
+                    break;
+                }
+                stateTimer += Time.deltaTime;
+                float drinkProductionTime = manager.GetDrinkInteractionTime(this) * CarryCapacity;
+                ShowTaskBar = true;
+                TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, drinkProductionTime));
+                if (stateTimer >= drinkProductionTime)
+                {
+                    int poured = 0;
+                    while (poured < CarryCapacity && manager.HasDrinkInStock())
+                    {
+                        if (!manager.TryDispenseDrink(this))
+                            break;
+                        poured++;
+                    }
+                    if (poured <= 0)
+                    {
+                        TaskProgress = 1f;
+                        stateTimer = drinkProductionTime;
+                        break;
+                    }
+                    heldUnits = poured;
+                    SyncHasPattyFlag();
+                    FinishStepAndHandoff();
                 }
                 break;
 

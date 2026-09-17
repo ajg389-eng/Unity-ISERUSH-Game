@@ -36,6 +36,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
     public string ActiveMilestoneId => activeMilestoneId;
     public bool IsQuizReady => quizReady;
+    public int CompletedMilestoneCount => completedMilestoneIds.Count;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()

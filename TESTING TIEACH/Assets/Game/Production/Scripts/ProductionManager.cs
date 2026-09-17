@@ -612,7 +612,6 @@ public class ProductionManager : MonoBehaviour
             foreach (var line in customerOrder.lines)
             {
                 if (line.item == null || line.quantity <= 0) continue;
-                if (orderConfig.IsDrink(line.item)) continue;
                 if (!cookable.Contains(line.item)) continue;
                 for (int q = 0; q < line.quantity; q++)
                 {
@@ -641,6 +640,7 @@ public class ProductionManager : MonoBehaviour
 
         bool canBurger = false;
         bool canFries = false;
+        bool canDrink = false;
         if (productionFlows != null)
         {
             foreach (ProductionFlowPlan flow in productionFlows)
@@ -653,6 +653,8 @@ public class ProductionManager : MonoBehaviour
                         canBurger = true;
                     if (id == "Fryer")
                         canFries = true;
+                    if (id == "Drink")
+                        canDrink = true;
                 }
                 if (flow.stations == null) continue;
                 foreach (GameObject station in flow.stations)
@@ -664,23 +666,28 @@ public class ProductionManager : MonoBehaviour
                         canBurger = true;
                     if (station.GetComponent<FryerStation>() != null)
                         canFries = true;
+                    if (station.GetComponent<DrinkStation>() != null)
+                        canDrink = true;
                 }
             }
         }
 
         // Fallback: if no flows yet, allow any menu item the kitchen has stations for.
-        if (!canBurger && !canFries)
+        if (!canBurger && !canFries && !canDrink)
         {
             canBurger = freezer != null || grill != null || assembly != null
                 || FindObjectOfType<FreezerStation>() != null
                 || FindObjectOfType<GrillStation>() != null;
             canFries = fryer != null || FindObjectOfType<FryerStation>() != null;
+            canDrink = drinkStation != null || FindObjectOfType<DrinkStation>() != null;
         }
 
         if (canBurger && orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
             list.Add(orderConfig.burgerBase);
         if (canFries && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             list.Add(orderConfig.friesItem);
+        if (canDrink && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
+            list.Add(orderConfig.drinkItem);
         return list;
     }
 

@@ -83,19 +83,43 @@ public class CounterSurface : MonoBehaviour
 
     public int GetNearestAvailableSlot(Vector3 worldPoint, int span)
     {
+        return GetNearestSlot(worldPoint, span, true);
+    }
+
+    public int GetNearestSlot(Vector3 worldPoint, int span, bool requireAvailable)
+    {
         CleanupOccupants();
         span = Mathf.Clamp(span, 1, Mathf.Max(1, slotCount));
         int best = -1;
         float bestDistance = float.MaxValue;
         for (int i = 0; i <= Mathf.Max(1, slotCount) - span; i++)
         {
-            if (!IsSlotRangeAvailable(i, span)) continue;
+            if (requireAvailable && !IsSlotRangeAvailable(i, span)) continue;
             float distance = (GetSlotCenter(i, span) - worldPoint).sqrMagnitude;
             if (distance >= bestDistance) continue;
             bestDistance = distance;
             best = i;
         }
         return best;
+    }
+
+    public Vector3 GetSlotWorldCenter(int slot, int span = 1)
+    {
+        return GetSlotCenter(slot, span);
+    }
+
+    public Vector2 GetSlotWorldSize(int span = 1)
+    {
+        Bounds bounds = GetBaseBounds();
+        int count = Mathf.Max(1, slotCount);
+        span = Mathf.Clamp(span, 1, count);
+        if (bounds.size.z >= bounds.size.x)
+        {
+            GetGridAlignedRange(bounds.center.z, false, out float min, out float max);
+            return new Vector2(bounds.size.x, (max - min) * span / count);
+        }
+        GetGridAlignedRange(bounds.center.x, true, out float xMin, out float xMax);
+        return new Vector2((xMax - xMin) * span / count, bounds.size.z);
     }
 
     public bool IsSlotAvailable(int slot)

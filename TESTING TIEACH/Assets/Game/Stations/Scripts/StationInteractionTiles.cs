@@ -80,6 +80,15 @@ public class StationInteractionTiles : MonoBehaviour
 
     public void RebuildGeneratedHighlight()
     {
+        // Authored prefab highlights already follow the station transform and must
+        // remain the placement-bounds exclusion reference. Replacing one leaves
+        // its renderer in the prefab hierarchy, which can offset later pickups.
+        if (buildModeHighlight != null && buildModeHighlight.name != "InteractionHighlight")
+        {
+            ApplyHighlightVisibility(force: true);
+            return;
+        }
+
         if (buildModeHighlight != null && buildModeHighlight.name == "InteractionHighlight")
             Destroy(buildModeHighlight);
         buildModeHighlight = null;
@@ -323,10 +332,15 @@ public class StationInteractionTiles : MonoBehaviour
         sharedHighlightMaterial = new Material(shader)
         {
             name = "InteractionHighlight_Runtime",
-            color = new Color(0.15f, 1f, 0.35f, 0.85f)
+            color = new Color(0.02f, 1f, 0.1f, 0.55f)
         };
         if (sharedHighlightMaterial.HasProperty("_BaseColor"))
-            sharedHighlightMaterial.SetColor("_BaseColor", new Color(0.15f, 1f, 0.35f, 0.85f));
+            sharedHighlightMaterial.SetColor("_BaseColor", new Color(0.02f, 1f, 0.1f, 0.55f));
+        if (sharedHighlightMaterial.HasProperty("_EmissionColor"))
+        {
+            sharedHighlightMaterial.EnableKeyword("_EMISSION");
+            sharedHighlightMaterial.SetColor("_EmissionColor", new Color(0.08f, 3f, 0.3f, 1f));
+        }
         if (sharedHighlightMaterial.HasProperty("_Surface"))
             sharedHighlightMaterial.SetFloat("_Surface", 1f);
         return sharedHighlightMaterial;

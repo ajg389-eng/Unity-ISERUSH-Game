@@ -16,7 +16,7 @@ public class Register : MonoBehaviour
     public int maxQueue = 6;
 
     [Header("Pickup line")]
-    [Tooltip("Customers wait in front of the heat lamp linked to this register (customer / lobby side).")]
+    [Tooltip("Customers wait in front of the Pickup Station linked to this register (customer / lobby side).")]
     public int maxPickup = 8;
 
     readonly List<CustomerAI> queue = new List<CustomerAI>();
@@ -39,7 +39,7 @@ public class Register : MonoBehaviour
     public float workerDutyRadius = 1.25f;
 
     [Header("Ordering")]
-    [Tooltip("Seconds the front customer spends ordering before moving to the heat-lamp pickup line.")]
+    [Tooltip("Seconds the front customer spends ordering before moving to the Pickup Station line.")]
     public float orderTakeSeconds = 1.25f;
 
     float orderTimer;

@@ -70,6 +70,18 @@ public class InventoryItemCardUI : MonoBehaviour
         priceText.text = price <= 0 ? "FREE" : "$" + price;
     }
 
+    public void SetOwnedCapacity(int owned, int capacity)
+    {
+        capacity = Mathf.Max(1, capacity);
+        bool atCapacity = owned >= capacity;
+        if (qtyText != null)
+            qtyText.text = Mathf.Max(0, owned) + "/" + capacity;
+        if (buyButton != null)
+            buyButton.interactable = !atCapacity;
+        if (atCapacity && priceText != null)
+            priceText.text = "MAX";
+    }
+
     void ApplyPreview(ItemDefinition item)
     {
         bool hasSprite = item.previewIcon != null;

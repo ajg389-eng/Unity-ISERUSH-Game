@@ -5,6 +5,12 @@ public class InventoryManager : MonoBehaviour
 {
     public List<ItemDefinition> allItems = new List<ItemDefinition>();
 
+    [Header("Station capacity")]
+    [Min(1), Tooltip("Maximum owned units of each station before completing any milestones.")]
+    public int baseStationCapacity = 2;
+    [Min(0), Tooltip("Additional units of every station type unlocked per completed milestone.")]
+    public int capacityPerCompletedMilestone = 1;
+
     private Dictionary<ItemDefinition, int> counts = new Dictionary<ItemDefinition, int>();
     /// <summary>Total units ever acquired (starting stock + purchases). First of each item is free.</summary>
     private Dictionary<ItemDefinition, int> acquired = new Dictionary<ItemDefinition, int>();
@@ -36,6 +42,21 @@ public class InventoryManager : MonoBehaviour
         return acquired.TryGetValue(item, out int c) ? c : 0;
     }
 
+    /// <summary>Total owned capacity for one station type, including milestone rewards.</summary>
+    public int GetStationCapacity(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        int completed = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
+            : 0;
+        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone);
+    }
+
+    public bool IsAtStationCapacity(ItemDefinition item)
+    {
+        return item == null || GetAcquiredCount(item) >= GetStationCapacity(item);
+    }
+
     /// <summary>Shop price: first unit of each station/item is free.</summary>
     public int GetPurchasePrice(ItemDefinition item)
     {
@@ -48,11 +69,14 @@ public class InventoryManager : MonoBehaviour
         SelectedItem = item;
     }
 
-    public bool CanPurchase(ItemDefinition item) => item != null;
+    public bool CanPurchase(ItemDefinition item)
+    {
+        return item != null && !IsAtStationCapacity(item);
+    }
 
     public bool PurchaseOne(ItemDefinition item)
     {
-        if (item == null) return false;
+        if (!CanPurchase(item)) return false;
         if (!counts.ContainsKey(item)) counts[item] = 0;
         if (!acquired.ContainsKey(item)) acquired[item] = 0;
 

@@ -134,22 +134,22 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Fryer",
             "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "Point fryer output toward the heat lamp (or pickup) so fries leave with the rest of the order.\n\nPlace one to continue.",
+            "Point fryer output toward the Pickup Station so fries leave with the rest of the order.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
             "Drinks",
             "Buy and place a <b>drink fountain</b>. Like fries, drinks are a simple path of their own.\n\n" +
-            "Keep it staffed when combos include a drink, or that part of the ticket will stall.\n\nPlace one to continue.",
+            "Keep it staffed and point its output toward the Pickup Station, or the drink portion of an order will stall.\n\nPlace one to continue.",
             "Next", Highlight.Drink, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly",
             "Buy and place an <b>assembly</b> table. This finishes burgers: bun, cooked patty, and toppings.\n\n" +
-            "Grill output should point here. Assembly output should point to the heat lamp.\n\nPlace one to continue.",
+            "Grill output should point here. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
             "Next", Highlight.Assembly, openInventory: true, requirePlaced: true),
         new Step(
-            "Heat lamp",
-            "Buy and place a <b>heat lamp</b> on the pass. Finished food waits here until it is handed to the customer.\n\n" +
-            "If this sits empty, upstream stations are too slow. If it fills and food expires, you cooked more than you can serve.\n\nPlace one to continue.",
+            "Pickup Station",
+            "Buy and place a <b>Pickup Station</b> on the pass. Any finished item can wait here for customer pickup, including food, drinks, and future products.\n\n" +
+            "If this sits empty, upstream stations are too slow. If it fills and items expire, you produced more than you can serve.\n\nPlace one to continue.",
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
@@ -170,14 +170,14 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Create a flow",
             "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
-            "Click stations <b>in cooking order</b>. Example burger line: freezer → grill → assembly → heat lamp. Confirm when the path looks right.\n\n" +
+            "Click stations <b>in production order</b>. Example burger line: freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
             "You can make more flows later for fries and drinks. Next stays locked until a flow has at least two stations.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
             "Click a station already on the path to trim it back. Click a new station to extend the route. Press Esc to restore the previous path.\n\n" +
-            "Use Edit when a station was clicked in the wrong order or you want a second line (fryer → heat lamp).",
+            "Use Edit when a station was clicked in the wrong order or you want a second line (fryer → Pickup Station).",
             "Next", Highlight.Management, openWorkers: true),
         new Step(
             "Assign workers to a flow",
@@ -190,7 +190,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Here is the basic service loop:\n\n" +
             "1. Customer arrives and orders at the register.\n" +
             "2. Workers follow the flow you built — freezer → grill → assembly for burgers, fryer for fries, drinks for drinks.\n" +
-            "3. Finished items wait at the heat lamp.\n" +
+            "3. Finished items wait at the Pickup Station.\n" +
             "4. Food is handed off and the customer leaves.",
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
         new Step(
@@ -434,7 +434,7 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Fryer: return "Place fryer";
             case Highlight.Drink: return "Place drinks";
             case Highlight.Assembly: return "Place assembly";
-            case Highlight.HeatLamp: return "Place heat lamp";
+            case Highlight.HeatLamp: return "Place Pickup Station";
             case Highlight.Pantry: return "Place pantry";
             default: return "Place station";
         }

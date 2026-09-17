@@ -27,6 +27,7 @@ public class ManagementScreenController : MonoBehaviour
     public GameObject statsSection;
 
     bool isOpen;
+    ManagementTabInfoUI tabInfoUI;
 
     void Start()
     {
@@ -42,6 +43,9 @@ public class ManagementScreenController : MonoBehaviour
 
         WireTabButtons();
         EnsureCustomersTab();
+        tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
+        if (tabInfoUI != null)
+            tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
         SelectTab(0);
         EnsureManagementModeController();
     }
@@ -180,7 +184,7 @@ public class ManagementScreenController : MonoBehaviour
 
     public void SelectTab(int index)
     {
-        if (tabPanels == null) return;
+        if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
         for (int i = 0; i < tabPanels.Length; i++)
         {
@@ -192,6 +196,11 @@ public class ManagementScreenController : MonoBehaviour
             for (int i = 0; i < tabButtons.Length; i++)
                 HudTabColors.Apply(tabButtons[i], i == index);
         }
+
+        if (tabInfoUI == null)
+            tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
+        if (tabInfoUI != null)
+            tabInfoUI.SetTab(tabPanels[index]);
     }
 
     void Update()
@@ -294,6 +303,7 @@ public class ManagementScreenController : MonoBehaviour
     public void Close()
     {
         if (managementPanel == null) return;
+        if (tabInfoUI != null) tabInfoUI.Close();
         managementPanel.SetActive(false);
         Sfx.Play(SfxId.UiClose);
         isOpen = false;

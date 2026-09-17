@@ -75,7 +75,7 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Heat lamp stock</b>");
+        sb.AppendLine("<b>Pickup Station stock</b>");
         sb.AppendLine("  " + s.HeatLampStock + " / " + s.HeatLampCapacity + "  <i><size=80%>Make-to-stock buffer</size></i>");
         sb.AppendLine();
 
@@ -84,7 +84,7 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Revenue earned</b>");
-        sb.AppendLine("  $" + s.RevenueEarned + "  <i><size=80%>Sales from heat lamp</size></i>");
+        sb.AppendLine("  $" + s.RevenueEarned + "  <i><size=80%>Sales from pickup</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Order completion time</b>");

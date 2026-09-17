@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Placeable drink dispenser. Cashiers pour drinks here and bring them straight to the customer (not the heat lamp).
+/// Placeable drink dispenser. Assigned production workers pour drinks here and deliver them to the Pickup Station.
 /// </summary>
 public class DrinkStation : MonoBehaviour
 {

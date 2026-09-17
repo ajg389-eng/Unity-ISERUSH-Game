@@ -26,6 +26,9 @@ public class ItemDefinition : ScriptableObject
     [Min(0f)] public float counterEmbedDepth = 0f;
     [Tooltip("Additional position adjustment in the counter's local axes after snapping to a slot.")]
     public Vector3 counterLocalOffset = Vector3.zero;
+    [Tooltip("Use an exact world-space Y coordinate instead of calculating height from counter and model bounds.")]
+    public bool useFixedCounterY = false;
+    public float fixedCounterY = 0f;
     [Tooltip("Number of adjacent counter positions reserved by this item.")]
     [Min(1)] public int counterSlotSpan = 1;
     [Tooltip("Adds the gameplay behavior needed by special build items sourced from imported art prefabs.")]

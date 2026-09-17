@@ -81,7 +81,7 @@ public class CustomerOrderConfig : ScriptableObject
             case ProductKind.Fries:
                 return new[] { StationType.Fryer };
             case ProductKind.Drink:
-                return System.Array.Empty<StationType>();
+                return new[] { StationType.Drink };
             default:
                 return System.Array.Empty<StationType>();
         }
@@ -130,6 +130,7 @@ public class CustomerOrderConfig : ScriptableObject
         var options = new List<ItemDefinition>();
         if (burgerBase != null && burgerEnabled) options.Add(burgerBase);
         if (friesItem != null && friesEnabled) options.Add(friesItem);
+        if (drinkItem != null && drinkEnabled) options.Add(drinkItem);
         if (options.Count == 0) return new CustomerOrder();
 
         var pick = options[Random.Range(0, options.Count)];

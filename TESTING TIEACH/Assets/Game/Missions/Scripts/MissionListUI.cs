@@ -52,6 +52,7 @@ public class MissionListUI : MonoBehaviour
     MilestoneProgressManager milestones;
     SideTab activeTab = SideTab.Tasks;
     bool built;
+    ManagementTabInfoUI tabInfoUI;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
@@ -121,6 +122,11 @@ public class MissionListUI : MonoBehaviour
 
         SetTabVisual(tasksTabButton, tab == SideTab.Tasks);
         SetTabVisual(progressionTabButton, tab == SideTab.Progression);
+
+        if (tabInfoUI == null && panelRoot != null)
+            tabInfoUI = ManagementTabInfoUI.EnsureOn(panelRoot.transform);
+        if (tabInfoUI != null)
+            tabInfoUI.SetTab(tab == SideTab.Tasks ? tasksPage : progressionPage);
 
         if (headerText != null)
         {

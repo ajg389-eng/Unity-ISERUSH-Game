@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Records station buys, floor expansions, worker hires, and ingredient orders so they can be undone.
+/// Retains only the latest station buy, floor expansion, worker hire, or ingredient order.
+/// Once that action is undone, there is no older history to continue undoing.
 /// </summary>
 public class PurchaseUndoManager : MonoBehaviour
 {
@@ -61,10 +62,7 @@ public class PurchaseUndoManager : MonoBehaviour
     {
         get
         {
-            for (int i = stack.Count - 1; i >= 0; i--)
-                if (stack[i].kind == Kind.Floor)
-                    return true;
-            return false;
+            return stack.Count > 0 && stack[stack.Count - 1].kind == Kind.Floor;
         }
     }
 
@@ -72,11 +70,8 @@ public class PurchaseUndoManager : MonoBehaviour
     {
         get
         {
-            for (int i = stack.Count - 1; i >= 0; i--)
-            {
-                if (stack[i].kind != Kind.Floor) continue;
-                return "Undo Floor $" + stack[i].floor.paid;
-            }
+            if (CanUndoFloor)
+                return "Undo Floor $" + stack[stack.Count - 1].floor.paid;
             return "Undo Floor";
         }
     }
@@ -149,7 +144,7 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordStationPurchase(ItemDefinition item, int paid)
     {
         if (item == null) return;
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Station,
             station = new StationRecord { item = item, paid = Mathf.Max(0, paid), placed = null }
@@ -173,7 +168,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public void RecordFloorExpand(int addWidth, int addHeight, int paid)
     {
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Floor,
             floor = new FloorRecord
@@ -188,7 +183,7 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordWorkerHire(KitchenEmployee employee, int paid)
     {
         if (employee == null) return;
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Worker,
             worker = new WorkerRecord { employee = employee, paid = Mathf.Max(0, paid) }
@@ -198,7 +193,7 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordIngredientPack(ItemDefinition item, int packSize, int paid)
     {
         if (item == null) return;
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Ingredient,
             ingredient = new IngredientRecord
@@ -208,6 +203,12 @@ public class PurchaseUndoManager : MonoBehaviour
                 paid = Mathf.Max(0, paid)
             }
         });
+    }
+
+    void ReplaceLast(Entry entry)
+    {
+        stack.Clear();
+        stack.Add(entry);
     }
 
     public void NotifyWorkerFired(KitchenEmployee employee)
@@ -258,22 +259,20 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndoLastFloor()
     {
-        for (int i = stack.Count - 1; i >= 0; i--)
-        {
-            if (stack[i].kind != Kind.Floor) continue;
-            if (!UndoFloor(stack[i].floor))
-            {
-                Sfx.Play(SfxId.UiError);
-                return false;
-            }
+        if (!CanUndoFloor)
+            return false;
 
-            stack.RemoveAt(i);
-            Sfx.Play(SfxId.EarnMoney);
-            RefreshRelatedUi();
-            return true;
+        int i = stack.Count - 1;
+        if (!UndoFloor(stack[i].floor))
+        {
+            Sfx.Play(SfxId.UiError);
+            return false;
         }
 
-        return false;
+        stack.RemoveAt(i);
+        Sfx.Play(SfxId.EarnMoney);
+        RefreshRelatedUi();
+        return true;
     }
 
     static void RefreshRelatedUi()

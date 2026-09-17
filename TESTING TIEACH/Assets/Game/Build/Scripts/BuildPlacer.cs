@@ -35,6 +35,15 @@ public class BuildPlacer : MonoBehaviour
 
     public bool IsPlacing => placingItem != null;
     public bool IsDragging => draggingObject != null;
+    public bool IsCounterPlacementActive =>
+        (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
+        || draggingMountedItem != null;
+    public int CounterHoverSpan => placingItem != null
+        && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter
+            ? Mathf.Max(1, placingItem.counterSlotSpan)
+            : draggingMountedItem != null && draggingMountedItem.itemDefinition != null
+                ? Mathf.Max(1, draggingMountedItem.itemDefinition.counterSlotSpan)
+                : 1;
 
     void Start()
     {
@@ -230,7 +239,11 @@ public class BuildPlacer : MonoBehaviour
     void SetHint(bool show, bool dragging = false)
     {
         if (!placementHintText) return;
-        placementHintText.gameObject.SetActive(show);
+        Transform hintParent = placementHintText.transform.parent;
+        GameObject hintRoot = hintParent != null && hintParent.name == "KeybindTipPanel"
+            ? hintParent.gameObject
+            : placementHintText.gameObject;
+        hintRoot.SetActive(show);
         if (show) placementHintText.text = dragging
             ? "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel"
             : placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter
@@ -358,9 +371,11 @@ public class BuildPlacer : MonoBehaviour
         obj.transform.localScale = GetPlacementScale(item);
         obj.transform.rotation = surface.transform.rotation
             * Quaternion.Euler(item.placementEuler + Vector3.up * (rotation * 90f));
-        obj.transform.position = surface.GetMountPosition(
+        Vector3 mountPosition = surface.GetMountPosition(
             obj, slot, Mathf.Max(1, item.counterSlotSpan), item.counterEmbedDepth)
             + surface.transform.TransformVector(item.counterLocalOffset);
+        if (item.useFixedCounterY) mountPosition.y = item.fixedCounterY;
+        obj.transform.position = mountPosition;
     }
 
     /// <summary>Clamp (x,y) so that footprint (sizeX, sizeY) fits fully inside the grid.</summary>
@@ -694,6 +709,7 @@ public class BuildPlacer : MonoBehaviour
                 placed.AddComponent<BoxCollider>();
             Register register = placed.GetComponent<Register>();
             if (register == null) register = placed.AddComponent<Register>();
+            register.isEnabled = false;
             RegisterHover hover = placed.GetComponent<RegisterHover>();
             if (hover == null) hover = placed.AddComponent<RegisterHover>();
             if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();

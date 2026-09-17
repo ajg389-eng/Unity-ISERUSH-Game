@@ -70,7 +70,7 @@ public static class WorkerFlowAssigner
         new FlowStationDef("Fryer", "Fryer", typeof(FryerStation)),
         new FlowStationDef("Drink", "Drink", typeof(DrinkStation)),
         new FlowStationDef("Register", "Register", typeof(Register)),
-        new FlowStationDef("HeatLamp", "Heat Lamp", typeof(HeatLampStation)),
+        new FlowStationDef("HeatLamp", "Pickup Station", typeof(HeatLampStation)),
         new FlowStationDef("Pantry", "Pantry", typeof(PantryStation))
     };
 
@@ -575,7 +575,7 @@ public static class WorkerFlowAssigner
         if (grill >= 0 && assembly >= 0 && grill > assembly)
             return "Invalid product route: Grill must come before Assembly.";
         if (heatLamp >= 0 && heatLamp != steps.Count - 1)
-            return "Heat Lamp must be the final stop.";
+            return "Pickup Station must be the final stop.";
         return "";
     }
 
@@ -886,6 +886,8 @@ public static class WorkflowAnalysis
             products.Add(config.burgerBase);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
+        if (hasDrink && config != null && config.drinkItem != null)
+            products.Add(config.drinkItem);
 
         if (products.Count == 0)
         {

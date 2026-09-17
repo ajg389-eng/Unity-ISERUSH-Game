@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
   m_Name: HeatLamp
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: HeatLamp
+  itemName: Pickup Station
   prefab: {fileID: 4852931242462775543, guid: ea68b4e77c24581449ae6775a50ef0de, type: 3}
   price: 50
   startingQuantity: 0
@@ -23,6 +23,8 @@ MonoBehaviour:
   placementEuler: {x: 0, y: -90, z: 0}
   counterEmbedDepth: 0.9
   counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 1
+  fixedCounterY: 0.51
   counterSlotSpan: 2
   buildFunction: 0
   orderPackSize: 10

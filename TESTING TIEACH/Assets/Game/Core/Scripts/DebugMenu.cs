@@ -111,7 +111,7 @@ public class DebugMenu : MonoBehaviour
         statusText.text =
             $"Money: ${cash}\n" +
             $"Workers: {workers}   Jobs: {pending}\n" +
-            $"Heat Lamp: {lampCount}/{lampCap}\n" +
+            $"Pickup Station: {lampCount}/{lampCap}\n" +
             $"Kitchen stock units: {stockUnits}\n" +
             $"Clock: {clock}   Speed: {speed}";
     }
@@ -196,12 +196,12 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Clear Heat Lamp", () =>
+        CreateButton(panel.transform, "Clear Pickup Station", () =>
         {
             var lamp = HeatLampStation.Instance ?? FindObjectOfType<HeatLampStation>();
-            if (lamp == null) { Toast("No Heat Lamp"); return; }
+            if (lamp == null) { Toast("No Pickup Station"); return; }
             lamp.ClearAllMeals();
-            Toast("Heat lamp cleared");
+            Toast("Pickup Station cleared");
             RefreshStatus();
         });
 

@@ -47,9 +47,12 @@ public class InventoryUI : MonoBehaviour
     TextMeshProUGUI expandLabel;
     TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
+    PurchaseUndoFooter stationUndoFooter;
     bool expandUiBuilt;
     Transform floorContentParent;
     int activeTab;
+    int displayedCapacityMilestoneCount = -1;
+    ManagementTabInfoUI tabInfoUI;
 
     void Start()
     {
@@ -62,6 +65,7 @@ public class InventoryUI : MonoBehaviour
         BindOrBuildTabs(forceDefaultLayout: false);
         EnsureExpandUi();
         EnsureUndoFooter();
+        EnsureTabInfo();
         WireTabButtons();
         RefreshAll();
         SelectTab(0);
@@ -72,6 +76,12 @@ public class InventoryUI : MonoBehaviour
     {
         ApplyModeState();
         RefreshExpandButton();
+
+        int completed = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
+            : 0;
+        if (panel != null && panel.activeSelf && completed != displayedCapacityMilestoneCount)
+            RefreshAll();
     }
 
     void ApplyModeState()
@@ -102,6 +112,8 @@ public class InventoryUI : MonoBehaviour
     {
         if (!panel) return;
         bool opening = !panel.activeSelf;
+        if (!opening && tabInfoUI != null)
+            tabInfoUI.Close();
         panel.SetActive(opening);
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
@@ -112,6 +124,7 @@ public class InventoryUI : MonoBehaviour
             BindOrBuildTabs(forceDefaultLayout: false);
             EnsureExpandUi();
             EnsureUndoFooter();
+            EnsureTabInfo();
             WireTabButtons();
             RefreshAll();
             SelectTab(activeTab);
@@ -151,10 +164,27 @@ public class InventoryUI : MonoBehaviour
                 HudTabColors.Apply(tabButtons[i], i == activeTab);
         }
 
+        EnsureTabInfo();
+        if (tabInfoUI != null)
+            tabInfoUI.SetTab(tabPanels[activeTab]);
+        if (stationUndoFooter == null)
+            EnsureUndoFooter();
+        if (stationUndoFooter != null)
+            stationUndoFooter.gameObject.SetActive(activeTab == 0);
+
         if (activeTab == 0)
             RefreshAll();
         else
             RefreshExpandButton();
+    }
+
+    void EnsureTabInfo()
+    {
+        if (tabInfoUI != null || panel == null) return;
+        Transform contentBox = panel.transform.Find(ContentBoxName);
+        tabInfoUI = ManagementTabInfoUI.EnsureOn(contentBox != null ? contentBox : panel.transform);
+        if (tabInfoUI != null)
+            tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
     }
 
     public void RefreshAll()
@@ -188,6 +218,10 @@ public class InventoryUI : MonoBehaviour
         var sr = contentParent.GetComponentInParent<ScrollRect>();
         if (sr != null)
             sr.normalizedPosition = new Vector2(0f, 1f);
+
+        displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
+            : 0;
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
@@ -365,7 +399,7 @@ public class InventoryUI : MonoBehaviour
         ItemDefinition captured = item;
         card.Bind(
             captured,
-            inventory.GetCount(captured),
+            inventory.GetAcquiredCount(captured),
             onSelect: () =>
             {
                 inventory.SelectItem(captured);
@@ -377,14 +411,19 @@ public class InventoryUI : MonoBehaviour
                 bool bought = inventory.PurchaseOne(captured);
                 if (bought)
                 {
-                    card.SetQuantity(inventory.GetCount(captured));
                     card.SetPrice(inventory.GetPurchasePrice(captured));
+                    card.SetOwnedCapacity(
+                        inventory.GetAcquiredCount(captured),
+                        inventory.GetStationCapacity(captured));
                     Sfx.Play(SfxId.Purchase);
                 }
                 else
                     Sfx.Play(SfxId.UiError);
             },
             displayPrice: inventory.GetPurchasePrice(captured));
+        card.SetOwnedCapacity(
+            inventory.GetAcquiredCount(captured),
+            inventory.GetStationCapacity(captured));
         card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured));
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
             card.transform.SetAsFirstSibling();
@@ -401,9 +440,13 @@ public class InventoryUI : MonoBehaviour
         var priceText = row.transform.Find("PriceBack/Price").GetComponent<TextMeshProUGUI>();
 
         nameText.text = item.itemName;
-        qtyText.text = inventory.GetCount(item).ToString();
+        int owned = inventory.GetAcquiredCount(item);
+        int capacity = inventory.GetStationCapacity(item);
+        qtyText.text = owned + "/" + capacity;
         int price = inventory.GetPurchasePrice(item);
-        priceText.text = price <= 0 ? "FREE" : "$" + price;
+        bool atCapacity = inventory.IsAtStationCapacity(item);
+        priceText.text = atCapacity ? "MAX" : price <= 0 ? "FREE" : "$" + price;
+        buyButton.interactable = !atCapacity;
 
         ItemDefinition captured = item;
         nameButton.onClick.AddListener(() =>
@@ -418,9 +461,13 @@ public class InventoryUI : MonoBehaviour
             bool bought = inventory.PurchaseOne(captured);
             if (bought)
             {
-                qtyText.text = inventory.GetCount(captured).ToString();
+                int nextOwned = inventory.GetAcquiredCount(captured);
+                int nextCapacity = inventory.GetStationCapacity(captured);
+                qtyText.text = nextOwned + "/" + nextCapacity;
                 int nextPrice = inventory.GetPurchasePrice(captured);
-                priceText.text = nextPrice <= 0 ? "FREE" : "$" + nextPrice;
+                bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
+                priceText.text = nowAtCapacity ? "MAX" : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
+                buyButton.interactable = !nowAtCapacity;
                 Sfx.Play(SfxId.Purchase);
             }
             else
@@ -807,14 +854,28 @@ public class InventoryUI : MonoBehaviour
             ? contentBox.Find(StationsPanelName + "/Scroll View") as RectTransform
             : panel.transform.Find("Scroll View") as RectTransform;
 
-        if (scroll != null)
+        // Older versions parented this footer to the station scroll area, which
+        // left it floating above the bottom of the screen. Remove that copy.
+        if (scroll != null && scroll.parent != null && scroll.parent != panel.transform)
         {
-            PurchaseUndoFooter.EnsureMatching(scroll);
+            var oldFooter = scroll.parent.Find(PurchaseUndoFooter.ObjectName);
+            if (oldFooter != null)
+                DestroyObject(oldFooter.gameObject);
+        }
+
+        // Match the content column horizontally, but parent to the full-screen
+        // inventory panel so y = 0 is the actual bottom edge of the screen.
+        if (contentBox is RectTransform contentBoxRt)
+        {
+            stationUndoFooter = PurchaseUndoFooter.EnsureMatching(contentBoxRt);
         }
         else
         {
-            PurchaseUndoFooter.EnsureOnPanel(panel.transform);
+            stationUndoFooter = PurchaseUndoFooter.EnsureOnPanel(panel.transform);
         }
+
+        if (stationUndoFooter != null)
+            stationUndoFooter.gameObject.SetActive(activeTab == 0);
 
         var floorPanel = contentBox != null ? contentBox.Find(FloorPanelName) : null;
         if (floorPanel != null)
