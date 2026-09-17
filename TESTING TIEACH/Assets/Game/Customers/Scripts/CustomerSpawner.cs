@@ -164,6 +164,7 @@ public class CustomerSpawner : MonoBehaviour
 
     Register GetBestRegister()
     {
+        RefreshPlacedRegisters();
         Register best = null;
         int bestCount = int.MaxValue;
 
@@ -181,5 +182,14 @@ public class CustomerSpawner : MonoBehaviour
         }
 
         return best;
+    }
+
+    void RefreshPlacedRegisters()
+    {
+        registers.RemoveAll(r => r == null || !r.gameObject.activeInHierarchy);
+        Register[] placed = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (Register register in placed)
+            if (register != null && !registers.Contains(register))
+                registers.Add(register);
     }
 }

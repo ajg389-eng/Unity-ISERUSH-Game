@@ -10,18 +10,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Freezer
+  m_Name: Register
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Freezer
-  prefab: {fileID: 3288158666185072764, guid: 1dac39ff211a4cc49b937801925f6ff7, type: 3}
-  price: 80
+  itemName: Register
+  prefab: {fileID: 9153867216066621692, guid: 4f2bbe3a2f1a9bd4581b2d9d53ed42ca, type: 3}
+  price: 75
   startingQuantity: 0
-  placementSurface: 0
+  placementSurface: 1
   footprintX: 1
   footprintY: 1
-  placementScale: {x: 1, y: 2, z: 1}
-  placementEuler: {x: 0, y: 0, z: 0}
+  placementScale: {x: 2, y: 2, z: 2}
+  placementEuler: {x: 0, y: -90, z: 0}
   counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}
   counterSlotSpan: 1
-  buildFunction: 0
+  buildFunction: 2
+  previewIcon: {fileID: 0}
+  orderPackSize: 10
+  orderPackPrice: 15

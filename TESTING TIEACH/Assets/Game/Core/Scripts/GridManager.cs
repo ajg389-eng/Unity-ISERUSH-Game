@@ -597,6 +597,7 @@ public class GridManager : MonoBehaviour
         if (n.IndexOf("Preview", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (go.GetComponentInParent<KitchenEmployee>() != null) return true;
         if (go.GetComponentInParent<CustomerAI>() != null) return true;
+        if (go.GetComponentInParent<CounterMountedItem>() != null) return true;
         if (n.StartsWith("Expand_", System.StringComparison.OrdinalIgnoreCase)) return true;
         if (go.transform.parent != null && go.transform.parent.name == "KitchenExpandWalls") return true;
         return false;

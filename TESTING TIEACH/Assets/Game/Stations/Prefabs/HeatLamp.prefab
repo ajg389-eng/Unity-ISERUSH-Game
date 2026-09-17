@@ -268,7 +268,15 @@ MonoBehaviour:
   targetStock: 3
   expireAfterSeconds: 28
   interactionOffset: {x: 0, y: 0, z: 0}
+  customerPickupOffset: {x: 0, y: 0, z: 0}
+  customerPickupSpacing: 1.15
   statusLabel: {fileID: 0}
+  cautionIndicatorOffset: {x: 0, y: 2.5, z: 0}
+  cautionIndicatorSize: 0.85
+  burgerDisplayPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
+  friesDisplayPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
+  foodDisplayHeight: 0.55
+  foodDisplayScale: 2
 --- !u!1 &8939223708076402897
 GameObject:
   m_ObjectHideFlags: 0

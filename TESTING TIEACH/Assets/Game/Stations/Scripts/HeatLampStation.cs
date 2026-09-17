@@ -58,6 +58,16 @@ public class HeatLampStation : MonoBehaviour
     [Tooltip("World-space width and height of the caution indicator.")]
     public float cautionIndicatorSize = 0.85f;
 
+    [Header("Food display")]
+    [Tooltip("Finished burger model shown on an occupied heat-lamp tile.")]
+    public GameObject burgerDisplayPrefab;
+    [Tooltip("Finished fries model shown on an occupied heat-lamp tile.")]
+    public GameObject friesDisplayPrefab;
+    [Tooltip("Height of the food models above the heat-lamp root.")]
+    public float foodDisplayHeight = 0.55f;
+    [Tooltip("Uniform world-space scale used by displayed food models.")]
+    public float foodDisplayScale = 0.42f;
+
     readonly List<HeldMeal> meals = new List<HeldMeal>();
     int totalWasted;
     int totalDelivered;
@@ -68,6 +78,8 @@ public class HeatLampStation : MonoBehaviour
     CanvasGroup cautionMessageGroup;
     float cautionMessageShownAt = float.NegativeInfinity;
     float nextCautionRefresh;
+    Transform foodDisplayRoot;
+    readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
 
     public int Count => meals.Count;
     public int TotalWasted => totalWasted;
@@ -92,6 +104,7 @@ public class HeatLampStation : MonoBehaviour
     void OnEnable()
     {
         Instance = this;
+        RefreshFoodDisplay();
     }
 
     void OnDisable()
@@ -104,6 +117,106 @@ public class HeatLampStation : MonoBehaviour
     {
         if (Instance == this)
             Instance = null;
+    }
+
+    /// <summary>
+    /// Rebuilds the physical stock display from the real held-meal list. The eight
+    /// positions match the centers of the square pans on the two heater models.
+    /// </summary>
+    void RefreshFoodDisplay()
+    {
+        EnsureFoodDisplayRoot();
+        ClearFoodDisplay();
+
+        int visibleCount = Mathf.Min(meals.Count, 8);
+        for (int i = 0; i < visibleCount; i++)
+        {
+            ItemDefinition item = meals[i]?.order?.PrimaryItem;
+            GameObject prefab = GetFoodDisplayPrefab(item);
+            if (prefab == null) continue;
+
+            GameObject display = Instantiate(prefab, foodDisplayRoot);
+            display.name = "HeldFood_" + i + "_" + prefab.name;
+            display.transform.localPosition = GetFoodDisplaySlot(i);
+            display.transform.localRotation = Quaternion.identity;
+            SetUniformWorldScale(display.transform, foodDisplayScale);
+            DisableDisplayColliders(display);
+            foodDisplayObjects.Add(display);
+        }
+    }
+
+    void EnsureFoodDisplayRoot()
+    {
+        if (foodDisplayRoot != null) return;
+        Transform existing = transform.Find("HeldFoodDisplay");
+        if (existing != null)
+        {
+            foodDisplayRoot = existing;
+            return;
+        }
+
+        var root = new GameObject("HeldFoodDisplay");
+        foodDisplayRoot = root.transform;
+        foodDisplayRoot.SetParent(transform, false);
+    }
+
+    void ClearFoodDisplay()
+    {
+        foodDisplayObjects.Clear();
+
+        // Also handles play-mode script reloads where the non-serialized list is lost.
+        if (foodDisplayRoot == null) return;
+        for (int i = foodDisplayRoot.childCount - 1; i >= 0; i--)
+        {
+            GameObject child = foodDisplayRoot.GetChild(i).gameObject;
+            if (child != null)
+                Destroy(child);
+        }
+    }
+
+    Vector3 GetFoodDisplaySlot(int index)
+    {
+        int column = index % 4;
+        int row = index / 4;
+        float x = (column - 1.5f) * 0.247f;
+        float z = row == 0 ? -0.262f : 0.262f;
+        return new Vector3(x, foodDisplayHeight, z);
+    }
+
+    GameObject GetFoodDisplayPrefab(ItemDefinition item)
+    {
+        if (item == null) return null;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig
+            : null;
+
+        if (config != null)
+        {
+            if (config.IsBurger(item)) return burgerDisplayPrefab;
+            if (config.IsFries(item)) return friesDisplayPrefab;
+        }
+
+        string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+        if (label.IndexOf("burger", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return burgerDisplayPrefab;
+        if (label.IndexOf("fries", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return friesDisplayPrefab;
+        return null;
+    }
+
+    static void SetUniformWorldScale(Transform target, float scale)
+    {
+        Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
+        target.localScale = new Vector3(
+            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
+    static void DisableDisplayColliders(GameObject display)
+    {
+        foreach (Collider collider in display.GetComponentsInChildren<Collider>(true))
+            collider.enabled = false;
     }
 
     void Update()
@@ -733,8 +846,9 @@ public class HeatLampStation : MonoBehaviour
 
     void RefreshStatusLabel()
     {
-        if (statusLabel == null) return;
-        statusLabel.text = GetManagePanelText();
+        RefreshFoodDisplay();
+        if (statusLabel != null)
+            statusLabel.text = GetManagePanelText();
     }
 
     void OnDrawGizmosSelected()

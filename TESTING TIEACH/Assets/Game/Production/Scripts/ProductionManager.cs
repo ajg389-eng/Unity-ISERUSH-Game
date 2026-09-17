@@ -550,6 +550,10 @@ public class ProductionManager : MonoBehaviour
 
     void RefreshStations()
     {
+        registers.RemoveAll(r => r == null || !r.gameObject.activeInHierarchy);
+        foreach (Register placed in FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            if (placed != null && !registers.Contains(placed))
+                registers.Add(placed);
         if (freezer == null) freezer = FindObjectOfType<FreezerStation>();
         if (grill == null) grill = FindObjectOfType<GrillStation>();
         if (assembly == null) assembly = FindObjectOfType<AssemblyStation>();

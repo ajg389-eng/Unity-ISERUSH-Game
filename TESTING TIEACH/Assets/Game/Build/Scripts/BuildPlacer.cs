@@ -27,12 +27,28 @@ public class BuildPlacer : MonoBehaviour
     /// <summary>0, 1, 2, 3 = 0�, 90�, 180�, 270� while dragging.</summary>
     private int dragRotation;
     private int dragOrigRotation;
+    private CounterMountedItem draggingMountedItem;
+    private CounterSurface dragOriginalSurface;
+    private int dragOriginalSlot = -1;
+    private Vector3 dragOriginalPosition;
+    private Quaternion dragOriginalWorldRotation;
 
     public bool IsPlacing => placingItem != null;
     public bool IsDragging => draggingObject != null;
 
     void Start()
     {
+        GameObject staticCounter = GameObject.Find("Countertop");
+        if (staticCounter != null)
+        {
+            CounterSurface surface = staticCounter.GetComponent<CounterSurface>();
+            if (surface == null) surface = staticCounter.AddComponent<CounterSurface>();
+            surface.slotCount = 10;
+            surface.EnsurePlacementCollider();
+            if (staticCounter.GetComponent<GridObstacle>() == null)
+                staticCounter.AddComponent<GridObstacle>();
+            if (grid != null) grid.ResyncOccupancyFromScene();
+        }
         SetHint(false);
     }
 
@@ -71,12 +87,24 @@ public class BuildPlacer : MonoBehaviour
                 RemoveDraggedAndReturnToInventory();
                 return;
             }
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            dragRotation = (dragRotation + 1) % 4;
-            draggingObject.transform.rotation = Quaternion.Euler(0f, dragRotation * 90f, 0f);
-            Sfx.Play(SfxId.BuildRotate);
-        }
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                dragRotation = (dragRotation + 1) % 4;
+                ApplyDraggedRotation();
+                Sfx.Play(SfxId.BuildRotate);
+            }
+
+            if (draggingMountedItem != null)
+            {
+                if (TryGetHoveredCounter(out CounterSurface counter, out int slot, requireAvailable: true))
+                {
+                    PositionOnCounter(draggingObject, draggingMountedItem.itemDefinition, counter, slot, dragRotation);
+                    if (Input.GetMouseButtonDown(0))
+                        TryPlaceDraggedOnCounter(counter, slot);
+                }
+                return;
+            }
+
             if (TryGetHoveredCell(out int dx, out int dy))
             {
                 GetEffectiveDragSize(out int sx, out int sy);
@@ -95,6 +123,23 @@ public class BuildPlacer : MonoBehaviour
         {
             if (Input.GetMouseButtonDown(0))
                 TryStartDrag();
+            return;
+        }
+
+        if (placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
+        {
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                placementRotation = (placementRotation + 1) % 4;
+                Sfx.Play(SfxId.BuildRotate);
+            }
+
+            if (TryGetHoveredCounter(out CounterSurface counter, out int slot, requireAvailable: true))
+            {
+                PositionOnCounter(ghost, placingItem, counter, slot, placementRotation);
+                if (Input.GetMouseButtonDown(0))
+                    TryPlaceOnCounter(counter, slot);
+            }
             return;
         }
 
@@ -134,7 +179,8 @@ public class BuildPlacer : MonoBehaviour
         if (ghost) Destroy(ghost);
         ghost = Instantiate(item.prefab);
         ghost.name = item.prefab.name + " Ghost";
-        ghost.transform.rotation = Quaternion.identity;
+        ghost.transform.localScale = GetPlacementScale(item);
+        ghost.transform.rotation = Quaternion.Euler(item.placementEuler);
 
         MakeTranslucent(ghost, 0.7f); // 0.5 = 50% transparent
 
@@ -185,27 +231,41 @@ public class BuildPlacer : MonoBehaviour
     {
         if (!placementHintText) return;
         placementHintText.gameObject.SetActive(show);
-        if (show) placementHintText.text = dragging ? "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel" : "LMB: Place    R: Rotate    ESC: Cancel";
+        if (show) placementHintText.text = dragging
+            ? "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel"
+            : placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter
+                ? "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel"
+                : "LMB: Place    R: Rotate    ESC: Cancel";
     }
 
     /// <summary>Combined bounds of all renderers (or colliders) in world space.</summary>
     static Bounds GetCombinedBounds(GameObject obj)
     {
         var renderers = obj.GetComponentsInChildren<Renderer>();
-        if (renderers != null && renderers.Length > 0)
+        bool found = false;
+        Bounds result = new Bounds(obj.transform.position, Vector3.one);
+        if (renderers != null)
         {
-            Bounds b = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                b.Encapsulate(renderers[i].bounds);
-            return b;
+            foreach (Renderer renderer in renderers)
+            {
+                CounterMountedItem mounted = renderer.GetComponentInParent<CounterMountedItem>();
+                if (mounted != null && mounted.gameObject != obj) continue;
+                if (!found) { result = renderer.bounds; found = true; }
+                else result.Encapsulate(renderer.bounds);
+            }
+            if (found) return result;
         }
         var colliders = obj.GetComponentsInChildren<Collider>();
-        if (colliders != null && colliders.Length > 0)
+        if (colliders != null)
         {
-            Bounds b = colliders[0].bounds;
-            for (int i = 1; i < colliders.Length; i++)
-                b.Encapsulate(colliders[i].bounds);
-            return b;
+            foreach (Collider collider in colliders)
+            {
+                CounterMountedItem mounted = collider.GetComponentInParent<CounterMountedItem>();
+                if (mounted != null && mounted.gameObject != obj) continue;
+                if (!found) { result = collider.bounds; found = true; }
+                else result.Encapsulate(collider.bounds);
+            }
+            if (found) return result;
         }
         return new Bounds(obj.transform.position, Vector3.one);
     }
@@ -237,7 +297,8 @@ public class BuildPlacer : MonoBehaviour
         sizeY = 1;
         if (placingItem?.prefab == null) return;
         var fp = placingItem.prefab.GetComponent<BuildFootprint>();
-        if (fp != null) { sizeX = Mathf.Max(1, fp.sizeX); sizeY = Mathf.Max(1, fp.sizeY); }
+        sizeX = Mathf.Max(1, fp != null ? fp.sizeX : placingItem.footprintX);
+        sizeY = Mathf.Max(1, fp != null ? fp.sizeY : placingItem.footprintY);
         if (placementRotation == 1 || placementRotation == 3)
         {
             int t = sizeX;
@@ -260,6 +321,46 @@ public class BuildPlacer : MonoBehaviour
         x = Mathf.Clamp(cx, 0, grid.Width - 1);
         y = Mathf.Clamp(cy, 0, grid.Height - 1);
         return true;
+    }
+
+    bool TryGetHoveredCounter(out CounterSurface surface, out int slot, bool requireAvailable)
+    {
+        surface = null;
+        slot = -1;
+        if (Camera.main == null) return false;
+
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, -1);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
+        {
+            CounterSurface candidate = hit.collider.GetComponentInParent<CounterSurface>();
+            if (candidate == null) continue;
+            if (requireAvailable && !candidate.IsAvailable) continue;
+            int span = placingItem != null
+                ? Mathf.Max(1, placingItem.counterSlotSpan)
+                : draggingMountedItem != null && draggingMountedItem.itemDefinition != null
+                    ? Mathf.Max(1, draggingMountedItem.itemDefinition.counterSlotSpan)
+                    : 1;
+            int candidateSlot = candidate.GetNearestAvailableSlot(hit.point, span);
+            if (candidateSlot < 0) continue;
+            surface = candidate;
+            slot = candidateSlot;
+            return true;
+        }
+        return false;
+    }
+
+    static void PositionOnCounter(GameObject obj, ItemDefinition item, CounterSurface surface, int slot, int rotation)
+    {
+        if (obj == null || item == null || surface == null) return;
+        obj.transform.SetParent(null, true);
+        obj.transform.localScale = GetPlacementScale(item);
+        obj.transform.rotation = surface.transform.rotation
+            * Quaternion.Euler(item.placementEuler + Vector3.up * (rotation * 90f));
+        obj.transform.position = surface.GetMountPosition(
+            obj, slot, Mathf.Max(1, item.counterSlotSpan), item.counterEmbedDepth)
+            + surface.transform.TransformVector(item.counterLocalOffset);
     }
 
     /// <summary>Clamp (x,y) so that footprint (sizeX, sizeY) fits fully inside the grid.</summary>
@@ -294,11 +395,47 @@ public class BuildPlacer : MonoBehaviour
 
         foreach (var hit in hits)
         {
+            var mounted = hit.collider.GetComponentInParent<CounterMountedItem>();
+            if (mounted != null)
+            {
+                Register activeRegister = mounted.GetComponent<Register>();
+                HeatLampStation stockedLamp = mounted.GetComponent<HeatLampStation>();
+                if ((activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
+                    || (stockedLamp != null && stockedLamp.Count > 0))
+                {
+                    Sfx.Play(SfxId.UiError);
+                    return;
+                }
+                draggingObject = mounted.gameObject;
+                draggingMountedItem = mounted;
+                dragOriginalSurface = mounted.surface;
+                dragOriginalSlot = mounted.slotIndex;
+                dragOriginalPosition = draggingObject.transform.position;
+                dragOriginalWorldRotation = draggingObject.transform.rotation;
+                float authoredY = mounted.itemDefinition != null ? mounted.itemDefinition.placementEuler.y : 0f;
+                float surfaceY = dragOriginalSurface != null ? dragOriginalSurface.transform.eulerAngles.y : 0f;
+                float relativeY = Mathf.DeltaAngle(surfaceY + authoredY, draggingObject.transform.eulerAngles.y);
+                dragRotation = (Mathf.RoundToInt(relativeY / 90f) % 4 + 4) % 4;
+                if (dragOriginalSurface != null)
+                    dragOriginalSurface.Release(mounted);
+                draggingObject.transform.SetParent(null, true);
+                SetDraggedObjectHighlighted(draggingObject);
+                SetHint(true, true);
+                Sfx.Play(SfxId.BuildPickup);
+                return;
+            }
+
             var fp = hit.collider.GetComponentInParent<BuildFootprint>();
             if (fp == null) continue;
 
             GameObject root = fp.gameObject;
             if (root == ghost) continue;
+            CounterSurface occupiedCounter = root.GetComponent<CounterSurface>();
+            if (occupiedCounter != null && !occupiedCounter.IsAvailable)
+            {
+                Sfx.Play(SfxId.UiError);
+                return;
+            }
 
             // Compute effective size from rotation first (needed for origin)
 
@@ -345,9 +482,32 @@ public class BuildPlacer : MonoBehaviour
         EndDrag();
     }
 
+    void TryPlaceDraggedOnCounter(CounterSurface surface, int slot)
+    {
+        if (draggingObject == null || draggingMountedItem == null || surface == null || !surface.IsAvailable)
+            return;
+        PositionOnCounter(draggingObject, draggingMountedItem.itemDefinition, surface, slot, dragRotation);
+        if (!surface.Attach(draggingMountedItem, slot)) return;
+        FinalizeMountedOrientation(draggingObject);
+        Sfx.Play(SfxId.BuildPlace);
+        EndDrag();
+    }
+
     public void CancelDrag()
     {
-        if (draggingObject == null || dragFootprint == null) return;
+        if (draggingObject == null) return;
+
+        if (draggingMountedItem != null)
+        {
+            draggingObject.transform.position = dragOriginalPosition;
+            draggingObject.transform.rotation = dragOriginalWorldRotation;
+            if (dragOriginalSurface != null)
+                dragOriginalSurface.Attach(draggingMountedItem, dragOriginalSlot);
+            EndDrag();
+            return;
+        }
+
+        if (dragFootprint == null) return;
 
         draggingObject.transform.rotation = Quaternion.Euler(0f, dragOrigRotation * 90f, 0f);
         int sizeX = Mathf.Max(1, dragFootprint.sizeX);
@@ -365,7 +525,24 @@ public class BuildPlacer : MonoBehaviour
         ClearDraggedObjectHighlight();
         draggingObject = null;
         dragFootprint = null;
+        draggingMountedItem = null;
+        dragOriginalSurface = null;
+        dragOriginalSlot = -1;
         SetHint(IsPlacing);
+    }
+
+    void ApplyDraggedRotation()
+    {
+        if (draggingObject == null) return;
+        if (draggingMountedItem != null)
+        {
+            ItemDefinition item = draggingMountedItem.itemDefinition;
+            Quaternion baseRotation = dragOriginalSurface != null ? dragOriginalSurface.transform.rotation : Quaternion.identity;
+            Vector3 authored = item != null ? item.placementEuler : Vector3.zero;
+            draggingObject.transform.rotation = baseRotation * Quaternion.Euler(authored + Vector3.up * (dragRotation * 90f));
+            return;
+        }
+        draggingObject.transform.rotation = Quaternion.Euler(0f, dragRotation * 90f, 0f);
     }
 
     void SetDraggedObjectHighlighted(GameObject selectedObject)
@@ -387,14 +564,22 @@ public class BuildPlacer : MonoBehaviour
     {
         if (draggingObject == null) return;
 
-        var pbi = draggingObject.GetComponent<PlacedBuildItem>();
-        if (pbi != null && pbi.itemDefinition != null && inventory != null)
-            inventory.AddOne(pbi.itemDefinition);
+        ItemDefinition returnedItem = draggingMountedItem != null
+            ? draggingMountedItem.itemDefinition
+            : draggingObject.GetComponent<PlacedBuildItem>()?.itemDefinition;
+        if (returnedItem != null && inventory != null)
+            inventory.AddOne(returnedItem);
+
+        if (draggingMountedItem != null && draggingMountedItem.surface != null)
+            draggingMountedItem.surface.Release(draggingMountedItem);
 
         ClearDraggedObjectHighlight();
         Object.Destroy(draggingObject);
         draggingObject = null;
         dragFootprint = null;
+        draggingMountedItem = null;
+        dragOriginalSurface = null;
+        dragOriginalSlot = -1;
         SetHint(IsPlacing);
         Sfx.Play(SfxId.BuildRemove);
 
@@ -427,12 +612,15 @@ public class BuildPlacer : MonoBehaviour
 
         // Place real object (centered on footprint, bottom on floor, with placement rotation)
         var placed = Instantiate(placingItem.prefab);
+        placed.transform.localScale = GetPlacementScale(placingItem);
+        placed.transform.rotation = Quaternion.Euler(placingItem.placementEuler + Vector3.up * (placementRotation * 90f));
+        ConfigurePlacedObject(placed, placingItem);
         Vector3 pos = grid.GetFootprintCenter(x, y, sizeX, sizeY);
         placed.transform.position = pos;
-        placed.transform.rotation = Quaternion.Euler(0f, placementRotation * 90f, 0f);
         pos.y = GetYOnFloor(placed, grid.Origin.y);
         placed.transform.position = pos;
-        var pbi = placed.AddComponent<PlacedBuildItem>();
+        var pbi = placed.GetComponent<PlacedBuildItem>();
+        if (pbi == null) pbi = placed.AddComponent<PlacedBuildItem>();
         pbi.itemDefinition = placingItem;
 
         // Refresh inventory UI so quantities update
@@ -450,5 +638,94 @@ public class BuildPlacer : MonoBehaviour
         // Keep placing until user cancels (or you can auto-cancel if you want)
         // If you want auto-cancel after 1 placement, uncomment:
         // CancelPlacement();
+    }
+
+    void TryPlaceOnCounter(CounterSurface surface, int slot)
+    {
+        if (placingItem == null || surface == null || !surface.IsAvailable) return;
+        if (inventory.GetCount(placingItem) <= 0) return;
+        if (!inventory.TryConsumeOne(placingItem))
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+
+        GameObject placed = Instantiate(placingItem.prefab);
+        ConfigurePlacedObject(placed, placingItem);
+        var mounted = placed.GetComponent<CounterMountedItem>();
+        if (mounted == null) mounted = placed.AddComponent<CounterMountedItem>();
+        mounted.itemDefinition = placingItem;
+        PositionOnCounter(placed, placingItem, surface, slot, placementRotation);
+        surface.Attach(mounted, slot);
+        FinalizeMountedOrientation(placed);
+
+        var pbi = placed.GetComponent<PlacedBuildItem>();
+        if (pbi == null) pbi = placed.AddComponent<PlacedBuildItem>();
+        pbi.itemDefinition = placingItem;
+
+        var invUI = FindObjectOfType<InventoryUI>();
+        if (invUI != null) invUI.RefreshAll();
+        Sfx.Play(SfxId.BuildPlace);
+
+        var undo = PurchaseUndoManager.Ensure();
+        if (undo != null) undo.NotifyStationPlaced(placingItem, placed);
+    }
+
+    static void ConfigurePlacedObject(GameObject placed, ItemDefinition item)
+    {
+        if (placed == null || item == null) return;
+
+        if (item.placementSurface == ItemDefinition.PlacementSurface.Floor)
+        {
+            BuildFootprint footprint = placed.GetComponent<BuildFootprint>();
+            if (footprint == null) footprint = placed.AddComponent<BuildFootprint>();
+            footprint.sizeX = Mathf.Max(1, item.footprintX);
+            footprint.sizeY = Mathf.Max(1, item.footprintY);
+        }
+
+        if (item.buildFunction == ItemDefinition.BuildFunction.Counter)
+        {
+            if (placed.GetComponent<CounterSurface>() == null)
+                placed.AddComponent<CounterSurface>();
+        }
+        else if (item.buildFunction == ItemDefinition.BuildFunction.Register)
+        {
+            if (placed.GetComponentInChildren<Collider>() == null)
+                placed.AddComponent<BoxCollider>();
+            Register register = placed.GetComponent<Register>();
+            if (register == null) register = placed.AddComponent<Register>();
+            RegisterHover hover = placed.GetComponent<RegisterHover>();
+            if (hover == null) hover = placed.AddComponent<RegisterHover>();
+            if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();
+        }
+    }
+
+    static Vector3 GetPlacementScale(ItemDefinition item)
+    {
+        if (item != null)
+        {
+            Vector3 configured = item.placementScale;
+            if (Mathf.Abs(configured.x) > 0.0001f
+                && Mathf.Abs(configured.y) > 0.0001f
+                && Mathf.Abs(configured.z) > 0.0001f)
+                return configured;
+            if (item.prefab != null)
+                return item.prefab.transform.localScale;
+        }
+        return Vector3.one;
+    }
+
+    static void FinalizeMountedOrientation(GameObject placed)
+    {
+        if (placed == null) return;
+        Register register = placed.GetComponent<Register>();
+        if (register == null) return;
+
+        Vector3 lobby = -placed.transform.forward;
+        lobby.y = 0f;
+        register.queueDirection = lobby.sqrMagnitude > 0.01f ? lobby.normalized : Vector3.right;
+
+        StationInteractionTiles tiles = placed.GetComponent<StationInteractionTiles>();
+        if (tiles != null) tiles.RebuildGeneratedHighlight();
     }
 }

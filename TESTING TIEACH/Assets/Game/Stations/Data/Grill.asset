@@ -16,3 +16,12 @@ MonoBehaviour:
   prefab: {fileID: 4852931242462775543, guid: 618b71b9892fddd4c872d77cfe05da6f, type: 3}
   price: 150
   startingQuantity: 0
+  placementSurface: 0
+  footprintX: 2
+  footprintY: 1
+  placementScale: {x: 2, y: 1, z: 1}
+  placementEuler: {x: 0, y: 0, z: 0}
+  counterEmbedDepth: 0
+  counterLocalOffset: {x: 0, y: 0, z: 0}
+  counterSlotSpan: 1
+  buildFunction: 0

@@ -10285,7 +10285,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1105242392
 Transform:
   m_ObjectHideFlags: 0
@@ -10649,6 +10649,10 @@ PrefabInstance:
     - target: {fileID: 4852931242462775543, guid: ea68b4e77c24581449ae6775a50ef0de, type: 3}
       propertyPath: m_Name
       value: HeatLamp
+      objectReference: {fileID: 0}
+    - target: {fileID: 4852931242462775543, guid: ea68b4e77c24581449ae6775a50ef0de, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8581002233608562911, guid: ea68b4e77c24581449ae6775a50ef0de, type: 3}
       propertyPath: m_LocalPosition.x
@@ -13304,6 +13308,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InventoryManager
   allItems:
+  - {fileID: 11400000, guid: a1e6157e960d4da8b44c8bb878369102, type: 2}
   - {fileID: 11400000, guid: b18f6a55d2d90b9468271e1140e551f7, type: 2}
   - {fileID: 11400000, guid: ebb2596babccf6a4a8f7121df3d8e989, type: 2}
   - {fileID: 11400000, guid: 53f05f2c9f53c6c4184659d04655204c, type: 2}
@@ -16244,7 +16249,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1729481121
 Transform:
   m_ObjectHideFlags: 0
@@ -18435,7 +18440,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1883022301
 MonoBehaviour:
   m_ObjectHideFlags: 0

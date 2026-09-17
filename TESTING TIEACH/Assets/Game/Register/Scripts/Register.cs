@@ -51,8 +51,25 @@ public class Register : MonoBehaviour
 
     void Awake()
     {
+        if (storeExit == null)
+        {
+            GameObject exit = GameObject.Find("Exit");
+            if (exit != null) storeExit = exit.transform;
+        }
         StationNode.EnsureOn(gameObject);
         EnsureInteractionTiles();
+    }
+
+    void OnDisable()
+    {
+        CustomerAI[] waiting = queue.ToArray();
+        CustomerAI[] collecting = pickup.ToArray();
+        queue.Clear();
+        pickup.Clear();
+        foreach (CustomerAI customer in waiting)
+            if (customer != null) customer.OnRegisterDisabled();
+        foreach (CustomerAI customer in collecting)
+            if (customer != null) customer.OnRegisterDisabled();
     }
 
     void EnsureInteractionTiles()
@@ -73,7 +90,7 @@ public class Register : MonoBehaviour
 
     public bool HasSpace()
     {
-        if (!isEnabled || queueStart == null) return false;
+        if (!isEnabled) return false;
         if (queue.Count >= EffectiveMaxQueue) return false;
         if (pickup.Count >= EffectiveMaxPickup) return false;
         return queue.Count + pickup.Count < EffectiveMaxInside;
@@ -160,7 +177,7 @@ public class Register : MonoBehaviour
     public bool IsFrontCustomerReady()
     {
         var front = GetFrontCustomer();
-        if (front == null || queueStart == null) return false;
+        if (front == null) return false;
         return Vector3.Distance(front.transform.position, GetQueueSlot(0)) <= serveArrivalRadius;
     }
 
@@ -437,7 +454,7 @@ public class Register : MonoBehaviour
             var rends = GetComponentsInChildren<Renderer>();
             for (int i = 0; i < rends.Length; i++)
             {
-                if (rends[i] == null) continue;
+                if (CounterSurface.IsAuxiliaryPlacementRenderer(rends[i], transform)) continue;
                 if (!has) { bounds = rends[i].bounds; has = true; }
                 else bounds.Encapsulate(rends[i].bounds);
             }
