@@ -349,7 +349,13 @@ public class CustomerAI : MonoBehaviour
         routeIndex = 0;
         gridPath.Clear();
 
-        if (exitPath != null && exitPath.Count > 0)
+        CustomerWallDoor exitDoor = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Exit);
+        if (exitDoor != null)
+        {
+            route.Add(exitDoor.GetCustomerWaypoint(false, 1.25f));
+            route.Add(exitDoor.GetCustomerWaypoint(true, 1.75f));
+        }
+        else if (exitPath != null && exitPath.Count > 0)
             exitPath.GetWorldPoints(route);
         else if (fallbackExit != null)
             route.Add(fallbackExit.position);

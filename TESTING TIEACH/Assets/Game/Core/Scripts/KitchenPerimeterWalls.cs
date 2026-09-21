@@ -66,6 +66,14 @@ public class KitchenPerimeterWalls : MonoBehaviour
     Transform entranceDoor;
     bool copyingLook;
     bool rebuilding;
+    bool refreshRequested;
+
+    struct DoorOpening
+    {
+        public float center;
+        public float halfWidth;
+        public float top;
+    }
 
     void Awake()
     {
@@ -77,6 +85,18 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
         if (!generateAtRuntime)
             HideRuntimeGeneratedRoot();
+    }
+
+    public void RequestRefresh()
+    {
+        refreshRequested = true;
+    }
+
+    void LateUpdate()
+    {
+        if (!refreshRequested) return;
+        refreshRequested = false;
+        FitToGrid();
     }
 
     public void FitToGrid()
@@ -314,30 +334,38 @@ public class KitchenPerimeterWalls : MonoBehaviour
         Vector3 along = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
         Vector3 wallPos = new Vector3(baseCenter.x, 0f, baseCenter.z);
 
-        float doorAlong = 0f;
-        float doorHalf = 0f;
-        float doorTop = 0f;
-        bool hasDoor = TryDoorOnWall(wallPos, along, length, thick, out doorAlong, out doorHalf, out doorTop);
+        var doors = new List<DoorOpening>();
+        CollectDoorsOnWall(wallPos, along, length, thick, doors);
+        bool hasDoor = doors.Count > 0;
 
         float sillH = Mathf.Max(0.35f, windowSill);
         float windowTop = sillH + windowHeight;
-        float bandTop = hasDoor ? Mathf.Max(windowTop, doorTop) : windowTop;
+        float bandTop = windowTop;
+        for (int i = 0; i < doors.Count; i++)
+            bandTop = Mathf.Max(bandTop, doors[i].top);
         float headerH = Mathf.Max(0.35f, height - bandTop);
         float openingH = Mathf.Max(0.4f, bandTop - sillH);
 
         var openings = new List<(float start, float end, bool door)>();
-        if (hasDoor)
-            openings.Add((doorAlong - doorHalf, doorAlong + doorHalf, true));
+        for (int i = 0; i < doors.Count; i++)
+            openings.Add((doors[i].center - doors[i].halfWidth,
+                doors[i].center + doors[i].halfWidth, true));
 
         if (forceFlankingDoor && hasDoor)
         {
-            // Keep a full brick gap between the door edge and each window.
-            // Negative along is the lobby-view LEFT side of the door.
+            // Keep a full brick gap between the outside door edges and the windows.
             float clearance = 1.6f;
-            float leftCenter = doorAlong - doorHalf - clearance - windowWidth * 0.5f;
-            float rightCenter = doorAlong + doorHalf + clearance + windowWidth * 0.5f;
-            TryAddWindowOpening(openings, leftCenter, length, true, doorAlong, doorHalf);
-            TryAddWindowOpening(openings, rightCenter, length, true, doorAlong, doorHalf);
+            float leftEdge = float.MaxValue;
+            float rightEdge = float.MinValue;
+            for (int i = 0; i < doors.Count; i++)
+            {
+                leftEdge = Mathf.Min(leftEdge, doors[i].center - doors[i].halfWidth);
+                rightEdge = Mathf.Max(rightEdge, doors[i].center + doors[i].halfWidth);
+            }
+            TryAddWindowOpening(openings,
+                leftEdge - clearance - windowWidth * 0.5f, length, doors);
+            TryAddWindowOpening(openings,
+                rightEdge + clearance + windowWidth * 0.5f, length, doors);
         }
         else if (!forceFlankingDoor)
         {
@@ -346,7 +374,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
             for (int i = 1; i <= count; i++)
             {
                 float centerAlong = -length * 0.5f + step * i;
-                TryAddWindowOpening(openings, centerAlong, length, hasDoor, doorAlong, doorHalf);
+                TryAddWindowOpening(openings, centerAlong, length, doors);
             }
         }
 
@@ -378,7 +406,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
             if (op.door)
             {
-                // Leave a hole for the existing Door mesh.
+                // Leave a floor-to-header opening for the door mesh.
             }
             else
             {
@@ -438,30 +466,65 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     void TryAddWindowOpening(
         List<(float start, float end, bool door)> openings,
-        float centerAlong, float length, bool hasDoor, float doorAlong, float doorHalf)
+        float centerAlong, float length, List<DoorOpening> doors)
     {
         float half = windowWidth * 0.5f;
         float start = centerAlong - half;
         float end = centerAlong + half;
         if (start < -length * 0.5f + 0.2f || end > length * 0.5f - 0.2f)
             return;
-        if (hasDoor && start < doorAlong + doorHalf + 1.2f && end > doorAlong - doorHalf - 1.2f)
-            return;
+        for (int i = 0; i < doors.Count; i++)
+            if (start < doors[i].center + doors[i].halfWidth + 1.2f
+                && end > doors[i].center - doors[i].halfWidth - 1.2f)
+                return;
         openings.Add((start, end, false));
     }
 
-    bool TryDoorOnWall(Vector3 wallPos, Vector3 along, float length, float thick, out float doorAlong, out float doorHalf, out float doorTop)
+    void CollectDoorsOnWall(Vector3 wallPos, Vector3 along, float length, float thick,
+        List<DoorOpening> results)
     {
-        doorAlong = 0f;
-        doorHalf = 0f;
-        doorTop = 0f;
         CacheEntranceDoor();
-        if (entranceDoor == null) return false;
+        if (entranceDoor != null)
+            TryAddDoorOnWall(entranceDoor, wallPos, along, length, thick, results);
 
+        CustomerWallDoor[] placedDoors = FindObjectsByType<CustomerWallDoor>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < placedDoors.Length; i++)
+        {
+            CustomerWallDoor door = placedDoors[i];
+            if (door == null || door.transform == entranceDoor) continue;
+            TryAddDoorOnWall(door.transform, wallPos, along, length, thick, results);
+        }
+
+        results.Sort((a, b) => a.center.CompareTo(b.center));
+    }
+
+    bool TryAddDoorOnWall(Transform door, Vector3 wallPos, Vector3 along, float length,
+        float thick, List<DoorOpening> results)
+    {
+        if (door == null) return false;
         along = along.normalized;
-        Bounds b = entranceDoor.GetComponent<Collider>() != null
-            ? entranceDoor.GetComponent<Collider>().bounds
-            : new Bounds(entranceDoor.position, entranceDoor.lossyScale);
+        Renderer[] doorRenderers = door.GetComponentsInChildren<Renderer>();
+        Collider[] doorColliders = door.GetComponentsInChildren<Collider>();
+        Bounds b = new Bounds(door.position, door.lossyScale);
+        bool foundBounds = false;
+        for (int i = 0; i < doorRenderers.Length; i++)
+        {
+            Renderer renderer = doorRenderers[i];
+            if (renderer == null || !renderer.enabled) continue;
+            if (!foundBounds) { b = renderer.bounds; foundBounds = true; }
+            else b.Encapsulate(renderer.bounds);
+        }
+        if (!foundBounds)
+        {
+            for (int i = 0; i < doorColliders.Length; i++)
+            {
+                Collider collider = doorColliders[i];
+                if (collider == null || !collider.enabled) continue;
+                if (!foundBounds) { b = collider.bounds; foundBounds = true; }
+                else b.Encapsulate(collider.bounds);
+            }
+        }
 
         Vector3 toDoor = b.center - wallPos;
         toDoor.y = 0f;
@@ -483,12 +546,18 @@ public class KitchenPerimeterWalls : MonoBehaviour
             if (a > maxAlong) maxAlong = a;
         }
 
-        doorAlong = (minAlong + maxAlong) * 0.5f;
-        doorHalf = (maxAlong - minAlong) * 0.5f + 0.15f;
+        float doorAlong = (minAlong + maxAlong) * 0.5f;
+        float doorHalf = (maxAlong - minAlong) * 0.5f + 0.15f;
         if (Mathf.Abs(doorAlong) > length * 0.5f + 0.75f)
             return false;
 
-        doorTop = Mathf.Max(2.4f, b.max.y - (grid != null ? grid.Origin.y : 0f));
+        float doorTop = Mathf.Max(2.4f, b.max.y - (grid != null ? grid.Origin.y : 0f));
+        results.Add(new DoorOpening
+        {
+            center = doorAlong,
+            halfWidth = doorHalf,
+            top = doorTop
+        });
         return true;
     }
 

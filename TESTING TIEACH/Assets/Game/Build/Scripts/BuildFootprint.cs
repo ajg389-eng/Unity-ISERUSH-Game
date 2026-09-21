@@ -1,9 +1,216 @@
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 public class BuildFootprint : MonoBehaviour
 {
     public int sizeX = 1;
     public int sizeY = 1;
+}
+
+/// <summary>
+/// Marks a player-placed customer entrance/exit. KitchenPerimeterWalls reads these
+/// markers and leaves a correctly sized opening in the generated brick wall.
+/// </summary>
+public class CustomerWallDoor : MonoBehaviour
+{
+    public enum WallSide { South, East, North }
+    public enum DoorRole { Entrance, Exit }
+
+    public WallSide wallSide;
+    public DoorRole role = DoorRole.Entrance;
+
+    static CustomerWallDoor activePopupDoor;
+    GameObject rolePopup;
+    Image entranceButtonImage;
+    Image exitButtonImage;
+    TextMeshProUGUI titleText;
+
+    public static bool HasActivePopup => activePopupDoor != null
+        && activePopupDoor.rolePopup != null
+        && activePopupDoor.rolePopup.activeSelf;
+
+    public void ShowRolePopup()
+    {
+        if (activePopupDoor != null && activePopupDoor != this)
+            activePopupDoor.HideRolePopup();
+
+        EnsureRolePopup();
+        activePopupDoor = this;
+        rolePopup.SetActive(true);
+        RefreshRolePopup();
+        PositionRolePopup();
+    }
+
+    public void HideRolePopup()
+    {
+        if (rolePopup != null) rolePopup.SetActive(false);
+        if (activePopupDoor == this) activePopupDoor = null;
+    }
+
+    public static void HideActivePopup()
+    {
+        if (activePopupDoor != null) activePopupDoor.HideRolePopup();
+    }
+
+    void LateUpdate()
+    {
+        if (rolePopup == null || !rolePopup.activeSelf) return;
+        if (ManagementModeController.Instance == null
+            || !ManagementModeController.Instance.IsManageMode)
+        {
+            HideRolePopup();
+            return;
+        }
+        PositionRolePopup();
+    }
+
+    void EnsureRolePopup()
+    {
+        if (rolePopup != null) return;
+
+        rolePopup = new GameObject("Door Role Popup", typeof(RectTransform), typeof(Canvas),
+            typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(Image));
+        RectTransform rootRect = rolePopup.GetComponent<RectTransform>();
+        rootRect.sizeDelta = new Vector2(300f, 132f);
+        rootRect.localScale = Vector3.one * 0.006f;
+
+        Canvas canvas = rolePopup.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = Camera.main;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 250;
+        rolePopup.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 16f;
+        rolePopup.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.12f, 0.96f);
+
+        titleText = CreatePopupText(rolePopup.transform, "Title", new Vector2(0f, 46f),
+            new Vector2(280f, 34f), 22f);
+        Button entranceButton = CreateRoleButton(rolePopup.transform, "Entrance", -72f,
+            () => SetRole(DoorRole.Entrance), out entranceButtonImage);
+        Button exitButton = CreateRoleButton(rolePopup.transform, "Exit", 72f,
+            () => SetRole(DoorRole.Exit), out exitButtonImage);
+        entranceButton.navigation = new Navigation { mode = Navigation.Mode.None };
+        exitButton.navigation = new Navigation { mode = Navigation.Mode.None };
+    }
+
+    static TextMeshProUGUI CreatePopupText(Transform parent, string objectName,
+        Vector2 position, Vector2 size, float fontSize)
+    {
+        GameObject textObject = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(parent, false);
+        RectTransform rect = textObject.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.fontSize = fontSize;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        return text;
+    }
+
+    static Button CreateRoleButton(Transform parent, string label, float x,
+        UnityEngine.Events.UnityAction onClick, out Image image)
+    {
+        GameObject buttonObject = new GameObject(label + " Button", typeof(RectTransform),
+            typeof(Image), typeof(Button));
+        buttonObject.transform.SetParent(parent, false);
+        RectTransform rect = buttonObject.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(x, -24f);
+        rect.sizeDelta = new Vector2(132f, 54f);
+        image = buttonObject.GetComponent<Image>();
+        Button button = buttonObject.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(onClick);
+        TextMeshProUGUI text = CreatePopupText(buttonObject.transform, "Text", Vector2.zero,
+            new Vector2(124f, 48f), 20f);
+        text.text = label;
+        return button;
+    }
+
+    void SetRole(DoorRole newRole)
+    {
+        role = newRole;
+        RefreshRolePopup();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void RefreshRolePopup()
+    {
+        if (titleText != null) titleText.text = "Door: " + role;
+        Color selected = new Color(0.24f, 0.63f, 0.39f, 1f);
+        Color normal = new Color(0.25f, 0.28f, 0.36f, 1f);
+        if (entranceButtonImage != null)
+            entranceButtonImage.color = role == DoorRole.Entrance ? selected : normal;
+        if (exitButtonImage != null)
+            exitButtonImage.color = role == DoorRole.Exit ? selected : normal;
+    }
+
+    public static CustomerWallDoor FindRandomDoor(DoorRole desiredRole)
+    {
+        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(FindObjectsSortMode.None);
+        int matchingCount = 0;
+        foreach (CustomerWallDoor door in doors)
+            if (door != null && door.isActiveAndEnabled && door.role == desiredRole)
+                matchingCount++;
+
+        if (matchingCount == 0) return null;
+        int selectedIndex = Random.Range(0, matchingCount);
+        foreach (CustomerWallDoor door in doors)
+        {
+            if (door == null || !door.isActiveAndEnabled || door.role != desiredRole) continue;
+            if (selectedIndex-- == 0) return door;
+        }
+        return null;
+    }
+
+    public Vector3 GetCustomerWaypoint(bool outside, float distance = 1.5f)
+    {
+        Bounds bounds = GetVisualBounds();
+        Vector3 outward = wallSide switch
+        {
+            WallSide.South => Vector3.back,
+            WallSide.East => Vector3.right,
+            _ => Vector3.forward
+        };
+        Vector3 point = bounds.center + outward * (outside ? distance : -distance);
+        point.y = bounds.min.y;
+        return point;
+    }
+
+    Bounds GetVisualBounds()
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        Bounds bounds = new Bounds(transform.position, Vector3.one);
+        bool found = false;
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null || renderer.GetComponentInParent<Canvas>() != null) continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
+        }
+        return bounds;
+    }
+
+    void PositionRolePopup()
+    {
+        if (rolePopup == null || Camera.main == null) return;
+        Bounds bounds = GetVisualBounds();
+        rolePopup.transform.position = new Vector3(bounds.center.x, bounds.max.y + 0.55f, bounds.center.z);
+        rolePopup.transform.forward = Camera.main.transform.forward;
+    }
+
+    void OnDestroy()
+    {
+        if (activePopupDoor == this) activePopupDoor = null;
+        if (rolePopup != null) Destroy(rolePopup);
+        if (!Application.isPlaying) return;
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (walls != null) walls.RequestRefresh();
+    }
 }
 
 /// <summary>One modular counter cell that can hold one counter-mounted station.</summary>
@@ -56,8 +263,7 @@ public class CounterSurface : MonoBehaviour
         foreach (Renderer renderer in renderers)
         {
             if (renderer == null) continue;
-            if (renderer.GetComponentInParent<CounterMountedItem>() != null) continue;
-            if (renderer.GetComponentInParent<CounterGridVisual>() != null) continue;
+            if (!IsCounterBodyRenderer(renderer)) continue;
             if (!found) { bounds = renderer.bounds; found = true; }
             else bounds.Encapsulate(renderer.bounds);
         }
@@ -65,6 +271,109 @@ public class CounterSurface : MonoBehaviour
         if (found) return bounds;
         Collider collider = GetComponentInChildren<Collider>();
         return collider != null ? collider.bounds : bounds;
+    }
+
+    bool IsCounterBodyRenderer(Renderer renderer)
+    {
+        if (renderer == null) return false;
+        if (renderer.GetComponentInParent<CounterMountedItem>() != null) return false;
+        if (renderer.GetComponentInParent<CounterGridVisual>() != null) return false;
+
+        // Scene-authored equipment may be parented under Countertop without a
+        // CounterMountedItem marker. It must not affect counter resize bounds.
+        if (renderer.GetComponentInParent<Register>() != null) return false;
+        if (renderer.GetComponentInParent<HeatLampStation>() != null) return false;
+        if (renderer.GetComponentInParent<StationNode>() != null) return false;
+        return renderer.transform == transform || renderer.transform.IsChildOf(transform);
+    }
+
+    /// <summary>
+    /// Extends only the counter's world-Z length and keeps its north edge fixed.
+    /// Mounted equipment is shifted to the matching physical slot afterward.
+    /// </summary>
+    public void ResizeForKitchenDepth(float targetWorldLength, float targetCenterZ,
+        int newSlotCount, int slotIndexDelta)
+    {
+        targetWorldLength = Mathf.Max(0.01f, targetWorldLength);
+        newSlotCount = Mathf.Max(1, newSlotCount);
+        RebuildOccupants();
+
+        var bodyRoots = new System.Collections.Generic.List<Transform>();
+        var seenRoots = new System.Collections.Generic.HashSet<Transform>();
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        Bounds oldBounds = new Bounds(transform.position, Vector3.zero);
+        bool foundBounds = false;
+
+        foreach (Renderer renderer in renderers)
+        {
+            if (!IsCounterBodyRenderer(renderer)) continue;
+            if (!foundBounds) { oldBounds = renderer.bounds; foundBounds = true; }
+            else oldBounds.Encapsulate(renderer.bounds);
+
+            Transform root = renderer.transform;
+            while (root.parent != null && root.parent != transform)
+                root = root.parent;
+            if (root != transform && seenRoots.Add(root))
+                bodyRoots.Add(root);
+        }
+
+        if (foundBounds && oldBounds.size.z > 0.001f && bodyRoots.Count > 0)
+        {
+            float ratio = targetWorldLength / oldBounds.size.z;
+            foreach (Transform bodyRoot in bodyRoots)
+            {
+                Vector3 scale = bodyRoot.localScale;
+                float xAlignment = Mathf.Abs(Vector3.Dot(
+                    bodyRoot.right.normalized, Vector3.forward));
+                float zAlignment = Mathf.Abs(Vector3.Dot(
+                    bodyRoot.forward.normalized, Vector3.forward));
+                if (xAlignment > zAlignment) scale.x *= ratio;
+                else scale.z *= ratio;
+                bodyRoot.localScale = scale;
+
+                Vector3 position = bodyRoot.position;
+                position.z = targetCenterZ + (position.z - oldBounds.center.z) * ratio;
+                bodyRoot.position = position;
+            }
+
+            Bounds resizedBounds = GetBaseBounds();
+            float correction = targetCenterZ - resizedBounds.center.z;
+            if (Mathf.Abs(correction) > 0.0001f)
+                foreach (Transform bodyRoot in bodyRoots)
+                    bodyRoot.position += Vector3.forward * correction;
+        }
+
+        slotCount = newSlotCount;
+        foreach (CounterMountedItem item in occupants)
+        {
+            if (item == null) continue;
+            int span = item.itemDefinition != null
+                ? Mathf.Max(1, item.itemDefinition.counterSlotSpan)
+                : 1;
+            item.slotIndex = Mathf.Clamp(
+                item.slotIndex + slotIndexDelta, 0, Mathf.Max(0, slotCount - span));
+        }
+
+        EnsurePlacementCollider();
+        BuildGridVisual();
+        RealignMountedItems();
+        UpdateGridVisibility();
+    }
+
+    void RealignMountedItems()
+    {
+        foreach (CounterMountedItem item in occupants)
+        {
+            if (item == null || item.itemDefinition == null) continue;
+            ItemDefinition definition = item.itemDefinition;
+            int span = Mathf.Max(1, definition.counterSlotSpan);
+            Vector3 position = GetMountPosition(
+                item.gameObject, item.slotIndex, span, definition.counterEmbedDepth);
+            position += transform.TransformVector(definition.counterLocalOffset);
+            if (definition.useFixedCounterY)
+                position.y = definition.fixedCounterY;
+            item.transform.position = position;
+        }
     }
 
     public void EnsurePlacementCollider()

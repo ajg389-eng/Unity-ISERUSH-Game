@@ -135,6 +135,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode)
         {
+            CustomerWallDoor.HideActivePopup();
             if (IsCapturingFlow)
                 CancelFlowCapture();
             if (selectedStation != null || pending != PendingAction.None || selectedEmployee != null)
@@ -191,6 +192,7 @@ public class ManagementModeController : MonoBehaviour
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
+            CustomerWallDoor.HideActivePopup();
             if (pending == PendingAction.None && !IsCapturingFlow)
             {
                 ClearEmployeeSelection();
@@ -204,10 +206,23 @@ public class ManagementModeController : MonoBehaviour
         var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
         if (clickedEmployee != null && !IsCapturingFlow)
         {
+            CustomerWallDoor.HideActivePopup();
             CancelOutputDrag();
             SelectEmployeeForAssignment(clickedEmployee);
             return;
         }
+
+        CustomerWallDoor clickedDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
+        if (clickedDoor != null && !IsCapturingFlow)
+        {
+            CancelOutputDrag();
+            ClearEmployeeSelection();
+            ClearSelection();
+            clickedDoor.ShowRolePopup();
+            return;
+        }
+
+        CustomerWallDoor.HideActivePopup();
 
         var node = StationNode.FindFromCollider(hit.collider);
         if (node == null)
@@ -1010,6 +1025,7 @@ public class ManagementModeController : MonoBehaviour
 
     void CancelAndHide()
     {
+        CustomerWallDoor.HideActivePopup();
         pending = PendingAction.None;
         CancelOutputDrag();
         ClearEmployeeSelection();
@@ -1022,6 +1038,7 @@ public class ManagementModeController : MonoBehaviour
             || pending != PendingAction.None
             || selectedStation != null
             || selectedEmployee != null
+            || CustomerWallDoor.HasActivePopup
             || (stationPopup != null && stationPopup.activeSelf);
     }
 

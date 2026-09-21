@@ -12,6 +12,10 @@ public class GridManager : MonoBehaviour
     [Header("Expansion")]
     [Tooltip("Native size of a Unity Plane mesh (default Plane is 10x10). Used when scaling the floor.")]
     public float floorMeshWorldSize = 10f;
+    [Tooltip("Customer floor that extends south with the work floor. Auto-finds CustomerFloor when empty.")]
+    public Transform customerFloor;
+    [Tooltip("Divider counter that extends south with the floors. Auto-finds Countertop when empty.")]
+    public Transform dividerCounter;
     [Tooltip("Maximum grid width (cells) the player can expand to.")]
     public int maxWidth = 30;
     [Tooltip("Maximum grid height / depth (cells) the player can expand to.")]
@@ -146,6 +150,9 @@ public class GridManager : MonoBehaviour
         Width = newW;
         Height = newH;
         Origin = newOrigin;
+        ResizeCustomerFloorToDepth(newH, newOrigin);
+        ResizeDividerCounterToDepth(newH, newOrigin, addHeight);
+        SyncFloorTextureTiling();
 
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
@@ -183,6 +190,9 @@ public class GridManager : MonoBehaviour
         Width = newW;
         Height = newH;
         Origin = newOrigin;
+        ResizeCustomerFloorToDepth(newH, newOrigin);
+        ResizeDividerCounterToDepth(newH, newOrigin, -removeHeight);
+        SyncFloorTextureTiling();
 
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
@@ -290,7 +300,54 @@ public class GridManager : MonoBehaviour
             floor.position.y,
             origin.z + worldH * 0.5f);
 
-        SyncFloorTextureTiling();
+    }
+
+    void ResizeCustomerFloorToDepth(int cellsH, Vector3 origin)
+    {
+        if (customerFloor == null)
+        {
+            GameObject found = GameObject.Find("CustomerFloor");
+            if (found != null) customerFloor = found.transform;
+        }
+        if (customerFloor == null) return;
+
+        float worldH = cellsH * cellSize;
+        float mesh = Mathf.Max(0.01f, floorMeshWorldSize);
+        Vector3 scale = customerFloor.localScale;
+
+        // Preserve the authored width and only extend toward world -Z (south).
+        customerFloor.localScale = new Vector3(scale.x, scale.y, worldH / mesh);
+        customerFloor.position = new Vector3(
+            customerFloor.position.x,
+            customerFloor.position.y,
+            origin.z + worldH * 0.5f);
+
+        int customerWidth = GetFloorCellWidth(customerFloor);
+        SyncFloorTextureTiling(customerFloor, customerWidth, cellsH);
+    }
+
+    void ResizeDividerCounterToDepth(int cellsH, Vector3 origin, int slotIndexDelta)
+    {
+        if (dividerCounter == null)
+        {
+            GameObject found = GameObject.Find("Countertop");
+            if (found != null) dividerCounter = found.transform;
+        }
+        if (dividerCounter == null) return;
+
+        CounterSurface surface = dividerCounter.GetComponent<CounterSurface>();
+        if (surface == null) surface = dividerCounter.gameObject.AddComponent<CounterSurface>();
+        float worldH = cellsH * cellSize;
+        surface.ResizeForKitchenDepth(
+            worldH, origin.z + worldH * 0.5f, cellsH, slotIndexDelta);
+    }
+
+    int GetFloorCellWidth(Transform targetFloor)
+    {
+        Renderer renderer = targetFloor != null ? targetFloor.GetComponentInChildren<Renderer>() : null;
+        if (renderer == null) return 1;
+        return Mathf.Max(1, Mathf.RoundToInt(
+            renderer.bounds.size.x / Mathf.Max(0.01f, cellSize)));
     }
 
     /// <summary>
@@ -300,14 +357,19 @@ public class GridManager : MonoBehaviour
     /// </summary>
     public void SyncFloorTextureTiling()
     {
-        if (!syncFloorTextureToGrid || floor == null) return;
-        if (Width <= 0 || Height <= 0) return;
+        SyncFloorTextureTiling(floor, Width, Height);
+    }
 
-        var renderer = floor.GetComponentInChildren<Renderer>();
+    void SyncFloorTextureTiling(Transform targetFloor, int cellsW, int cellsH)
+    {
+        if (!syncFloorTextureToGrid || targetFloor == null) return;
+        if (cellsW <= 0 || cellsH <= 0) return;
+
+        var renderer = targetFloor.GetComponentInChildren<Renderer>();
         if (renderer == null) return;
 
-        float tilesX = Width * Mathf.Max(0.01f, textureTilesPerCell);
-        float tilesY = Height * Mathf.Max(0.01f, textureTilesPerCell);
+        float tilesX = cellsW * Mathf.Max(0.01f, textureTilesPerCell);
+        float tilesY = cellsH * Mathf.Max(0.01f, textureTilesPerCell);
         var scale = new Vector2(tilesX, tilesY);
 
         // Prefer a per-renderer instance so we don't mutate the shared project material permanently.

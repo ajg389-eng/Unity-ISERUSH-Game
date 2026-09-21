@@ -371,7 +371,7 @@ public class PurchaseUndoManager : MonoBehaviour
         if (placer != null && placer.IsDragging)
             placer.CancelDrag();
 
-        if (grid != null)
+        if (grid != null && go.GetComponent<CustomerWallDoor>() == null)
         {
             var fp = go.GetComponent<BuildFootprint>();
             int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);

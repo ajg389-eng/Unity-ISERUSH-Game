@@ -3,8 +3,8 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "FactoryGame/Item Definition")]
 public class ItemDefinition : ScriptableObject
 {
-    public enum PlacementSurface { Floor, Counter }
-    public enum BuildFunction { None, Counter, Register }
+    public enum PlacementSurface { Floor, Counter, CustomerWall }
+    public enum BuildFunction { None, Counter, Register, CustomerDoor }
 
     public string itemName;
     public GameObject prefab;   // what gets placed in the world
@@ -14,7 +14,7 @@ public class ItemDefinition : ScriptableObject
     public int startingQuantity = 0;
 
     [Header("Placement")]
-    [Tooltip("Floor items occupy grid cells. Counter items snap onto a free counter module.")]
+    [Tooltip("Floor items occupy grid cells. Counter items snap onto a free counter module. Customer-wall items snap to the outside walls bordering the customer floor.")]
     public PlacementSurface placementSurface = PlacementSurface.Floor;
     [Min(1)] public int footprintX = 1;
     [Min(1)] public int footprintY = 1;

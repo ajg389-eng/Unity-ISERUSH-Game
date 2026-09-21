@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Lowers walls on the camera-facing side of the kitchen so you can see into the store.
+/// Applies a Sims-style low-wall cutaway on the camera-facing side of the store.
 /// Add to any scene object (or it auto-creates beside the camera).
 /// </summary>
 public class CameraWallCutaway : MonoBehaviour
@@ -19,11 +19,11 @@ public class CameraWallCutaway : MonoBehaviour
 
     public GridManager grid;
 
-    [Tooltip("How strongly a wall must face the camera side before it ducks (0–1).")]
+    [Tooltip("How strongly a wall must face the camera side before it cuts away (0-1).")]
     [Range(0.05f, 0.9f)]
     public float duckDotThreshold = 0.2f;
 
-    [Tooltip("How fast walls lower / rise.")]
+    [Tooltip("How fast walls transition between full height and cutaway height.")]
     public float duckSpeed = 7f;
 
     [Tooltip("Auto-tag scene objects named like Wall on start.")]
@@ -105,7 +105,7 @@ public class CameraWallCutaway : MonoBehaviour
             Vector3 outward = wall.GetOutward(focus);
             float face = Vector3.Dot(camDir, outward);
 
-            // Also duck walls that sit on the camera side of the store (helps L-shaped dining).
+            // Also fade walls that sit on the camera side of the store (helps L-shaped dining).
             Vector3 toWall = wall.transform.position - focus;
             toWall.y = 0f;
             float onCamSide = toWall.sqrMagnitude > 0.01f
@@ -169,7 +169,7 @@ public class CameraWallCutaway : MonoBehaviour
             var t = all[i];
             if (t == null) continue;
             string n = t.name;
-            // Procedural bricks/windows duck with their KitchenWallGroup parent — don't tag per-piece.
+            // Procedural bricks and windows cut away with their parent wall group.
             if (n.StartsWith("KitchenWallBrick_", System.StringComparison.OrdinalIgnoreCase)
                 || n.StartsWith("KitchenWindow_", System.StringComparison.OrdinalIgnoreCase)
                 || n.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
@@ -189,3 +189,5 @@ public class CameraWallCutaway : MonoBehaviour
         }
     }
 }
+
+

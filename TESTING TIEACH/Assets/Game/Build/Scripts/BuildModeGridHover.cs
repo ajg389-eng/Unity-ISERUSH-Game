@@ -48,6 +48,7 @@ public class BuildModeGridHover : MonoBehaviour
         if (Camera.main == null) return;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (TryShowCounterHighlight(ray)) return;
+        if (TryShowCustomerDoorHighlight()) return;
 
         if (Physics.Raycast(ray, out RaycastHit hit, 200f, floorLayer))
         {
@@ -66,6 +67,22 @@ public class BuildModeGridHover : MonoBehaviour
         {
             if (highlightInstance) highlightInstance.SetActive(false);
         }
+    }
+
+    bool TryShowCustomerDoorHighlight()
+    {
+        if (highlightInstance == null || buildPlacer == null) return false;
+        if (!buildPlacer.TryGetCustomerDoorHighlight(out Vector3 center, out float tileSize))
+            return false;
+
+        highlightInstance.transform.rotation = highlightBaseRotation;
+        highlightInstance.transform.localScale = new Vector3(
+            highlightBaseScale.x * tileSize,
+            highlightBaseScale.y * tileSize,
+            highlightBaseScale.z);
+        highlightInstance.transform.position = center;
+        highlightInstance.SetActive(true);
+        return true;
     }
 
     bool TryShowCounterHighlight(Ray ray)

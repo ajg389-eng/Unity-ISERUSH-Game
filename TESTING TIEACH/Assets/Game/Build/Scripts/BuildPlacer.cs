@@ -32,12 +32,17 @@ public class BuildPlacer : MonoBehaviour
     private int dragOriginalSlot = -1;
     private Vector3 dragOriginalPosition;
     private Quaternion dragOriginalWorldRotation;
+    private CustomerWallDoor draggingWallDoor;
+    private CustomerWallDoor.WallSide dragOriginalWallSide;
 
     public bool IsPlacing => placingItem != null;
     public bool IsDragging => draggingObject != null;
     public bool IsCounterPlacementActive =>
         (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
         || draggingMountedItem != null;
+    public bool IsCustomerWallPlacementActive =>
+        (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+        || draggingWallDoor != null;
     public int CounterHoverSpan => placingItem != null
         && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter
             ? Mathf.Max(1, placingItem.counterSlotSpan)
@@ -96,6 +101,19 @@ public class BuildPlacer : MonoBehaviour
                 RemoveDraggedAndReturnToInventory();
                 return;
             }
+
+            if (draggingWallDoor != null)
+            {
+                if (TryGetCustomerWallPlacement(draggingObject, out Vector3 doorPosition,
+                    out Quaternion doorRotation, out CustomerWallDoor.WallSide doorSide))
+                {
+                    draggingObject.transform.SetPositionAndRotation(doorPosition, doorRotation);
+                    if (Input.GetMouseButtonDown(0))
+                        TryPlaceDraggedDoor(doorPosition, doorRotation, doorSide);
+                }
+                return;
+            }
+
             if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsCurrentDragRotationLocked())
             {
                 dragRotation = (dragRotation + 1) % 4;
@@ -132,6 +150,18 @@ public class BuildPlacer : MonoBehaviour
         {
             if (Input.GetMouseButtonDown(0))
                 TryStartDrag();
+            return;
+        }
+
+        if (placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+        {
+            if (TryGetCustomerWallPlacement(ghost, out Vector3 doorPosition,
+                out Quaternion doorRotation, out CustomerWallDoor.WallSide doorSide))
+            {
+                ghost.transform.SetPositionAndRotation(doorPosition, doorRotation);
+                if (Input.GetMouseButtonDown(0))
+                    TryPlaceCustomerDoor(doorPosition, doorRotation, doorSide);
+            }
             return;
         }
 
@@ -257,6 +287,8 @@ public class BuildPlacer : MonoBehaviour
             placementHintText.text = rotationLocked
                 ? "Hover a free counter    LMB: Place    ESC: Cancel"
                 : "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel";
+        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            placementHintText.text = "Hover a customer-floor wall    LMB: Place    ESC: Cancel";
         else
             placementHintText.text = rotationLocked
                 ? "LMB: Place    ESC: Cancel"
@@ -277,6 +309,8 @@ public class BuildPlacer : MonoBehaviour
             && (instance.GetComponent<Register>() != null || instance.GetComponent<HeatLampStation>() != null))
             return true;
         if (item == null) return false;
+        if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            return true;
         if (item.buildFunction == ItemDefinition.BuildFunction.Register)
             return true;
         return item.prefab != null && item.prefab.GetComponent<HeatLampStation>() != null;
@@ -441,6 +475,20 @@ public class BuildPlacer : MonoBehaviour
 
         foreach (var hit in hits)
         {
+            CustomerWallDoor wallDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
+            if (wallDoor != null)
+            {
+                draggingObject = wallDoor.gameObject;
+                draggingWallDoor = wallDoor;
+                dragOriginalPosition = draggingObject.transform.position;
+                dragOriginalWorldRotation = draggingObject.transform.rotation;
+                dragOriginalWallSide = wallDoor.wallSide;
+                SetDraggedObjectHighlighted(draggingObject);
+                SetHint(true, true);
+                Sfx.Play(SfxId.BuildPickup);
+                return;
+            }
+
             var mounted = hit.collider.GetComponentInParent<CounterMountedItem>();
             if (mounted != null)
             {
@@ -545,6 +593,15 @@ public class BuildPlacer : MonoBehaviour
     {
         if (draggingObject == null) return;
 
+        if (draggingWallDoor != null)
+        {
+            draggingObject.transform.SetPositionAndRotation(dragOriginalPosition, dragOriginalWorldRotation);
+            draggingWallDoor.wallSide = dragOriginalWallSide;
+            RefreshPerimeterWalls();
+            EndDrag();
+            return;
+        }
+
         if (draggingMountedItem != null)
         {
             draggingObject.transform.position = dragOriginalPosition;
@@ -574,6 +631,7 @@ public class BuildPlacer : MonoBehaviour
         draggingObject = null;
         dragFootprint = null;
         draggingMountedItem = null;
+        draggingWallDoor = null;
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
         SetHint(IsPlacing);
@@ -626,6 +684,7 @@ public class BuildPlacer : MonoBehaviour
         draggingObject = null;
         dragFootprint = null;
         draggingMountedItem = null;
+        draggingWallDoor = null;
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
         SetHint(IsPlacing);
@@ -686,6 +745,224 @@ public class BuildPlacer : MonoBehaviour
         // Keep placing until user cancels (or you can auto-cancel if you want)
         // If you want auto-cancel after 1 placement, uncomment:
         // CancelPlacement();
+    }
+
+    void TryPlaceCustomerDoor(Vector3 position, Quaternion rotation, CustomerWallDoor.WallSide side)
+    {
+        if (placingItem == null || placingItem.placementSurface != ItemDefinition.PlacementSurface.CustomerWall)
+            return;
+        if (inventory.GetCount(placingItem) <= 0 || !IsDoorLocationAvailable(side, position, null))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+        if (!inventory.TryConsumeOne(placingItem))
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+
+        GameObject placed = Instantiate(placingItem.prefab);
+        placed.transform.localScale = GetPlacementScale(placingItem);
+        placed.transform.SetPositionAndRotation(position, rotation);
+        CustomerWallDoor door = placed.GetComponent<CustomerWallDoor>();
+        if (door == null) door = placed.AddComponent<CustomerWallDoor>();
+        door.wallSide = side;
+
+        PlacedBuildItem pbi = placed.GetComponent<PlacedBuildItem>();
+        if (pbi == null) pbi = placed.AddComponent<PlacedBuildItem>();
+        pbi.itemDefinition = placingItem;
+
+        InventoryUI invUI = FindObjectOfType<InventoryUI>();
+        if (invUI != null) invUI.RefreshAll();
+        RefreshPerimeterWalls();
+        Sfx.Play(SfxId.BuildPlace);
+
+        PurchaseUndoManager undo = PurchaseUndoManager.Ensure();
+        if (undo != null) undo.NotifyStationPlaced(placingItem, placed);
+    }
+
+    void TryPlaceDraggedDoor(Vector3 position, Quaternion rotation, CustomerWallDoor.WallSide side)
+    {
+        if (draggingObject == null || draggingWallDoor == null) return;
+        if (!IsDoorLocationAvailable(side, position, draggingWallDoor))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+
+        draggingObject.transform.SetPositionAndRotation(position, rotation);
+        draggingWallDoor.wallSide = side;
+        RefreshPerimeterWalls();
+        Sfx.Play(SfxId.BuildPlace);
+        EndDrag();
+    }
+
+    bool TryGetCustomerWallPlacement(GameObject preview, out Vector3 position,
+        out Quaternion rotation, out CustomerWallDoor.WallSide side)
+    {
+        position = Vector3.zero;
+        rotation = Quaternion.identity;
+        side = CustomerWallDoor.WallSide.South;
+        if (!TryGetCustomerDoorTile(out Vector3 tileCenter, out float floorY,
+            out Vector3 wallPosition, out side)) return false;
+
+        float yaw = side == CustomerWallDoor.WallSide.East
+            ? 90f
+            : side == CustomerWallDoor.WallSide.North ? 180f : 0f;
+
+        ItemDefinition doorDefinition = placingItem;
+        if (doorDefinition == null && preview != null)
+        {
+            PlacedBuildItem placedItem = preview.GetComponent<PlacedBuildItem>();
+            if (placedItem != null) doorDefinition = placedItem.itemDefinition;
+        }
+        Quaternion candidateRotation = Quaternion.Euler(doorDefinition != null
+            ? doorDefinition.placementEuler + Vector3.up * yaw
+            : Vector3.up * yaw);
+        Vector3 candidatePosition = wallPosition;
+
+        if (preview != null)
+        {
+            preview.transform.rotation = candidateRotation;
+            preview.transform.position = candidatePosition;
+            candidatePosition = AlignDoorModelToWall(preview, candidatePosition, floorY, side);
+            preview.transform.position = candidatePosition;
+        }
+
+        CustomerWallDoor ignored = draggingWallDoor;
+        if (!IsDoorLocationAvailable(side, candidatePosition, ignored)) return false;
+        position = candidatePosition;
+        rotation = candidateRotation;
+        return true;
+    }
+
+    static Vector3 AlignDoorModelToWall(GameObject doorObject, Vector3 wallBoundary,
+        float floorY, CustomerWallDoor.WallSide side)
+    {
+        if (doorObject == null) return wallBoundary;
+
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        float halfThickness = walls != null ? Mathf.Max(0.05f, walls.thickness * 0.5f) : 0.5f;
+        float inset = walls != null ? walls.wallInset : 0f;
+        float outwardOffset = Mathf.Max(0f, halfThickness - inset);
+
+        Bounds bounds = GetCombinedBounds(doorObject);
+        Vector3 correction = Vector3.zero;
+        correction.y = floorY - bounds.min.y;
+
+        if (side == CustomerWallDoor.WallSide.East)
+        {
+            float wallCenterX = wallBoundary.x + outwardOffset;
+            correction.x = wallCenterX - bounds.center.x;
+            correction.z = wallBoundary.z - bounds.center.z;
+        }
+        else
+        {
+            float direction = side == CustomerWallDoor.WallSide.North ? 1f : -1f;
+            float wallCenterZ = wallBoundary.z + direction * outwardOffset;
+            correction.x = wallBoundary.x - bounds.center.x;
+            correction.z = wallCenterZ - bounds.center.z;
+        }
+
+        return doorObject.transform.position + correction;
+    }
+
+    public bool TryGetCustomerDoorHighlight(out Vector3 tileCenter, out float tileSize)
+    {
+        tileCenter = Vector3.zero;
+        tileSize = grid != null ? Mathf.Max(0.1f, grid.cellSize) : 1f;
+        if (!IsCustomerWallPlacementActive) return false;
+        return TryGetCustomerDoorTile(out tileCenter, out _, out _, out _);
+    }
+
+    bool TryGetCustomerDoorTile(out Vector3 tileCenter, out float floorY,
+        out Vector3 wallPosition, out CustomerWallDoor.WallSide side)
+    {
+        tileCenter = Vector3.zero;
+        floorY = 0f;
+        wallPosition = Vector3.zero;
+        side = CustomerWallDoor.WallSide.South;
+        if (Camera.main == null || grid == null) return false;
+
+        Transform customer = grid.customerFloor;
+        if (customer == null)
+        {
+            GameObject found = GameObject.Find("CustomerFloor");
+            if (found != null) customer = found.transform;
+        }
+        Renderer customerRenderer = customer != null ? customer.GetComponentInChildren<Renderer>() : null;
+        if (customerRenderer == null) return false;
+
+        Bounds bounds = customerRenderer.bounds;
+        floorY = bounds.max.y;
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));
+        if (!floorPlane.Raycast(ray, out float rayDistance) || rayDistance < 0f) return false;
+        Vector3 hit = ray.GetPoint(rayDistance);
+
+        float cell = Mathf.Max(0.1f, grid.cellSize);
+        float originX = grid.Origin.x
+            + Mathf.Round((bounds.min.x - grid.Origin.x) / cell) * cell;
+        float originZ = grid.Origin.z
+            + Mathf.Round((bounds.min.z - grid.Origin.z) / cell) * cell;
+        int width = Mathf.Max(1, Mathf.RoundToInt(bounds.size.x / cell));
+        int height = Mathf.Max(1, Mathf.RoundToInt(bounds.size.z / cell));
+        float maxX = originX + width * cell;
+        float maxZ = originZ + height * cell;
+        if (hit.x < originX || hit.x >= maxX || hit.z < originZ || hit.z >= maxZ)
+            return false;
+
+        int x = Mathf.Clamp(Mathf.FloorToInt((hit.x - originX) / cell), 0, width - 1);
+        int z = Mathf.Clamp(Mathf.FloorToInt((hit.z - originZ) / cell), 0, height - 1);
+        bool south = z == 0;
+        bool east = x == width - 1;
+        bool north = z == height - 1;
+        if (!south && !east && !north) return false;
+
+        // The west edge borders the service counter, so it is intentionally excluded.
+        if (east && (!south || maxX - hit.x <= hit.z - originZ)
+            && (!north || maxX - hit.x <= maxZ - hit.z))
+            side = CustomerWallDoor.WallSide.East;
+        else if (south && (!north || hit.z - originZ <= maxZ - hit.z))
+            side = CustomerWallDoor.WallSide.South;
+        else
+            side = CustomerWallDoor.WallSide.North;
+
+        // The imported frame is wider than one tile. Do not let it straddle a corner.
+        if (side == CustomerWallDoor.WallSide.East && (z == 0 || z == height - 1)) return false;
+        if (side != CustomerWallDoor.WallSide.East && (x == 0 || x == width - 1)) return false;
+
+        tileCenter = new Vector3(
+            originX + (x + 0.5f) * cell,
+            floorY + 0.04f,
+            originZ + (z + 0.5f) * cell);
+        wallPosition = side == CustomerWallDoor.WallSide.East
+            ? new Vector3(maxX, floorY, tileCenter.z)
+            : new Vector3(tileCenter.x, floorY,
+                side == CustomerWallDoor.WallSide.South ? originZ : maxZ);
+        return true;
+    }
+
+    bool IsDoorLocationAvailable(CustomerWallDoor.WallSide side, Vector3 position, CustomerWallDoor ignored)
+    {
+        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        float minimumSpacing = Mathf.Max(1.75f, grid != null ? grid.cellSize * 1.75f : 1.75f);
+        foreach (CustomerWallDoor door in doors)
+        {
+            if (door == null || door == ignored || door.wallSide != side) continue;
+            float distance = side == CustomerWallDoor.WallSide.East
+                ? Mathf.Abs(door.transform.position.z - position.z)
+                : Mathf.Abs(door.transform.position.x - position.x);
+            if (distance < minimumSpacing) return false;
+        }
+        return true;
+    }
+
+    static void RefreshPerimeterWalls()
+    {
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (walls != null) walls.FitToGrid();
     }
 
     void TryPlaceOnCounter(CounterSurface surface, int slot)

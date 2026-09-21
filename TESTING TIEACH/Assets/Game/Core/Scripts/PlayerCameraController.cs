@@ -25,6 +25,8 @@ public class PlayerCameraController : MonoBehaviour
     [Header("Movement Bounds")]
     [Tooltip("Extra radius beyond the work floor's corners.")]
     [Min(0f)] public float movementBoundsMargin = 3f;
+    [Tooltip("Scales the complete movement radius. Kept at three so the camera can frame the restaurant from a distance.")]
+    [Min(1f)] public float movementBoundsRadiusMultiplier = 3f;
 
     float targetZoomY;
     Vector3 currentMoveVelocity;
@@ -230,29 +232,24 @@ public class PlayerCameraController : MonoBehaviour
         if (grid == null || grid.Width <= 0 || grid.Height <= 0)
             return cameraPosition;
 
-        Vector3 forward = transform.forward;
-        Vector3 viewCenter = cameraPosition;
-        if (Mathf.Abs(forward.y) > 0.001f)
-        {
-            float distanceToFloor = (grid.Origin.y - cameraPosition.y) / forward.y;
-            if (distanceToFloor > 0f)
-                viewCenter = cameraPosition + forward * distanceToFloor;
-        }
-
         float floorWidth = grid.Width * grid.cellSize;
         float floorDepth = grid.Height * grid.cellSize;
         Vector2 floorCenter = new Vector2(
             grid.Origin.x + floorWidth * 0.5f,
             grid.Origin.z + floorDepth * 0.5f);
         float floorCornerRadius = 0.5f * Mathf.Sqrt(floorWidth * floorWidth + floorDepth * floorDepth);
-        float allowedRadius = floorCornerRadius + Mathf.Max(0f, movementBoundsMargin);
+        float allowedRadius = (floorCornerRadius + Mathf.Max(0f, movementBoundsMargin))
+            * Mathf.Max(1f, movementBoundsRadiusMultiplier);
 
-        Vector2 centerOffset = new Vector2(viewCenter.x, viewCenter.z) - floorCenter;
+        // Clamp the camera's world position to a fixed circle around the work
+        // floor. Using the camera's projected look point here makes orbiting
+        // rotate that point and incorrectly pushes the camera around.
+        Vector2 centerOffset = new Vector2(cameraPosition.x, cameraPosition.z) - floorCenter;
         if (centerOffset.sqrMagnitude > allowedRadius * allowedRadius)
         {
-            Vector2 clampedCenter = floorCenter + centerOffset.normalized * allowedRadius;
-            cameraPosition.x += clampedCenter.x - viewCenter.x;
-            cameraPosition.z += clampedCenter.y - viewCenter.z;
+            Vector2 clampedPosition = floorCenter + centerOffset.normalized * allowedRadius;
+            cameraPosition.x = clampedPosition.x;
+            cameraPosition.z = clampedPosition.y;
         }
         return cameraPosition;
     }

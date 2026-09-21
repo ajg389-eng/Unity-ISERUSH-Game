@@ -3665,8 +3665,11 @@ MonoBehaviour:
   zoomSpeed: 10
   zoomSmoothTime: 0.1
   rotationSpeed: 5
+  focusSmoothTime: 0.28
   minY: 8
   maxY: 40
+  movementBoundsMargin: 3
+  movementBoundsRadiusMultiplier: 3
 --- !u!1 &336019390
 GameObject:
   m_ObjectHideFlags: 0
@@ -4301,7 +4304,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CameraOcclusionWall
   outwardNormal: {x: 0, y: 0, z: 0}
   lowerDistance: 4.75
-  fadeRenderers: 0
+  fadeRenderers: 1
+  occludedAlpha: 0.18
+  cutawayHeight: 0.8
 --- !u!114 &389270261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7315,6 +7320,8 @@ MonoBehaviour:
   cellSize: 1
   drawGizmos: 1
   floorMeshWorldSize: 10
+  customerFloor: {fileID: 0}
+  dividerCounter: {fileID: 0}
   maxWidth: 30
   maxHeight: 30
   syncFloorTextureToGrid: 1
@@ -7351,6 +7358,12 @@ MonoBehaviour:
   lineMaterial: {fileID: 10306, guid: 0000000000000000f000000000000000, type: 0}
   lineWidth: 0.03
   yOffset: 0.02
+  customerFloor: {fileID: 0}
+  showCustomerGrid: 1
+  customerGridColor: {r: 1, g: 0.55, b: 0.12, a: 0.9}
+  queueCellColor: {r: 0.05, g: 0.82, b: 1, a: 0.72}
+  queueCellBorderColor: {r: 0.015, g: 0.04, b: 0.07, a: 0.92}
+  queueCellFill: 0.86
 --- !u!114 &785402007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10294,6 +10307,7 @@ MonoBehaviour:
   workerStandPoint: {fileID: 0}
   workerDutyRadius: 1.25
   orderTakeSeconds: 1.25
+  orderConfig: {fileID: 0}
 --- !u!65 &1105242394
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -13280,6 +13294,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 5193bd68a7046ad4081035d003a101cb, type: 2}
   - {fileID: 11400000, guid: 45e64f8f74b403b479acb252bd167985, type: 2}
   - {fileID: 11400000, guid: 95de563cd677c4347b86195272a184dc, type: 2}
+  - {fileID: 11400000, guid: b4816a10c83443c0a62aa991cb8a7d51, type: 2}
   baseStationCapacity: 2
   capacityPerCompletedMilestone: 1
   money: {fileID: 626923595}
@@ -13665,7 +13680,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -876546973899608171, guid: f369ad33f139d914f91e655a5db918a4, type: 3}
+  - {fileID: -876546973899608171, guid: a47eab822100f554dadb7fa588a88b3d, type: 3}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -14358,7 +14373,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CameraOcclusionWall
   outwardNormal: {x: 0, y: 0, z: 0}
   lowerDistance: 4.75
-  fadeRenderers: 0
+  fadeRenderers: 1
+  occludedAlpha: 0.18
+  cutawayHeight: 0.8
 --- !u!114 &1570867470
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14670,7 +14687,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CameraOcclusionWall
   outwardNormal: {x: 0, y: 0, z: 0}
   lowerDistance: 4.75
-  fadeRenderers: 0
+  fadeRenderers: 1
+  occludedAlpha: 0.18
+  cutawayHeight: 0.8
 --- !u!114 &1584365195
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16229,6 +16248,7 @@ MonoBehaviour:
   workerStandPoint: {fileID: 0}
   workerDutyRadius: 1.25
   orderTakeSeconds: 1.25
+  orderConfig: {fileID: 0}
 --- !u!65 &1729481123
 BoxCollider:
   m_ObjectHideFlags: 0

@@ -139,6 +139,14 @@ public class CustomerSpawner : MonoBehaviour
     {
         into.Clear();
 
+        CustomerWallDoor entrance = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Entrance);
+        if (entrance != null)
+        {
+            into.Add(entrance.GetCustomerWaypoint(true, 1.75f));
+            into.Add(entrance.GetCustomerWaypoint(false, 1.25f));
+            return;
+        }
+
         if (HasInlineWaypoints())
         {
             for (int i = 0; i < entryWaypoints.Count; i++)
