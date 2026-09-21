@@ -155,7 +155,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
             float cMinX = 0f, cMaxX = 0f, cMinZ = 0f, cMaxZ = 0f;
             bool hasCustomer = customerFloor != null
-                && TryGetFloorBounds(customerFloor, out cMinX, out cMaxX, out cMinZ, out cMaxZ);
+                && TryGetCustomerWallBounds(out cMinX, out cMaxX, out cMinZ, out cMaxZ);
 
             float y = grid.Origin.y;
             float t = Mathf.Max(0.2f, thickness);
@@ -271,13 +271,30 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (go != null) customerFloor = go.transform;
     }
 
+    // Runtime lobby expansion is intentionally allowed to overlap the existing
+    // perimeter wall. Keep wall anchors on the authored customer-floor bounds.
+    bool TryGetCustomerWallBounds(out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        minX = maxX = minZ = maxZ = 0f;
+        if (customerFloor == null) return false;
+        var extension = customerFloor.GetComponent<CustomerFloorRuntimeExtension>();
+        if (extension != null && extension.HasOriginalBounds)
+        {
+            Bounds bounds = extension.OriginalBounds;
+            minX = bounds.min.x; maxX = bounds.max.x;
+            minZ = bounds.min.z; maxZ = bounds.max.z;
+            return true;
+        }
+        return TryGetFloorBounds(customerFloor, out minX, out maxX, out minZ, out maxZ);
+    }
+
     bool TryGetBuildingBounds(out float minX, out float maxX, out float minZ, out float maxZ)
     {
         // Kept for any external callers; prefer work/customer-specific bounds in FitToGrid.
         minX = maxX = minZ = maxZ = 0f;
         EnsureCustomerFloor();
         bool any = TryGetFloorBounds(grid != null ? grid.floor : null, out minX, out maxX, out minZ, out maxZ);
-        if (customerFloor != null && TryGetFloorBounds(customerFloor, out float cMinX, out float cMaxX, out float cMinZ, out float cMaxZ))
+        if (customerFloor != null && TryGetCustomerWallBounds(out float cMinX, out float cMaxX, out float cMinZ, out float cMaxZ))
         {
             if (!any)
             {
@@ -547,7 +564,10 @@ public class KitchenPerimeterWalls : MonoBehaviour
         }
 
         float doorAlong = (minAlong + maxAlong) * 0.5f;
-        float doorHalf = (maxAlong - minAlong) * 0.5f + 0.15f;
+        // Door gaps are strictly limited to five customer-grid tiles. The model
+        // can have slightly oversized trim/colliders without widening the wall cutout.
+        float maxDoorHalf = (grid != null ? Mathf.Max(0.1f, grid.cellSize) : 1f) * 2.5f;
+        float doorHalf = Mathf.Min((maxAlong - minAlong) * 0.5f + 0.15f, maxDoorHalf);
         if (Mathf.Abs(doorAlong) > length * 0.5f + 0.75f)
             return false;
 

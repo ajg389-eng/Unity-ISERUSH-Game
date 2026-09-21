@@ -120,6 +120,12 @@ public class GridManager : MonoBehaviour
             var cf = GameObject.Find("CustomerFloor");
             if (cf != null) walls.customerFloor = cf.transform;
         }
+        if (walls.customerFloor != null)
+        {
+            var extension = walls.customerFloor.GetComponent<CustomerFloorRuntimeExtension>();
+            if (extension == null) extension = walls.customerFloor.gameObject.AddComponent<CustomerFloorRuntimeExtension>();
+            extension.ApplyOneTileNorthEast(cellSize);
+        }
         walls.FitToGrid();
         ResyncOccupancyFromScene();
     }

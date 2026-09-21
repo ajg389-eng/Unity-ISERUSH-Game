@@ -34,6 +34,9 @@ public class BuildPlacer : MonoBehaviour
     private Quaternion dragOriginalWorldRotation;
     private CustomerWallDoor draggingWallDoor;
     private CustomerWallDoor.WallSide dragOriginalWallSide;
+    bool hasDoorPreviewWallLocation;
+    Vector3 lastDoorPreviewWallPosition;
+    CustomerWallDoor.WallSide lastDoorPreviewWallSide;
 
     public bool IsPlacing => placingItem != null;
     public bool IsDragging => draggingObject != null;
@@ -108,6 +111,8 @@ public class BuildPlacer : MonoBehaviour
                     out Quaternion doorRotation, out CustomerWallDoor.WallSide doorSide))
                 {
                     draggingObject.transform.SetPositionAndRotation(doorPosition, doorRotation);
+                    draggingWallDoor.wallSide = doorSide;
+                    RequestDoorPreviewWallRefresh(doorPosition, doorSide);
                     if (Input.GetMouseButtonDown(0))
                         TryPlaceDraggedDoor(doorPosition, doorRotation, doorSide);
                 }
@@ -213,6 +218,7 @@ public class BuildPlacer : MonoBehaviour
 
         placingItem = item;
         placementRotation = 0;
+        hasDoorPreviewWallLocation = false;
 
         // Make a ghost preview
         if (ghost) Destroy(ghost);
@@ -220,6 +226,10 @@ public class BuildPlacer : MonoBehaviour
         ghost.name = item.prefab.name + " Ghost";
         ghost.transform.localScale = GetPlacementScale(item);
         ghost.transform.rotation = Quaternion.Euler(item.placementEuler);
+
+        if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall
+            && ghost.GetComponent<CustomerWallDoor>() == null)
+            ghost.AddComponent<CustomerWallDoor>();
 
         MakeTranslucent(ghost, 0.7f); // 0.5 = 50% transparent
 
@@ -234,6 +244,7 @@ public class BuildPlacer : MonoBehaviour
     public void CancelPlacement()
     {
         placingItem = null;
+        hasDoorPreviewWallLocation = false;
 
         if (ghost) Destroy(ghost);
         ghost = null;
@@ -751,7 +762,8 @@ public class BuildPlacer : MonoBehaviour
     {
         if (placingItem == null || placingItem.placementSurface != ItemDefinition.PlacementSurface.CustomerWall)
             return;
-        if (inventory.GetCount(placingItem) <= 0 || !IsDoorLocationAvailable(side, position, null))
+        CustomerWallDoor previewDoor = ghost != null ? ghost.GetComponent<CustomerWallDoor>() : null;
+        if (inventory.GetCount(placingItem) <= 0 || !IsDoorLocationAvailable(side, position, previewDoor))
         {
             Sfx.Play(SfxId.BuildPlaceFail);
             return;
@@ -828,13 +840,35 @@ public class BuildPlacer : MonoBehaviour
             preview.transform.position = candidatePosition;
             candidatePosition = AlignDoorModelToWall(preview, candidatePosition, floorY, side);
             preview.transform.position = candidatePosition;
+            CustomerWallDoor previewDoor = preview.GetComponent<CustomerWallDoor>();
+            if (previewDoor != null)
+            {
+                previewDoor.wallSide = side;
+                RequestDoorPreviewWallRefresh(candidatePosition, side);
+            }
         }
 
-        CustomerWallDoor ignored = draggingWallDoor;
+        CustomerWallDoor ignored = draggingWallDoor != null
+            ? draggingWallDoor
+            : preview != null ? preview.GetComponent<CustomerWallDoor>() : null;
         if (!IsDoorLocationAvailable(side, candidatePosition, ignored)) return false;
         position = candidatePosition;
         rotation = candidateRotation;
         return true;
+    }
+
+    void RequestDoorPreviewWallRefresh(Vector3 position, CustomerWallDoor.WallSide side)
+    {
+        bool changed = !hasDoorPreviewWallLocation
+            || side != lastDoorPreviewWallSide
+            || (position - lastDoorPreviewWallPosition).sqrMagnitude > 0.0001f;
+        if (!changed) return;
+
+        hasDoorPreviewWallLocation = true;
+        lastDoorPreviewWallPosition = position;
+        lastDoorPreviewWallSide = side;
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (walls != null) walls.RequestRefresh();
     }
 
     static Vector3 AlignDoorModelToWall(GameObject doorObject, Vector3 wallBoundary,
@@ -895,6 +929,11 @@ public class BuildPlacer : MonoBehaviour
         if (customerRenderer == null) return false;
 
         Bounds bounds = customerRenderer.bounds;
+        // The customer floor extends under the wall at runtime, but doors must
+        // still snap to the original wall line rather than its added outer tile.
+        CustomerFloorRuntimeExtension extension = customer.GetComponent<CustomerFloorRuntimeExtension>();
+        if (extension != null && extension.HasOriginalBounds)
+            bounds = extension.OriginalBounds;
         floorY = bounds.max.y;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));

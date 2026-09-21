@@ -15,7 +15,13 @@ public class PlayerCameraController : MonoBehaviour
     [Tooltip("Time in seconds to reach target zoom (lower = snappier)")]
     public float zoomSmoothTime = 0.1f;
     float zoomVelocity;
+    [Tooltip("Degrees rotated per mouse input while holding right mouse button.")]
     public float rotationSpeed = 5f;
+    [Tooltip("Vertical free-look limits. Kept just inside 90 degrees to prevent camera flips.")]
+    public float minPitch = -89f;
+    public float maxPitch = 89f;
+    [Tooltip("Time used to smooth right-mouse free-look rotation.")]
+    [Range(0.01f, 0.3f)] public float rotationSmoothTime = 0.065f;
     [Tooltip("Time for the camera to pan to a selected worker or flow.")]
     public float focusSmoothTime = 0.28f;
 
@@ -33,10 +39,22 @@ public class PlayerCameraController : MonoBehaviour
     Vector3 focusVelocity;
     Vector3 focusTargetPosition;
     bool isFocusing;
+    float yaw;
+    float pitch;
+    float targetYaw;
+    float targetPitch;
+    float yawVelocity;
+    float pitchVelocity;
+    bool freeLooking;
 
     void Start()
     {
         targetZoomY = transform.position.y;
+        Vector3 initialEuler = transform.eulerAngles;
+        yaw = initialEuler.y;
+        pitch = initialEuler.x > 180f ? initialEuler.x - 360f : initialEuler.x;
+        targetYaw = yaw;
+        targetPitch = pitch;
         CameraWallCutaway.EnsureExists();
     }
 
@@ -214,11 +232,43 @@ public class PlayerCameraController : MonoBehaviour
 
     void Rotate()
     {
-        if (Input.GetMouseButton(1)) // Hold Right Mouse Button
+        if (Input.GetMouseButtonDown(1))
         {
-            float mouseX = Input.GetAxisRaw("Mouse X");
-            transform.Rotate(Vector3.up, mouseX * rotationSpeed * 300f * InteractionDeltaTime, Space.World);
+            freeLooking = true;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
+
+        if (freeLooking && Input.GetMouseButton(1))
+        {
+            // Full editor-style free-look: horizontal movement changes yaw and
+            // vertical movement changes pitch. No automatic return to a preset tilt.
+            targetYaw += Input.GetAxisRaw("Mouse X") * rotationSpeed;
+            targetPitch -= Input.GetAxisRaw("Mouse Y") * rotationSpeed;
+            targetPitch = Mathf.Clamp(targetPitch, minPitch, maxPitch);
+        }
+
+        // Continue a very short ease-out after releasing RMB rather than stopping
+        // on the last raw mouse delta.
+        float dt = Mathf.Max(0.0001f, InteractionDeltaTime);
+        yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawVelocity, rotationSmoothTime, Mathf.Infinity, dt);
+        pitch = Mathf.SmoothDampAngle(pitch, targetPitch, ref pitchVelocity, rotationSmoothTime, Mathf.Infinity, dt);
+        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+
+        if (freeLooking && Input.GetMouseButtonUp(1))
+        {
+            freeLooking = false;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+    }
+
+    void OnDisable()
+    {
+        if (!freeLooking) return;
+        freeLooking = false;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     void ClampToPlayableBounds()
