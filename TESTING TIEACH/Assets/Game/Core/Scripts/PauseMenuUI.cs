@@ -5,7 +5,7 @@ using TMPro;
 
 /// <summary>
 /// Escape pause overlay. Main screen matches a simple Resume / Options / Quit list.
-/// Options holds Audio (volume sliders) and Video (resolution).
+/// Options holds Audio, Video, and Visual (per-wall cutaway locks).
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
 {
@@ -40,8 +40,14 @@ public class PauseMenuUI : MonoBehaviour
     GuidebookUI guidebook;
     GameObject audioPage;
     GameObject videoPage;
+    GameObject visualPage;
     Button audioTab;
     Button videoTab;
+    Button visualTab;
+    Toggle lockNorthToggle;
+    Toggle lockEastToggle;
+    Toggle lockSouthToggle;
+    Toggle lockWestToggle;
     Slider masterSlider;
     Slider voiceSlider;
     Slider musicSlider;
@@ -117,6 +123,7 @@ public class PauseMenuUI : MonoBehaviour
         ShowMain();
         RefreshAudioControls();
         RefreshVideoControls();
+        RefreshVisualControls();
         Sfx.Play(SfxId.UiOpen);
 
         if (GameTimeManager.Instance != null)
@@ -178,6 +185,7 @@ public class PauseMenuUI : MonoBehaviour
         SelectTab(0, playSound: false);
         RefreshAudioControls();
         RefreshVideoControls();
+        RefreshVisualControls();
     }
 
     static bool IsTitleVisible()
@@ -271,7 +279,7 @@ public class PauseMenuUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(420f, 430f);
+        cardRt.sizeDelta = new Vector2(500f, 470f);
         card.GetComponent<Image>().color = PanelColor;
 
         var vlg = card.GetComponent<VerticalLayoutGroup>();
@@ -299,14 +307,16 @@ public class PauseMenuUI : MonoBehaviour
         tabsH.childForceExpandHeight = true;
         audioTab = CreateTabButton(tabs.transform, "AudioTab", "Audio", () => SelectTab(0));
         videoTab = CreateTabButton(tabs.transform, "VideoTab", "Video", () => SelectTab(1));
+        visualTab = CreateTabButton(tabs.transform, "VisualTab", "Visual", () => SelectTab(2));
 
         var pages = new GameObject("Pages", typeof(RectTransform), typeof(LayoutElement));
         pages.transform.SetParent(card.transform, false);
-        pages.GetComponent<LayoutElement>().preferredHeight = 250f;
+        pages.GetComponent<LayoutElement>().preferredHeight = 280f;
         pages.GetComponent<LayoutElement>().flexibleHeight = 1f;
 
         audioPage = BuildAudioPage(pages.transform);
         videoPage = BuildVideoPage(pages.transform);
+        visualPage = BuildVisualPage(pages.transform);
 
         var back = CreateMenuButton(card.transform, "BackButton", "Back");
         back.onClick.AddListener(() =>
@@ -403,6 +413,57 @@ public class PauseMenuUI : MonoBehaviour
         return page;
     }
 
+    GameObject BuildVisualPage(Transform parent)
+    {
+        var page = new GameObject("VisualPage", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        page.transform.SetParent(parent, false);
+        Stretch((RectTransform)page.transform);
+        var v = page.GetComponent<VerticalLayoutGroup>();
+        v.spacing = 8f;
+        v.padding = new RectOffset(4, 4, 8, 4);
+        v.childAlignment = TextAnchor.UpperCenter;
+        v.childControlWidth = true;
+        v.childControlHeight = true;
+        v.childForceExpandWidth = true;
+        v.childForceExpandHeight = false;
+
+        var header = CreateLabel(page.transform, "VisualHeader", "Lock wall cutaway", 16, TextAlignmentOptions.Left);
+        header.fontStyle = FontStyles.Bold;
+        header.GetComponent<LayoutElement>().preferredHeight = 22f;
+
+        var hint = CreateLabel(page.transform, "VisualHint", "Locked walls stay full height and will not drop when the camera faces them.", 13, TextAlignmentOptions.Left);
+        hint.GetComponent<LayoutElement>().preferredHeight = 36f;
+
+        lockNorthToggle = CreateWallLockRow(page.transform, "LockNorth", "North wall", CameraWallCutaway.WallSide.North);
+        lockEastToggle = CreateWallLockRow(page.transform, "LockEast", "East wall", CameraWallCutaway.WallSide.East);
+        lockSouthToggle = CreateWallLockRow(page.transform, "LockSouth", "South wall", CameraWallCutaway.WallSide.South);
+        lockWestToggle = CreateWallLockRow(page.transform, "LockWest", "West wall", CameraWallCutaway.WallSide.West);
+        return page;
+    }
+
+    Toggle CreateWallLockRow(Transform parent, string id, string label, CameraWallCutaway.WallSide side)
+    {
+        var row = new GameObject(id + "Row", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<LayoutElement>().preferredHeight = 28f;
+        var h = row.GetComponent<HorizontalLayoutGroup>();
+        h.spacing = 10f;
+        h.childAlignment = TextAnchor.MiddleLeft;
+        h.childControlWidth = true;
+        h.childControlHeight = true;
+        h.childForceExpandWidth = false;
+
+        var toggle = CreateToggle(row.transform, id + "Toggle");
+        toggle.onValueChanged.AddListener(on =>
+        {
+            CameraWallCutaway.SetWallLocked(side, on);
+            Sfx.Play(SfxId.UiClick);
+        });
+        var text = CreateLabel(row.transform, id + "Label", label, 15, TextAlignmentOptions.Left);
+        text.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        return toggle;
+    }
+
     Slider CreateVolumeRow(Transform parent, string id, string label, out TextMeshProUGUI valueLabel)
     {
         var block = new GameObject(id + "Block", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
@@ -449,8 +510,10 @@ public class PauseMenuUI : MonoBehaviour
     {
         if (audioPage != null) audioPage.SetActive(index == 0);
         if (videoPage != null) videoPage.SetActive(index == 1);
+        if (visualPage != null) visualPage.SetActive(index == 2);
         HudTabColors.Apply(audioTab, index == 0);
         HudTabColors.Apply(videoTab, index == 1);
+        HudTabColors.Apply(visualTab, index == 2);
         if (playSound)
             Sfx.Play(SfxId.UiClick);
     }
@@ -530,6 +593,18 @@ public class PauseMenuUI : MonoBehaviour
         RefreshResolutionLabel();
         if (fullscreenToggle != null)
             fullscreenToggle.SetIsOnWithoutNotify(Screen.fullScreen);
+    }
+
+    void RefreshVisualControls()
+    {
+        if (lockNorthToggle != null)
+            lockNorthToggle.SetIsOnWithoutNotify(CameraWallCutaway.IsWallLocked(CameraWallCutaway.WallSide.North));
+        if (lockEastToggle != null)
+            lockEastToggle.SetIsOnWithoutNotify(CameraWallCutaway.IsWallLocked(CameraWallCutaway.WallSide.East));
+        if (lockSouthToggle != null)
+            lockSouthToggle.SetIsOnWithoutNotify(CameraWallCutaway.IsWallLocked(CameraWallCutaway.WallSide.South));
+        if (lockWestToggle != null)
+            lockWestToggle.SetIsOnWithoutNotify(CameraWallCutaway.IsWallLocked(CameraWallCutaway.WallSide.West));
     }
 
     void RefreshResolutionLabel()

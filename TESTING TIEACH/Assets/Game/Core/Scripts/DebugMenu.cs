@@ -181,9 +181,20 @@ public class DebugMenu : MonoBehaviour
 
         CreateButton(panel.transform, "Spawn Customer", () =>
         {
-            var spawner = FindObjectOfType<CustomerSpawner>();
+            var spawner = FindFirstObjectByType<CustomerSpawner>(FindObjectsInactive.Include);
             if (spawner == null) { Toast("No CustomerSpawner"); return; }
-            Toast(spawner.SpawnNow() ? "Customer spawned" : "Spawn failed (queue full?)");
+            if (!spawner.gameObject.activeInHierarchy)
+                spawner.gameObject.SetActive(true);
+            if (!spawner.SpawnNow(true))
+            {
+                Toast(string.IsNullOrEmpty(spawner.LastSpawnError)
+                    ? "Spawn failed"
+                    : spawner.LastSpawnError);
+                return;
+            }
+            Toast(Time.timeScale <= 0.001f
+                ? "Customer spawned (unpause to see them walk)"
+                : "Customer spawned");
             RefreshStatus();
         });
 

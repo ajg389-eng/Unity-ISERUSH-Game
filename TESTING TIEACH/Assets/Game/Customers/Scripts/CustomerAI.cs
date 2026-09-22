@@ -66,6 +66,11 @@ public class CustomerAI : MonoBehaviour
 
     public bool IsEntering => phase == Phase.Entering;
 
+    float standY;
+    bool standYReady;
+    static float cachedFloorY;
+    static int cachedFloorFrame = -1;
+
     void Awake()
     {
         if (patienceMeter == null)
@@ -76,6 +81,13 @@ public class CustomerAI : MonoBehaviour
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         PartyCharacterAnimator.EnsureOn(gameObject);
         PartyCharacterRandomizer.EnsureOn(gameObject);
+        HideRootCapsule();
+        SnapFeetToFloor();
+    }
+
+    void Start()
+    {
+        SnapFeetToFloor();
     }
 
     public void BeginEntryRoute(IList<Vector3> worldPoints, GridManager gridOverride = null, CustomerPath exit = null)
@@ -101,6 +113,7 @@ public class CustomerAI : MonoBehaviour
             route.RemoveAt(0);
 
         phase = route.Count > 0 ? Phase.Entering : Phase.GoingToSlot;
+        SnapFeetToFloor();
 
         // If we already have a queue slot (joined before path setup), start moving once entry is done.
         if (phase != Phase.Entering)
@@ -350,11 +363,10 @@ public class CustomerAI : MonoBehaviour
         gridPath.Clear();
 
         CustomerWallDoor exitDoor = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Exit);
+        if (exitDoor == null)
+            exitDoor = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Entrance);
         if (exitDoor != null)
-        {
-            route.Add(exitDoor.GetCustomerWaypoint(false, 1.25f));
-            route.Add(exitDoor.GetCustomerWaypoint(true, 1.75f));
-        }
+            exitDoor.AppendPassage(route, false);
         else if (exitPath != null && exitPath.Count > 0)
             exitPath.GetWorldPoints(route);
         else if (fallbackExit != null)
@@ -531,6 +543,7 @@ public class CustomerAI : MonoBehaviour
 
     bool MoveStraightTo(Vector3 target)
     {
+        SnapFeetToFloor();
         Vector3 pos = transform.position;
         target.y = pos.y;
         if (HorizontalDist(pos, target) <= arrivalDistance)
@@ -552,6 +565,101 @@ public class CustomerAI : MonoBehaviour
         p.x = world.x;
         p.z = world.z;
         transform.position = p;
+        SnapFeetToFloor();
+    }
+
+    void SnapFeetToFloor()
+    {
+        if (standYReady)
+        {
+            Vector3 p = transform.position;
+            if (Mathf.Abs(p.y - standY) > 0.001f)
+            {
+                p.y = standY;
+                transform.position = p;
+            }
+            return;
+        }
+
+        float floorY = ResolveCustomerFloorY();
+        if (!TryGetVisualBounds(out Bounds bounds))
+            return;
+
+        standY = transform.position.y + (floorY - bounds.min.y);
+        Vector3 pos = transform.position;
+        pos.y = standY;
+        transform.position = pos;
+        if (GetComponentInChildren<SkinnedMeshRenderer>() != null)
+            standYReady = true;
+    }
+
+    void HideRootCapsule()
+    {
+        var mesh = GetComponent<MeshRenderer>();
+        if (mesh != null && GetComponentInChildren<SkinnedMeshRenderer>() != null)
+            mesh.enabled = false;
+        var capsule = GetComponent<CapsuleCollider>();
+        if (capsule != null)
+            capsule.enabled = false;
+    }
+
+    float ResolveCustomerFloorY()
+    {
+        if (cachedFloorFrame == Time.frameCount)
+            return cachedFloorY;
+
+        cachedFloorFrame = Time.frameCount;
+        GameObject floor = GameObject.Find("CustomerFloor");
+        if (floor != null)
+        {
+            Renderer renderer = floor.GetComponentInChildren<Renderer>();
+            if (renderer != null)
+            {
+                cachedFloorY = renderer.bounds.max.y;
+                return cachedFloorY;
+            }
+        }
+
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        cachedFloorY = grid != null ? grid.Origin.y : 0f;
+        return cachedFloorY;
+    }
+
+    bool TryGetVisualBounds(out Bounds bounds)
+    {
+        bounds = default;
+        SkinnedMeshRenderer[] skinned = GetComponentsInChildren<SkinnedMeshRenderer>();
+        bool found = false;
+        for (int i = 0; i < skinned.Length; i++)
+        {
+            var renderer = skinned[i];
+            if (renderer == null || !renderer.enabled) continue;
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+                bounds.Encapsulate(renderer.bounds);
+        }
+        if (found) return true;
+
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled) continue;
+            if (renderer.GetComponentInParent<Canvas>() != null) continue;
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+                bounds.Encapsulate(renderer.bounds);
+        }
+        return found;
     }
 
     static float HorizontalDist(Vector3 a, Vector3 b)

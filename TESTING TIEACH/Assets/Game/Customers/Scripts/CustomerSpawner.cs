@@ -88,22 +88,38 @@ public class CustomerSpawner : MonoBehaviour
         TrySpawn();
     }
 
-    public bool SpawnNow()
+    public string LastSpawnError { get; private set; }
+
+    public bool SpawnNow(bool force = false)
     {
-        if (!TrySpawn()) return false;
+        if (!TrySpawn(force)) return false;
         timer = 0f;
         return true;
     }
 
-    bool TrySpawn()
+    bool TrySpawn(bool force = false)
     {
-        if (customerPrefab == null) return false;
-        if (orderConfig != null && !orderConfig.HasEnabledItems)
+        LastSpawnError = null;
+        if (customerPrefab == null)
+        {
+            LastSpawnError = "No customer prefab on CustomerSpawner";
             return false;
+        }
+        if (!force && orderConfig != null && !orderConfig.HasEnabledItems)
+        {
+            LastSpawnError = "No menu items enabled";
+            return false;
+        }
         ResolveEntryPathIfNeeded();
 
         Register r = GetBestRegister();
-        if (r == null) return false;
+        if (r == null && force)
+            r = GetAnyRegister();
+        if (r == null && !force)
+        {
+            LastSpawnError = "Need an open register";
+            return false;
+        }
 
         BuildEntryPoints(entryPointsBuffer);
         Vector3 spawnPos = entryPointsBuffer.Count > 0
@@ -114,12 +130,10 @@ public class CustomerSpawner : MonoBehaviour
         var ai = c.GetComponent<CustomerAI>();
         if (ai == null) return true;
 
-        // Customers choose from the currently enabled menu only after reaching the register.
         ai.ClearOrder();
-
-        // 1) Start entry walk  2) Join queue immediately so a lineup slot is reserved
         ai.BeginEntryRoute(entryPointsBuffer, grid, exitPath);
-        ai.SetTargetRegister(r);
+        if (r != null)
+            ai.SetTargetRegister(r);
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.RecordCustomerVisit();
@@ -140,10 +154,11 @@ public class CustomerSpawner : MonoBehaviour
         into.Clear();
 
         CustomerWallDoor entrance = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Entrance);
+        if (entrance == null)
+            entrance = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Exit);
         if (entrance != null)
         {
-            into.Add(entrance.GetCustomerWaypoint(true, 1.75f));
-            into.Add(entrance.GetCustomerWaypoint(false, 1.25f));
+            entrance.AppendPassage(into, true);
             return;
         }
 
@@ -187,6 +202,17 @@ public class CustomerSpawner : MonoBehaviour
         }
 
         return best;
+    }
+
+    Register GetAnyRegister()
+    {
+        RefreshPlacedRegisters();
+        foreach (var r in registers)
+        {
+            if (r != null && r.gameObject.activeInHierarchy)
+                return r;
+        }
+        return null;
     }
 
     void RefreshPlacedRegisters()

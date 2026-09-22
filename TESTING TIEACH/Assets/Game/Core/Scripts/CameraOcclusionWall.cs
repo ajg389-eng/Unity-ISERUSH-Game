@@ -3,7 +3,8 @@ using UnityEngine;
 
 /// <summary>
 /// Marks a wall section that uses a Sims-style cutaway when it is between the
-/// camera and the store. The wall transform and colliders never move.
+/// camera and the store. Brick walls are shader-clipped in place. Doors can
+/// optionally lower with the cutaway.
 /// </summary>
 public class CameraOcclusionWall : MonoBehaviour
 {
@@ -18,7 +19,14 @@ public class CameraOcclusionWall : MonoBehaviour
     [Tooltip("Visible wall height, in world units, when this wall is fully cut away.")]
     [Min(0.2f)] public float cutawayHeight = 0.8f;
 
+    [Tooltip("Move this object down instead of shader-clipping it (used for doors).")]
+    public bool duckByLowering;
+
     float cutawayAmount;
+    Vector3 restPosition;
+    bool hasRestPose;
+    bool wasLowered;
+    float restVisualHeight;
     float targetCutaway;
     Renderer[] renderers;
     Material[][] originalMaterials;
@@ -66,6 +74,27 @@ public class CameraOcclusionWall : MonoBehaviour
         DestroyCutawayMaterials();
     }
 
+    public void SetPlacementLock(bool locked)
+    {
+        if (locked)
+        {
+            targetCutaway = 0f;
+            cutawayAmount = 0f;
+            if (duckByLowering && wasLowered && hasRestPose)
+                transform.position = restPosition;
+            wasLowered = false;
+        }
+        else if (duckByLowering)
+        {
+            CaptureRestPose();
+        }
+        enabled = !locked;
+        if (locked)
+            CameraWallCutaway.Unregister(this);
+        else
+            CameraWallCutaway.Register(this);
+    }
+
     public void SnapUp()
     {
         targetCutaway = 0f;
@@ -74,7 +103,20 @@ public class CameraOcclusionWall : MonoBehaviour
     }
 
     // Kept for callers created before cutaway rendering replaced wall movement.
-    public void CaptureRestPose() { }
+    public Vector3 RestWorldOffset()
+    {
+        if (!hasRestPose) return Vector3.zero;
+        return restPosition - transform.position;
+    }
+
+    public void CaptureRestPose()
+    {
+        if (wasLowered) return;
+        restPosition = transform.position;
+        hasRestPose = true;
+        CacheRenderers();
+        restVisualHeight = Mathf.Max(0.2f, visualTop - visualBottom);
+    }
 
     public void SetOutwardFromKitchen(Vector3 kitchenFocus)
     {
@@ -109,6 +151,12 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void ApplyCutaway(float amount)
     {
+        if (duckByLowering)
+        {
+            ApplyLowering(amount);
+            return;
+        }
+
         if (amount <= 0.001f)
         {
             RestoreOriginalRendering();
@@ -167,14 +215,37 @@ public class CameraOcclusionWall : MonoBehaviour
             originalRendererEnabled[i] = renderer != null && renderer.enabled;
             brickRenderers[i] = HasBrickMaterial(originalMaterials[i]);
             if (renderer == null || !renderer.enabled) continue;
+            if (renderer.GetComponentInParent<Canvas>() != null) continue;
             if (!foundBounds) { combined = renderer.bounds; foundBounds = true; }
             else combined.Encapsulate(renderer.bounds);
         }
 
         visualBottom = foundBounds ? combined.min.y : transform.position.y;
         visualTop = foundBounds ? combined.max.y : visualBottom + 4f;
+        if (!hasRestPose)
+            restVisualHeight = Mathf.Max(0.2f, visualTop - visualBottom);
         cutawayMaterials = null;
         usingCutawayMaterials = false;
+    }
+
+    void ApplyLowering(float amount)
+    {
+        if (amount <= 0.001f)
+        {
+            if (hasRestPose)
+                transform.position = restPosition;
+            wasLowered = false;
+            if (!hasRestPose)
+                CaptureRestPose();
+            return;
+        }
+
+        if (!hasRestPose)
+            CaptureRestPose();
+
+        wasLowered = true;
+        float drop = Mathf.Max(0f, restVisualHeight - Mathf.Max(0.2f, cutawayHeight)) * amount;
+        transform.position = restPosition + Vector3.down * drop;
     }
 
     void EnsureRendererCacheCurrent()

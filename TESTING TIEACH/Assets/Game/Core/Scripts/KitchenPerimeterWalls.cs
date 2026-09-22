@@ -4,9 +4,10 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Wall layout:
-/// - Customer floor: static south + east walls (always from CustomerFloor bounds)
-/// - Work floor: north + west + south walls that refit on expand
-/// - Work floor east wall only on expand protrusions (keeps register counter open)
+/// - One south wall across kitchen + lobby (moves south with floor expand)
+/// - Customer east wall from CustomerFloor (north/east stay on authored bounds)
+/// - Work floor: north + west walls that refit on expand
+/// - Work floor east wall only north of dining (never over the register counter)
 /// Avoids a combined AABB so expand doesn't enclose empty grass courtyards.
 /// </summary>
 public class KitchenPerimeterWalls : MonoBehaviour
@@ -189,31 +190,23 @@ public class KitchenPerimeterWalls : MonoBehaviour
                     90f, (wMaxZ - wMinZ) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.left);
             }
 
-            if (buildWorkSouth)
+            // One south wall across kitchen + lobby so expand does not leave an
+            // east stub sitting on the register counter.
+            if (buildWorkSouth || (hasCustomer && buildCustomerSouth))
             {
+                float southZ = hasCustomer ? Mathf.Min(wMinZ, cMinZ) : wMinZ;
+                float sMinX = hasCustomer ? Mathf.Min(wMinX, cMinX) : wMinX;
+                float sMaxX = hasCustomer ? Mathf.Max(wMaxX, cMaxX) : wMaxX;
                 BuildWallWithWindows(
-                    new Vector3((wMinX + wMaxX) * 0.5f, y, wMinZ - t * 0.5f + inset),
-                    180f, (wMaxX - wMinX) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.back);
+                    new Vector3((sMinX + sMaxX) * 0.5f, y, southZ - t * 0.5f + inset),
+                    180f, (sMaxX - sMinX) + corner + tileLengthPadding, t,
+                    forceFlankingDoor: true, Vector3.back);
             }
 
-            // East wall only on work-floor protrusions past the customer floor (not at registers).
+            // East wall only north of the dining floor. Never south of it — that
+            // edge is the counter.
             if (buildWorkEastProtrusions && hasCustomer)
             {
-                // South of customer
-                if (wMinZ < cMinZ - 0.05f)
-                {
-                    float z0 = wMinZ;
-                    float z1 = Mathf.Min(wMaxZ, cMinZ);
-                    float len = z1 - z0;
-                    if (len > 0.35f)
-                    {
-                        BuildWallWithWindows(
-                            new Vector3(wMaxX + t * 0.5f - inset, y, (z0 + z1) * 0.5f),
-                            90f, len, t, forceFlankingDoor: false, Vector3.right);
-                    }
-                }
-
-                // North of customer
                 if (wMaxZ > cMaxZ + 0.05f)
                 {
                     float z0 = Mathf.Max(wMinZ, cMaxZ);
@@ -229,25 +222,17 @@ public class KitchenPerimeterWalls : MonoBehaviour
             }
             else if (buildWorkEastProtrusions && !hasCustomer)
             {
-                // No dining floor — full work east wall
                 BuildWallWithWindows(
                     new Vector3(wMaxX + t * 0.5f - inset, y, (wMinZ + wMaxZ) * 0.5f),
                     90f, (wMaxZ - wMinZ) + corner, t, forceFlankingDoor: false, Vector3.right);
             }
 
-            // --- Customer floor static walls (from CustomerFloor bounds only) ---
             if (hasCustomer && buildCustomerEast)
             {
                 BuildWallWithWindows(
                     new Vector3(cMaxX + t * 0.5f - inset, y, (cMinZ + cMaxZ) * 0.5f),
-                    90f, (cMaxZ - cMinZ) + corner + tileLengthPadding, t, forceFlankingDoor: false, Vector3.right);
-            }
-
-            if (hasCustomer && buildCustomerSouth)
-            {
-                BuildWallWithWindows(
-                    new Vector3((cMinX + cMaxX) * 0.5f, y, cMinZ - t * 0.5f + inset),
-                    180f, cMaxX - cMinX, t, forceFlankingDoor: true, Vector3.back);
+                    90f, (cMaxZ - cMinZ) + corner + tileLengthPadding, t,
+                    forceFlankingDoor: false, Vector3.right);
             }
 
             for (int i = windowsUsed; i < windowPool.Count; i++)
@@ -271,21 +256,30 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (go != null) customerFloor = go.transform;
     }
 
-    // Runtime lobby expansion is intentionally allowed to overlap the existing
-    // perimeter wall. Keep wall anchors on the authored customer-floor bounds.
+    public bool TryGetLobbyWallBounds(out float minX, out float maxX, out float minZ, out float maxZ)
+    {
+        EnsureCustomerFloor();
+        return TryGetCustomerWallBounds(out minX, out maxX, out minZ, out maxZ);
+    }
+
+    // East/north stay on the authored lobby walls (1-tile overlap is walkable).
+    // South follows the live floor so expand moves the south wall with the counter.
     bool TryGetCustomerWallBounds(out float minX, out float maxX, out float minZ, out float maxZ)
     {
         minX = maxX = minZ = maxZ = 0f;
         if (customerFloor == null) return false;
+        if (!TryGetFloorBounds(customerFloor, out minX, out maxX, out minZ, out maxZ))
+            return false;
+
         var extension = customerFloor.GetComponent<CustomerFloorRuntimeExtension>();
         if (extension != null && extension.HasOriginalBounds)
         {
-            Bounds bounds = extension.OriginalBounds;
-            minX = bounds.min.x; maxX = bounds.max.x;
-            minZ = bounds.min.z; maxZ = bounds.max.z;
-            return true;
+            Bounds authored = extension.OriginalBounds;
+            maxX = authored.max.x;
+            maxZ = authored.max.z;
+            minX = Mathf.Min(minX, authored.min.x);
         }
-        return TryGetFloorBounds(customerFloor, out minX, out maxX, out minZ, out maxZ);
+        return true;
     }
 
     bool TryGetBuildingBounds(out float minX, out float maxX, out float minZ, out float maxZ)
@@ -510,6 +504,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
         {
             CustomerWallDoor door = placedDoors[i];
             if (door == null || door.transform == entranceDoor) continue;
+            if (door.GetComponentInParent<Canvas>() != null) continue;
             TryAddDoorOnWall(door.transform, wallPos, along, length, thick, results);
         }
 
@@ -543,6 +538,12 @@ public class KitchenPerimeterWalls : MonoBehaviour
             }
         }
 
+        if (!foundBounds) return false;
+
+        var occ = door.GetComponent<CameraOcclusionWall>();
+        if (occ != null)
+            b.center += occ.RestWorldOffset();
+
         Vector3 toDoor = b.center - wallPos;
         toDoor.y = 0f;
         Vector3 inward = Vector3.Cross(Vector3.up, along);
@@ -571,7 +572,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (Mathf.Abs(doorAlong) > length * 0.5f + 0.75f)
             return false;
 
-        float doorTop = Mathf.Max(2.4f, b.max.y - (grid != null ? grid.Origin.y : 0f));
+        float doorTop = Mathf.Max(2.8f, b.max.y - (grid != null ? grid.Origin.y : 0f) + 0.2f);
         results.Add(new DoorOpening
         {
             center = doorAlong,

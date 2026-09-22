@@ -299,7 +299,7 @@ public class BuildPlacer : MonoBehaviour
                 ? "Hover a free counter    LMB: Place    ESC: Cancel"
                 : "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel";
         else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
-            placementHintText.text = "Hover a customer-floor wall    LMB: Place    ESC: Cancel";
+            placementHintText.text = "Click a lobby wall    LMB: Place    ESC: Cancel";
         else
             placementHintText.text = rotationLocked
                 ? "LMB: Place    ESC: Cancel"
@@ -494,6 +494,7 @@ public class BuildPlacer : MonoBehaviour
                 dragOriginalPosition = draggingObject.transform.position;
                 dragOriginalWorldRotation = draggingObject.transform.rotation;
                 dragOriginalWallSide = wallDoor.wallSide;
+                wallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(true);
                 SetDraggedObjectHighlighted(draggingObject);
                 SetHint(true, true);
                 Sfx.Play(SfxId.BuildPickup);
@@ -638,6 +639,8 @@ public class BuildPlacer : MonoBehaviour
 
     void EndDrag()
     {
+        if (draggingWallDoor != null)
+            draggingWallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(false);
         ClearDraggedObjectHighlight();
         draggingObject = null;
         dragFootprint = null;
@@ -780,6 +783,7 @@ public class BuildPlacer : MonoBehaviour
         CustomerWallDoor door = placed.GetComponent<CustomerWallDoor>();
         if (door == null) door = placed.AddComponent<CustomerWallDoor>();
         door.wallSide = side;
+        door.EnsureWallCutaway();
 
         PlacedBuildItem pbi = placed.GetComponent<PlacedBuildItem>();
         if (pbi == null) pbi = placed.AddComponent<PlacedBuildItem>();
@@ -805,6 +809,7 @@ public class BuildPlacer : MonoBehaviour
 
         draggingObject.transform.SetPositionAndRotation(position, rotation);
         draggingWallDoor.wallSide = side;
+        draggingWallDoor.EnsureWallCutaway();
         RefreshPerimeterWalls();
         Sfx.Play(SfxId.BuildPlace);
         EndDrag();
@@ -928,58 +933,102 @@ public class BuildPlacer : MonoBehaviour
         Renderer customerRenderer = customer != null ? customer.GetComponentInChildren<Renderer>() : null;
         if (customerRenderer == null) return false;
 
-        Bounds bounds = customerRenderer.bounds;
-        // The customer floor extends under the wall at runtime, but doors must
-        // still snap to the original wall line rather than its added outer tile.
-        CustomerFloorRuntimeExtension extension = customer.GetComponent<CustomerFloorRuntimeExtension>();
-        if (extension != null && extension.HasOriginalBounds)
-            bounds = extension.OriginalBounds;
-        floorY = bounds.max.y;
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));
-        if (!floorPlane.Raycast(ray, out float rayDistance) || rayDistance < 0f) return false;
-        Vector3 hit = ray.GetPoint(rayDistance);
+        float minX = customerRenderer.bounds.min.x;
+        float maxX = customerRenderer.bounds.max.x;
+        float minZ = customerRenderer.bounds.min.z;
+        float maxZ = customerRenderer.bounds.max.z;
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (walls != null && walls.TryGetLobbyWallBounds(out float wallMinX, out float wallMaxX,
+            out float wallMinZ, out float wallMaxZ))
+        {
+            minX = wallMinX;
+            maxX = wallMaxX;
+            minZ = wallMinZ;
+            maxZ = wallMaxZ;
+        }
+        floorY = customerRenderer.bounds.max.y;
 
         float cell = Mathf.Max(0.1f, grid.cellSize);
         float originX = grid.Origin.x
-            + Mathf.Round((bounds.min.x - grid.Origin.x) / cell) * cell;
+            + Mathf.Round((minX - grid.Origin.x) / cell) * cell;
         float originZ = grid.Origin.z
-            + Mathf.Round((bounds.min.z - grid.Origin.z) / cell) * cell;
-        int width = Mathf.Max(1, Mathf.RoundToInt(bounds.size.x / cell));
-        int height = Mathf.Max(1, Mathf.RoundToInt(bounds.size.z / cell));
-        float maxX = originX + width * cell;
-        float maxZ = originZ + height * cell;
-        if (hit.x < originX || hit.x >= maxX || hit.z < originZ || hit.z >= maxZ)
+            + Mathf.Round((minZ - grid.Origin.z) / cell) * cell;
+        int width = Mathf.Max(1, Mathf.RoundToInt((maxX - minX) / cell));
+        int height = Mathf.Max(1, Mathf.RoundToInt((maxZ - minZ) / cell));
+        maxX = originX + width * cell;
+        maxZ = originZ + height * cell;
+
+        if (!TryGetDoorAimPoint(floorY, out Vector3 aim))
             return false;
 
-        int x = Mathf.Clamp(Mathf.FloorToInt((hit.x - originX) / cell), 0, width - 1);
-        int z = Mathf.Clamp(Mathf.FloorToInt((hit.z - originZ) / cell), 0, height - 1);
-        bool south = z == 0;
-        bool east = x == width - 1;
-        bool north = z == height - 1;
-        if (!south && !east && !north) return false;
+        float distSouth = Mathf.Abs(aim.z - originZ);
+        float distEast = Mathf.Abs(aim.x - maxX);
+        float distNorth = Mathf.Abs(aim.z - maxZ);
+        float nearest = Mathf.Min(distSouth, Mathf.Min(distEast, distNorth));
+        float snapRange = cell * 6f;
+        if (nearest > snapRange)
+            return false;
 
-        // The west edge borders the service counter, so it is intentionally excluded.
-        if (east && (!south || maxX - hit.x <= hit.z - originZ)
-            && (!north || maxX - hit.x <= maxZ - hit.z))
+        if (distEast <= distSouth && distEast <= distNorth)
             side = CustomerWallDoor.WallSide.East;
-        else if (south && (!north || hit.z - originZ <= maxZ - hit.z))
+        else if (distSouth <= distNorth)
             side = CustomerWallDoor.WallSide.South;
         else
             side = CustomerWallDoor.WallSide.North;
 
-        // The imported frame is wider than one tile. Do not let it straddle a corner.
-        if (side == CustomerWallDoor.WallSide.East && (z == 0 || z == height - 1)) return false;
-        if (side != CustomerWallDoor.WallSide.East && (x == 0 || x == width - 1)) return false;
+        // Keep the wide door frame off the corners.
+        float cornerPad = cell * 1.5f;
+        float alongMin;
+        float alongMax;
+        float along;
+        if (side == CustomerWallDoor.WallSide.East)
+        {
+            alongMin = originZ + cornerPad;
+            alongMax = maxZ - cornerPad;
+            along = Mathf.Clamp(aim.z, alongMin, alongMax);
+            int z = Mathf.Clamp(Mathf.FloorToInt((along - originZ) / cell), 1, height - 2);
+            tileCenter = new Vector3(maxX - cell * 0.5f, floorY + 0.04f, originZ + (z + 0.5f) * cell);
+            wallPosition = new Vector3(maxX, floorY, tileCenter.z);
+        }
+        else
+        {
+            alongMin = originX + cornerPad;
+            alongMax = maxX - cornerPad;
+            along = Mathf.Clamp(aim.x, alongMin, alongMax);
+            int x = Mathf.Clamp(Mathf.FloorToInt((along - originX) / cell), 1, width - 2);
+            float wallZ = side == CustomerWallDoor.WallSide.South ? originZ : maxZ;
+            tileCenter = new Vector3(originX + (x + 0.5f) * cell, floorY + 0.04f, wallZ);
+            wallPosition = new Vector3(tileCenter.x, floorY, wallZ);
+        }
 
-        tileCenter = new Vector3(
-            originX + (x + 0.5f) * cell,
-            floorY + 0.04f,
-            originZ + (z + 0.5f) * cell);
-        wallPosition = side == CustomerWallDoor.WallSide.East
-            ? new Vector3(maxX, floorY, tileCenter.z)
-            : new Vector3(tileCenter.x, floorY,
-                side == CustomerWallDoor.WallSide.South ? originZ : maxZ);
+        return alongMax > alongMin;
+    }
+
+    bool TryGetDoorAimPoint(float floorY, out Vector3 aim)
+    {
+        aim = Vector3.zero;
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider col = hits[i].collider;
+            if (col == null) continue;
+            if (ghost != null && col.transform.IsChildOf(ghost.transform)) continue;
+            if (draggingObject != null && col.transform.IsChildOf(draggingObject.transform))
+            {
+                aim = hits[i].point;
+                return true;
+            }
+            aim = hits[i].point;
+            return true;
+        }
+
+        Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));
+        if (!floorPlane.Raycast(ray, out float rayDistance) || rayDistance < 0f)
+            return false;
+        aim = ray.GetPoint(rayDistance);
         return true;
     }
 

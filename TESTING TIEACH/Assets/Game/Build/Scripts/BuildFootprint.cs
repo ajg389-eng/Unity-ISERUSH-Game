@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -25,6 +26,40 @@ public class CustomerWallDoor : MonoBehaviour
     Image entranceButtonImage;
     Image exitButtonImage;
     TextMeshProUGUI titleText;
+
+    void Awake()
+    {
+        EnsureWallCutaway();
+    }
+
+    void OnEnable()
+    {
+        EnsureWallCutaway();
+    }
+
+    public void EnsureWallCutaway()
+    {
+        bool ghost = name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+        Collider[] colliders = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] == null) continue;
+            if (colliders[i].GetComponentInParent<Canvas>() != null) continue;
+            colliders[i].isTrigger = true;
+        }
+
+        if (ghost) return;
+
+        var occ = GetComponent<CameraOcclusionWall>();
+        if (occ == null)
+            occ = gameObject.AddComponent<CameraOcclusionWall>();
+        occ.duckByLowering = true;
+        occ.cutawayHeight = 0.8f;
+        occ.SetOutward(OutwardDirection());
+        occ.SetPlacementLock(false);
+        occ.CaptureRestPose();
+    }
 
     public static bool HasActivePopup => activePopupDoor != null
         && activePopupDoor.rolePopup != null
@@ -149,36 +184,83 @@ public class CustomerWallDoor : MonoBehaviour
             exitButtonImage.color = role == DoorRole.Exit ? selected : normal;
     }
 
+    public static bool IsGameplayDoor(CustomerWallDoor door)
+    {
+        if (door == null || !door.isActiveAndEnabled) return false;
+        if (door.name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        return door.GetComponentInParent<Canvas>() == null;
+    }
+
     public static CustomerWallDoor FindRandomDoor(DoorRole desiredRole)
     {
-        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(FindObjectsSortMode.None);
+        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         int matchingCount = 0;
         foreach (CustomerWallDoor door in doors)
-            if (door != null && door.isActiveAndEnabled && door.role == desiredRole)
+            if (IsGameplayDoor(door) && door.role == desiredRole)
                 matchingCount++;
 
         if (matchingCount == 0) return null;
         int selectedIndex = Random.Range(0, matchingCount);
         foreach (CustomerWallDoor door in doors)
         {
-            if (door == null || !door.isActiveAndEnabled || door.role != desiredRole) continue;
+            if (!IsGameplayDoor(door) || door.role != desiredRole) continue;
             if (selectedIndex-- == 0) return door;
         }
         return null;
     }
 
+    public Vector3 OutwardDirection()
+    {
+        switch (wallSide)
+        {
+            case WallSide.East: return Vector3.right;
+            case WallSide.North: return Vector3.forward;
+            default: return Vector3.back;
+        }
+    }
+
+    public void AppendPassage(List<Vector3> into, bool entering)
+    {
+        if (into == null) return;
+        Vector3 outside = GetCustomerWaypoint(true, 2.4f);
+        Vector3 threshold = GetCustomerWaypoint(true, 0.15f);
+        Vector3 inside = GetCustomerWaypoint(false, 2.0f);
+        if (entering)
+        {
+            into.Add(outside);
+            into.Add(threshold);
+            into.Add(inside);
+        }
+        else
+        {
+            into.Add(inside);
+            into.Add(threshold);
+            into.Add(outside);
+        }
+    }
+
     public Vector3 GetCustomerWaypoint(bool outside, float distance = 1.5f)
     {
-        Bounds bounds = GetVisualBounds();
-        Vector3 outward = wallSide switch
-        {
-            WallSide.South => Vector3.back,
-            WallSide.East => Vector3.right,
-            _ => Vector3.forward
-        };
-        Vector3 point = bounds.center + outward * (outside ? distance : -distance);
-        point.y = bounds.min.y;
+        Vector3 outward = OutwardDirection();
+        float floorY = ResolveFloorY();
+        Vector3 point = transform.position;
+        point.y = floorY;
+        point += outward * (outside ? distance : -distance);
         return point;
+    }
+
+    float ResolveFloorY()
+    {
+        GameObject floor = GameObject.Find("CustomerFloor");
+        if (floor != null)
+        {
+            Renderer renderer = floor.GetComponentInChildren<Renderer>();
+            if (renderer != null) return renderer.bounds.max.y;
+        }
+        Bounds bounds = GetVisualBounds();
+        return bounds.min.y;
     }
 
     Bounds GetVisualBounds()
