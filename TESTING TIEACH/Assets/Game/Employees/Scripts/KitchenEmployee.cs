@@ -1264,7 +1264,7 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 stateTimer += Time.deltaTime;
-                float drinkTime = manager.GetDrinkInteractionTime(this);
+                float drinkTime = manager.GetDrinkProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / drinkTime);
                 if (stateTimer >= drinkTime)
@@ -1405,7 +1405,7 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 stateTimer += Time.deltaTime;
-                float freezerTime = manager.GetFreezerInteractionTime(this) * CarryCapacity;
+                float freezerTime = manager.GetFreezerProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, freezerTime));
                 if (stateTimer >= freezerTime)
@@ -1502,16 +1502,13 @@ public class KitchenEmployee : MonoBehaviour
                 }
 
                 stateTimer += Time.deltaTime;
-                float oneGrillCycle = manager.GetGrillPlaceTime(this) + manager.GetGrillCookTime(this)
-                    + manager.GetGrillWaitAfterCookedTime(this) + manager.GetGrillTakeTime(this);
-                // Grill cooks one patty at a time; batch size only scales total wait for multi-carry.
-                float grillTotal = oneGrillCycle * Mathf.Max(1, BatchSize);
+                float grillTotal = manager.GetGrillProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, grillTotal));
 
                 var grillNow = manager.GetGrillFor(this);
                 bool readyToTake = grillNow != null && grillNow.IsCooked()
-                    && stateTimer >= oneGrillCycle;
+                    && stateTimer >= grillTotal;
 
                 if (readyToTake || stateTimer >= grillTotal)
                 {
@@ -1570,7 +1567,7 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 stateTimer += Time.deltaTime;
-                float assemblyTime = manager.GetAssemblyInteractionTime(this) * BatchSize;
+                float assemblyTime = manager.GetAssemblyProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, assemblyTime));
                 if (stateTimer >= assemblyTime)
@@ -1625,7 +1622,7 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 stateTimer += Time.deltaTime;
-                float fryerTotal = manager.GetFryerTotalTime(this) * BatchSize;
+                float fryerTotal = manager.GetFryerProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, fryerTotal));
                 if (stateTimer >= fryerTotal)
@@ -1677,7 +1674,7 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 stateTimer += Time.deltaTime;
-                float drinkProductionTime = manager.GetDrinkInteractionTime(this) * CarryCapacity;
+                float drinkProductionTime = manager.GetDrinkProcessTime(this);
                 ShowTaskBar = true;
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, drinkProductionTime));
                 if (stateTimer >= drinkProductionTime)

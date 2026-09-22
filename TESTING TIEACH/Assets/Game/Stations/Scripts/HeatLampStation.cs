@@ -29,11 +29,12 @@ public class HeldMeal
 /// </summary>
 public class HeatLampStation : MonoBehaviour
 {
+    public const int FixedCapacity = 4;
     public static HeatLampStation Instance { get; private set; }
 
     [Header("Capacity")]
     [Tooltip("Maximum meals that can sit under the lamp at once")]
-    public int maxCapacity = 8;
+    public int maxCapacity = FixedCapacity;
     [Tooltip("Kitchen tries to keep this many meals ready (demand + buffer)")]
     public int targetStock = 3;
 
@@ -67,6 +68,10 @@ public class HeatLampStation : MonoBehaviour
     public float foodDisplayHeight = 0.55f;
     [Tooltip("Uniform world-space scale used by displayed food models.")]
     public float foodDisplayScale = 0.42f;
+    [Tooltip("Local X/Z center of the four display pans on the current 1x1 model.")]
+    public Vector2 foodDisplayCenter = new Vector2(0.246f, 0.032f);
+    [Tooltip("Local X/Z spacing between the four display positions.")]
+    public Vector2 foodDisplaySpacing = new Vector2(0.18f, 0.36f);
 
     readonly List<HeldMeal> meals = new List<HeldMeal>();
     readonly List<CustomerAI> customerPickupQueue = new List<CustomerAI>();
@@ -92,6 +97,7 @@ public class HeatLampStation : MonoBehaviour
 
     void Awake()
     {
+        maxCapacity = FixedCapacity;
         if (Instance != null && Instance != this)
         {
             Debug.LogWarning("Multiple HeatLampStation objects; using the newest.", this);
@@ -128,15 +134,14 @@ public class HeatLampStation : MonoBehaviour
     }
 
     /// <summary>
-    /// Rebuilds the physical stock display from the real held-meal list. The eight
-    /// positions match the centers of the square pans on the two heater models.
+    /// Rebuilds the physical stock display from the real held-meal list.
     /// </summary>
     void RefreshFoodDisplay()
     {
         EnsureFoodDisplayRoot();
         ClearFoodDisplay();
 
-        int visibleCount = Mathf.Min(meals.Count, 8);
+        int visibleCount = Mathf.Min(meals.Count, FixedCapacity);
         for (int i = 0; i < visibleCount; i++)
         {
             ItemDefinition item = meals[i]?.order?.PrimaryItem;
@@ -184,10 +189,10 @@ public class HeatLampStation : MonoBehaviour
 
     Vector3 GetFoodDisplaySlot(int index)
     {
-        int column = index % 4;
-        int row = index / 4;
-        float x = (column - 1.5f) * 0.247f;
-        float z = row == 0 ? -0.262f : 0.262f;
+        int column = index % 2;
+        int row = index / 2;
+        float x = foodDisplayCenter.x + (column - 0.5f) * foodDisplaySpacing.x;
+        float z = foodDisplayCenter.y + (row - 0.5f) * foodDisplaySpacing.y;
         return new Vector3(x, foodDisplayHeight, z);
     }
 

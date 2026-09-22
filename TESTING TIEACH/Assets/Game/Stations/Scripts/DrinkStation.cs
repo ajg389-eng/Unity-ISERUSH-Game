@@ -1,12 +1,14 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable drink dispenser. Assigned production workers pour drinks here and deliver them to the Pickup Station.
 /// </summary>
 public class DrinkStation : MonoBehaviour
 {
-    [Tooltip("Time in seconds to pour / dispense one drink.")]
-    public float interactionTimeSeconds = 1.5f;
+    [FormerlySerializedAs("interactionTimeSeconds")]
+    [Tooltip("Total time for one drink-station operation.")]
+    [Min(0f)] public float processTimeSeconds = 1.5f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public Vector3 GetInteractionPosition()

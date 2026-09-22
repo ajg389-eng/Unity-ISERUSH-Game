@@ -1,12 +1,14 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable station. Employee grabs a patty here (consumes from KitchenInventory).
 /// </summary>
 public class FreezerStation : MonoBehaviour
 {
-    [Tooltip("Time in seconds for the employee to grab a patty.")]
-    public float interactionTimeSeconds = 1f;
+    [FormerlySerializedAs("interactionTimeSeconds")]
+    [Tooltip("Total time for one freezer operation.")]
+    [Min(0f)] public float processTimeSeconds = 1f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public Vector3 GetInteractionPosition()

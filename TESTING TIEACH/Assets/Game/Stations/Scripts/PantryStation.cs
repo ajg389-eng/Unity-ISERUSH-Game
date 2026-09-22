@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable station. Holds which ingredients can be grabbed here.
@@ -9,8 +10,9 @@ public class PantryStation : MonoBehaviour
 {
     [Tooltip("Ingredients this pantry can dispense (must also have stock in KitchenInventory)")]
     public List<ItemDefinition> stockedItems = new List<ItemDefinition>();
-    [Tooltip("Time in seconds for the employee to grab one ingredient.")]
-    public float interactionTimeSeconds = 0.5f;
+    [FormerlySerializedAs("interactionTimeSeconds")]
+    [Tooltip("Total time for one pantry operation.")]
+    [Min(0f)] public float processTimeSeconds = 0.5f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public Vector3 GetInteractionPosition()

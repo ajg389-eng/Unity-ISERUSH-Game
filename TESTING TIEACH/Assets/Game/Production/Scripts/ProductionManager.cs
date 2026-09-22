@@ -421,9 +421,15 @@ public class ProductionManager : MonoBehaviour
 
     public void AddWorkerToSelectedFlow(KitchenEmployee employee)
     {
-        if (employee == null) return;
         EnsureProductionFlows();
-        ProductionFlowPlan targetFlow = SelectedFlow;
+        AddWorkerToFlow(SelectedFlow, employee);
+    }
+
+    public void AddWorkerToFlow(ProductionFlowPlan targetFlow, KitchenEmployee employee)
+    {
+        if (targetFlow == null || employee == null) return;
+        EnsureProductionFlows();
+        if (!productionFlows.Contains(targetFlow)) return;
         if (targetFlow.workers.Contains(employee))
         {
             lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
@@ -1043,11 +1049,11 @@ public class ProductionManager : MonoBehaviour
         return g != null && g.TakeCookedPatty();
     }
 
-    public float GetFreezerInteractionTime(KitchenEmployee forEmployee = null)
+    public float GetFreezerProcessTime(KitchenEmployee forEmployee = null)
     {
         var f = forEmployee != null ? forEmployee.GetFreezerStation() : null;
         if (f == null) f = freezer;
-        return f != null ? f.interactionTimeSeconds : 1f;
+        return f != null ? f.processTimeSeconds : 1f;
     }
 
     public bool TryTakePattyFromFreezer(KitchenEmployee forEmployee = null)
@@ -1066,16 +1072,17 @@ public class ProductionManager : MonoBehaviour
         return inv.Has(PattyItem);
     }
 
-    public float GetGrillPlaceTime(KitchenEmployee forEmployee = null) => GetGrillFor(forEmployee) != null ? GetGrillFor(forEmployee).placeTimeSeconds : 0.5f;
-    public float GetGrillCookTime(KitchenEmployee forEmployee = null) => GetGrillFor(forEmployee) != null ? GetGrillFor(forEmployee).cookTimeSeconds : 4f;
-    public float GetGrillWaitAfterCookedTime(KitchenEmployee forEmployee = null) => GetGrillFor(forEmployee) != null ? GetGrillFor(forEmployee).waitAfterCookedSeconds : 0.5f;
-    public float GetGrillTakeTime(KitchenEmployee forEmployee = null) => GetGrillFor(forEmployee) != null ? GetGrillFor(forEmployee).takeTimeSeconds : 0.5f;
+    public float GetGrillProcessTime(KitchenEmployee forEmployee = null)
+    {
+        var g = GetGrillFor(forEmployee);
+        return g != null ? g.processTimeSeconds : 4f;
+    }
 
-    public float GetAssemblyInteractionTime(KitchenEmployee forEmployee = null)
+    public float GetAssemblyProcessTime(KitchenEmployee forEmployee = null)
     {
         var a = forEmployee != null ? forEmployee.GetAssemblyStation() : null;
         if (a == null) a = assembly;
-        return a != null ? a.interactionTimeSeconds : 1f;
+        return a != null ? a.processTimeSeconds : 1f;
     }
 
     public FryerStation GetFryerFor(KitchenEmployee emp)
@@ -1098,11 +1105,10 @@ public class ProductionManager : MonoBehaviour
         return drinkStation;
     }
 
-    public float GetFryerTotalTime(KitchenEmployee forEmployee = null)
+    public float GetFryerProcessTime(KitchenEmployee forEmployee = null)
     {
         var f = GetFryerFor(forEmployee);
-        if (f == null) return 6f;
-        return f.loadTimeSeconds + f.cookTimeSeconds + f.waitAfterCookedSeconds + f.takeTimeSeconds;
+        return f != null ? f.processTimeSeconds : 5f;
     }
 
     public bool TryLoadFryer(KitchenEmployee forEmployee = null)
@@ -1118,10 +1124,10 @@ public class ProductionManager : MonoBehaviour
         return f != null && f.TakeCooked();
     }
 
-    public float GetDrinkInteractionTime(KitchenEmployee forEmployee = null)
+    public float GetDrinkProcessTime(KitchenEmployee forEmployee = null)
     {
         var d = GetDrinkFor(forEmployee);
-        return d != null ? d.interactionTimeSeconds : 1.5f;
+        return d != null ? d.processTimeSeconds : 1.5f;
     }
 
     public bool TryDispenseDrink(KitchenEmployee forEmployee = null)

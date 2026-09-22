@@ -833,17 +833,17 @@ public static class WorkflowAnalysis
     {
         if (station == null) return 0f;
         FreezerStation freezer = station.GetComponent<FreezerStation>();
-        if (freezer != null) return freezer.interactionTimeSeconds;
+        if (freezer != null) return freezer.processTimeSeconds;
         GrillStation grill = station.GetComponent<GrillStation>();
-        if (grill != null) return grill.placeTimeSeconds + grill.cookTimeSeconds + grill.waitAfterCookedSeconds + grill.takeTimeSeconds;
+        if (grill != null) return grill.processTimeSeconds;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
-        if (assembly != null) return assembly.interactionTimeSeconds;
+        if (assembly != null) return assembly.processTimeSeconds;
         FryerStation fryer = station.GetComponent<FryerStation>();
-        if (fryer != null) return fryer.loadTimeSeconds + fryer.cookTimeSeconds + fryer.waitAfterCookedSeconds + fryer.takeTimeSeconds;
+        if (fryer != null) return fryer.processTimeSeconds;
         DrinkStation drink = station.GetComponent<DrinkStation>();
-        if (drink != null) return drink.interactionTimeSeconds;
+        if (drink != null) return drink.processTimeSeconds;
         PantryStation pantry = station.GetComponent<PantryStation>();
-        if (pantry != null) return pantry.interactionTimeSeconds;
+        if (pantry != null) return pantry.processTimeSeconds;
         return 0f;
     }
 

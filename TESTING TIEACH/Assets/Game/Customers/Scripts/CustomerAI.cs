@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Customers walk an optional outside entry path, then stand on their register queue slot.
-/// Queue lineup uses direct movement to Register queue points (not grid pathfinding).
+/// Customers walk an optional outside entry path, then use customer-floor tile centers
+/// to reach register, waiting-area, and pickup queue positions.
 /// </summary>
 public class CustomerAI : MonoBehaviour
 {
@@ -50,6 +50,8 @@ public class CustomerAI : MonoBehaviour
     readonly List<Vector3> route = new List<Vector3>();
     int routeIndex;
     readonly List<Vector3> gridPath = new List<Vector3>();
+    Vector3 gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
+    Renderer customerFloorRenderer;
     Phase phase = Phase.GoingToSlot;
     bool patienceStarted;
     CustomerPath exitPath;
@@ -406,8 +408,7 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        MoveStraightTo(route[routeIndex]);
-        if (HorizontalDist(transform.position, route[routeIndex]) <= arrivalDistance)
+        if (MoveOnCustomerGrid(route[routeIndex]))
             routeIndex++;
     }
 
@@ -426,8 +427,7 @@ public class CustomerAI : MonoBehaviour
         if (hasWaitAreaReservation && !waitingAtDesignatedArea && HorizontalDist(transform.position, targetPos) > 0.6f)
             ReleaseWaitAreaReservation();
 
-        // Direct move to the register's queue point so customers line up correctly.
-        if (MoveStraightTo(targetPos))
+        if (MoveOnCustomerGrid(targetPos))
         {
             phase = Phase.Waiting;
             BeginQueueWait();
@@ -537,8 +537,125 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        if (MoveStraightTo(route[routeIndex]))
+        if (MoveOnCustomerGrid(route[routeIndex]))
             routeIndex++;
+    }
+
+    /// <summary>
+    /// Mirrors worker movement on the customer grid: visit orthogonally adjacent tile
+    /// centers, then take the final short step to the exact queue or door position.
+    /// Outside portions of entry and exit routes remain direct.
+    /// </summary>
+    bool MoveOnCustomerGrid(Vector3 target)
+    {
+        SnapFeetToFloor();
+        Vector3 exactTarget = target;
+        exactTarget.y = transform.position.y;
+
+        if (HorizontalDist(transform.position, exactTarget) <= arrivalDistance)
+        {
+            SnapXZ(exactTarget);
+            gridPath.Clear();
+            gridPathDestination = exactTarget;
+            return true;
+        }
+
+        if (!TryGetCustomerGrid(out Bounds bounds, out float originX, out float originZ,
+                out float cellSize, out int width, out int height)
+            || !ContainsXZ(bounds, transform.position)
+            || !ContainsXZ(bounds, exactTarget))
+        {
+            gridPath.Clear();
+            gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
+            return MoveStraightTo(exactTarget);
+        }
+
+        if (gridPath.Count == 0 || HorizontalDist(gridPathDestination, exactTarget) > 0.01f)
+        {
+            gridPathDestination = exactTarget;
+            BuildCustomerGridPath(transform.position, exactTarget, originX, originZ,
+                cellSize, width, height);
+        }
+
+        if (gridPath.Count == 0)
+            return MoveStraightTo(exactTarget);
+
+        if (!MoveStraightTo(gridPath[0]))
+            return false;
+
+        gridPath.RemoveAt(0);
+        return gridPath.Count == 0;
+    }
+
+    void BuildCustomerGridPath(Vector3 from, Vector3 target, float originX, float originZ,
+        float cellSize, int width, int height)
+    {
+        gridPath.Clear();
+        int startX = Mathf.Clamp(Mathf.FloorToInt((from.x - originX) / cellSize), 0, width - 1);
+        int startZ = Mathf.Clamp(Mathf.FloorToInt((from.z - originZ) / cellSize), 0, height - 1);
+        int targetX = Mathf.Clamp(Mathf.FloorToInt((target.x - originX) / cellSize), 0, width - 1);
+        int targetZ = Mathf.Clamp(Mathf.FloorToInt((target.z - originZ) / cellSize), 0, height - 1);
+
+        Vector3 Center(int x, int z) => new Vector3(
+            originX + (x + 0.5f) * cellSize,
+            transform.position.y,
+            originZ + (z + 0.5f) * cellSize);
+
+        Vector3 startCenter = Center(startX, startZ);
+        if (HorizontalDist(from, startCenter) > arrivalDistance)
+            gridPath.Add(startCenter);
+
+        int x = startX;
+        int z = startZ;
+        while (x != targetX)
+        {
+            x += targetX > x ? 1 : -1;
+            gridPath.Add(Center(x, z));
+        }
+        while (z != targetZ)
+        {
+            z += targetZ > z ? 1 : -1;
+            gridPath.Add(Center(x, z));
+        }
+
+        if (gridPath.Count == 0 || HorizontalDist(gridPath[gridPath.Count - 1], target) > arrivalDistance)
+            gridPath.Add(target);
+        else
+            gridPath[gridPath.Count - 1] = target;
+    }
+
+    bool TryGetCustomerGrid(out Bounds bounds, out float originX, out float originZ,
+        out float cellSize, out int width, out int height)
+    {
+        bounds = default;
+        originX = originZ = 0f;
+        cellSize = grid != null ? Mathf.Max(0.01f, grid.cellSize) : 1f;
+        width = height = 0;
+
+        if (customerFloorRenderer == null)
+        {
+            GameObject floor = GameObject.Find("CustomerFloor");
+            if (floor != null)
+                customerFloorRenderer = floor.GetComponentInChildren<Renderer>();
+        }
+        if (customerFloorRenderer == null) return false;
+
+        bounds = customerFloorRenderer.bounds;
+        Vector3 sharedOrigin = grid != null ? grid.Origin : bounds.min;
+        originX = sharedOrigin.x + Mathf.Round((bounds.min.x - sharedOrigin.x) / cellSize) * cellSize;
+        originZ = sharedOrigin.z + Mathf.Round((bounds.min.z - sharedOrigin.z) / cellSize) * cellSize;
+        width = Mathf.Max(1, Mathf.RoundToInt(bounds.size.x / cellSize));
+        height = Mathf.Max(1, Mathf.RoundToInt(bounds.size.z / cellSize));
+        return true;
+    }
+
+    static bool ContainsXZ(Bounds bounds, Vector3 point)
+    {
+        const float edgeTolerance = 0.05f;
+        return point.x >= bounds.min.x - edgeTolerance
+            && point.x <= bounds.max.x + edgeTolerance
+            && point.z >= bounds.min.z - edgeTolerance
+            && point.z <= bounds.max.z + edgeTolerance;
     }
 
     bool MoveStraightTo(Vector3 target)

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Burger assembly only. Choose the burger product in Manage mode; fries/drinks do not use this station.
@@ -9,8 +10,9 @@ public class AssemblyStation : MonoBehaviour
     [Tooltip("Burger product this station assembles. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
-    [Tooltip("Time in seconds for the employee to assemble the burger.")]
-    public float interactionTimeSeconds = 1.2f;
+    [FormerlySerializedAs("interactionTimeSeconds")]
+    [Tooltip("Total time for one assembly operation.")]
+    [Min(0f)] public float processTimeSeconds = 1.2f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public bool HasProductSelected => selectedProduct != null;

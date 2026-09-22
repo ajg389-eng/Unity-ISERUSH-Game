@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable grill. Choose which product this grill cooks (Manage mode).
@@ -10,13 +11,9 @@ public class GrillStation : MonoBehaviour
     [Tooltip("Product this grill is set to cook. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
-    public float cookTimeSeconds = 4f;
-    [Tooltip("Time for employee to place patty on grill.")]
-    public float placeTimeSeconds = 0.5f;
-    [Tooltip("Extra wait after patty is cooked before employee can take it.")]
-    public float waitAfterCookedSeconds = 0.5f;
-    [Tooltip("Time for employee to take cooked patty off grill.")]
-    public float takeTimeSeconds = 0.5f;
+    [FormerlySerializedAs("cookTimeSeconds")]
+    [Tooltip("Total time for one grill operation. Loading, cooking, and unloading are included.")]
+    [Min(0f)] public float processTimeSeconds = 4f;
     public Vector3 interactionOffset = Vector3.zero;
 
     bool hasPatty;
@@ -24,7 +21,7 @@ public class GrillStation : MonoBehaviour
 
     public bool HasProductSelected => selectedProduct != null;
     public bool HasPattyOnGrill => hasPatty;
-    public bool IsCookingPatty => hasPatty && cookTimer < cookTimeSeconds;
+    public bool IsCookingPatty => hasPatty && cookTimer < processTimeSeconds;
 
     public bool CanProcess(ItemDefinition product) =>
         product != null && selectedProduct != null && product == selectedProduct;
@@ -50,18 +47,18 @@ public class GrillStation : MonoBehaviour
 
     public void UpdateCooking(float deltaTime)
     {
-        if (hasPatty && cookTimer < cookTimeSeconds)
+        if (hasPatty && cookTimer < processTimeSeconds)
             cookTimer += deltaTime;
     }
 
     public bool IsCooked()
     {
-        return hasPatty && cookTimer >= cookTimeSeconds;
+        return hasPatty && cookTimer >= processTimeSeconds;
     }
 
     public bool TakeCookedPatty()
     {
-        if (!hasPatty || cookTimer < cookTimeSeconds) return false;
+        if (!hasPatty || cookTimer < processTimeSeconds) return false;
         hasPatty = false;
         return true;
     }

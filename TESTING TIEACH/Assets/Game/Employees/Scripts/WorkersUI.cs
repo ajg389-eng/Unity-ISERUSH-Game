@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
 
@@ -760,6 +761,8 @@ public class WorkersUI : MonoBehaviour
                 if (flowNameInput != null)
                     flowNameInput.ActivateInputField();
             });
+            var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
+            dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
     }
 
@@ -815,12 +818,7 @@ public class WorkersUI : MonoBehaviour
 
         MakeRowPrefix(workerRow, "WORKERS");
 
-        if (flow == null || flow.workers.Count == 0)
-        {
-            MakeLabel(workerRow, "No workers assigned", 12,
-                new Color(0.7f, 0.74f, 0.8f, 1f), 24);
-            return;
-        }
+        if (flow == null) return;
 
         foreach (KitchenEmployee worker in new List<KitchenEmployee>(flow.workers))
         {
@@ -833,6 +831,26 @@ public class WorkersUI : MonoBehaviour
                 Refresh();
             });
         }
+
+        CreateWorkerDropZone(workerRow, flow);
+    }
+
+    void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
+    {
+        Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
+        Button dropZone = MakeChip(parent, "+  DROP WORKER", 126f);
+        dropZone.gameObject.name = "WorkerDropZone";
+        var image = dropZone.GetComponent<Image>();
+        if (image != null) image.color = idleColor;
+        var label = dropZone.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+        {
+            label.fontSize = 10f;
+            label.fontStyle = FontStyles.Bold;
+            label.color = new Color(0.78f, 0.88f, 1f, 1f);
+        }
+        var target = dropZone.gameObject.AddComponent<WorkerFlowDropTarget>();
+        target.Bind(this, flow, idleColor);
     }
 
     void RefreshFlowSection()
@@ -923,6 +941,17 @@ public class WorkersUI : MonoBehaviour
         RefreshFlowSection();
     }
 
+    public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
+    {
+        if (production == null || employee == null || flow == null) return;
+        production.AddWorkerToFlow(flow, employee);
+        int flowIndex = production.productionFlows.IndexOf(flow);
+        if (flowIndex >= 0)
+            production.SelectProductionFlow(flowIndex);
+        Sfx.Play(SfxId.UiClick);
+        Refresh();
+    }
+
     public void Refresh()
     {
         EnsureRefs();
@@ -996,6 +1025,173 @@ public class WorkersUI : MonoBehaviour
             Destroy(cardGo);
             return null;
         }
+        var dragSource = cardGo.GetComponent<WorkerFlowDragSource>();
+        if (dragSource == null) dragSource = cardGo.AddComponent<WorkerFlowDragSource>();
+        dragSource.Bind(card);
         return card;
+    }
+}
+
+class WorkerFlowDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+{
+    public static KitchenEmployee ActiveWorker { get; private set; }
+    static WorkerFlowDragSource activeSource;
+
+    WorkerCardUI card;
+    CanvasGroup cardGroup;
+    float originalAlpha;
+    bool originalBlocksRaycasts;
+    GameObject dragLabel;
+    RectTransform dragLabelRect;
+    Canvas rootCanvas;
+
+    public void Bind(WorkerCardUI workerCard)
+    {
+        card = workerCard;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        if (card == null) card = GetComponent<WorkerCardUI>();
+        if (card == null || card.employee == null) return;
+
+        FinishActiveDrag();
+        activeSource = this;
+        ActiveWorker = card.employee;
+        cardGroup = GetComponent<CanvasGroup>();
+        if (cardGroup == null) cardGroup = gameObject.AddComponent<CanvasGroup>();
+        originalAlpha = cardGroup.alpha;
+        originalBlocksRaycasts = cardGroup.blocksRaycasts;
+        cardGroup.alpha = 0.55f;
+        cardGroup.blocksRaycasts = false;
+
+        CreateDragLabel(card.employee.employeeName);
+        MoveDragLabel(eventData);
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (ActiveWorker == null) return;
+        MoveDragLabel(eventData);
+    }
+
+    public void OnEndDrag(PointerEventData eventData)
+    {
+        CleanupDrag();
+    }
+
+    void OnDisable()
+    {
+        if (activeSource == this)
+            CleanupDrag();
+    }
+
+    void OnDestroy()
+    {
+        if (activeSource == this)
+            CleanupDrag();
+    }
+
+    public static void FinishActiveDrag()
+    {
+        if (activeSource != null)
+            activeSource.CleanupDrag();
+        else
+            ActiveWorker = null;
+    }
+
+    void CleanupDrag()
+    {
+        if (cardGroup != null)
+        {
+            cardGroup.alpha = originalAlpha;
+            cardGroup.blocksRaycasts = originalBlocksRaycasts;
+        }
+        if (dragLabel != null) Destroy(dragLabel);
+        dragLabel = null;
+        dragLabelRect = null;
+        rootCanvas = null;
+        if (activeSource == this)
+            activeSource = null;
+        ActiveWorker = null;
+    }
+
+    void CreateDragLabel(string workerName)
+    {
+        rootCanvas = GetComponentInParent<Canvas>();
+        if (rootCanvas == null) return;
+
+        dragLabel = new GameObject("WorkerDragLabel", typeof(RectTransform), typeof(Image),
+            typeof(CanvasGroup));
+        dragLabel.transform.SetParent(rootCanvas.transform, false);
+        dragLabel.transform.SetAsLastSibling();
+        dragLabelRect = (RectTransform)dragLabel.transform;
+        dragLabelRect.sizeDelta = new Vector2(190f, 34f);
+        dragLabel.GetComponent<Image>().color = new Color(0.20f, 0.38f, 0.62f, 0.96f);
+        var group = dragLabel.GetComponent<CanvasGroup>();
+        group.blocksRaycasts = false;
+        group.interactable = false;
+
+        var textObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(dragLabel.transform, false);
+        var textRect = (RectTransform)textObject.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10f, 0f);
+        textRect.offsetMax = new Vector2(-10f, 0f);
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        text.text = workerName;
+        text.fontSize = 13f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = Color.white;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
+    }
+
+    void MoveDragLabel(PointerEventData eventData)
+    {
+        if (dragLabelRect == null || rootCanvas == null) return;
+        RectTransform canvasRect = rootCanvas.transform as RectTransform;
+        Camera camera = rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay
+            ? null : rootCanvas.worldCamera;
+        if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasRect, eventData.position, camera, out Vector2 localPoint))
+            dragLabelRect.localPosition = localPoint;
+    }
+}
+
+class WorkerFlowDropTarget : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPointerExitHandler
+{
+    WorkersUI owner;
+    ProductionFlowPlan flow;
+    Image image;
+    Color normalColor;
+
+    public void Bind(WorkersUI workersUi, ProductionFlowPlan targetFlow, Color color)
+    {
+        owner = workersUi;
+        flow = targetFlow;
+        image = GetComponent<Image>();
+        normalColor = color;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (WorkerFlowDragSource.ActiveWorker != null && image != null)
+            image.color = new Color(0.24f, 0.62f, 0.48f, 1f);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (image != null) image.color = normalColor;
+    }
+
+    public void OnDrop(PointerEventData eventData)
+    {
+        KitchenEmployee employee = WorkerFlowDragSource.ActiveWorker;
+        if (employee == null || owner == null || flow == null) return;
+        WorkerFlowDragSource.FinishActiveDrag();
+        owner.AssignDraggedWorker(employee, flow);
     }
 }

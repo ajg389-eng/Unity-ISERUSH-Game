@@ -25,7 +25,7 @@ MonoBehaviour:
   counterLocalOffset: {x: 0, y: 0, z: 0}
   useFixedCounterY: 1
   fixedCounterY: 0.51
-  counterSlotSpan: 2
+  counterSlotSpan: 1
   buildFunction: 0
   orderPackSize: 10
   orderPackPrice: 15

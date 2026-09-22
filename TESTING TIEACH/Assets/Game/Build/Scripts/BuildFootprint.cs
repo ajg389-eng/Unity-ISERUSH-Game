@@ -565,6 +565,7 @@ public class CounterSurface : MonoBehaviour
     public static bool IsAuxiliaryPlacementRenderer(Renderer renderer, Transform itemRoot)
     {
         if (renderer == null) return true;
+        if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) return true;
         if (renderer.GetComponentInParent<CounterGridVisual>() != null) return true;
 
         StationInteractionTiles interactionTiles = itemRoot != null

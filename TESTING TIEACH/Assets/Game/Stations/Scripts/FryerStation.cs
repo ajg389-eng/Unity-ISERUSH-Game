@@ -1,18 +1,14 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable fryer. Worker loads fries from kitchen stock, cooks, then delivers to the heat lamp.
 /// </summary>
 public class FryerStation : MonoBehaviour
 {
-    [Tooltip("Time to load a basket of fries.")]
-    public float loadTimeSeconds = 0.5f;
-    [Tooltip("Cook time once loaded.")]
-    public float cookTimeSeconds = 5f;
-    [Tooltip("Wait after cooked before take.")]
-    public float waitAfterCookedSeconds = 0.4f;
-    [Tooltip("Time to take fries out.")]
-    public float takeTimeSeconds = 0.5f;
+    [FormerlySerializedAs("cookTimeSeconds")]
+    [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
+    [Min(0f)] public float processTimeSeconds = 5f;
     public Vector3 interactionOffset = Vector3.zero;
 
     bool hasBasket;
@@ -27,9 +23,9 @@ public class FryerStation : MonoBehaviour
 
     public bool CanLoad() => !hasBasket;
 
-    public bool IsCooking => hasBasket && cookTimer < cookTimeSeconds;
+    public bool IsCooking => hasBasket && cookTimer < processTimeSeconds;
 
-    public bool IsCooked() => hasBasket && cookTimer >= cookTimeSeconds;
+    public bool IsCooked() => hasBasket && cookTimer >= processTimeSeconds;
 
     /// <summary>Consume one fries unit from kitchen stock and start cooking.</summary>
     public bool TryLoad(ItemDefinition friesItem)
@@ -53,7 +49,7 @@ public class FryerStation : MonoBehaviour
 
     void Update()
     {
-        if (hasBasket && cookTimer < cookTimeSeconds)
+        if (hasBasket && cookTimer < processTimeSeconds)
             cookTimer += Time.deltaTime;
     }
 }
