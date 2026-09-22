@@ -242,6 +242,12 @@ public class KitchenPerimeterWalls : MonoBehaviour
             for (int i = wallGroupsUsed; i < wallGroupPool.Count; i++)
                 Hide(wallGroupPool[i]);
             currentWallGroup = null;
+
+            float roofMinX = hasCustomer ? Mathf.Min(wMinX, cMinX) : wMinX;
+            float roofMaxX = hasCustomer ? Mathf.Max(wMaxX, cMaxX) : wMaxX;
+            float roofMinZ = hasCustomer ? Mathf.Min(wMinZ, cMinZ) : wMinZ;
+            float roofMaxZ = hasCustomer ? Mathf.Max(wMaxZ, cMaxZ) : wMaxZ;
+            BuildRoof(roofMinX - t, roofMaxX + t, roofMinZ - t, roofMaxZ + t, y + height);
         }
         finally
         {
@@ -902,6 +908,23 @@ public class KitchenPerimeterWalls : MonoBehaviour
         south = EnsurePiece("Expand_South");
         northCap = EnsurePiece("Expand_NorthCap");
         eastCap = EnsurePiece("Expand_EastCap");
+    }
+
+    void BuildRoof(float minX, float maxX, float minZ, float maxZ, float eaveY)
+    {
+        if (root == null) return;
+        Transform roof = root.Find("SimsRoof");
+        if (roof == null)
+        {
+            var go = new GameObject("SimsRoof");
+            go.transform.SetParent(root, false);
+            roof = go.transform;
+        }
+        var sims = roof.GetComponent<SimsBuildingRoof>();
+        if (sims == null)
+            sims = roof.gameObject.AddComponent<SimsBuildingRoof>();
+        roof.gameObject.SetActive(true);
+        sims.Rebuild(minX, maxX, minZ, maxZ, eaveY, 2.4f, 0.85f);
     }
 
     Transform EnsurePiece(string name)
