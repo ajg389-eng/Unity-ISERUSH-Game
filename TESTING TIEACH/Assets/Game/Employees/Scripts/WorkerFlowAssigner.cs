@@ -830,11 +830,19 @@ public static class WorkflowAnalysis
         Vector3 a = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(from));
         Vector3 b = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(to));
         List<Vector3> path = grid.GetPath(a, b);
-        if (path.Count >= 2) return path.Count - 1;
+        if (path.Count >= 2)
+        {
+            float distance = 0f;
+            for (int i = 1; i < path.Count; i++)
+                distance += Vector3.Distance(path[i - 1], path[i]) / Mathf.Max(0.01f, grid.cellSize);
+            return distance;
+        }
 
         grid.WorldToCell(a, out int ax, out int ay);
         grid.WorldToCell(b, out int bx, out int by);
-        return Mathf.Abs(ax - bx) + Mathf.Abs(ay - by);
+        int dx = Mathf.Abs(ax - bx);
+        int dy = Mathf.Abs(ay - by);
+        return Mathf.Min(dx, dy) * 1.41421356f + Mathf.Abs(dx - dy);
     }
 
     public static float GetStationWorkSeconds(GameObject station)

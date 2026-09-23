@@ -89,6 +89,7 @@ public class KitchenEmployee : MonoBehaviour
 
     ProductionJob currentJob;
     bool returningToFlowStart;
+    int returnFlowIndex = -1;
 
     public bool IsIdle => currentJob == null;
     public bool HasJob => currentJob != null;
@@ -1102,23 +1103,46 @@ public class KitchenEmployee : MonoBehaviour
         SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
 
         List<GameObject> route = WorkflowAnalysis.GetOrderedRoute(this);
-        GameObject routeStart = route.Count > 0 ? route[0] : null;
-        if (routeStart == null)
+        if (route.Count == 0)
         {
             returningToFlowStart = false;
+            returnFlowIndex = -1;
             return;
         }
 
-        Vector3 startPosition = GetInteractionPosition(routeStart);
-        if (CloseEnough(startPosition, Mathf.Max(0.2f, ArrivalRadius * 2f)))
+        if (!returningToFlowStart || returnFlowIndex < 0 || returnFlowIndex >= route.Count)
         {
-            returningToFlowStart = false;
-            FaceStationObject(routeStart);
-            return;
+            returningToFlowStart = true;
+            // The worker has just delivered at the final route stop, so begin
+            // with the station immediately before it and retrace the flow.
+            returnFlowIndex = Mathf.Max(0, route.Count - 2);
         }
 
-        returningToFlowStart = true;
-        MoveToward(startPosition);
+        while (returnFlowIndex >= 0)
+        {
+            GameObject station = route[returnFlowIndex];
+            if (station == null)
+            {
+                returnFlowIndex--;
+                continue;
+            }
+
+            Vector3 position = GetInteractionPosition(station);
+            if (!CloseEnough(position, Mathf.Max(0.2f, ArrivalRadius * 2f)))
+            {
+                MoveToward(position);
+                return;
+            }
+
+            if (returnFlowIndex == 0)
+                FaceStationObject(station);
+            returnFlowIndex--;
+            path.Clear();
+            pathDestination = Vector3.zero;
+        }
+
+        returningToFlowStart = false;
+        returnFlowIndex = -1;
     }
 
     bool NeedsPlayerAttention()
@@ -2014,7 +2038,7 @@ public class KitchenEmployee : MonoBehaviour
         pos.y = GroundY;
         float dist = Vector3.Distance(pos, waypoint);
 
-        if (dist <= step || dist <= ArrivalRadius)
+        if (dist <= step)
         {
             SnapToWorldXZ(waypoint);
             path.RemoveAt(0);
@@ -2061,7 +2085,7 @@ public class KitchenEmployee : MonoBehaviour
     {
         var facing = PartyCharacterAnimator.EnsureOn(gameObject);
         if (facing != null)
-            facing.FaceTowardAdjacent(worldPoint, smooth: true);
+            facing.FaceMovementToward(worldPoint, smooth: true);
     }
 
     void FaceStationObject(GameObject station)

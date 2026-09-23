@@ -720,6 +720,8 @@ public class GridManager : MonoBehaviour
         var open = new List<(int x, int y, float g, float f)>();
         var closed = new HashSet<(int, int)>();
         var parent = new Dictionary<(int, int), (int, int)>();
+        var bestG = new Dictionary<(int, int), float>();
+        bestG[(sx, sy)] = 0f;
         open.Add((sx, sy, 0f, Heuristic(sx, sy, gx, gy)));
 
         while (open.Count > 0)
@@ -728,6 +730,8 @@ public class GridManager : MonoBehaviour
             var cur = open[0];
             open.RemoveAt(0);
             if (closed.Contains((cur.x, cur.y))) continue;
+            if (bestG.TryGetValue((cur.x, cur.y), out float knownG) && cur.g > knownG + 0.0001f)
+                continue;
             closed.Add((cur.x, cur.y));
 
             if (cur.x == gx && cur.y == gy)
@@ -741,7 +745,7 @@ public class GridManager : MonoBehaviour
                 }
                 path.Add((sx, sy));
                 path.Reverse();
-                foreach (var c in path)
+                foreach (var c in SimplifyPath(path))
                     result.Add(CellToWorld(c.Item1, c.Item2));
                 return result;
             }
@@ -749,7 +753,11 @@ public class GridManager : MonoBehaviour
             foreach (var (nx, ny) in Neighbors(cur.x, cur.y))
             {
                 if (!IsWalkable(nx, ny) || closed.Contains((nx, ny))) continue;
-                float g = cur.g + 1f;
+                bool diagonal = nx != cur.x && ny != cur.y;
+                float g = cur.g + (diagonal ? 1.41421356f : 1f);
+                if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)
+                    continue;
+                bestG[(nx, ny)] = g;
                 float f = g + Heuristic(nx, ny, gx, gy);
                 open.Add((nx, ny, g, f));
                 parent[(nx, ny)] = (cur.x, cur.y);
@@ -758,7 +766,32 @@ public class GridManager : MonoBehaviour
         return result;
     }
 
-    static float Heuristic(int x, int y, int gx, int gy) => Mathf.Abs(x - gx) + Mathf.Abs(y - gy);
+    static float Heuristic(int x, int y, int gx, int gy)
+    {
+        int dx = Mathf.Abs(x - gx);
+        int dy = Mathf.Abs(y - gy);
+        int diagonal = Mathf.Min(dx, dy);
+        return diagonal * 1.41421356f + Mathf.Abs(dx - dy);
+    }
+
+    static List<(int x, int y)> SimplifyPath(List<(int x, int y)> path)
+    {
+        if (path == null || path.Count <= 2) return path;
+        var result = new List<(int x, int y)> { path[0] };
+        for (int i = 1; i < path.Count - 1; i++)
+        {
+            var a = path[i - 1];
+            var b = path[i];
+            var c = path[i + 1];
+            int abX = System.Math.Sign(b.x - a.x);
+            int abY = System.Math.Sign(b.y - a.y);
+            int bcX = System.Math.Sign(c.x - b.x);
+            int bcY = System.Math.Sign(c.y - b.y);
+            if (abX != bcX || abY != bcY) result.Add(b);
+        }
+        result.Add(path[path.Count - 1]);
+        return result;
+    }
 
     IEnumerable<(int x, int y)> Neighbors(int x, int y)
     {
@@ -766,6 +799,16 @@ public class GridManager : MonoBehaviour
         if (x < Width - 1) yield return (x + 1, y);
         if (y > 0) yield return (x, y - 1);
         if (y < Height - 1) yield return (x, y + 1);
+        for (int dx = -1; dx <= 1; dx += 2)
+        for (int dy = -1; dy <= 1; dy += 2)
+        {
+            int nx = x + dx;
+            int ny = y + dy;
+            if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
+            // Do not squeeze diagonally between blocked corners.
+            if (!IsWalkable(x + dx, y) || !IsWalkable(x, y + dy)) continue;
+            yield return (nx, ny);
+        }
     }
 
     void OnDrawGizmos()

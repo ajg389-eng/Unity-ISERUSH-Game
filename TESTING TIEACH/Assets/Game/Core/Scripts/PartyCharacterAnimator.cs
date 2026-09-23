@@ -201,7 +201,7 @@ public class PartyCharacterAnimator : MonoBehaviour
         UpdateAnimTriggers(movingNow);
 
         if (movingNow && delta.sqrMagnitude > 0.0001f)
-            FaceDirection(GetCardinalDirection(delta), smooth: true);
+            FaceDirection(delta, smooth: true);
     }
 
     void UpdateAnimTriggers(bool movingNow)
@@ -575,6 +575,13 @@ public class PartyCharacterAnimator : MonoBehaviour
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f) return;
         FaceDirection(dir, smooth);
+    }
+
+    /// <summary>Face the actual travel vector, including diagonal headings.</summary>
+    public void FaceMovementToward(Vector3 worldPoint, bool smooth = true)
+    {
+        lockFacingFrames = 0;
+        FaceToward(worldPoint, smooth);
     }
 
     /// <summary>

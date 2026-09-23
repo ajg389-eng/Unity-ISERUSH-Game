@@ -625,32 +625,11 @@ public class CustomerAI : MonoBehaviour
 
         int x = startX;
         int z = startZ;
-        bool hugEastWall = startX >= width - 2 && targetX < startX;
-        if (hugEastWall)
+        while (x != targetX || z != targetZ)
         {
-            while (z != targetZ)
-            {
-                z += targetZ > z ? 1 : -1;
-                gridPath.Add(Center(x, z));
-            }
-            while (x != targetX)
-            {
-                x += targetX > x ? 1 : -1;
-                gridPath.Add(Center(x, z));
-            }
-        }
-        else
-        {
-            while (x != targetX)
-            {
-                x += targetX > x ? 1 : -1;
-                gridPath.Add(Center(x, z));
-            }
-            while (z != targetZ)
-            {
-                z += targetZ > z ? 1 : -1;
-                gridPath.Add(Center(x, z));
-            }
+            if (x != targetX) x += targetX > x ? 1 : -1;
+            if (z != targetZ) z += targetZ > z ? 1 : -1;
+            gridPath.Add(Center(x, z));
         }
 
         if (gridPath.Count == 0 || HorizontalDist(gridPath[gridPath.Count - 1], target) > arrivalDistance)
@@ -698,7 +677,7 @@ public class CustomerAI : MonoBehaviour
         SnapFeetToFloor();
         Vector3 pos = transform.position;
         target.y = pos.y;
-        if (HorizontalDist(pos, target) <= arrivalDistance)
+        if (HorizontalDist(pos, target) <= moveSpeed * Time.deltaTime)
         {
             SnapXZ(target);
             return true;
@@ -710,7 +689,7 @@ public class CustomerAI : MonoBehaviour
         transform.position = Vector3.MoveTowards(pos, target, moveSpeed * Time.deltaTime);
         var facing = PartyCharacterAnimator.EnsureOn(gameObject);
         if (facing != null)
-            facing.FaceTowardAdjacent(target, smooth: true);
+            facing.FaceMovementToward(target, smooth: true);
         return HorizontalDist(transform.position, target) <= arrivalDistance;
     }
 
