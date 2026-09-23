@@ -94,6 +94,10 @@ public class TitleScreenController : MonoBehaviour
         else if (Camera.main != null)
             Camera.main.enabled = true;
 
+        // Cutaways must follow the camera the player moves after leaving the title.
+        CameraWallCutaway.EnsureExists();
+        CameraWallCutaway.Instance.targetCamera = gameCamera != null ? gameCamera : Camera.main;
+
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.ShiftStarted);
         Sfx.Play(SfxId.UiOpen);
 

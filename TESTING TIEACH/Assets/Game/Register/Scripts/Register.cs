@@ -225,7 +225,9 @@ public class Register : MonoBehaviour
             return false;
 
         CustomerOrderConfig menu = ResolveOrderConfig();
-        CustomerOrder selectedOrder = menu != null ? menu.GenerateRandomOrder() : null;
+        CustomerOrder selectedOrder = menu == null ? null
+            : OnboardingTutorial.IsActive ? CustomerOrder.FromItem(menu.burgerBase, 1)
+            : menu.GenerateRandomOrder();
         if (selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0)
         {
             orderTimer = 0f;

@@ -46,12 +46,11 @@ public class InventoryManager : MonoBehaviour
     public int GetStationCapacity(ItemDefinition item)
     {
         if (item == null) return 0;
-        int reached = MilestoneFeatures.HighestReachedNumberedStage();
-        if (reached < MilestoneFeatures.CapacityAndOptimization)
+        if (OnboardingTutorial.BlocksProgression)
             return 1;
-
-        int extraMilestones = reached - MilestoneFeatures.CapacityAndOptimization;
-        return Mathf.Max(1, baseStationCapacity + extraMilestones * capacityPerCompletedMilestone);
+        int completed = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone);
     }
 
     public bool IsAtStationCapacity(ItemDefinition item)
@@ -73,7 +72,7 @@ public class InventoryManager : MonoBehaviour
 
     public bool CanPurchase(ItemDefinition item)
     {
-        return item != null && !IsAtStationCapacity(item);
+        return item != null && !OnboardingTutorial.IsStationLocked(item) && !IsAtStationCapacity(item);
     }
 
     public bool PurchaseOne(ItemDefinition item)
@@ -111,6 +110,7 @@ public class InventoryManager : MonoBehaviour
     public bool TryConsumeOne(ItemDefinition item)
     {
         if (item == null) return false;
+        if (OnboardingTutorial.IsStationLocked(item)) return false;
         if (!counts.TryGetValue(item, out int c)) return false;
         if (c <= 0) return false;
         counts[item] = c - 1;

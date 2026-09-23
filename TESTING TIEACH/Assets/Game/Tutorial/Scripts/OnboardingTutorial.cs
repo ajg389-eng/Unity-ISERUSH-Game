@@ -18,12 +18,17 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsActive => Instance != null && Instance.running;
     public static bool BlocksAutoCustomers => IsActive;
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
+    public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
 
     bool running;
     bool pendingStart;
     bool liveCustomerSpawned;
     bool starterKitchenHidden;
     int stepIndex;
+    int furthestStepIndex = -1;
+    bool flowEditCompleted;
+    readonly List<Outline> tutorialControlOutlines = new List<Outline>();
+    float nextControlHighlightRefresh;
     readonly List<GameObject> starterKitchen = new List<GameObject>();
 
     GameObject canvasRoot;
@@ -69,6 +74,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireFlow;
         public bool requireWorkerOnFlow;
         public bool requireHiredWorker;
+        public bool requireEditedFlow;
 
         public Step(
             string title,
@@ -84,7 +90,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireAllStations = false,
             bool requireFlow = false,
             bool requireWorkerOnFlow = false,
-            bool requireHiredWorker = false)
+            bool requireHiredWorker = false,
+            bool requireEditedFlow = false)
         {
             this.title = title;
             this.body = body;
@@ -100,6 +107,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireFlow = requireFlow;
             this.requireWorkerOnFlow = requireWorkerOnFlow;
             this.requireHiredWorker = requireHiredWorker;
+            this.requireEditedFlow = requireEditedFlow;
         }
     }
 
@@ -107,19 +115,19 @@ public class OnboardingTutorial : MonoBehaviour
     {
         new Step(
             "Empty kitchen",
-            "This shift starts with an <b>empty kitchen</b> and the register already in the lobby.\n\n" +
+            "This shift starts with an <b>empty kitchen</b>. Start by placing a register on the lobby counter.\n\n" +
             "You will buy each workstation, stock ingredients, then serve one customer. Use <b>Back</b> and <b>Next</b> to move through the steps.",
             "Next", Highlight.None),
         new Step(
             "Register",
             "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
-            "The register is already built. You do not buy this one — keep the lobby side clear so the line stays outside the kitchen.",
-            "Next", Highlight.Register),
+            "Open <b>Inventory</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
+            "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
             "Buy stations",
             "Open <b>Inventory</b> (top-left). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
-            "The next buttons stay locked until each station is on the floor.",
+            "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
         new Step(
             "Freezer",
@@ -171,17 +179,17 @@ public class OnboardingTutorial : MonoBehaviour
             "Create a flow",
             "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
             "Click stations <b>in production order</b>. Example burger line: freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
-            "You can make more flows later for fries and drinks. Next stays locked until a flow has at least two stations.",
+            "For this tutorial, build Freezer > Grill > Assembly > Pickup Station, then click Finish to save the flow. Next stays locked until this burger route is complete.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
             "Click a station already on the path to trim it back. Click a new station to extend the route. Press Esc to restore the previous path.\n\n" +
-            "Use Edit when a station was clicked in the wrong order or you want a second line (fryer → Pickup Station).",
-            "Next", Highlight.Management, openWorkers: true),
+            "Open Edit and click Finish to save the burger route before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
+            "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireEditedFlow: true),
         new Step(
             "Assign workers to a flow",
-            "Select the flow, then on a worker card click <b>Assign to Current Flow</b>.\n\n" +
+            "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
             "That worker's name appears on the flow. Click the name chip to unassign. The kitchen will not cook until at least one worker is on a flow.\n\n" +
             "Next stays locked until a flow has a worker assigned.",
             "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true),
@@ -195,7 +203,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
         new Step(
             "Serve one order",
-            "The clock is running. Only <b>one customer</b> will come in so you can watch the loop.\n\n" +
+            "The clock is running. Only <b>one customer</b> will come in and order <b>one burger</b> so you can watch the loop.\n\n" +
             "If nobody is cooking, check workers, outputs, and that you bought ingredient packs.\n\n" +
             "Serve that order, then click Finish. Extra customers stay away until the tutorial ends.",
             "Finish", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
@@ -222,6 +230,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void OnDestroy()
     {
+        ClearControlHighlights();
         if (Instance == this)
             Instance = null;
         TutorialVoiceEvents.OnEvent -= OnGameEvent;
@@ -266,6 +275,8 @@ public class OnboardingTutorial : MonoBehaviour
         running = true;
         pendingStart = false;
         stepIndex = 0;
+        furthestStepIndex = -1;
+        flowEditCompleted = false;
         liveCustomerSpawned = false;
         EnsureUI();
         ShowStep();
@@ -282,6 +293,7 @@ public class OnboardingTutorial : MonoBehaviour
         PlayerPrefs.Save();
         pendingStart = true;
         running = false;
+        furthestStepIndex = -1;
         liveCustomerSpawned = false;
         HideUI();
         ClearHighlight();
@@ -336,6 +348,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        furthestStepIndex = Mathf.Max(furthestStepIndex, stepIndex);
 
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
@@ -419,6 +432,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
+        if (step.requireEditedFlow) return "Edit and save flow";
         if (step.requireHiredWorker)
             return "Hire a worker";
         if (step.requireWorkerOnFlow)
@@ -429,6 +443,7 @@ public class OnboardingTutorial : MonoBehaviour
             return "Place all stations";
         switch (step.highlight)
         {
+            case Highlight.Register: return "Place register on counter";
             case Highlight.Freezer: return "Place freezer";
             case Highlight.Grill: return "Place grill";
             case Highlight.Fryer: return "Place fryer";
@@ -444,6 +459,10 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.requireEditedFlow && !flowEditCompleted) return false;
+        if ((step.requireFlow || step.requireWorkerOnFlow)
+            && ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
+            return false;
         if (step.requireAllStations && !AllTutorialStationsPlaced())
             return false;
         if (step.requirePlaced && !HasPlacedStation(step.highlight))
@@ -463,7 +482,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (production == null || production.employees == null) return false;
         for (int i = 0; i < production.employees.Count; i++)
         {
-            if (production.employees[i] != null)
+            if (production.employees[i] != null && production.employees[i].gameObject.activeInHierarchy)
                 return true;
         }
         return false;
@@ -478,7 +497,7 @@ public class OnboardingTutorial : MonoBehaviour
             var flow = production.productionFlows[i];
             if (flow == null) continue;
             flow.Clean();
-            if (flow.stations != null && flow.stations.Count >= 2)
+            if (IsBurgerTutorialFlow(flow))
                 return true;
         }
         return false;
@@ -493,15 +512,37 @@ public class OnboardingTutorial : MonoBehaviour
             var flow = production.productionFlows[i];
             if (flow == null) continue;
             flow.Clean();
-            if (flow.workers != null && flow.workers.Count > 0)
-                return true;
+            if (!IsBurgerTutorialFlow(flow) || flow.workers == null) continue;
+            foreach (var worker in flow.workers)
+                if (worker != null && worker.gameObject.activeInHierarchy
+                    && production.employees != null && production.employees.Contains(worker))
+                    return true;
         }
         return false;
     }
 
+    static bool IsBurgerTutorialFlow(ProductionFlowPlan flow)
+    {
+        if (flow == null || flow.stations == null || flow.stations.Count != 4) return false;
+        foreach (var station in flow.stations)
+            if (station == null || !station.activeInHierarchy || station.GetComponent<PlacedBuildItem>() == null)
+                return false;
+        return flow.stations[0].GetComponent<FreezerStation>() != null
+            && flow.stations[1].GetComponent<GrillStation>() != null
+            && flow.stations[2].GetComponent<AssemblyStation>() != null
+            && flow.stations[3].GetComponent<HeatLampStation>() != null;
+    }
+
+    public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
+    {
+        if (IsActive && wasEdit && Steps[Instance.stepIndex].requireEditedFlow && IsBurgerTutorialFlow(flow))
+            Instance.flowEditCompleted = true;
+    }
+
     bool AllTutorialStationsPlaced()
     {
-        return HasPlacedStation(Highlight.Freezer)
+        return HasPlacedStation(Highlight.Register)
+            && HasPlacedStation(Highlight.Freezer)
             && HasPlacedStation(Highlight.Grill)
             && HasPlacedStation(Highlight.Fryer)
             && HasPlacedStation(Highlight.Drink)
@@ -514,6 +555,14 @@ public class OnboardingTutorial : MonoBehaviour
     {
         switch (kind)
         {
+            case Highlight.Register:
+                // Only a placed purchase counts, never the starter or placement preview.
+                var registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                foreach (var register in registers)
+                    if (!starterKitchen.Contains(register.gameObject)
+                        && register.GetComponent<PlacedBuildItem>() != null)
+                        return true;
+                return false;
             case Highlight.Freezer: return HasActiveStation<FreezerStation>();
             case Highlight.Grill: return HasActiveStation<GrillStation>();
             case Highlight.Fryer: return HasActiveStation<FryerStation>();
@@ -532,6 +581,7 @@ public class OnboardingTutorial : MonoBehaviour
         {
             if (found[i] == null) continue;
             if (starterKitchen.Contains(found[i].gameObject)) continue;
+            if (found[i].GetComponent<PlacedBuildItem>() == null) continue;
             return true;
         }
         return false;
@@ -582,6 +632,8 @@ public class OnboardingTutorial : MonoBehaviour
             milestones.NotifyOnboardingFinished();
 
         Sfx.Play(skipped ? SfxId.UiClose : SfxId.MissionComplete);
+        var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inventoryUI != null) inventoryUI.RefreshAll();
     }
 
     void PrepareEmptyKitchen()
@@ -621,6 +673,7 @@ public class OnboardingTutorial : MonoBehaviour
     void CacheStarterKitchen()
     {
         if (starterKitchen.Count > 0) return;
+        CollectStarter<Register>();
         CollectStarter<FreezerStation>();
         CollectStarter<GrillStation>();
         CollectStarter<FryerStation>();
@@ -706,10 +759,63 @@ public class OnboardingTutorial : MonoBehaviour
             highlight.SetActive(false);
     }
 
+    void ClearControlHighlights()
+    {
+        foreach (var outline in tutorialControlOutlines)
+            if (outline != null) { outline.enabled = false; Destroy(outline); }
+        tutorialControlOutlines.Clear();
+    }
+
+    void HighlightControl(Component control)
+    {
+        if (control == null || !control.gameObject.activeInHierarchy) return;
+        var image = control.GetComponent<Graphic>();
+        if (image == null) return;
+        var outline = control.gameObject.AddComponent<Outline>();
+        outline.effectDistance = new Vector2(5f, -5f);
+        outline.effectColor = new Color(1f, 0.82f, 0.15f, 1f);
+        tutorialControlOutlines.Add(outline);
+    }
+
+    void RefreshControlHighlights()
+    {
+        if (Time.unscaledTime < nextControlHighlightRefresh) return;
+        nextControlHighlightRefresh = Time.unscaledTime + 0.25f;
+        ClearControlHighlights();
+        var step = Steps[stepIndex];
+        if (!step.openWorkers) return;
+        var workers = FindFirstObjectByType<WorkersUI>();
+        if (workers != null)
+        {
+            if (step.requireHiredWorker && !HasHiredWorker()) HighlightControl(workers.hireButton);
+            foreach (var button in workers.GetComponentsInChildren<Button>())
+            {
+                if (step.requireEditedFlow && !flowEditCompleted && button.name == "EditFlow"
+                    || step.requireFlow && !step.requireEditedFlow && !HasTutorialFlow() && button.name == "CreateFlow"
+                    || step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
+                    HighlightControl(button);
+            }
+            if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+                foreach (var card in workers.GetComponentsInChildren<WorkerCardUI>())
+                    if (card.employee != null) HighlightControl(card);
+        }
+        var management = ManagementModeController.Instance;
+        if (management != null && management.IsCapturingFlow)
+        {
+            foreach (var button in FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                if (button.name == "Finish" && button.interactable) HighlightControl(button);
+        }
+    }
+
     void Update()
     {
-        if (!running) return;
+        if (!running)
+        {
+            ClearControlHighlights();
+            return;
+        }
         RefreshAdvanceGate();
+        RefreshControlHighlights();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
@@ -720,9 +826,22 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static bool ShouldHighlightInventoryItem(ItemDefinition item)
     {
-        if (item == null || Instance == null || !Instance.running)
+        if (item == null || Instance == null || !Instance.running || IsStationLocked(item))
             return false;
         return ItemMatchesHighlight(item, Instance.currentHighlight);
+    }
+
+    // Use the authored station steps so the unlock order follows the tutorial.
+    // Non-station build items (such as counters) remain available.
+    public static bool IsStationLocked(ItemDefinition item)
+    {
+        if (item == null || !BlocksProgression) return false;
+        for (int i = 0; i < Steps.Length; i++)
+        {
+            if (Steps[i].requirePlaced && ItemMatchesHighlight(item, Steps[i].highlight))
+                return i > Instance.furthestStepIndex;
+        }
+        return false;
     }
 
     static bool ItemMatchesHighlight(ItemDefinition item, Highlight kind)
@@ -730,17 +849,18 @@ public class OnboardingTutorial : MonoBehaviour
         string name = (item.itemName ?? item.name ?? "").ToLowerInvariant();
         switch (kind)
         {
+            case Highlight.Register: return item.buildFunction == ItemDefinition.BuildFunction.Register;
             case Highlight.Freezer: return name.Contains("freezer");
             case Highlight.Grill: return name.Contains("grill");
             case Highlight.Fryer: return name.Contains("fryer");
             case Highlight.Drink: return name.Contains("drink");
             case Highlight.Assembly: return name.Contains("assembly");
-            case Highlight.HeatLamp: return name.Contains("heat");
+            case Highlight.HeatLamp: return name.Contains("heat") || name.Contains("pickup");
             case Highlight.Pantry: return name.Contains("pantry");
             case Highlight.Inventory:
                 return name.Contains("freezer") || name.Contains("grill") || name.Contains("fryer")
                     || name.Contains("drink") || name.Contains("assembly") || name.Contains("heat")
-                    || name.Contains("pantry");
+                    || name.Contains("pickup") || name.Contains("pantry");
             default:
                 return false;
         }

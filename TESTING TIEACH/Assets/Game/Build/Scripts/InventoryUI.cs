@@ -49,6 +49,7 @@ public class InventoryUI : MonoBehaviour
     TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
     PurchaseUndoFooter stationUndoFooter;
+    int displayedStationUnlockProgress = int.MinValue;
     bool expandUiBuilt;
     Transform floorContentParent;
     int activeTab;
@@ -83,8 +84,9 @@ public class InventoryUI : MonoBehaviour
         if (!IsPanelOpen && CustomerWaitAreaManager.Instance != null)
             CustomerWaitAreaManager.Instance.SetEditing(false);
 
-        int reached = MilestoneFeatures.HighestReachedNumberedStage();
-        if (panel != null && panel.activeSelf && reached != displayedCapacityMilestoneCount)
+        int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+        if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
+            || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
     }
 
@@ -211,6 +213,7 @@ public class InventoryUI : MonoBehaviour
 
     public void RefreshAll()
     {
+        displayedStationUnlockProgress = OnboardingTutorial.StationUnlockProgress;
         if (!inventory || !contentParent) return;
 
         EnsureStationsScrollSetup();
@@ -241,7 +244,7 @@ public class InventoryUI : MonoBehaviour
         if (sr != null)
             sr.normalizedPosition = new Vector2(0f, 1f);
 
-        displayedCapacityMilestoneCount = MilestoneFeatures.HighestReachedNumberedStage();
+        displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
@@ -435,7 +438,10 @@ public class InventoryUI : MonoBehaviour
                     card.SetOwnedCapacity(
                         inventory.GetAcquiredCount(captured),
                         inventory.GetStationCapacity(captured));
+                    card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
+                        inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
                     Sfx.Play(SfxId.Purchase);
+                    BeginItemPlacement(captured);
                 }
                 else
                     Sfx.Play(SfxId.UiError);
@@ -444,7 +450,9 @@ public class InventoryUI : MonoBehaviour
         card.SetOwnedCapacity(
             inventory.GetAcquiredCount(captured),
             inventory.GetStationCapacity(captured));
-        card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured));
+        card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
+            inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
+        card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(captured));
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
             card.transform.SetAsFirstSibling();
     }
@@ -465,10 +473,12 @@ public class InventoryUI : MonoBehaviour
         qtyText.text = owned + "/" + capacity;
         int price = inventory.GetPurchasePrice(item);
         bool atCapacity = inventory.IsAtStationCapacity(item);
-        priceText.text = atCapacity
-            ? (MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2")
+        bool tutorialLocked = OnboardingTutorial.IsStationLocked(item);
+        priceText.text = tutorialLocked ? "LOCKED" : atCapacity
+            ? "MAX"
             : price <= 0 ? "FREE" : "$" + price;
-        buyButton.interactable = !atCapacity;
+        buyButton.interactable = !tutorialLocked && !atCapacity;
+        nameButton.interactable = !tutorialLocked;
 
         ItemDefinition captured = item;
         nameButton.onClick.AddListener(() =>
@@ -489,14 +499,22 @@ public class InventoryUI : MonoBehaviour
                 int nextPrice = inventory.GetPurchasePrice(captured);
                 bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
                 priceText.text = nowAtCapacity
-                    ? (MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2")
+                    ? "MAX"
                     : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
                 buyButton.interactable = !nowAtCapacity;
                 Sfx.Play(SfxId.Purchase);
+                BeginItemPlacement(captured);
             }
             else
                 Sfx.Play(SfxId.UiError);
         });
+    }
+
+    void BeginItemPlacement(ItemDefinition item)
+    {
+        inventory.SelectItem(item);
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null) placer.BeginPlacement(item);
     }
 
     void BindOrBuildTabs(bool forceDefaultLayout)

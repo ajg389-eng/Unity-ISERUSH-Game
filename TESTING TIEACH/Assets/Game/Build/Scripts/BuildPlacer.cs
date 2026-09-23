@@ -192,7 +192,7 @@ public class BuildPlacer : MonoBehaviour
         {
             placementRotation = (placementRotation + 1) % 4;
             if (ghost)
-                ghost.transform.rotation = Quaternion.Euler(0f, placementRotation * 90f, 0f);
+                ghost.transform.rotation = Quaternion.Euler(placingItem.placementEuler + Vector3.up * (placementRotation * 90f));
             Sfx.Play(SfxId.BuildRotate);
         }
 
@@ -215,9 +215,10 @@ public class BuildPlacer : MonoBehaviour
     public void BeginPlacement(ItemDefinition item)
     {
         if (item == null || item.prefab == null) return;
+        if (OnboardingTutorial.IsStationLocked(item)) return;
 
         placingItem = item;
-        placementRotation = 0;
+        placementRotation = GetInitialPlacementRotation(item);
         hasDoorPreviewWallLocation = false;
 
         // Make a ghost preview
@@ -225,13 +226,13 @@ public class BuildPlacer : MonoBehaviour
         ghost = Instantiate(item.prefab);
         ghost.name = item.prefab.name + " Ghost";
         ghost.transform.localScale = GetPlacementScale(item);
-        ghost.transform.rotation = Quaternion.Euler(item.placementEuler);
+        ghost.transform.rotation = Quaternion.Euler(item.placementEuler + Vector3.up * (placementRotation * 90f));
 
         if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall
             && ghost.GetComponent<CustomerWallDoor>() == null)
             ghost.AddComponent<CustomerWallDoor>();
 
-        MakeTranslucent(ghost, 0.7f); // 0.5 = 50% transparent
+        // Keep the original opaque materials: custom station shaders do not all support transparency.
 
         // Optional: disable colliders so raycasts don�t hit the ghost
         foreach (var c in ghost.GetComponentsInChildren<Collider>())
@@ -241,6 +242,17 @@ public class BuildPlacer : MonoBehaviour
         Sfx.Play(SfxId.BuildPickup);
     }
 
+    static int GetInitialPlacementRotation(ItemDefinition item)
+    {
+        // Keep mounting directions for counters and doors. Floor stations start
+        // reversed from the original default, ready to back onto the wall.
+        if (item.placementSurface != ItemDefinition.PlacementSurface.Floor
+            || IsRotationLocked(item, item.prefab)) return 0;
+        // Assembly's model faces opposite the other floor stations.
+        if (item.prefab != null && item.prefab.GetComponentInChildren<AssemblyStation>(true) != null)
+            return 0;
+        return 2;
+    }
     public void CancelPlacement()
     {
         placingItem = null;
@@ -250,31 +262,6 @@ public class BuildPlacer : MonoBehaviour
         ghost = null;
 
         SetHint(false);
-    }
-
-    void MakeTranslucent(GameObject obj, float alpha)
-    {
-        var renderers = obj.GetComponentsInChildren<Renderer>();
-
-        foreach (var r in renderers)
-        {
-            foreach (var mat in r.materials)
-            {
-                // Switch material to transparent mode (URP compatible)
-                mat.SetFloat("_Surface", 1); // 1 = Transparent in URP
-                mat.SetFloat("_Blend", 0);
-                mat.SetFloat("_AlphaClip", 0);
-                mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                mat.SetFloat("_ZWrite", 0);
-                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                mat.renderQueue = 3000;
-
-                Color c = mat.color;
-                c.a = alpha;
-                mat.color = c;
-            }
-        }
     }
 
     void SetHint(bool show, bool dragging = false)
@@ -296,8 +283,8 @@ public class BuildPlacer : MonoBehaviour
                 : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
         else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
             placementHintText.text = rotationLocked
-                ? "Hover a free counter    LMB: Place    ESC: Cancel"
-                : "Hover a free counter    LMB: Place    R: Rotate    ESC: Cancel";
+                ? "LMB: Place on counter    ESC: Cancel"
+                : "LMB: Place on counter    R: Rotate    ESC: Cancel";
         else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
             placementHintText.text = "Click a lobby wall    LMB: Place    ESC: Cancel";
         else
@@ -1107,7 +1094,7 @@ public class BuildPlacer : MonoBehaviour
                 placed.AddComponent<BoxCollider>();
             Register register = placed.GetComponent<Register>();
             if (register == null) register = placed.AddComponent<Register>();
-            register.isEnabled = false;
+            register.isEnabled = OnboardingTutorial.IsActive;
             RegisterHover hover = placed.GetComponent<RegisterHover>();
             if (hover == null) hover = placed.AddComponent<RegisterHover>();
             if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();

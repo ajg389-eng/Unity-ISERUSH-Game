@@ -16,9 +16,12 @@ public class InventoryItemCardUI : MonoBehaviour
     public Button[] selectButtons;
 
     bool tutorialHighlight;
+    bool tutorialLocked;
     Image cardImage;
     Color cardBaseColor = new Color(0.92f, 0.93f, 0.95f, 1f);
     Outline cardOutline;
+    TextMeshProUGUI tutorialPrompt;
+    ItemDefinition boundItem;
 
     public void Bind(
         ItemDefinition item,
@@ -28,6 +31,7 @@ public class InventoryItemCardUI : MonoBehaviour
         int? displayPrice = null)
     {
         if (item == null) return;
+        boundItem = item;
 
         if (nameText != null)
             nameText.text = item.itemName;
@@ -77,9 +81,20 @@ public class InventoryItemCardUI : MonoBehaviour
         if (qtyText != null)
             qtyText.text = Mathf.Max(0, owned) + "/" + capacity;
         if (buyButton != null)
-            buyButton.interactable = !atCapacity;
+            buyButton.interactable = !atCapacity && !tutorialLocked;
         if (atCapacity && priceText != null)
-            priceText.text = MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2";
+            priceText.text = "MAX";
+    }
+
+    public void SetTutorialLocked(bool locked)
+    {
+        tutorialLocked = locked;
+        if (!locked) return; // Price and capacity are set before this method.
+        if (priceText != null) priceText.text = "LOCKED";
+        if (buyButton != null) buyButton.interactable = false;
+        if (selectButtons != null)
+            foreach (var button in selectButtons)
+                if (button != null) button.interactable = false;
     }
 
     void ApplyPreview(ItemDefinition item)
@@ -125,9 +140,20 @@ public class InventoryItemCardUI : MonoBehaviour
             fitter.aspectRatio = 1f;
     }
 
-    public void SetTutorialHighlight(bool on)
+    public void SetTutorialHighlight(bool on, int available = 0, int owned = 0)
     {
         tutorialHighlight = on;
+        if (on)
+        {
+            EnsureTutorialPrompt();
+            string placementPrompt = boundItem != null && boundItem.placementSurface == ItemDefinition.PlacementSurface.Counter
+                ? "PLACE ON COUNTER"
+                : boundItem != null && boundItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall
+                    ? "PLACE ON A LOBBY WALL" : "PLACE ON A FLOOR TILE";
+            tutorialPrompt.text = available > 0 ? placementPrompt : owned > 0 ? "PLACED - CLICK NEXT" : "BUY THIS  (+)";
+        }
+        if (tutorialPrompt != null)
+            tutorialPrompt.transform.parent.gameObject.SetActive(on);
         if (cardImage == null)
         {
             cardImage = GetComponent<Image>();
@@ -157,15 +183,54 @@ public class InventoryItemCardUI : MonoBehaviour
         if (cardOutline != null)
         {
             cardOutline.enabled = true;
-            cardOutline.effectDistance = new Vector2(6f, -6f);
+            cardOutline.effectDistance = new Vector2(8f, -8f);
             cardOutline.effectColor = new Color(1f, 0.82f, 0.15f, 0.95f);
         }
+    }
+
+    void EnsureTutorialPrompt()
+    {
+        if (tutorialPrompt != null) return;
+        // Overlay the preview without shrinking the image or blocking its button.
+        Transform parent = previewRawImage != null ? previewRawImage.transform.parent
+            : previewImage != null ? previewImage.transform.parent : transform;
+        var banner = new GameObject("TutorialPrompt", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        banner.transform.SetParent(parent, false);
+        banner.GetComponent<LayoutElement>().ignoreLayout = true;
+        var rect = (RectTransform)banner.transform;
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(1f, 0f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        rect.offsetMin = new Vector2(4f, 4f);
+        rect.offsetMax = new Vector2(-4f, 32f);
+        var background = banner.GetComponent<Image>();
+        background.color = new Color(1f, 0.82f, 0.15f, 1f);
+        background.raycastTarget = false;
+
+        var label = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        label.transform.SetParent(banner.transform, false);
+        var labelRect = (RectTransform)label.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(4f, 0f);
+        labelRect.offsetMax = new Vector2(-4f, 0f);
+        tutorialPrompt = label.GetComponent<TextMeshProUGUI>();
+        if (nameText != null) tutorialPrompt.font = nameText.font;
+        tutorialPrompt.fontSize = 16f;
+        tutorialPrompt.enableAutoSizing = true;
+        tutorialPrompt.fontSizeMin = 9f;
+        tutorialPrompt.fontSizeMax = 16f;
+        tutorialPrompt.fontStyle = FontStyles.Bold;
+        tutorialPrompt.alignment = TextAlignmentOptions.Center;
+        tutorialPrompt.textWrappingMode = TextWrappingModes.NoWrap;
+        tutorialPrompt.color = new Color(0.12f, 0.1f, 0.04f, 1f);
+        tutorialPrompt.raycastTarget = false;
     }
 
     void Update()
     {
         if (!tutorialHighlight || cardImage == null) return;
-        float pulse = 0.55f + Mathf.PingPong(Time.unscaledTime * 2.2f, 0.45f);
+        float pulse = 0.75f + Mathf.Sin(Time.unscaledTime * 3f) * 0.2f;
         cardImage.color = Color.Lerp(cardBaseColor, new Color(1f, 0.92f, 0.35f, 1f), pulse);
         if (cardOutline != null)
             cardOutline.effectColor = new Color(1f, 0.75f, 0.1f, pulse);

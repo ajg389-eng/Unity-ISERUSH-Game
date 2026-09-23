@@ -1671,6 +1671,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (capturedFlow == null) return false;
         ProductionFlowPlan finished = capturedFlow;
+        bool wasEdit = !capturingNewFlow;
         if (finished.stations.Count == 0)
         {
             SetStatus("A flow needs at least one station.");
@@ -1695,6 +1696,7 @@ public class ManagementModeController : MonoBehaviour
         SetFlowCaptureHudVisible(false);
 
         WorkerFlowAssigner.SynchronizeFlowRoute(finished);
+        OnboardingTutorial.NotifyFlowSaved(finished, wasEdit);
 
         ProductionManager production = ProductionManager.Instance;
         if (production != null)

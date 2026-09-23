@@ -25,6 +25,7 @@ public class CameraWallCutaway : MonoBehaviour
     const string PrefLockEast = "PauseMenu.LockWall.East";
     const string PrefLockSouth = "PauseMenu.LockWall.South";
     const string PrefLockWest = "PauseMenu.LockWall.West";
+    const string PrefAutomaticCutawayDefault = "CameraWallCutaway.AutomaticDefault.v1";
 
     [Tooltip("Camera used for cutaway. Defaults to main / PlayerCameraController.")]
     public Camera targetCamera;
@@ -96,17 +97,24 @@ public class CameraWallCutaway : MonoBehaviour
 
     void LateUpdate()
     {
-        if (targetCamera == null)
+        if (targetCamera == null || !targetCamera.isActiveAndEnabled)
         {
             targetCamera = Camera.main;
-            if (targetCamera == null) return;
+            if (targetCamera == null || !targetCamera.isActiveAndEnabled) return;
         }
 
         Vector3 focus = GetFocus();
         Vector3 cam = targetCamera.transform.position;
         Vector3 camFromFocus = cam - focus;
         camFromFocus.y = 0f;
-        if (camFromFocus.sqrMagnitude < 0.01f) return;
+        // Panning directly over the focus must not freeze the last wall targets.
+        if (camFromFocus.sqrMagnitude < 0.01f)
+        {
+            camFromFocus = -targetCamera.transform.forward;
+            camFromFocus.y = 0f;
+            if (camFromFocus.sqrMagnitude < 0.01f)
+                camFromFocus = Vector3.back;
+        }
         Vector3 camDir = camFromFocus.normalized;
 
         for (int i = Walls.Count - 1; i >= 0; i--)
@@ -171,6 +179,17 @@ public class CameraWallCutaway : MonoBehaviour
     static void LoadLocks()
     {
         if (locksLoaded) return;
+        // One-time reset of legacy locks: automatic cutaways should behave the
+        // same before and after onboarding. Later explicit choices still persist.
+        if (PlayerPrefs.GetInt(PrefAutomaticCutawayDefault, 0) != 1)
+        {
+            PlayerPrefs.SetInt(PrefLockNorth, 0);
+            PlayerPrefs.SetInt(PrefLockEast, 0);
+            PlayerPrefs.SetInt(PrefLockSouth, 0);
+            PlayerPrefs.SetInt(PrefLockWest, 0);
+            PlayerPrefs.SetInt(PrefAutomaticCutawayDefault, 1);
+            PlayerPrefs.Save();
+        }
         LockedSides[(int)WallSide.North] = PlayerPrefs.GetInt(PrefLockNorth, 0) == 1;
         LockedSides[(int)WallSide.East] = PlayerPrefs.GetInt(PrefLockEast, 0) == 1;
         LockedSides[(int)WallSide.South] = PlayerPrefs.GetInt(PrefLockSouth, 0) == 1;
