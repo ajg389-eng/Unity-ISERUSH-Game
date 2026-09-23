@@ -1055,6 +1055,25 @@ public class KitchenEmployee : MonoBehaviour
         return reg != null ? reg.GetInteractionPosition() : transform.position;
     }
 
+    void ReturnToKitchenStand()
+    {
+        Vector3 stand = GetIdleStandPosition(null);
+        if (CloseEnough(stand, 0.4f))
+        {
+            if (operatedStations != null)
+            {
+                for (int i = 0; i < operatedStations.Count; i++)
+                {
+                    if (operatedStations[i] == null) continue;
+                    FaceStationObject(operatedStations[i]);
+                    break;
+                }
+            }
+            return;
+        }
+        MoveToward(stand);
+    }
+
     void RunRegisterDuty()
     {
         ShowTaskBar = false;
@@ -1065,6 +1084,7 @@ public class KitchenEmployee : MonoBehaviour
         {
             ClearCashierTray();
             SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
+            ReturnToKitchenStand();
             return;
         }
 

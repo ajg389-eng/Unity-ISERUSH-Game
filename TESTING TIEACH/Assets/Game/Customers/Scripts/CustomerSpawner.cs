@@ -123,7 +123,7 @@ public class CustomerSpawner : MonoBehaviour
             return false;
         }
 
-        BuildEntryPoints(entryPointsBuffer);
+        BuildEntryPoints(entryPointsBuffer, r);
         Vector3 spawnPos = entryPointsBuffer.Count > 0
             ? entryPointsBuffer[0]
             : (spawnPoint != null ? spawnPoint.position : transform.position);
@@ -151,16 +151,18 @@ public class CustomerSpawner : MonoBehaviour
         return true;
     }
 
-    void BuildEntryPoints(List<Vector3> into)
+    void BuildEntryPoints(List<Vector3> into, Register register)
     {
         into.Clear();
 
-        CustomerWallDoor entrance = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Entrance);
-        if (entrance == null)
-            entrance = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Exit);
+        CustomerWallDoor entrance = CustomerWallDoor.FindEntryDoor();
         if (entrance != null)
         {
             entrance.AppendPassage(into, true);
+            Vector3 elbowTarget = register != null
+                ? register.GetFrontQueueWorldPosition()
+                : GetCustomerFloorSouthHint(into);
+            entrance.AppendEastEntryElbow(into, elbowTarget);
             return;
         }
 
@@ -182,6 +184,18 @@ public class CustomerSpawner : MonoBehaviour
 
         if (spawnPoint != null)
             into.Add(spawnPoint.position);
+    }
+
+    static Vector3 GetCustomerFloorSouthHint(List<Vector3> into)
+    {
+        Vector3 last = into != null && into.Count > 0 ? into[into.Count - 1] : Vector3.zero;
+        GameObject floor = GameObject.Find("CustomerFloor");
+        Renderer renderer = floor != null ? floor.GetComponentInChildren<Renderer>() : null;
+        if (renderer == null) return last;
+        Bounds bounds = renderer.bounds;
+        float destZ = Mathf.Lerp(last.z, bounds.min.z + 1.2f, 0.85f);
+        destZ = Mathf.Clamp(destZ, bounds.min.z + 0.6f, bounds.max.z - 0.6f);
+        return new Vector3(last.x, last.y, destZ);
     }
 
     Register GetBestRegister()

@@ -67,6 +67,7 @@ public class CustomerAI : MonoBehaviour
         order == null || order.lines == null || order.GetTotalQuantity() <= 0;
 
     public bool IsEntering => phase == Phase.Entering;
+    public bool IsLeaving => phase == Phase.Leaving;
 
     float standY;
     bool standYReady;
@@ -364,9 +365,7 @@ public class CustomerAI : MonoBehaviour
         routeIndex = 0;
         gridPath.Clear();
 
-        CustomerWallDoor exitDoor = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Exit);
-        if (exitDoor == null)
-            exitDoor = CustomerWallDoor.FindRandomDoor(CustomerWallDoor.DoorRole.Entrance);
+        CustomerWallDoor exitDoor = CustomerWallDoor.FindExitDoor();
         if (exitDoor != null)
             exitDoor.AppendPassage(route, false);
         else if (exitPath != null && exitPath.Count > 0)
@@ -514,12 +513,15 @@ public class CustomerAI : MonoBehaviour
 
         RefreshOrderLabel();
         Sfx.Play(SfxId.ItemDelivered);
-        pickupStation.LeavePickupQueue(this);
-        pickupStation = null;
         if (IsOrderFullyDelivered)
+        {
+            pickupStation.LeavePickupQueue(this);
+            pickupStation = null;
             reg.CompleteServe(this, order);
-        else
-            BeginPickupJourney();
+            return;
+        }
+
+        // Stay at the front of this pickup line until every remaining item is collected.
     }
 
     void ReleaseWaitAreaReservation()

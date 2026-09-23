@@ -57,7 +57,8 @@ public static class GuidebookPages
             "<b>How to place</b>\n" +
             "1. Buy the card (first copy is FREE).\n" +
             "2. Click the card so a ghost follows the mouse.\n" +
-            "3. Click an empty kitchen tile to drop it. Rotate if the ghost shows a facing.\n\n" +
+            "3. Click an empty kitchen tile to drop it. Rotate if the ghost shows a facing.\n" +
+            "Double-click a placed station, counter item, or door to pick it up and move it.\n\n" +
             "Place in the kitchen, not the checkered lobby. Leave aisles so workers can walk.\n\n" +
             "A station with no flow and no worker will sit idle even if it looks perfect."),
         new Page(
@@ -93,7 +94,7 @@ public static class GuidebookPages
         new Page(
             "Management",
             "Hire workers",
-            "The Workers tab is where you hire. The <b>first hire is free</b>. Extra hires unlock at <b>Milestone 2</b> and then cost cash.\n\n" +
+            "The Workers tab is where you hire. The <b>first hire is free</b>. You can hire up to <b>3 workers</b> before Milestone 2. A fourth hire unlocks at <b>Milestone 2</b> and then costs cash.\n\n" +
             "Hiring alone does nothing. After you hire:\n" +
             "1. Create (or select) a flow.\n" +
             "2. On that worker's card, click <b>Assign to Current Flow</b>.\n\n" +
@@ -142,7 +143,7 @@ public static class GuidebookPages
         new Page(
             "Service",
             "Customers",
-            "Customers spawn at the door, walk the lobby, and queue at the <b>register</b>. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
+            "Customers walk off the <b>bus</b>, go through a placed door, and queue at the <b>register</b>. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
             "They only have so much patience in line. If they wait too long they leave and you lose the sale.\n\n" +
             "A shift runs on the clock at the top of the screen (pause / play / fast-forward). From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) show <b>RUSH</b> and more customers arrive. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
         new Page(
@@ -152,7 +153,7 @@ public static class GuidebookPages
             "Progression stays locked until you finish or skip the first-run kitchen tutorial.\n\n" +
             "<b>Tutorial: Restaurant Basics</b> completes on its own when its work is done — there is no quiz on that chapter.\n\n" +
             "Later milestones still work the same way: finish every task, then pass the quiz (every answer correct) to unlock the next chapter.\n\n" +
-            "<b>Milestone 2 — Capacity & Optimization</b> unlocks rush hour, extra equipment, extra hires, a second worker on a flow, and queue/utilization stats."),
+            "<b>Milestone 2 — Capacity & Optimization</b> unlocks rush hour, extra equipment, a fourth hire, a second worker on a flow, and queue/utilization stats."),
         new Page(
             "Guide",
             "A good first shift",
@@ -176,6 +177,6 @@ public static class GuidebookPages
             "• <b>Bought a station but cannot click Next in the tutorial</b> — it must be placed on the floor, not only sitting in inventory.\n" +
             "• <b>Customers order but never receive items</b> — the flow does not end at the Pickup Station, or it is full of the wrong products.\n" +
             "• <b>Cannot open Progression</b> — finish the first-run tutorial first.\n" +
-            "• <b>Tight on cash</b> — first station of each type and the first hire are free; extra copies and extra hires unlock at Milestone 2."),
+            "• <b>Tight on cash</b> — first station of each type and the first hire are free; extra station copies and a fourth hire unlock at Milestone 2."),
     };
 }

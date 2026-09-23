@@ -269,7 +269,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>Station cards</b>\nEach card shows a station you can buy and place. The first number is how many you own and the second is your current cap. The price is removed when the station is purchased.\n\n" +
                 "<b>Capacity limit</b>\nYou start with one of each station. Extra copies unlock at <b>Milestone 2</b> (cap becomes 2), then later milestones can raise the cap further. MAX or MILESTONE 2 on the card means you cannot buy another copy yet.\n\n" +
-                "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used.\n\n" +
+                "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used. Double-click a placed object to pick it up and move it.\n\n" +
                 "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, drink stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
                 "<b>Counter equipment</b>\nRegisters sit on top of counter slots. Pickup Stations use counter-grid placement and hold finished products for collection.\n\n" +
                 "<b>Undo purchase</b>\nThe bottom button reverses the latest eligible purchase.\n\n" +
@@ -327,7 +327,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         {
             title = "Workers tab help";
             body =
-                "<b>Hire</b>\nThe first worker is available from the start. Extra hires stay locked until you reach <b>Milestone 2</b>. More labor can increase capacity, but every hire must be used effectively.\n\n" +
+                "<b>Hire</b>\nYou can hire up to <b>3 workers</b> from the start (the first hire is free). A fourth hire unlocks at <b>Milestone 2</b>. More labor can increase capacity, but every hire must be used effectively.\n\n" +
                 "<b>Flow chips</b>\nSelect a saved flow to inspect or modify it. Click the name field to rename the selected flow.\n\n" +
                 "<b>Create Flow</b>\nReturns you to the kitchen. Click stations in the exact order work should travel, then finish the route.\n\n" +
                 "<b>Edit Flow</b>\nReopens the selected route so its station order can be changed. The station chips show the current sequence.\n\n" +

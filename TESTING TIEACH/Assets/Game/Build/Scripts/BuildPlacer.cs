@@ -37,6 +37,9 @@ public class BuildPlacer : MonoBehaviour
     bool hasDoorPreviewWallLocation;
     Vector3 lastDoorPreviewWallPosition;
     CustomerWallDoor.WallSide lastDoorPreviewWallSide;
+    const float EditDoubleClickSeconds = 0.4f;
+    float lastEditClickTime = -999f;
+    int lastEditClickId;
 
     public bool IsPlacing => placingItem != null;
     public bool IsDragging => draggingObject != null;
@@ -522,6 +525,7 @@ public class BuildPlacer : MonoBehaviour
             CustomerWallDoor wallDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
             if (wallDoor != null)
             {
+                if (!IsDoubleClickEdit(wallDoor.gameObject)) return;
                 draggingObject = wallDoor.gameObject;
                 draggingWallDoor = wallDoor;
                 dragOriginalPosition = draggingObject.transform.position;
@@ -537,6 +541,7 @@ public class BuildPlacer : MonoBehaviour
             var mounted = hit.collider.GetComponentInParent<CounterMountedItem>();
             if (mounted != null)
             {
+                if (!IsDoubleClickEdit(mounted.gameObject)) return;
                 Register activeRegister = mounted.GetComponent<Register>();
                 HeatLampStation stockedLamp = mounted.GetComponent<HeatLampStation>();
                 if ((activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
@@ -590,6 +595,8 @@ public class BuildPlacer : MonoBehaviour
             if (!GetFootprintOriginFromCenter(root.transform.position, sizeX, sizeY, out int ox, out int oy))
                 continue;
 
+            if (!IsDoubleClickEdit(root)) return;
+
             grid.SetOccupied(ox, oy, sizeX, sizeY, false);
             draggingObject = root;
             dragFootprint = fp;
@@ -602,6 +609,17 @@ public class BuildPlacer : MonoBehaviour
             Sfx.Play(SfxId.BuildPickup);
             return;
         }
+    }
+
+    bool IsDoubleClickEdit(GameObject target)
+    {
+        if (target == null) return false;
+        int id = target.GetInstanceID();
+        float now = Time.unscaledTime;
+        bool doubled = id == lastEditClickId && now - lastEditClickTime <= EditDoubleClickSeconds;
+        lastEditClickId = doubled ? 0 : id;
+        lastEditClickTime = now;
+        return doubled;
     }
 
     void TryPlaceDraggedAt(int x, int y)

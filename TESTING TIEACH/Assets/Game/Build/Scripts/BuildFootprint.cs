@@ -21,6 +21,24 @@ public class CustomerWallDoor : MonoBehaviour
     public WallSide wallSide;
     public DoorRole role = DoorRole.Entrance;
 
+    const float SwingOpenAngle = 82f;
+    const float SwingOpenDegreesPerSecond = 260f;
+    const float SwingCloseDegreesPerSecond = SwingOpenDegreesPerSecond / 0.6f;
+    const float SwingTriggerRadius = 4.2f;
+    const float SwingCloseRadius = 2.4f;
+
+    struct SwingLeaf
+    {
+        public Transform transform;
+        public Quaternion closedLocal;
+        public float outwardSign;
+    }
+
+    readonly List<SwingLeaf> swingLeaves = new List<SwingLeaf>();
+    bool swingReady;
+    float swingAngle;
+    int swingDirection; // -1 open in (arrivals), +1 open out (departures), 0 closed
+
     static CustomerWallDoor activePopupDoor;
     GameObject rolePopup;
     Image entranceButtonImage;
@@ -50,6 +68,9 @@ public class CustomerWallDoor : MonoBehaviour
         }
 
         if (ghost) return;
+
+        DisableImportedDoorClickScripts();
+        CacheSwingLeaves();
 
         var occ = GetComponent<CameraOcclusionWall>();
         if (occ == null)
@@ -90,6 +111,8 @@ public class CustomerWallDoor : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateDoorSwing();
+
         if (rolePopup == null || !rolePopup.activeSelf) return;
         if (ManagementModeController.Instance == null
             || !ManagementModeController.Instance.IsManageMode)
@@ -98,6 +121,142 @@ public class CustomerWallDoor : MonoBehaviour
             return;
         }
         PositionRolePopup();
+    }
+
+    bool IsGhostDoor => name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0;
+
+    void DisableImportedDoorClickScripts()
+    {
+        MonoBehaviour[] behaviours = GetComponentsInChildren<MonoBehaviour>(true);
+        for (int i = 0; i < behaviours.Length; i++)
+        {
+            MonoBehaviour behaviour = behaviours[i];
+            if (behaviour == null) continue;
+            string typeName = behaviour.GetType().Name;
+            if (typeName.IndexOf("openclose", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                behaviour.enabled = false;
+        }
+    }
+
+    void CacheSwingLeaves()
+    {
+        swingLeaves.Clear();
+        swingReady = false;
+        swingAngle = 0f;
+        swingDirection = 0;
+
+        Animator[] animators = GetComponentsInChildren<Animator>(true);
+        Vector3 outward = OutwardDirection();
+        for (int i = 0; i < animators.Length; i++)
+        {
+            Animator animator = animators[i];
+            if (animator == null) continue;
+            animator.enabled = false;
+
+            Transform leaf = animator.transform;
+            Vector3 localCenter = Vector3.zero;
+            BoxCollider box = leaf.GetComponent<BoxCollider>();
+            if (box != null)
+                localCenter = box.center;
+            else
+            {
+                Renderer renderer = leaf.GetComponent<Renderer>();
+                if (renderer != null)
+                    localCenter = leaf.InverseTransformPoint(renderer.bounds.center);
+            }
+            localCenter.y = 0f;
+            if (localCenter.sqrMagnitude < 0.01f)
+                localCenter = Vector3.left;
+
+            Vector3 worldSwing = leaf.TransformDirection(Vector3.Cross(Vector3.up, localCenter));
+            float sign = Mathf.Sign(Vector3.Dot(worldSwing, outward));
+            if (Mathf.Abs(sign) < 0.01f) sign = 1f;
+
+            swingLeaves.Add(new SwingLeaf
+            {
+                transform = leaf,
+                closedLocal = leaf.localRotation,
+                outwardSign = sign
+            });
+        }
+
+        swingReady = swingLeaves.Count > 0;
+        ApplySwingAngle();
+    }
+
+    void UpdateDoorSwing()
+    {
+        if (IsGhostDoor) return;
+        if (!swingReady) CacheSwingLeaves();
+        if (!swingReady) return;
+
+        int desired = ResolveSwingDirection();
+        float target = desired * SwingOpenAngle;
+        if (Mathf.Abs(swingAngle - target) < 0.05f)
+        {
+            if (Mathf.Abs(swingAngle - target) > 0.0001f)
+            {
+                swingAngle = target;
+                ApplySwingAngle();
+            }
+            swingDirection = desired;
+            return;
+        }
+
+        swingAngle = Mathf.MoveTowards(swingAngle, target,
+            (desired == 0 ? SwingCloseDegreesPerSecond : SwingOpenDegreesPerSecond) * Time.deltaTime);
+        swingDirection = desired;
+        ApplySwingAngle();
+    }
+
+    int ResolveSwingDirection()
+    {
+        Vector3 doorPos = transform.position;
+        CustomerAI[] customers = FindObjectsByType<CustomerAI>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+        float nearestEnter = float.MaxValue;
+        float nearestLeave = float.MaxValue;
+        for (int i = 0; i < customers.Length; i++)
+        {
+            CustomerAI customer = customers[i];
+            if (customer == null) continue;
+            float dist = HorizontalDistance(doorPos, customer.transform.position);
+            if (dist > SwingTriggerRadius) continue;
+            if (customer.IsEntering)
+                nearestEnter = Mathf.Min(nearestEnter, dist);
+            else if (customer.IsLeaving)
+                nearestLeave = Mathf.Min(nearestLeave, dist);
+        }
+
+        bool enterNear = nearestEnter <= SwingTriggerRadius;
+        bool leaveNear = nearestLeave <= SwingTriggerRadius;
+        if (enterNear && (!leaveNear || nearestEnter <= nearestLeave))
+            return -1;
+        if (leaveNear)
+            return 1;
+
+        if (Mathf.Abs(swingAngle) > 1f
+            && (nearestEnter <= SwingCloseRadius || nearestLeave <= SwingCloseRadius))
+            return swingDirection;
+        return 0;
+    }
+
+    void ApplySwingAngle()
+    {
+        for (int i = 0; i < swingLeaves.Count; i++)
+        {
+            SwingLeaf leaf = swingLeaves[i];
+            if (leaf.transform == null) continue;
+            leaf.transform.localRotation = leaf.closedLocal
+                * Quaternion.AngleAxis(swingAngle * leaf.outwardSign, Vector3.up);
+        }
+    }
+
+    static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        a.y = b.y = 0f;
+        return Vector3.Distance(a, b);
     }
 
     void EnsureRolePopup()
@@ -211,6 +370,84 @@ public class CustomerWallDoor : MonoBehaviour
         return null;
     }
 
+    /// <summary>Door used to arrive from the bus. Prefers the East wall and never uses Exit doors on other walls.</summary>
+    public static CustomerWallDoor FindEntryDoor()
+    {
+        CustomerWallDoor eastEntrance = null;
+        CustomerWallDoor eastAny = null;
+        CustomerWallDoor anyEntrance = null;
+        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (CustomerWallDoor door in doors)
+        {
+            if (!IsGameplayDoor(door)) continue;
+            if (door.wallSide == WallSide.East)
+            {
+                if (door.role == DoorRole.Entrance && eastEntrance == null)
+                    eastEntrance = door;
+                if (eastAny == null)
+                    eastAny = door;
+            }
+            if (door.role == DoorRole.Entrance && anyEntrance == null)
+                anyEntrance = door;
+        }
+        if (eastEntrance != null) return eastEntrance;
+        if (eastAny != null) return eastAny;
+        return anyEntrance;
+    }
+
+    /// <summary>Door used only when leaving. Prefers doors marked Exit.</summary>
+    public static CustomerWallDoor FindExitDoor()
+    {
+        CustomerWallDoor exit = FindRandomDoor(DoorRole.Exit);
+        if (exit != null) return exit;
+        return FindEntryDoor();
+    }
+
+    public static bool TryGetBusAlightPoint(out Vector3 point)
+    {
+        point = Vector3.zero;
+        Renderer bus = FindBusRenderer();
+        if (bus == null) return false;
+        Bounds bounds = bus.bounds;
+        float floorY = bounds.min.y;
+        GameObject floor = GameObject.Find("CustomerFloor");
+        Renderer floorRenderer = floor != null ? floor.GetComponentInChildren<Renderer>() : null;
+        if (floorRenderer != null) floorY = floorRenderer.bounds.max.y;
+        // Bus sits east of the restaurant. Alight on the store-facing (west) side.
+        point = new Vector3(bounds.min.x - 0.45f, floorY, bounds.center.z);
+        return true;
+    }
+
+    static Renderer FindBusRenderer()
+    {
+        Renderer[] renderers = Object.FindObjectsByType<Renderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        Renderer best = null;
+        float bestSize = 0f;
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null) continue;
+            bool isBus = false;
+            for (Transform t = renderer.transform; t != null; t = t.parent)
+            {
+                if (t.name.IndexOf("Bus", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    isBus = true;
+                    break;
+                }
+            }
+            if (!isBus) continue;
+            if (renderer.GetComponentInParent<Canvas>() != null) continue;
+            float size = renderer.bounds.size.sqrMagnitude;
+            if (size > bestSize)
+            {
+                best = renderer;
+                bestSize = size;
+            }
+        }
+        return best;
+    }
+
     public Vector3 OutwardDirection()
     {
         switch (wallSide)
@@ -226,9 +463,18 @@ public class CustomerWallDoor : MonoBehaviour
         if (into == null) return;
         Vector3 outside = GetCustomerWaypoint(true, 2.4f);
         Vector3 threshold = GetCustomerWaypoint(true, 0.15f);
-        Vector3 inside = GetCustomerWaypoint(false, 2.0f);
+        float insideDistance = wallSide == WallSide.East ? 1.0f : 2.0f;
+        Vector3 inside = GetCustomerWaypoint(false, insideDistance);
+        bool hasBus = TryGetBusAlightPoint(out Vector3 bus);
+
         if (entering)
         {
+            if (hasBus)
+            {
+                into.Add(bus);
+                Vector3 curb = new Vector3(Mathf.Lerp(bus.x, outside.x, 0.55f), outside.y, Mathf.Lerp(bus.z, outside.z, 0.35f));
+                into.Add(curb);
+            }
             into.Add(outside);
             into.Add(threshold);
             into.Add(inside);
@@ -238,17 +484,43 @@ public class CustomerWallDoor : MonoBehaviour
             into.Add(inside);
             into.Add(threshold);
             into.Add(outside);
+            if (hasBus)
+            {
+                Vector3 curb = new Vector3(Mathf.Lerp(bus.x, outside.x, 0.55f), outside.y, Mathf.Lerp(bus.z, outside.z, 0.35f));
+                into.Add(curb);
+                into.Add(bus);
+            }
         }
+    }
+
+    /// <summary>
+    /// After stepping through an East door, walk along the inner east wall to the
+    /// register row before crossing the lobby (door → south → west to the counter).
+    /// </summary>
+    public void AppendEastEntryElbow(List<Vector3> into, Vector3 lobbyTarget)
+    {
+        if (into == null || into.Count == 0 || wallSide != WallSide.East) return;
+        Vector3 last = into[into.Count - 1];
+        float destZ = lobbyTarget.z;
+        if (Mathf.Abs(destZ - last.z) < 0.35f) return;
+        into.Add(new Vector3(last.x, last.y, destZ));
     }
 
     public Vector3 GetCustomerWaypoint(bool outside, float distance = 1.5f)
     {
         Vector3 outward = OutwardDirection();
-        float floorY = ResolveFloorY();
-        Vector3 point = transform.position;
-        point.y = floorY;
+        Vector3 point = GetPassageCenter();
         point += outward * (outside ? distance : -distance);
         return point;
+    }
+
+    /// <summary>World point in the middle of the doorway opening, on the floor.</summary>
+    public Vector3 GetPassageCenter()
+    {
+        Bounds bounds = GetVisualBounds();
+        Vector3 center = bounds.center;
+        center.y = ResolveFloorY();
+        return center;
     }
 
     float ResolveFloorY()

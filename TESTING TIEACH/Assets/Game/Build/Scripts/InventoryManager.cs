@@ -42,10 +42,15 @@ public class InventoryManager : MonoBehaviour
         return acquired.TryGetValue(item, out int c) ? c : 0;
     }
 
+    public const int DoorPurchaseCap = 1;
+
     /// <summary>Total owned capacity for one station type, including milestone rewards.</summary>
     public int GetStationCapacity(ItemDefinition item)
     {
         if (item == null) return 0;
+        if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor
+            || item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            return DoorPurchaseCap;
         if (OnboardingTutorial.BlocksProgression)
             return 1;
         int completed = MilestoneProgressManager.Instance != null

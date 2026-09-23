@@ -532,14 +532,20 @@ public class ProductionManager : MonoBehaviour
         }
     }
 
-    /// <summary>Milestone 1 allows one worker. Extra hires unlock at Milestone 2.</summary>
+    public const int StartingHireCap = 3;
+    public const int ExtraHiresAtMilestone2 = 1;
+
+    /// <summary>Up to 3 workers before Milestone 2; one extra hire when Milestone 2 is reached.</summary>
+    public int MaxHiredWorkers => StartingHireCap
+        + (MilestoneFeatures.ExtraStaffingUnlocked ? ExtraHiresAtMilestone2 : 0);
+
     public bool CanHireWorker()
     {
         if (employeePrefab == null) return false;
-        return HiredWorkerCount < 1 || MilestoneFeatures.ExtraStaffingUnlocked;
+        return HiredWorkerCount < MaxHiredWorkers;
     }
 
-    public bool ExtraHireLocked => HiredWorkerCount >= 1 && !MilestoneFeatures.ExtraStaffingUnlocked;
+    public bool ExtraHireLocked => HiredWorkerCount >= StartingHireCap && !MilestoneFeatures.ExtraStaffingUnlocked;
 
     public bool CanAddWorkerToFlow(ProductionFlowPlan targetFlow)
     {
@@ -623,7 +629,6 @@ public class ProductionManager : MonoBehaviour
 
         int inFlight = heldCount + pendingJobs.Count;
         int openSlots = totalCapacity - inFlight;
-        if (openSlots <= 0) return;
 
         // Always keep stock up — kitchen produces without waiting for customers.
         target = Mathf.Clamp(target, 1, totalCapacity);
@@ -636,7 +641,17 @@ public class ProductionManager : MonoBehaviour
         // production target so they immediately start another flow loop.
         int idleCookSlots = CountIdleCookSlots(cookable);
         if (idleCookSlots > 0)
+        {
             target = Mathf.Min(totalCapacity, Mathf.Max(target, heldCount + pendingJobs.Count + idleCookSlots));
+            // Drink (and other specialist) cooks still need a job when the pass is full
+            // of other items — they will wait at delivery if there is no space yet.
+            openSlots = Mathf.Max(openSlots, idleCookSlots);
+        }
+
+        if (openSlots <= 0) return;
+
+        // Prefer matching pending jobs to the cooks who can run them.
+        EnsurePendingJobsForIdleCooks(cookable, stockCounts, ref openSlots);
 
         while (openSlots > 0 && heldCount + pendingJobs.Count < target)
         {
@@ -648,9 +663,6 @@ public class ProductionManager : MonoBehaviour
             stockCounts[item] = stockCounts.TryGetValue(item, out int c) ? c + 1 : 1;
             openSlots--;
         }
-
-        // Prefer matching pending jobs to the cooks who can run them.
-        EnsurePendingJobsForIdleCooks(cookable, stockCounts, ref openSlots);
 
         // Extra demand from live customers can push production up to max capacity.
         if (openSlots <= 0) return;

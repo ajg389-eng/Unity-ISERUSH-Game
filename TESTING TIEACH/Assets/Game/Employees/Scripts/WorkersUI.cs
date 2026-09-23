@@ -1002,6 +1002,11 @@ public class WorkersUI : MonoBehaviour
             canHire = false;
             costLabel = "Milestone 2";
         }
+        else if (!production.CanHireWorker())
+        {
+            canHire = false;
+            costLabel = "MAX";
+        }
         else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
         {
             canHire = false;
