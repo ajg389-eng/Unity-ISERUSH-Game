@@ -436,6 +436,7 @@ public class PauseMenuUI : MonoBehaviour
 
         lockNorthToggle = CreateWallLockRow(page.transform, "LockNorth", "North wall", CameraWallCutaway.WallSide.North);
         lockEastToggle = CreateWallLockRow(page.transform, "LockEast", "East wall", CameraWallCutaway.WallSide.East);
+        lockEastToggle.interactable = false;
         lockSouthToggle = CreateWallLockRow(page.transform, "LockSouth", "South wall", CameraWallCutaway.WallSide.South);
         lockWestToggle = CreateWallLockRow(page.transform, "LockWest", "West wall", CameraWallCutaway.WallSide.West);
         return page;

@@ -1111,7 +1111,6 @@ public class BuildPlacer : MonoBehaviour
     void EnsureRequiredCustomerDoors()
     {
         CustomerWallDoor entrance = null;
-        CustomerWallDoor exit = null;
         CustomerWallDoor[] existing = FindObjectsByType<CustomerWallDoor>(
             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         for (int i = 0; i < existing.Length; i++)
@@ -1120,8 +1119,6 @@ public class BuildPlacer : MonoBehaviour
             if (!CustomerWallDoor.IsGameplayDoor(door)) continue;
             if (door.role == CustomerWallDoor.DoorRole.Entrance && entrance == null)
                 entrance = door;
-            else if (door.role == CustomerWallDoor.DoorRole.Exit && exit == null)
-                exit = door;
         }
 
         ItemDefinition definition = FindCustomerDoorDefinition();
@@ -1130,12 +1127,13 @@ public class BuildPlacer : MonoBehaviour
         if (entrance == null)
             entrance = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Entrance,
                 CustomerWallDoor.WallSide.East, 0.36f);
-        if (exit == null)
-            exit = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Exit,
-                CustomerWallDoor.WallSide.North, 0.68f);
-
         ConfigureRequiredDoor(entrance, definition, CustomerWallDoor.DoorRole.Entrance);
-        ConfigureRequiredDoor(exit, definition, CustomerWallDoor.DoorRole.Exit);
+        for (int i = 0; i < existing.Length; i++)
+        {
+            CustomerWallDoor door = existing[i];
+            if (!CustomerWallDoor.IsGameplayDoor(door) || door == entrance) continue;
+            Destroy(door.gameObject);
+        }
         RefreshPerimeterWalls();
     }
 

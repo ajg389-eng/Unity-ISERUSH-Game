@@ -147,6 +147,8 @@ public class CameraWallCutaway : MonoBehaviour
 
     public static bool IsWallLocked(WallSide side)
     {
+        if (side == WallSide.East)
+            return true;
         LoadLocks();
         int index = (int)side;
         if (index < 0 || index >= LockedSides.Length) return false;
@@ -155,6 +157,8 @@ public class CameraWallCutaway : MonoBehaviour
 
     public static void SetWallLocked(WallSide side, bool locked)
     {
+        if (side == WallSide.East)
+            locked = true;
         LoadLocks();
         int index = (int)side;
         if (index < 0 || index >= LockedSides.Length) return;
@@ -194,6 +198,7 @@ public class CameraWallCutaway : MonoBehaviour
         LockedSides[(int)WallSide.East] = PlayerPrefs.GetInt(PrefLockEast, 0) == 1;
         LockedSides[(int)WallSide.South] = PlayerPrefs.GetInt(PrefLockSouth, 0) == 1;
         LockedSides[(int)WallSide.West] = PlayerPrefs.GetInt(PrefLockWest, 0) == 1;
+        LockedSides[(int)WallSide.East] = true;
         locksLoaded = true;
     }
 
