@@ -286,15 +286,42 @@ public class HeatLampStation : MonoBehaviour
     /// <summary>World stand point for a customer at the pass (index 0 = at the counter).</summary>
     public Vector3 GetCustomerPickupPosition(int index = 0)
     {
-        Vector3 intoLobby = GetCustomerQueueDirection();
-        float standOff = GetCustomerStandDistance();
-        Vector3 origin = transform.position + intoLobby * standOff;
-        float queueStep = GridManager.Instance != null
-            ? Mathf.Max(0.01f, GridManager.Instance.cellSize)
-            : customerPickupSpacing;
-        // Stand on the customer side, then form the waiting line toward world east.
-        Vector3 pos = origin + Vector3.right * (queueStep * Mathf.Max(0, index));
-        return SnapPickupToGround(pos);
+        GridManager placementGrid = GridManager.Instance;
+        float cell = placementGrid != null
+            ? Mathf.Max(0.01f, placementGrid.cellSize)
+            : Mathf.Max(0.5f, customerPickupSpacing);
+        Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
+
+        Renderer visual = GetComponentInChildren<Renderer>();
+        float maxX = visual != null ? visual.bounds.max.x : transform.position.x;
+        float centerZ = visual != null ? visual.bounds.center.z : transform.position.z;
+
+        int firstX = Mathf.FloorToInt((maxX + 0.01f - origin.x) / cell);
+        int rowZ = Mathf.FloorToInt((centerZ - origin.z) / cell);
+
+        Vector3 slot = new Vector3(
+            origin.x + (firstX + Mathf.Max(0, index) + 0.5f) * cell,
+            transform.position.y,
+            origin.z + (rowZ + 0.5f) * cell);
+        return SnapPickupToGround(slot);
+    }
+
+    public static HeatLampStation FindNearest(Vector3 worldPosition)
+    {
+        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        HeatLampStation best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = 0; i < stations.Length; i++)
+        {
+            HeatLampStation station = stations[i];
+            if (station == null) continue;
+            float distance = (station.transform.position - worldPosition).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            best = station;
+        }
+        return best;
     }
 
     public bool TryJoinPickupQueue(CustomerAI customer)
@@ -315,32 +342,12 @@ public class HeatLampStation : MonoBehaviour
 
     void RefreshPickupQueueTargets()
     {
-        int serviceableIndex = FindFirstServiceableCustomerIndex();
-        int waitingSlot = 1;
         for (int i = 0; i < customerPickupQueue.Count; i++)
         {
             CustomerAI customer = customerPickupQueue[i];
             if (customer == null) continue;
-
-            // If nobody can currently be served, retain the normal line. Otherwise the
-            // earliest customer with any ready order item temporarily takes slot zero.
-            int slot = serviceableIndex < 0
-                ? i
-                : i == serviceableIndex ? 0 : waitingSlot++;
-            customer.SetPickupSlot(this, GetCustomerPickupPosition(slot), i == serviceableIndex);
+            customer.SetPickupSlot(this, GetCustomerPickupPosition(i), i == 0);
         }
-    }
-
-    int FindFirstServiceableCustomerIndex()
-    {
-        for (int i = 0; i < customerPickupQueue.Count; i++)
-        {
-            CustomerAI customer = customerPickupQueue[i];
-            CustomerOrder order = customer != null ? customer.GetOrder() : null;
-            if (order != null && order.GetTotalQuantity() > 0 && HasAnyItemFor(order))
-                return i;
-        }
-        return -1;
     }
 
     public static HeatLampStation FindBestPickupFor(ItemDefinition item, Vector3 customerPosition)
@@ -433,7 +440,7 @@ public class HeatLampStation : MonoBehaviour
             bestQueue = queue;
             bestDistance = distance;
         }
-        return best;
+        return best != null ? best : FindNearest(customerPosition);
     }
 
     public bool CanProvideItem(ItemDefinition item)
@@ -449,7 +456,7 @@ public class HeatLampStation : MonoBehaviour
             int lampIndex = flow.stations.IndexOf(gameObject);
             if (lampIndex < 0) continue;
             foreach (ItemDefinition product in GetFlowProducts(flow, lampIndex))
-                if (product == item) return true;
+                if (CustomerOrder.ItemsEquivalent(product, item)) return true;
         }
         return false;
     }
@@ -938,16 +945,64 @@ public class HeatLampStation : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Next ready item this customer may take. People ahead in this pickup line
+    /// keep first claim on matching food.
+    /// </summary>
+    public bool TryGetAvailableItemForCustomer(CustomerAI customer, CustomerOrder customerOrder, out ItemDefinition item)
+    {
+        item = null;
+        if (customer == null || customerOrder?.lines == null) return false;
+        foreach (CustomerOrder.OrderLine line in customerOrder.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            if (CountHeldMatching(line.item) <= CountClaimsAhead(customer, line.item)) continue;
+            item = line.item;
+            return true;
+        }
+        return false;
+    }
+
+    int CountHeldMatching(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        int n = 0;
+        for (int i = 0; i < meals.Count; i++)
+        {
+            CustomerOrder held = meals[i]?.order;
+            if (held == null) continue;
+            n += held.CountQuantityOf(item);
+        }
+        return n;
+    }
+
+    int CountClaimsAhead(CustomerAI customer, ItemDefinition item)
+    {
+        if (customer == null || item == null) return 0;
+        int claims = 0;
+        for (int i = 0; i < customerPickupQueue.Count; i++)
+        {
+            CustomerAI other = customerPickupQueue[i];
+            if (other == customer) break;
+            if (other == null) continue;
+            CustomerOrder otherOrder = other.GetOrder();
+            if (otherOrder == null) continue;
+            claims += otherOrder.CountQuantityOf(item);
+        }
+        return claims;
+    }
+
     public CustomerOrder TryTakeSingleItem(ItemDefinition item)
     {
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
+        ItemDefinition held = meal?.order?.PrimaryItem;
         if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
         if (meal.order.GetTotalQuantity() <= 0)
             meals.RemoveAt(idx);
         RefreshStatusLabel();
-        return CustomerOrder.FromItem(item);
+        return CustomerOrder.FromItem(held != null ? held : item);
     }
 
     public bool TryCustomerTakeSingleItem(ItemDefinition item)
@@ -1030,8 +1085,7 @@ public class HeatLampStation : MonoBehaviour
             foreach (var line in o.lines)
             {
                 if (line.quantity <= 0 || line.item == null) continue;
-                if (line.item == item) return i;
-                if (!string.IsNullOrEmpty(item.itemName) && line.item.itemName == item.itemName)
+                if (CustomerOrder.ItemsEquivalent(line.item, item))
                     return i;
             }
         }

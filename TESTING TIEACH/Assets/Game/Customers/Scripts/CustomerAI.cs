@@ -68,6 +68,8 @@ public class CustomerAI : MonoBehaviour
 
     public bool IsEntering => phase == Phase.Entering;
     public bool IsLeaving => phase == Phase.Leaving;
+    public bool HasReservedSlot => hasQueueSlot;
+    public Vector3 ReservedSlotPosition => queuedSlotPos;
 
     float standY;
     bool standYReady;
@@ -254,20 +256,6 @@ public class CustomerAI : MonoBehaviour
 
     public void BeginPickupJourney()
     {
-        CustomerWaitAreaManager areas = CustomerWaitAreaManager.Instance;
-        if (areas != null && areas.TryReserveNearestWaitPosition(this, transform.position, out Vector3 waitPosition))
-        {
-            // Ordered customers wait on the customer floor, not in front of a pass.
-            pickupStation = null;
-            waitingAtDesignatedArea = true;
-            hasWaitAreaReservation = true;
-            waitingForPickup = false;
-            queuedSlotPos = waitPosition;
-            queuedIsFront = false;
-            hasQueueSlot = true;
-            ApplyQueueSlotMovement();
-            return;
-        }
         JoinNextPickupStation();
     }
 
@@ -284,6 +272,8 @@ public class CustomerAI : MonoBehaviour
         }
 
         HeatLampStation next = HeatLampStation.FindBestPickupForOrder(order, transform.position);
+        if (next == null)
+            next = HeatLampStation.FindNearest(transform.position);
         if (next == null || !next.TryJoinPickupQueue(this))
         {
             hasQueueSlot = false;
@@ -425,10 +415,15 @@ public class CustomerAI : MonoBehaviour
         if (hasWaitAreaReservation && !waitingAtDesignatedArea && HorizontalDist(transform.position, targetPos) > 0.6f)
             ReleaseWaitAreaReservation();
 
+        if (waitingForPickup)
+            TrySelfServeFromHeatLamp();
+
         if (MoveOnCustomerGrid(targetPos))
         {
             phase = Phase.Waiting;
             BeginQueueWait();
+            if (waitingForPickup)
+                TrySelfServeFromHeatLamp();
         }
     }
 
@@ -510,34 +505,39 @@ public class CustomerAI : MonoBehaviour
 
     void TrySelfServeFromHeatLamp()
     {
-        // No interaction tiles / quads — front of the pickup line can take a ready order.
-        if (reg == null || pickupStation == null || leaving || !isFront) return;
+        if (reg == null || pickupStation == null || leaving) return;
+        if (HorizontalDist(transform.position, queuedSlotPos) > 0.85f) return;
+
         if (IsOrderFullyDelivered)
         {
-            reg.CompleteServe(this, order);
+            FinishPickupAndLeave();
             return;
         }
 
-        if (!pickupStation.TryGetAvailableItem(order, out ItemDefinition item)) return;
+        if (!pickupStation.TryGetAvailableItemForCustomer(this, order, out ItemDefinition item)) return;
         if (!pickupStation.TryCustomerTakeSingleItem(item)) return;
         if (!order.TryRemoveOne(item)) return;
 
         RefreshOrderLabel();
         Sfx.Play(SfxId.ItemDelivered);
-        pickupStation.LeavePickupQueue(this);
-        pickupStation = null;
+
+        if (IsOrderFullyDelivered)
+            FinishPickupAndLeave();
+        // Otherwise stay in this pickup slot until the rest of the order is ready.
+    }
+
+    void FinishPickupAndLeave()
+    {
+        if (pickupStation != null)
+        {
+            pickupStation.LeavePickupQueue(this);
+            pickupStation = null;
+        }
         hasQueueSlot = false;
         hasTarget = false;
         isFront = false;
-        if (IsOrderFullyDelivered)
-        {
+        if (reg != null)
             reg.CompleteServe(this, order);
-            return;
-        }
-
-        // Reevaluate every pickup station after each item. The next item may be
-        // waiting at a different pass, or this customer may rejoin this one later.
-        JoinNextPickupStation();
     }
 
     void ReleaseWaitAreaReservation()
@@ -625,15 +625,32 @@ public class CustomerAI : MonoBehaviour
 
         int x = startX;
         int z = startZ;
-        while (x != targetX)
+        bool hugEastWall = startX >= width - 2 && targetX < startX;
+        if (hugEastWall)
         {
-            x += targetX > x ? 1 : -1;
-            gridPath.Add(Center(x, z));
+            while (z != targetZ)
+            {
+                z += targetZ > z ? 1 : -1;
+                gridPath.Add(Center(x, z));
+            }
+            while (x != targetX)
+            {
+                x += targetX > x ? 1 : -1;
+                gridPath.Add(Center(x, z));
+            }
         }
-        while (z != targetZ)
+        else
         {
-            z += targetZ > z ? 1 : -1;
-            gridPath.Add(Center(x, z));
+            while (x != targetX)
+            {
+                x += targetX > x ? 1 : -1;
+                gridPath.Add(Center(x, z));
+            }
+            while (z != targetZ)
+            {
+                z += targetZ > z ? 1 : -1;
+                gridPath.Add(Center(x, z));
+            }
         }
 
         if (gridPath.Count == 0 || HorizontalDist(gridPath[gridPath.Count - 1], target) > arrivalDistance)
@@ -687,11 +704,33 @@ public class CustomerAI : MonoBehaviour
             return true;
         }
 
+        if (IsBlockedByOtherCustomer(target))
+            return false;
+
         transform.position = Vector3.MoveTowards(pos, target, moveSpeed * Time.deltaTime);
         var facing = PartyCharacterAnimator.EnsureOn(gameObject);
         if (facing != null)
             facing.FaceTowardAdjacent(target, smooth: true);
         return HorizontalDist(transform.position, target) <= arrivalDistance;
+    }
+
+    bool IsBlockedByOtherCustomer(Vector3 dest)
+    {
+        if (phase != Phase.GoingToSlot && phase != Phase.Waiting) return false;
+        const float personalSpace = 0.65f;
+        float myDist = HorizontalDist(transform.position, dest);
+        CustomerAI[] others = FindObjectsByType<CustomerAI>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < others.Length; i++)
+        {
+            CustomerAI other = others[i];
+            if (other == null || other == this || other.IsLeaving || other.IsEntering) continue;
+            if (HorizontalDist(other.transform.position, dest) >= personalSpace) continue;
+            // Only yield to someone already closer to this cell (ahead in line).
+            if (HorizontalDist(other.transform.position, dest) < myDist - 0.05f)
+                return true;
+        }
+        return false;
     }
 
     void SnapXZ(Vector3 world)

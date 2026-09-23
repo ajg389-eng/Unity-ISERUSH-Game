@@ -134,6 +134,19 @@ public class CustomerOrder
         return n;
     }
 
+    public int CountQuantityOf(ItemDefinition item)
+    {
+        if (item == null || lines == null) return 0;
+        int n = 0;
+        foreach (var line in lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            if (!ItemsEquivalent(line.item, item)) continue;
+            n += line.quantity;
+        }
+        return n;
+    }
+
     /// <summary>Remove one unit of the item from the order. Returns false if it wasn't on the order.</summary>
     public bool TryRemoveOne(ItemDefinition item)
     {
@@ -142,9 +155,7 @@ public class CustomerOrder
         {
             var line = lines[i];
             if (line.item == null || line.quantity <= 0) continue;
-            bool same = line.item == item
-                || (!string.IsNullOrEmpty(item.itemName) && line.item.itemName == item.itemName);
-            if (!same) continue;
+            if (!ItemsEquivalent(line.item, item)) continue;
             line.quantity--;
             if (line.quantity <= 0)
                 lines.RemoveAt(i);
@@ -152,6 +163,21 @@ public class CustomerOrder
                 lines[i] = line;
             return true;
         }
+        return false;
+    }
+
+    public static bool ItemsEquivalent(ItemDefinition a, ItemDefinition b)
+    {
+        if (a == null || b == null) return false;
+        if (a == b) return true;
+        if (!string.IsNullOrEmpty(a.itemName) && a.itemName == b.itemName) return true;
+
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig
+            : null;
+        if (config != null && config.SameMenuProduct(a, b))
+            return true;
+
         return false;
     }
 

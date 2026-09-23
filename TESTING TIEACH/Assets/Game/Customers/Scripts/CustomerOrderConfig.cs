@@ -63,6 +63,37 @@ public class CustomerOrderConfig : ScriptableObject
         if (IsBurger(item)) return ProductKind.Burger;
         if (IsFries(item)) return ProductKind.Fries;
         if (IsDrink(item)) return ProductKind.Drink;
+        return InferProductKind(item);
+    }
+
+    /// <summary>
+    /// True when both definitions are the same menu product, even if the kitchen
+    /// used a different ItemDefinition asset than the customer's order line.
+    /// </summary>
+    public bool SameMenuProduct(ItemDefinition a, ItemDefinition b)
+    {
+        if (a == null || b == null) return false;
+        if (a == b) return true;
+        if (!string.IsNullOrEmpty(a.itemName) && a.itemName == b.itemName) return true;
+        ProductKind kindA = GetProductKind(a);
+        ProductKind kindB = GetProductKind(b);
+        return kindA != ProductKind.None && kindA == kindB;
+    }
+
+    static ProductKind InferProductKind(ItemDefinition item)
+    {
+        if (item == null) return ProductKind.None;
+        string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+        if (string.IsNullOrEmpty(label)) return ProductKind.None;
+        if (label.IndexOf("burger", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Burger;
+        if (label.IndexOf("fries", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("fry", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Fries;
+        if (label.IndexOf("drink", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("soda", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("cola", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Drink;
         return ProductKind.None;
     }
 

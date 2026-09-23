@@ -382,8 +382,6 @@ public class Register : MonoBehaviour
     public bool CompleteServe(CustomerAI customer, CustomerOrder soldOrder)
     {
         if (!isEnabled || customer == null) return false;
-        if (!pickup.Contains(customer) && (queue.Count == 0 || queue[0] != customer))
-            return false;
 
         int sale = customer.SalePrice > 0
             ? customer.SalePrice
@@ -394,10 +392,16 @@ public class Register : MonoBehaviour
 
     void CompleteServeFront(CustomerAI front, int sale)
     {
-        if (!pickup.Remove(front) && (queue.Count == 0 || queue[0] != front))
-            return;
+        bool removed = pickup.Remove(front);
         if (queue.Count > 0 && queue[0] == front)
+        {
             queue.RemoveAt(0);
+            removed = true;
+        }
+        else
+            removed |= queue.Remove(front);
+        if (!removed)
+            return;
 
         if (sale > 0)
         {
