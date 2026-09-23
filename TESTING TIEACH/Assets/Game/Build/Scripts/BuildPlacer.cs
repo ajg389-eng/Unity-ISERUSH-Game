@@ -96,6 +96,10 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
+        // UI clicks must never place an item on the floor behind the panel.
+        if (UnityEngine.EventSystems.EventSystem.current != null
+            && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
+
         // ---- Dragging a placed object ----
         if (IsDragging)
         {
@@ -386,19 +390,40 @@ public class BuildPlacer : MonoBehaviour
     bool TryGetHoveredCell(out int x, out int y)
     {
         x = y = 0;
-        if (Camera.main == null || grid == null) return false;
+        if (grid == null || grid.Nodes == null || !TryGetFloorAimPoint(out Vector3 aim)) return false;
+        int sizeX, sizeY;
+        if (IsDragging) GetEffectiveDragSize(out sizeX, out sizeY);
+        else GetEffectivePlacementSize(out sizeX, out sizeY);
 
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, floorLayer))
-            return false;
-
-        if (!grid.WorldToCell(hit.point, out int cx, out int cy))
-            return false;
-        x = Mathf.Clamp(cx, 0, grid.Width - 1);
-        y = Mathf.Clamp(cy, 0, grid.Height - 1);
-        return true;
+        // Search legal origins using the entire rotated footprint, not just one tile.
+        // Projecting onto the floor plane lets the cursor pass through walls.
+        float bestDistance = float.PositiveInfinity;
+        bool found = false;
+        for (int cx = 0; cx <= grid.Width - sizeX; cx++)
+            for (int cy = 0; cy <= grid.Height - sizeY; cy++)
+            {
+                if (!grid.CanPlace(cx, cy, sizeX, sizeY)) continue;
+                Vector3 center = grid.GetFootprintCenter(cx, cy, sizeX, sizeY);
+                float distance = (new Vector2(center.x, center.z) - new Vector2(aim.x, aim.z)).sqrMagnitude;
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                x = cx;
+                y = cy;
+                found = true;
+            }
+        return found;
     }
 
+    bool TryGetFloorAimPoint(out Vector3 aim)
+    {
+        aim = Vector3.zero;
+        if (Camera.main == null || grid == null) return false;
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        var floorPlane = new Plane(Vector3.up, new Vector3(0f, grid.Origin.y, 0f));
+        if (!floorPlane.Raycast(ray, out float distance) || distance > 500f) return false;
+        aim = ray.GetPoint(distance);
+        return true;
+    }
     bool TryGetHoveredCounter(out CounterSurface surface, out int slot, bool requireAvailable)
     {
         surface = null;
@@ -424,7 +449,28 @@ public class BuildPlacer : MonoBehaviour
             slot = candidateSlot;
             return true;
         }
-        return false;
+
+        // A wall or floor click near a counter snaps to its nearest free slot.
+        if (!TryGetFloorAimPoint(out Vector3 aim)) return false;
+        int requiredSpan = placingItem != null ? Mathf.Max(1, placingItem.counterSlotSpan)
+            : draggingMountedItem != null && draggingMountedItem.itemDefinition != null
+                ? Mathf.Max(1, draggingMountedItem.itemDefinition.counterSlotSpan) : 1;
+        float bestDistance = float.PositiveInfinity;
+        foreach (var candidate in FindObjectsByType<CounterSurface>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (ghost != null && candidate.transform.IsChildOf(ghost.transform)) continue;
+            if (draggingObject != null && candidate.transform.IsChildOf(draggingObject.transform)) continue;
+            if (requireAvailable && !candidate.IsAvailable) continue;
+            int candidateSlot = candidate.GetNearestAvailableSlot(aim, requiredSpan);
+            if (candidateSlot < 0) continue;
+            Vector3 center = candidate.GetSlotWorldCenter(candidateSlot, requiredSpan);
+            float distance = (new Vector2(center.x, center.z) - new Vector2(aim.x, aim.z)).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            surface = candidate;
+            slot = candidateSlot;
+        }
+        return surface != null;
     }
 
     static void PositionOnCounter(GameObject obj, ItemDefinition item, CounterSurface surface, int slot, int rotation)
