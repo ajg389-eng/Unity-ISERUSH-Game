@@ -83,10 +83,8 @@ public class InventoryUI : MonoBehaviour
         if (!IsPanelOpen && CustomerWaitAreaManager.Instance != null)
             CustomerWaitAreaManager.Instance.SetEditing(false);
 
-        int completed = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
-            : 0;
-        if (panel != null && panel.activeSelf && completed != displayedCapacityMilestoneCount)
+        int reached = MilestoneFeatures.HighestReachedNumberedStage();
+        if (panel != null && panel.activeSelf && reached != displayedCapacityMilestoneCount)
             RefreshAll();
     }
 
@@ -243,9 +241,7 @@ public class InventoryUI : MonoBehaviour
         if (sr != null)
             sr.normalizedPosition = new Vector2(0f, 1f);
 
-        displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
-            : 0;
+        displayedCapacityMilestoneCount = MilestoneFeatures.HighestReachedNumberedStage();
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
@@ -469,7 +465,9 @@ public class InventoryUI : MonoBehaviour
         qtyText.text = owned + "/" + capacity;
         int price = inventory.GetPurchasePrice(item);
         bool atCapacity = inventory.IsAtStationCapacity(item);
-        priceText.text = atCapacity ? "MAX" : price <= 0 ? "FREE" : "$" + price;
+        priceText.text = atCapacity
+            ? (MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2")
+            : price <= 0 ? "FREE" : "$" + price;
         buyButton.interactable = !atCapacity;
 
         ItemDefinition captured = item;
@@ -490,7 +488,9 @@ public class InventoryUI : MonoBehaviour
                 qtyText.text = nextOwned + "/" + nextCapacity;
                 int nextPrice = inventory.GetPurchasePrice(captured);
                 bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
-                priceText.text = nowAtCapacity ? "MAX" : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
+                priceText.text = nowAtCapacity
+                    ? (MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2")
+                    : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
                 buyButton.interactable = !nowAtCapacity;
                 Sfx.Play(SfxId.Purchase);
             }

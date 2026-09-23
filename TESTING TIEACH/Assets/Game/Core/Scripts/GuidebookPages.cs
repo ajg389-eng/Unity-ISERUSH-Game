@@ -48,7 +48,7 @@ public static class GuidebookPages
             "Two tabs:\n" +
             "• <b>Stations</b> — catalog of equipment\n" +
             "• <b>Floor</b> — spend money to grow the walkable kitchen\n\n" +
-            "The <b>first copy of each station type is free</b>. Extra copies cost cash.\n\n" +
+            "The <b>first copy of each station type is free</b>. Extra copies stay locked until <b>Milestone 2</b>, then cost cash.\n\n" +
             "Undo under the list reverses a buy or a floor expand. Close Inventory when you are done so you return to Play."),
         new Page(
             "Inventory",
@@ -93,7 +93,7 @@ public static class GuidebookPages
         new Page(
             "Management",
             "Hire workers",
-            "The Workers tab is where you hire. The <b>first hire is free</b>; later hires cost cash.\n\n" +
+            "The Workers tab is where you hire. The <b>first hire is free</b>. Extra hires unlock at <b>Milestone 2</b> and then cost cash.\n\n" +
             "Hiring alone does nothing. After you hire:\n" +
             "1. Create (or select) a flow.\n" +
             "2. On that worker's card, click <b>Assign to Current Flow</b>.\n\n" +
@@ -112,7 +112,7 @@ public static class GuidebookPages
             "Management",
             "Edit and assign",
             "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Click a station already on the path to trim it back. Click a new station to extend it. Esc restores the previous path.\n\n" +
-            "<b>Assign to Current Flow</b> — select the flow, then use that button on a worker card. The name appears on the flow. Click the name chip to unassign.\n\n" +
+            "<b>Assign to Current Flow</b> — select the flow, then use that button on a worker card. The name appears on the flow. Click the name chip to unassign. A second worker on the same line unlocks at <b>Milestone 2</b>.\n\n" +
             "Without at least one worker on a flow, that line will not cook — even if every station is placed and stocked."),
         new Page(
             "Management",
@@ -125,6 +125,7 @@ public static class GuidebookPages
             "Management",
             "Store Stats",
             "Store Stats is a live report of the kitchen as a system. Use it when lines form or money stalls.\n\n" +
+            "From <b>Milestone 2</b> it also shows queue lengths and utilization. Use those numbers to decide where extra people or stations belong.\n\n" +
             "• <b>Customers in system</b> — people inside the flow (WIP). High numbers mean congestion.\n" +
             "• <b>Queue length</b> — where people wait. Long queues mark bottlenecks.\n" +
             "• <b>Wait / completion time</b> — service speed from the customer's view.\n" +
@@ -143,14 +144,15 @@ public static class GuidebookPages
             "Customers",
             "Customers spawn at the door, walk the lobby, and queue at the <b>register</b>. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
             "They only have so much patience in line. If they wait too long they leave and you lose the sale.\n\n" +
-            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
+            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) show <b>RUSH</b> and more customers arrive. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
         new Page(
             "Progress",
             "Tasks and milestones",
             "The side panel has <b>Tasks</b> (current missions) and <b>Progression</b> (the chapter list).\n\n" +
             "Progression stays locked until you finish or skip the first-run kitchen tutorial.\n\n" +
             "<b>Tutorial: Restaurant Basics</b> completes on its own when its work is done — there is no quiz on that chapter.\n\n" +
-            "Later milestones still work the same way: finish every task, then pass the quiz (every answer correct) to unlock the next chapter."),
+            "Later milestones still work the same way: finish every task, then pass the quiz (every answer correct) to unlock the next chapter.\n\n" +
+            "<b>Milestone 2 — Capacity & Optimization</b> unlocks rush hour, extra equipment, extra hires, a second worker on a flow, and queue/utilization stats."),
         new Page(
             "Guide",
             "A good first shift",
@@ -174,6 +176,6 @@ public static class GuidebookPages
             "• <b>Bought a station but cannot click Next in the tutorial</b> — it must be placed on the floor, not only sitting in inventory.\n" +
             "• <b>Customers order but never receive items</b> — the flow does not end at the Pickup Station, or it is full of the wrong products.\n" +
             "• <b>Cannot open Progression</b> — finish the first-run tutorial first.\n" +
-            "• <b>Tight on cash</b> — first station of each type and the first hire are free; extra copies and extra hires are not."),
+            "• <b>Tight on cash</b> — first station of each type and the first hire are free; extra copies and extra hires unlock at Milestone 2."),
     };
 }

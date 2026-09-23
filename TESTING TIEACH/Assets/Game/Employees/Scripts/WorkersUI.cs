@@ -52,7 +52,15 @@ public class WorkersUI : MonoBehaviour
         ConfigureWorkerScroll();
         EnsureFlowSection();
         PurchaseUndoFooter.EnsureOnPanel(transform);
+        if (MilestoneProgressManager.Instance != null)
+            MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
         Refresh();
+    }
+
+    void OnDisable()
+    {
+        if (MilestoneProgressManager.Instance != null)
+            MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
     }
 
     void EnsureRefs()
@@ -838,7 +846,10 @@ public class WorkersUI : MonoBehaviour
     void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
-        Button dropZone = MakeChip(parent, "+  DROP WORKER", 126f);
+        string dropLabel = "+  DROP WORKER";
+        if (flow != null && flow.workers != null && flow.workers.Count >= 1 && !MilestoneFeatures.ExtraFlowStaffingUnlocked)
+            dropLabel = "UNLOCKS AT M2";
+        Button dropZone = MakeChip(parent, dropLabel, 126f);
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
         if (image != null) image.color = idleColor;
@@ -944,6 +955,11 @@ public class WorkersUI : MonoBehaviour
     public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
     {
         if (production == null || employee == null || flow == null) return;
+        if (!production.CanAddWorkerToFlow(flow) && (flow.workers == null || !flow.workers.Contains(employee)))
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
         production.AddWorkerToFlow(flow, employee);
         int flowIndex = production.productionFlows.IndexOf(flow);
         if (flowIndex >= 0)
@@ -980,6 +996,11 @@ public class WorkersUI : MonoBehaviour
         {
             canHire = false;
             costLabel = "N/A";
+        }
+        else if (production.ExtraHireLocked)
+        {
+            canHire = false;
+            costLabel = "Milestone 2";
         }
         else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
         {

@@ -79,7 +79,7 @@ public class InventoryItemCardUI : MonoBehaviour
         if (buyButton != null)
             buyButton.interactable = !atCapacity;
         if (atCapacity && priceText != null)
-            priceText.text = "MAX";
+            priceText.text = MilestoneFeatures.ExtraEquipmentUnlocked ? "MAX" : "MILESTONE 2";
     }
 
     void ApplyPreview(ItemDefinition item)

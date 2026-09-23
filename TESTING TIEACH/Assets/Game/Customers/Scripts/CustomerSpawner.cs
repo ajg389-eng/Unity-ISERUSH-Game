@@ -30,9 +30,11 @@ public class CustomerSpawner : MonoBehaviour
     float EffectiveSpawnInterval()
     {
         bool dayOne = GameTimeManager.Instance == null || GameTimeManager.Instance.CurrentDay <= 1;
-        if (dayOne)
-            return Mathf.Max(spawnInterval, 6f);
-        return Mathf.Max(spawnInterval, 3.5f);
+        float interval = dayOne ? Mathf.Max(spawnInterval, 6f) : Mathf.Max(spawnInterval, 3.5f);
+        var clock = GameTimeManager.Instance;
+        if (clock != null && clock.IsRushHour)
+            interval *= 0.45f;
+        return Mathf.Max(1.4f, interval);
     }
 
     /// <summary>Expected customer arrivals per real minute at the current spawn rate.</summary>

@@ -435,6 +435,8 @@ public class ProductionManager : MonoBehaviour
             lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
             return;
         }
+        if (!CanAddWorkerToFlow(targetFlow))
+            return;
         var affectedFlows = new List<ProductionFlowPlan>();
         foreach (ProductionFlowPlan other in productionFlows)
             if (other != null && other.workers != null)
@@ -481,6 +483,9 @@ public class ProductionManager : MonoBehaviour
             return null;
         }
 
+        if (!CanHireWorker())
+            return null;
+
         int cost = GetHireCost();
         if (cost > 0 && moneyManager != null && !moneyManager.TrySpend(cost))
             return null;
@@ -513,6 +518,35 @@ public class ProductionManager : MonoBehaviour
     {
         int count = employees != null ? employees.Count : 0;
         return count <= 0 ? 0 : Mathf.Max(0, hireCost);
+    }
+
+    public int HiredWorkerCount
+    {
+        get
+        {
+            if (employees == null) return 0;
+            int count = 0;
+            foreach (var emp in employees)
+                if (emp != null) count++;
+            return count;
+        }
+    }
+
+    /// <summary>Milestone 1 allows one worker. Extra hires unlock at Milestone 2.</summary>
+    public bool CanHireWorker()
+    {
+        if (employeePrefab == null) return false;
+        return HiredWorkerCount < 1 || MilestoneFeatures.ExtraStaffingUnlocked;
+    }
+
+    public bool ExtraHireLocked => HiredWorkerCount >= 1 && !MilestoneFeatures.ExtraStaffingUnlocked;
+
+    public bool CanAddWorkerToFlow(ProductionFlowPlan targetFlow)
+    {
+        if (targetFlow == null) return false;
+        targetFlow.Clean();
+        if (targetFlow.workers.Count < 1) return true;
+        return MilestoneFeatures.ExtraFlowStaffingUnlocked;
     }
 
     static bool raisedFirstWorkerEvent;

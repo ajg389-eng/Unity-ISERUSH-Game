@@ -152,6 +152,29 @@ public class GameTimeManager : MonoBehaviour
     public bool IsExternallyPaused => externalPauseSources.Count > 0;
     public bool IsSimulationPaused => Time.timeScale <= 0f;
 
+    public int CurrentHour24 => Mathf.FloorToInt(CurrentMinutes / 60f) % 24;
+
+    /// <summary>Lunch 12–2 and dinner 5–7, once Milestone 2 is reached.</summary>
+    public bool IsRushHour
+    {
+        get
+        {
+            if (!MilestoneFeatures.RushHourUnlocked || IsShiftOver) return false;
+            int hour = CurrentHour24;
+            return (hour >= 12 && hour < 14) || (hour >= 17 && hour < 19);
+        }
+    }
+
+    public string RushHourLabel
+    {
+        get
+        {
+            if (!IsRushHour) return "";
+            int hour = CurrentHour24;
+            return hour >= 17 ? "Dinner rush" : "Lunch rush";
+        }
+    }
+
     public string GetClockText()
     {
         int total = Mathf.FloorToInt(CurrentMinutes);

@@ -6,9 +6,9 @@ public class InventoryManager : MonoBehaviour
     public List<ItemDefinition> allItems = new List<ItemDefinition>();
 
     [Header("Station capacity")]
-    [Min(1), Tooltip("Maximum owned units of each station before completing any milestones.")]
+    [Min(1), Tooltip("Owned copies of each station type once Milestone 2 is reached.")]
     public int baseStationCapacity = 2;
-    [Min(0), Tooltip("Additional units of every station type unlocked per completed milestone.")]
+    [Min(0), Tooltip("Additional copies of every station type for each numbered milestone after 2.")]
     public int capacityPerCompletedMilestone = 1;
 
     private Dictionary<ItemDefinition, int> counts = new Dictionary<ItemDefinition, int>();
@@ -46,10 +46,12 @@ public class InventoryManager : MonoBehaviour
     public int GetStationCapacity(ItemDefinition item)
     {
         if (item == null) return 0;
-        int completed = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.CompletedMilestoneCount
-            : 0;
-        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone);
+        int reached = MilestoneFeatures.HighestReachedNumberedStage();
+        if (reached < MilestoneFeatures.CapacityAndOptimization)
+            return 1;
+
+        int extraMilestones = reached - MilestoneFeatures.CapacityAndOptimization;
+        return Mathf.Max(1, baseStationCapacity + extraMilestones * capacityPerCompletedMilestone);
     }
 
     public bool IsAtStationCapacity(ItemDefinition item)

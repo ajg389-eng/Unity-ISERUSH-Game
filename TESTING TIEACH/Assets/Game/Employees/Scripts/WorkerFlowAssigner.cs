@@ -765,8 +765,6 @@ public static class WorkflowAnalysis
         StationNode[] nodes = Object.FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         int unstaffed = 0;
         int missingOutputs = 0;
-        GameObject slowest = null;
-        float slowestTime = 0f;
 
         foreach (StationNode node in nodes)
         {
@@ -775,20 +773,12 @@ public static class WorkflowAnalysis
             if (register != null && !register.isEnabled) continue;
             if (node.assignedWorker == null) unstaffed++;
             if (RequiresOutput(node) && node.outputTarget == null) missingOutputs++;
-            float seconds = GetStationWorkSeconds(node.gameObject);
-            if (seconds > slowestTime)
-            {
-                slowestTime = seconds;
-                slowest = node.gameObject;
-            }
         }
 
         if (missingOutputs > 0)
             notes.Add(missingOutputs + " production station(s) have no output link, so work can stall.");
         if (unstaffed > 0)
             notes.Add(unstaffed + " station(s) are unstaffed, creating unused capacity.");
-        if (slowest != null)
-            notes.Add(GetName(slowest) + " has the longest base process time (" + slowestTime.ToString("F1") + "s) and is a likely capacity constraint.");
 
         ProductionManager production = ProductionManager.Instance;
         if (production != null && production.employees != null)

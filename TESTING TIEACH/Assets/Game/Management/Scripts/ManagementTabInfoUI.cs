@@ -268,7 +268,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             title = "Stations tab help";
             body =
                 "<b>Station cards</b>\nEach card shows a station you can buy and place. The first number is how many you own and the second is your current cap. The price is removed when the station is purchased.\n\n" +
-                "<b>Capacity limit</b>\nYou begin with a cap of 2 for every station type. Completing a milestone raises every station cap by 1. MAX means you must complete another milestone before buying more of that station.\n\n" +
+                "<b>Capacity limit</b>\nYou start with one of each station. Extra copies unlock at <b>Milestone 2</b> (cap becomes 2), then later milestones can raise the cap further. MAX or MILESTONE 2 on the card means you cannot buy another copy yet.\n\n" +
                 "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used.\n\n" +
                 "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, drink stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
                 "<b>Counter equipment</b>\nRegisters sit on top of counter slots. Pickup Stations use counter-grid placement and hold finished products for collection.\n\n" +
@@ -327,11 +327,11 @@ public class ManagementTabInfoUI : MonoBehaviour
         {
             title = "Workers tab help";
             body =
-                "<b>Hire</b>\nAdds a worker for the displayed cost. More labor can increase capacity, but every hire must be used effectively.\n\n" +
+                "<b>Hire</b>\nThe first worker is available from the start. Extra hires stay locked until you reach <b>Milestone 2</b>. More labor can increase capacity, but every hire must be used effectively.\n\n" +
                 "<b>Flow chips</b>\nSelect a saved flow to inspect or modify it. Click the name field to rename the selected flow.\n\n" +
                 "<b>Create Flow</b>\nReturns you to the kitchen. Click stations in the exact order work should travel, then finish the route.\n\n" +
                 "<b>Edit Flow</b>\nReopens the selected route so its station order can be changed. The station chips show the current sequence.\n\n" +
-                "<b>Workers on a flow</b>\nAssign workers from their cards below. Multiple workers share the flow's work automatically. Click a worker name in the flow to remove that assignment.\n\n" +
+                "<b>Workers on a flow</b>\nAssign one worker from their card. Putting a second person on the same flow unlocks at <b>Milestone 2</b> so you can staff the bottleneck. Click a worker name in the flow to remove that assignment.\n\n" +
                 "<b>Economics</b>\nThe analysis highlights route length, cycle behavior, and likely imbalance. A long route or one slow station can limit the entire system.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Balance labor and station capacity around the bottleneck instead of maximizing every station independently.";
             return;
@@ -343,7 +343,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
                 "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. Use the pattern to prepare inventory and labor before a rush.\n\n" +
+                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) become rush hours with more arrivals — prepare inventory and labor before the peak.\n\n" +
                 "<b>Required output per minute</b>\nThe estimated production rate needed for each menu item. Ordered, ready, and cooking values show where demand currently sits in the system.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Demand changes over time. Capacity that works during a quiet hour may fail during the peak.";
             return;
@@ -352,9 +352,8 @@ public class ManagementTabInfoUI : MonoBehaviour
         title = "Store Stats tab help";
         body =
             "<b>Customers in system (WIP)</b>\nEveryone currently waiting or being served. Rising WIP often signals congestion.\n\n" +
-            "<b>Queue length</b>\nCustomers waiting at each service point. A consistently long queue helps locate a bottleneck.\n\n" +
+            "<b>Queues and utilization</b>\nThese open at <b>Milestone 2</b>. They show how long lines are and how busy stations and workers are. Use the numbers to decide where extra labor or equipment belongs.\n\n" +
             "<b>Average wait time</b>\nHow long customers wait before service. <b>Throughput</b> is completed orders per minute.\n\n" +
-            "<b>Station and worker utilization</b>\nThe percentage of available time spent working. Very high utilization can create long queues because the resource has little spare capacity.\n\n" +
             "<b>Pickup Station stock</b>\nFinished products waiting for customers. Too little creates shortages; too much risks waste.\n\n" +
             "<b>Waste and revenue</b>\nWaste counts expired products. Revenue counts money earned from completed sales.\n\n" +
             "<b>Order completion time</b>\nThe full cycle time from order creation to pickup.\n\n" +

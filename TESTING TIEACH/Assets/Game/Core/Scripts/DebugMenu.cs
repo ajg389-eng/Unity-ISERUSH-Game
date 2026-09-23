@@ -107,13 +107,16 @@ public class DebugMenu : MonoBehaviour
         var time = GameTimeManager.Instance;
         string clock = time != null ? time.GetClockText() : "—";
         string speed = time != null ? time.GetSpeedLabel() : $"{Time.timeScale:0.##}x";
+        var milestones = MilestoneProgressManager.Instance;
+        string stage = milestones != null ? milestones.GetActiveMilestoneDebugLabel() : "—";
 
         statusText.text =
             $"Money: ${cash}\n" +
             $"Workers: {workers}   Jobs: {pending}\n" +
             $"Pickup Station: {lampCount}/{lampCap}\n" +
             $"Kitchen stock units: {stockUnits}\n" +
-            $"Clock: {clock}   Speed: {speed}";
+            $"Clock: {clock}   Speed: {speed}\n" +
+            $"Milestone: {stage}";
     }
 
     void EnsureUI()
@@ -137,7 +140,7 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 720f);
+        prt.sizeDelta = new Vector2(320f, 820f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
@@ -155,7 +158,7 @@ public class DebugMenu : MonoBehaviour
 
         statusText = CreateLabel(panel.transform, "", 13, FontStyles.Normal);
         statusText.alignment = TextAlignmentOptions.Left;
-        statusText.GetComponent<LayoutElement>().minHeight = 90;
+        statusText.GetComponent<LayoutElement>().minHeight = 108;
 
         toastText = CreateLabel(panel.transform, "", 12, FontStyles.Italic);
         toastText.color = new Color(0.55f, 0.95f, 0.65f);
@@ -259,6 +262,23 @@ public class DebugMenu : MonoBehaviour
                 Toast("No side menu");
             }
         });
+
+        CreateLabel(panel.transform, "Skip to milestone", 13, FontStyles.Bold);
+        var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));
+        jumpRow.transform.SetParent(panel.transform, false);
+        jumpRow.AddComponent<LayoutElement>().minHeight = 32;
+        var jumpLayout = jumpRow.AddComponent<HorizontalLayoutGroup>();
+        jumpLayout.spacing = 4f;
+        jumpLayout.childAlignment = TextAnchor.MiddleCenter;
+        jumpLayout.childControlWidth = true;
+        jumpLayout.childControlHeight = true;
+        jumpLayout.childForceExpandWidth = true;
+        jumpLayout.childForceExpandHeight = true;
+        for (int n = 1; n <= 6; n++)
+        {
+            int milestoneNumber = n;
+            CreateButton(jumpRow.transform, milestoneNumber.ToString(), () => JumpToMilestone(milestoneNumber));
+        }
         CreateButton(panel.transform, "Pause / Unpause", () =>
         {
             GameTimeManager.Instance?.TogglePausePlay();
@@ -285,6 +305,29 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateButton(panel.transform, "Close", () => SetVisible(false));
+    }
+
+    void JumpToMilestone(int number)
+    {
+        var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
+        if (tutorial != null && (OnboardingTutorial.IsActive || !OnboardingTutorial.IsComplete))
+            tutorial.Skip();
+
+        var milestones = MilestoneProgressManager.Instance;
+        if (milestones == null)
+        {
+            Toast("No MilestoneProgressManager");
+            return;
+        }
+
+        if (!milestones.DebugJumpToNumberedMilestone(number, out string label))
+        {
+            Toast("Could not jump to milestone " + number);
+            return;
+        }
+
+        Toast("Now on " + label);
+        RefreshStatus();
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string text, float size, FontStyles style)

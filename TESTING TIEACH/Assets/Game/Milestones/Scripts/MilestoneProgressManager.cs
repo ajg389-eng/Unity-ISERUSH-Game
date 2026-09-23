@@ -38,6 +38,27 @@ public class MilestoneProgressManager : MonoBehaviour
     public bool IsQuizReady => quizReady;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
 
+    /// <summary>
+    /// Highest numbered milestone the player has reached (1–6). Tutorial does not count.
+    /// A milestone counts as reached when it is active or already completed.
+    /// </summary>
+    public int GetHighestReachedNumberedStage()
+    {
+        if (database?.milestones == null) return 0;
+        int highest = 0;
+        int numbered = 0;
+        foreach (var milestone in database.milestones)
+        {
+            if (milestone == null || milestone.isTutorial) continue;
+            numbered++;
+            bool reached = completedMilestoneIds.Contains(milestone.milestoneId)
+                || milestone.milestoneId == activeMilestoneId;
+            if (reached)
+                highest = numbered;
+        }
+        return highest;
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
@@ -169,6 +190,65 @@ public class MilestoneProgressManager : MonoBehaviour
         OnMilestonesChanged?.Invoke();
         Sfx.Play(SfxId.MissionComplete);
         return true;
+    }
+
+    /// <summary>Debug: complete every milestone before this numbered stage (1-6) and make it active.</summary>
+    public bool DebugJumpToNumberedMilestone(int number, out string label)
+    {
+        label = null;
+        if (database == null || database.milestones == null || database.milestones.Count == 0)
+            return false;
+
+        var numbered = new List<MilestoneDefinition>();
+        foreach (var milestone in database.milestones)
+        {
+            if (milestone == null || milestone.isTutorial) continue;
+            if (string.IsNullOrEmpty(milestone.milestoneId)) continue;
+            numbered.Add(milestone);
+        }
+
+        if (number < 1 || number > numbered.Count)
+            return false;
+
+        MilestoneDefinition target = numbered[number - 1];
+        label = number + ". " + (string.IsNullOrEmpty(target.displayName) ? target.milestoneId : target.displayName);
+
+        completedMilestoneIds.Clear();
+        unlockedFeatureIds.Clear();
+        quizReady = false;
+
+        foreach (var milestone in database.milestones)
+        {
+            if (milestone == null || string.IsNullOrEmpty(milestone.milestoneId)) continue;
+            if (milestone.milestoneId == target.milestoneId)
+                break;
+            completedMilestoneIds.Add(milestone.milestoneId);
+            GrantUnlocks(milestone);
+        }
+
+        activeMilestoneId = target.milestoneId;
+        ApplyActiveMissions(reset: true);
+        OnMilestonesChanged?.Invoke();
+        return true;
+    }
+
+    public string GetActiveMilestoneDebugLabel()
+    {
+        var current = GetActiveMilestone();
+        if (current == null) return "None";
+        if (current.isTutorial) return "Tutorial";
+        int number = 0;
+        if (database != null && database.milestones != null)
+        {
+            foreach (var milestone in database.milestones)
+            {
+                if (milestone == null || milestone.isTutorial) continue;
+                number++;
+                if (milestone.milestoneId == current.milestoneId)
+                    return number + ". " + current.displayName;
+            }
+        }
+        return current.displayName;
     }
 
     /// <summary>Debug / stub helper: mark missions complete enough to open the quiz.</summary>

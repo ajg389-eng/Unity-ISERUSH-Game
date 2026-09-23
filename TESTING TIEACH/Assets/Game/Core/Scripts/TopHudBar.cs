@@ -111,7 +111,7 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(520f, barHeight);
+        rt.sizeDelta = new Vector2(560f, barHeight);
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
@@ -125,7 +125,7 @@ public class TopHudBar : MonoBehaviour
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(16, 16, 8, 8);
-        hlg.spacing = 16f;
+        hlg.spacing = 12f;
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
@@ -133,9 +133,8 @@ public class TopHudBar : MonoBehaviour
         hlg.childForceExpandHeight = true;
 
         var fitter = GetComponent<ContentSizeFitter>();
-        if (fitter == null) fitter = gameObject.AddComponent<ContentSizeFitter>();
-        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-        fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+        if (fitter != null)
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
 
         var moneySection = transform.Find("MoneySection") as RectTransform;
         if (moneySection != null)
@@ -143,7 +142,7 @@ public class TopHudBar : MonoBehaviour
             var le = moneySection.GetComponent<LayoutElement>();
             if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
             le.minWidth = 90f;
-            le.preferredWidth = 110f;
+            le.preferredWidth = 100f;
             le.flexibleWidth = 0f;
         }
 
@@ -152,9 +151,9 @@ public class TopHudBar : MonoBehaviour
         {
             var le = timeSection.GetComponent<LayoutElement>();
             if (le == null) le = timeSection.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 360f;
-            le.preferredWidth = 380f;
-            le.flexibleWidth = 0f;
+            le.minWidth = 320f;
+            le.preferredWidth = 400f;
+            le.flexibleWidth = 1f;
         }
 
         if (moneyText != null)
@@ -213,9 +212,9 @@ public class TopHudBar : MonoBehaviour
         var section = new GameObject(TimeSectionName, typeof(RectTransform));
         section.transform.SetParent(parent, false);
         var le = section.AddComponent<LayoutElement>();
-        le.minWidth = 360f;
-        le.preferredWidth = 380f;
-        le.flexibleWidth = 0f;
+        le.minWidth = 320f;
+        le.preferredWidth = 400f;
+        le.flexibleWidth = 1f;
 
         if (section.GetComponent<GameTimeUI>() == null)
             section.AddComponent<GameTimeUI>();
