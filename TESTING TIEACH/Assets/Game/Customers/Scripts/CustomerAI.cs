@@ -277,14 +277,13 @@ public class CustomerAI : MonoBehaviour
             pickupStation.LeavePickupQueue(this);
         pickupStation = null;
 
-        ItemDefinition nextItem = order != null ? order.PrimaryItem : null;
-        if (nextItem == null)
+        if (order == null || order.GetTotalQuantity() <= 0)
         {
             if (reg != null) reg.CompleteServe(this, order);
             return;
         }
 
-        HeatLampStation next = HeatLampStation.FindBestPickupFor(nextItem, transform.position);
+        HeatLampStation next = HeatLampStation.FindBestPickupForOrder(order, transform.position);
         if (next == null || !next.TryJoinPickupQueue(this))
         {
             hasQueueSlot = false;
@@ -437,13 +436,26 @@ public class CustomerAI : MonoBehaviour
     {
         if (waitingAtDesignatedArea)
         {
-            ItemDefinition nextItem = order != null ? order.PrimaryItem : null;
-            HeatLampStation ready = HeatLampStation.FindReadyPickupFor(nextItem, transform.position);
+            HeatLampStation ready = HeatLampStation.FindReadyPickupForOrder(order, transform.position);
             if (ready != null && ready.TryJoinPickupQueue(this))
             {
                 waitingAtDesignatedArea = false;
             }
             return;
+        }
+        if (waitingForPickup && pickupStation != null && !pickupStation.HasAnyItemFor(order))
+        {
+            HeatLampStation readyElsewhere = HeatLampStation.FindReadyPickupForOrder(
+                order, transform.position, pickupStation);
+            if (readyElsewhere != null)
+            {
+                pickupStation.LeavePickupQueue(this);
+                pickupStation = null;
+                hasQueueSlot = false;
+                hasTarget = false;
+                if (readyElsewhere.TryJoinPickupQueue(this))
+                    return;
+            }
         }
         if (waitingForPickup && pickupStation == null)
         {
@@ -506,22 +518,26 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        ItemDefinition item = order != null ? order.PrimaryItem : null;
-        if (item == null) return;
+        if (!pickupStation.TryGetAvailableItem(order, out ItemDefinition item)) return;
         if (!pickupStation.TryCustomerTakeSingleItem(item)) return;
         if (!order.TryRemoveOne(item)) return;
 
         RefreshOrderLabel();
         Sfx.Play(SfxId.ItemDelivered);
+        pickupStation.LeavePickupQueue(this);
+        pickupStation = null;
+        hasQueueSlot = false;
+        hasTarget = false;
+        isFront = false;
         if (IsOrderFullyDelivered)
         {
-            pickupStation.LeavePickupQueue(this);
-            pickupStation = null;
             reg.CompleteServe(this, order);
             return;
         }
 
-        // Stay at the front of this pickup line until every remaining item is collected.
+        // Reevaluate every pickup station after each item. The next item may be
+        // waiting at a different pass, or this customer may rejoin this one later.
+        JoinNextPickupStation();
     }
 
     void ReleaseWaitAreaReservation()

@@ -69,6 +69,7 @@ public class BuildPlacer : MonoBehaviour
                 staticCounter.AddComponent<GridObstacle>();
             if (grid != null) grid.ResyncOccupancyFromScene();
         }
+        EnsureRequiredCustomerDoors();
         SetHint(false);
     }
 
@@ -99,16 +100,19 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
-        // UI clicks must never place an item on the floor behind the panel.
-        if (UnityEngine.EventSystems.EventSystem.current != null
-            && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
+        // Block only the visible Inventory / Management rectangles. Transparent
+        // full-screen canvas roots must not prevent interaction with the world.
+        if (UIInputFocusGuard.IsPointerOverBlockingPanel) return;
 
         // ---- Dragging a placed object ----
         if (IsDragging)
         {
             if (Input.GetMouseButtonDown(1))
             {
-                RemoveDraggedAndReturnToInventory();
+                if (draggingWallDoor != null && draggingWallDoor.permanentFixture)
+                    CancelDrag();
+                else
+                    RemoveDraggedAndReturnToInventory();
                 return;
             }
 
@@ -1102,6 +1106,144 @@ public class BuildPlacer : MonoBehaviour
     {
         KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
         if (walls != null) walls.FitToGrid();
+    }
+
+    void EnsureRequiredCustomerDoors()
+    {
+        CustomerWallDoor entrance = null;
+        CustomerWallDoor exit = null;
+        CustomerWallDoor[] existing = FindObjectsByType<CustomerWallDoor>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < existing.Length; i++)
+        {
+            CustomerWallDoor door = existing[i];
+            if (!CustomerWallDoor.IsGameplayDoor(door)) continue;
+            if (door.role == CustomerWallDoor.DoorRole.Entrance && entrance == null)
+                entrance = door;
+            else if (door.role == CustomerWallDoor.DoorRole.Exit && exit == null)
+                exit = door;
+        }
+
+        ItemDefinition definition = FindCustomerDoorDefinition();
+        if (definition == null || definition.prefab == null) return;
+
+        if (entrance == null)
+            entrance = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Entrance,
+                CustomerWallDoor.WallSide.East, 0.36f);
+        if (exit == null)
+            exit = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Exit,
+                CustomerWallDoor.WallSide.North, 0.68f);
+
+        ConfigureRequiredDoor(entrance, definition, CustomerWallDoor.DoorRole.Entrance);
+        ConfigureRequiredDoor(exit, definition, CustomerWallDoor.DoorRole.Exit);
+        RefreshPerimeterWalls();
+    }
+
+    ItemDefinition FindCustomerDoorDefinition()
+    {
+        if (inventory == null || inventory.allItems == null) return null;
+        for (int i = 0; i < inventory.allItems.Count; i++)
+        {
+            ItemDefinition item = inventory.allItems[i];
+            if (item != null
+                && item.prefab != null
+                && item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+                return item;
+        }
+        return null;
+    }
+
+    CustomerWallDoor CreateRequiredCustomerDoor(ItemDefinition definition,
+        CustomerWallDoor.DoorRole role, CustomerWallDoor.WallSide side, float along01)
+    {
+        if (!TryGetDefaultDoorBoundary(side, along01, out Vector3 boundary, out float floorY))
+            return null;
+
+        GameObject placed = Instantiate(definition.prefab);
+        placed.name = role == CustomerWallDoor.DoorRole.Entrance
+            ? "Customer Entrance"
+            : "Customer Exit";
+        placed.transform.localScale = GetPlacementScale(definition);
+        float yaw = side == CustomerWallDoor.WallSide.East
+            ? 90f
+            : side == CustomerWallDoor.WallSide.North ? 180f : 0f;
+        placed.transform.rotation = Quaternion.Euler(definition.placementEuler + Vector3.up * yaw);
+        placed.transform.position = boundary;
+        placed.transform.position = AlignDoorModelToWall(placed, boundary, floorY, side);
+
+        CustomerWallDoor door = placed.GetComponent<CustomerWallDoor>();
+        if (door == null) door = placed.AddComponent<CustomerWallDoor>();
+        door.wallSide = side;
+        door.role = role;
+        door.permanentFixture = true;
+
+        PlacedBuildItem placedItem = placed.GetComponent<PlacedBuildItem>();
+        if (placedItem == null) placedItem = placed.AddComponent<PlacedBuildItem>();
+        placedItem.itemDefinition = definition;
+        door.EnsureWallCutaway();
+        return door;
+    }
+
+    static void ConfigureRequiredDoor(CustomerWallDoor door, ItemDefinition definition,
+        CustomerWallDoor.DoorRole role)
+    {
+        if (door == null) return;
+        door.role = role;
+        door.permanentFixture = true;
+        door.gameObject.name = role == CustomerWallDoor.DoorRole.Entrance
+            ? "Customer Entrance"
+            : "Customer Exit";
+        PlacedBuildItem placedItem = door.GetComponent<PlacedBuildItem>();
+        if (placedItem == null) placedItem = door.gameObject.AddComponent<PlacedBuildItem>();
+        if (placedItem.itemDefinition == null) placedItem.itemDefinition = definition;
+        door.EnsureWallCutaway();
+    }
+
+    bool TryGetDefaultDoorBoundary(CustomerWallDoor.WallSide side, float along01,
+        out Vector3 boundary, out float floorY)
+    {
+        boundary = Vector3.zero;
+        floorY = 0f;
+        Transform customer = grid != null ? grid.customerFloor : null;
+        if (customer == null)
+        {
+            GameObject found = GameObject.Find("CustomerFloor");
+            if (found != null) customer = found.transform;
+        }
+        Renderer floorRenderer = customer != null ? customer.GetComponentInChildren<Renderer>() : null;
+        if (floorRenderer == null) return false;
+
+        Bounds floorBounds = floorRenderer.bounds;
+        float minX = floorBounds.min.x;
+        float maxX = floorBounds.max.x;
+        float minZ = floorBounds.min.z;
+        float maxZ = floorBounds.max.z;
+        KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (walls != null && walls.TryGetLobbyWallBounds(out float wallMinX,
+            out float wallMaxX, out float wallMinZ, out float wallMaxZ))
+        {
+            minX = wallMinX;
+            maxX = wallMaxX;
+            minZ = wallMinZ;
+            maxZ = wallMaxZ;
+        }
+
+        floorY = floorBounds.max.y;
+        float cell = grid != null ? Mathf.Max(0.1f, grid.cellSize) : 1f;
+        float pad = cell * 1.5f;
+        along01 = Mathf.Clamp01(along01);
+        if (side == CustomerWallDoor.WallSide.East)
+        {
+            float z = Mathf.Lerp(minZ + pad, maxZ - pad, along01);
+            boundary = new Vector3(maxX, floorY, z);
+        }
+        else
+        {
+            float x = Mathf.Lerp(minX + pad, maxX - pad, along01);
+            float z = side == CustomerWallDoor.WallSide.North ? maxZ : minZ;
+            boundary = new Vector3(x, floorY, z);
+        }
+        return maxX - minX > pad * 2f && maxZ - minZ > pad * 2f;
     }
 
     void TryPlaceOnCounter(CounterSurface surface, int slot)

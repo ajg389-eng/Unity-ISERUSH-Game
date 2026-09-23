@@ -277,7 +277,7 @@ MonoBehaviour:
   foodDisplayHeight: 0.55
   foodDisplayScale: 2
   foodDisplayCenter: {x: 0.246, y: 0.032}
-  foodDisplaySpacing: {x: 0.18, y: 0.36}
+  foodDisplaySpacing: {x: 0.25, y: 0.5}
 --- !u!1 &8939223708076402897
 GameObject:
   m_ObjectHideFlags: 0

@@ -647,6 +647,21 @@ public static class WorkerFlowAssigner
 /// </summary>
 public static class WorkflowAnalysis
 {
+    public sealed class FlowLayoutMetrics
+    {
+        public float routeTiles;
+        public float travelSeconds;
+        public float stationWorkSeconds;
+        public float stationCapacityPerMinute;
+        public float laborCapacityPerMinute;
+        public float effectiveOutputPerMinute;
+        public float effectiveCycleSeconds;
+        public bool hasAssignedWorker;
+        public int minimumCarryCapacity = 1;
+        public int maximumCarryCapacity = 1;
+        public string bottleneck = "None";
+    }
+
     public static List<GameObject> GetOrderedRoute(KitchenEmployee employee)
     {
         var route = new List<GameObject>();
@@ -730,6 +745,8 @@ public static class WorkflowAnalysis
 
         float distance = GetRouteDistanceTiles(employee);
         float cycle = GetEstimatedCycleSeconds(employee);
+        int carry = Mathf.Clamp(employee.CarryCapacity, 1, 4);
+        float laborRate = cycle > 0.01f ? 60f * carry / cycle : 0f;
         string risk = count >= KitchenEmployee.MaxStations
             ? " | Risk: high task switching"
             : distance >= 12f ? " | Risk: excess walking" : "";
@@ -738,7 +755,8 @@ public static class WorkflowAnalysis
             : "";
         return flow + employee.employeeName + " | " + count + "/" + KitchenEmployee.MaxStations
             + " stations | Route " + distance.ToString("F0") + " tiles | Base cycle "
-            + cycle.ToString("F1") + "s" + risk;
+            + cycle.ToString("F1") + "s | Carry " + carry + " | Labor "
+            + laborRate.ToString("0.0") + "/min" + risk;
     }
 
     public static string GetAssignmentPreview(KitchenEmployee employee, StationNode candidate)
@@ -882,7 +900,8 @@ public static class WorkflowAnalysis
             return result;
         }
 
-        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
+        FlowLayoutMetrics layout = AnalyzeFlowLayout(flow);
+        float perMinute = layout.effectiveOutputPerMinute;
         float cycle = perMinute > 0.01f ? 60f / perMinute : 0f;
         string cycleLabel = perMinute > 0.01f
             ? cycle.ToString("0.0") + "s  (~" + FormatRate(perMinute) + "/min)"
@@ -906,7 +925,11 @@ public static class WorkflowAnalysis
             if (product != null && !result.requiredResources.Contains(product))
                 result.requiredResources.Add(product);
 
-        result.summary = "Cycle " + cycleLabel;
+        result.summary = (layout.hasAssignedWorker ? "Cycle " : "Projected cycle ") + cycleLabel
+            + "\nLayout: " + layout.routeTiles.ToString("0") + " route tiles"
+            + " (" + layout.travelSeconds.ToString("0.0") + "s travel/trip)"
+            + "  |  Carry: " + FormatCarryRange(layout)
+            + "  |  Bottleneck: " + layout.bottleneck;
         foreach (ItemDefinition item in products)
         {
             string name = inventory != null ? inventory.GetDisplayName(item)
@@ -944,10 +967,7 @@ public static class WorkflowAnalysis
 
     public static float EstimateFlowCycleSeconds(ProductionFlowPlan flow)
     {
-        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
-        if (perMinute > 0.01f)
-            return 60f / perMinute;
-        return EstimateFlowCycleSecondsFromTiming(flow);
+        return AnalyzeFlowLayout(flow).effectiveCycleSeconds;
     }
 
     /// <summary>
@@ -956,26 +976,139 @@ public static class WorkflowAnalysis
     /// </summary>
     public static float GetFlowBottleneckOutputPerMinute(ProductionFlowPlan flow)
     {
-        if (flow == null) return 0f;
+        FlowLayoutMetrics metrics = AnalyzeFlowLayout(flow);
+        return metrics.hasAssignedWorker ? metrics.effectiveOutputPerMinute : 0f;
+    }
+
+    /// <summary>
+    /// Deterministic layout model shared by the flow UI and configured production rate.
+    /// Throughput is the lower of equipment capacity and worker route capacity. Walking is
+    /// measured on the same grid path workers use, with no random congestion penalty.
+    /// </summary>
+    public static FlowLayoutMetrics AnalyzeFlowLayout(ProductionFlowPlan flow)
+    {
+        var result = new FlowLayoutMetrics();
+        if (flow == null) return result;
         flow.Clean();
 
         if (flow.stations == null || flow.stations.Count == 0)
             WorkerFlowAssigner.SynchronizeFlowRoute(flow);
 
-        float minOut = float.MaxValue;
-        bool any = false;
-
+        var route = new List<GameObject>();
         if (flow.stations != null)
         {
             foreach (GameObject station in flow.stations)
+                if (station != null) route.Add(station);
+        }
+
+        GridManager grid = GridManager.Instance;
+        float moveSpeed = GetDefaultMoveSpeed();
+        for (int i = 0; i < route.Count; i++)
+        {
+            result.stationWorkSeconds += GetStationWorkSeconds(route[i]);
+            if (i == 0 || grid == null) continue;
+            result.routeTiles += GetDistanceTiles(grid, route[i - 1], route[i]);
+        }
+        if (grid != null)
+            result.travelSeconds = result.routeTiles * grid.cellSize / Mathf.Max(0.1f, moveSpeed);
+
+        result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, out string stationBottleneck);
+
+        float laborCycle = 0f;
+        float staffedLaborCapacity = float.MaxValue;
+        bool foundStaffedSegment = false;
+        result.minimumCarryCapacity = int.MaxValue;
+        result.maximumCarryCapacity = 1;
+        if (flow.workers != null)
+        {
+            foreach (KitchenEmployee worker in flow.workers)
+            {
+                if (worker == null || worker.OperatedStationCount == 0) continue;
+                result.hasAssignedWorker = true;
+                float workerCycle = GetEstimatedCycleSeconds(worker);
+                int carry = Mathf.Clamp(worker.CarryCapacity, 1, 4);
+                result.minimumCarryCapacity = Mathf.Min(result.minimumCarryCapacity, carry);
+                result.maximumCarryCapacity = Mathf.Max(result.maximumCarryCapacity, carry);
+                laborCycle = Mathf.Max(laborCycle, workerCycle);
+                if (workerCycle > 0.01f)
+                {
+                    staffedLaborCapacity = Mathf.Min(staffedLaborCapacity, 60f * carry / workerCycle);
+                    foundStaffedSegment = true;
+                }
+            }
+        }
+
+        // Before staffing, preview this layout using the employee prefab's movement speed.
+        // Once staffed, the slowest worker-owned route segment becomes the labor constraint.
+        if (!result.hasAssignedWorker)
+        {
+            laborCycle = result.stationWorkSeconds + result.travelSeconds;
+            result.minimumCarryCapacity = 1;
+            result.maximumCarryCapacity = 1;
+        }
+
+        result.laborCapacityPerMinute = result.hasAssignedWorker
+            ? (foundStaffedSegment ? staffedLaborCapacity : 0f)
+            : (laborCycle > 0.01f ? 60f / laborCycle : 0f);
+        if (result.stationCapacityPerMinute > 0.01f && result.laborCapacityPerMinute > 0.01f)
+            result.effectiveOutputPerMinute = Mathf.Min(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
+        else
+            result.effectiveOutputPerMinute = Mathf.Max(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
+
+        result.effectiveCycleSeconds = result.effectiveOutputPerMinute > 0.01f
+            ? 60f / result.effectiveOutputPerMinute
+            : laborCycle;
+
+        bool laborLimited = result.laborCapacityPerMinute > 0.01f
+            && (result.stationCapacityPerMinute <= 0.01f
+                || result.laborCapacityPerMinute < result.stationCapacityPerMinute - 0.01f);
+        result.bottleneck = laborLimited ? "Worker travel/workload"
+            : (!string.IsNullOrEmpty(stationBottleneck) ? stationBottleneck : "None");
+        return result;
+    }
+
+    static string FormatCarryRange(FlowLayoutMetrics layout)
+    {
+        if (layout == null) return "1 item";
+        int min = Mathf.Clamp(layout.minimumCarryCapacity, 1, 4);
+        int max = Mathf.Clamp(layout.maximumCarryCapacity, min, 4);
+        return min == max
+            ? min + (min == 1 ? " item" : " items")
+            : min + "-" + max + " items";
+    }
+
+    static float GetNominalStationCapacityPerMinute(List<GameObject> route, out string bottleneckName)
+    {
+        bottleneckName = "";
+        float minOut = float.MaxValue;
+        bool any = false;
+
+        if (route != null)
+        {
+            foreach (GameObject station in route)
             {
                 if (!TryGetStationOutputPerMinute(station, out float output)) continue;
-                minOut = Mathf.Min(minOut, output);
+                if (!any || output < minOut)
+                {
+                    minOut = output;
+                    bottleneckName = GetName(station);
+                }
                 any = true;
             }
         }
 
         return any ? minOut : 0f;
+    }
+
+    static float GetDefaultMoveSpeed()
+    {
+        if (ProductionManager.Instance != null && ProductionManager.Instance.employeePrefab != null)
+        {
+            KitchenEmployee sample = ProductionManager.Instance.employeePrefab.GetComponent<KitchenEmployee>();
+            if (sample != null && sample.moveSpeed > 0.1f)
+                return sample.moveSpeed;
+        }
+        return 3f;
     }
 
     static bool TryGetStationOutputPerMinute(GameObject station, out float outputPerMinute)

@@ -7,7 +7,7 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 2;
+    const int CacheVersion = 3;
     const string RootName = "__ItemPreviewThumbnails";
 
     static readonly Dictionary<int, RenderTexture> cache = new Dictionary<int, RenderTexture>();
@@ -18,15 +18,16 @@ public static class ItemPreviewThumbnails
     {
         if (item == null || item.prefab == null)
             return null;
-        return GetPrefab(item.prefab, item.itemName);
+        return GetPrefab(item.prefab, item.itemName, item.placementScale);
     }
 
-    public static Texture GetPrefab(GameObject prefab, string displayName = null)
+    public static Texture GetPrefab(GameObject prefab, string displayName = null, Vector3? previewScale = null)
     {
         if (prefab == null)
             return null;
 
-        int key = prefab.GetInstanceID() ^ (CacheVersion * 397);
+        Vector3 scale = previewScale ?? Vector3.one;
+        int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode();
         if (cache.TryGetValue(key, out var existing) && existing != null)
             return existing;
 
@@ -48,7 +49,10 @@ public static class ItemPreviewThumbnails
 
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.Euler(15f, 150f, 0f);
-            instance.transform.localScale = Vector3.one;
+            // Match the same non-uniform scale used by the placed item. Uniform scale is
+            // handled by camera framing, but preserving the proportions prevents compact
+            // counter stations from appearing squeezed in their inventory cards.
+            instance.transform.localScale = scale;
 
             Bounds bounds = CalculateBounds(instance);
             // Frame so the longest side fits — keeps stations to scale in a square render.

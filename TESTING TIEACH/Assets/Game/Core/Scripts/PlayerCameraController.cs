@@ -331,6 +331,46 @@ public class PlayerCameraController : MonoBehaviour
 
 public static class UIInputFocusGuard
 {
+    static InventoryUI cachedInventoryUI;
+    static ManagementScreenController cachedManagementScreen;
+
+    /// <summary>
+    /// True only when the pointer is inside the visible Inventory or Management
+    /// panel rectangle. This deliberately ignores transparent full-screen canvas roots.
+    /// </summary>
+    public static bool IsPointerOverBlockingPanel
+    {
+        get
+        {
+            if (cachedInventoryUI == null)
+                cachedInventoryUI = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (cachedManagementScreen == null)
+                cachedManagementScreen = Object.FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+
+            if (cachedInventoryUI != null
+                && cachedInventoryUI.IsPanelOpen
+                && ContainsPointer(cachedInventoryUI.panel))
+                return true;
+
+            return cachedManagementScreen != null
+                && cachedManagementScreen.IsOpen
+                && ContainsPointer(cachedManagementScreen.managementPanel);
+        }
+    }
+
+    static bool ContainsPointer(GameObject panel)
+    {
+        if (panel == null || !panel.activeInHierarchy) return false;
+        RectTransform rect = panel.transform as RectTransform;
+        if (rect == null) return false;
+
+        Canvas canvas = panel.GetComponentInParent<Canvas>();
+        Camera eventCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+        return RectTransformUtility.RectangleContainsScreenPoint(rect, Input.mousePosition, eventCamera);
+    }
+
     public static bool IsTyping
     {
         get

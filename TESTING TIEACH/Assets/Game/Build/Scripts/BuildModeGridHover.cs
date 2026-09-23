@@ -44,6 +44,14 @@ public class BuildModeGridHover : MonoBehaviour
             return;
         }
 
+        // Hide the hover only beneath the visible side panels, not beneath
+        // transparent full-screen canvas roots.
+        if (UIInputFocusGuard.IsPointerOverBlockingPanel)
+        {
+            if (highlightInstance) highlightInstance.SetActive(false);
+            return;
+        }
+
         // Mouse → Raycast to floor → World pos → Grid cell
         if (Camera.main == null) return;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);

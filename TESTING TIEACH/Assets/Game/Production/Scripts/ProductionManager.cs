@@ -584,8 +584,44 @@ public class ProductionManager : MonoBehaviour
     void Update()
     {
         RefreshStations();
+        RecoverOrphanedJobAssignments();
         CollectProductionJobs();
         AssignJobsToEmployees();
+    }
+
+    void RecoverOrphanedJobAssignments()
+    {
+        for (int i = pendingJobs.Count - 1; i >= 0; i--)
+        {
+            ProductionJob job = pendingJobs[i];
+            if (job == null)
+            {
+                pendingJobs.RemoveAt(i);
+                continue;
+            }
+
+            KitchenEmployee owner = job.assignedTo;
+            if (owner != null && !owner.IsWorkingOn(job))
+                job.assignedTo = null;
+
+            // A queued job can become impossible after a flow is edited or a worker is
+            // reassigned. Do not let that stale job reserve a pickup slot forever.
+            if (job.assignedTo == null && !CanAnyWorkerContinue(job))
+                pendingJobs.RemoveAt(i);
+        }
+    }
+
+    bool CanAnyWorkerContinue(ProductionJob job)
+    {
+        if (job == null || job.IsHeatLampStep) return false;
+
+        foreach (KitchenEmployee employee in employees)
+        {
+            if (employee != null && employee.CanTakeJobs && employee.CanTakeJobStep(job))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>Run job collection now (e.g. right after a cook finishes a delivery).</summary>
@@ -618,14 +654,16 @@ public class ProductionManager : MonoBehaviour
 
         int heldCount = 0;
         int totalCapacity = 0;
-        int target = 0;
         foreach (HeatLampStation lamp in lamps)
         {
             if (lamp == null) continue;
             heldCount += lamp.Count;
             totalCapacity += Mathf.Max(0, lamp.maxCapacity);
-            target += Mathf.Clamp(lamp.targetStock, 1, lamp.maxCapacity);
         }
+
+        // Pickup stations are four-unit WIP buffers. Keep every slot filled or
+        // reserved so a carry upgrade cannot stop after one partial batch.
+        int target = totalCapacity;
 
         int inFlight = heldCount + pendingJobs.Count;
         int openSlots = totalCapacity - inFlight;
@@ -928,10 +966,41 @@ public class ProductionManager : MonoBehaviour
             break;
         }
 
+        if (bestJob == null)
+            bestJob = TryQueueCompatibleStockJob(employee);
         if (bestJob == null) return false;
         bestJob.assignedTo = employee;
         employee.AssignJob(bestJob);
         return true;
+    }
+
+    ProductionJob TryQueueCompatibleStockJob(KitchenEmployee employee)
+    {
+        if (employee == null || orderConfig == null) return null;
+
+        int heldCount = 0;
+        int target = 0;
+        HeatLampStation[] lamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        if (lamps == null || lamps.Length == 0) return null;
+        foreach (HeatLampStation lamp in lamps)
+        {
+            if (lamp == null) continue;
+            heldCount += lamp.Count;
+            target += Mathf.Max(0, lamp.maxCapacity);
+        }
+
+        // Do not overproduce. This fallback only repairs a missing compatible job while the
+        // configured ready-stock target still has an open slot.
+        if (heldCount + pendingJobs.Count >= target) return null;
+
+        List<ItemDefinition> cookable = GetCookableMenuItems();
+        ItemDefinition item = PickItemWorkerCanCook(employee, cookable);
+        if (item == null) return null;
+
+        ProductionJob job = CreateJob(CustomerOrder.FromItem(item, 1));
+        if (job == null || !employee.CanTakeJobStep(job)) return null;
+        pendingJobs.Add(job);
+        return job;
     }
 
     public void ReleaseJob(ProductionJob job)

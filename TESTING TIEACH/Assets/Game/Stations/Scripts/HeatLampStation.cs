@@ -71,7 +71,7 @@ public class HeatLampStation : MonoBehaviour
     [Tooltip("Local X/Z center of the four display pans on the current 1x1 model.")]
     public Vector2 foodDisplayCenter = new Vector2(0.246f, 0.032f);
     [Tooltip("Local X/Z spacing between the four display positions.")]
-    public Vector2 foodDisplaySpacing = new Vector2(0.18f, 0.36f);
+    public Vector2 foodDisplaySpacing = new Vector2(0.25f, 0.5f);
 
     readonly List<HeldMeal> meals = new List<HeldMeal>();
     readonly List<CustomerAI> customerPickupQueue = new List<CustomerAI>();
@@ -315,12 +315,32 @@ public class HeatLampStation : MonoBehaviour
 
     void RefreshPickupQueueTargets()
     {
+        int serviceableIndex = FindFirstServiceableCustomerIndex();
+        int waitingSlot = 1;
         for (int i = 0; i < customerPickupQueue.Count; i++)
         {
             CustomerAI customer = customerPickupQueue[i];
-            if (customer != null)
-                customer.SetPickupSlot(this, GetCustomerPickupPosition(i), i == 0);
+            if (customer == null) continue;
+
+            // If nobody can currently be served, retain the normal line. Otherwise the
+            // earliest customer with any ready order item temporarily takes slot zero.
+            int slot = serviceableIndex < 0
+                ? i
+                : i == serviceableIndex ? 0 : waitingSlot++;
+            customer.SetPickupSlot(this, GetCustomerPickupPosition(slot), i == serviceableIndex);
         }
+    }
+
+    int FindFirstServiceableCustomerIndex()
+    {
+        for (int i = 0; i < customerPickupQueue.Count; i++)
+        {
+            CustomerAI customer = customerPickupQueue[i];
+            CustomerOrder order = customer != null ? customer.GetOrder() : null;
+            if (order != null && order.GetTotalQuantity() > 0 && HasAnyItemFor(order))
+                return i;
+        }
+        return -1;
     }
 
     public static HeatLampStation FindBestPickupFor(ItemDefinition item, Vector3 customerPosition)
@@ -367,6 +387,55 @@ public class HeatLampStation : MonoBehaviour
         return best;
     }
 
+    /// <summary>Best pickup station holding at least one item still on this order.</summary>
+    public static HeatLampStation FindReadyPickupForOrder(CustomerOrder order,
+        Vector3 customerPosition, HeatLampStation excluded = null)
+    {
+        if (order == null || order.GetTotalQuantity() <= 0) return null;
+        HeatLampStation best = null;
+        int bestQueue = int.MaxValue;
+        float bestDistance = float.MaxValue;
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (station == null || station == excluded || !station.HasAnyItemFor(order)) continue;
+            int queue = station.PickupQueueCount;
+            float distance = (station.transform.position - customerPosition).sqrMagnitude;
+            if (queue > bestQueue || (queue == bestQueue && distance >= bestDistance)) continue;
+            best = station;
+            bestQueue = queue;
+            bestDistance = distance;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Finds a station that is ready now, or otherwise one whose assigned flow can
+    /// eventually provide any remaining item in the order.
+    /// </summary>
+    public static HeatLampStation FindBestPickupForOrder(CustomerOrder order, Vector3 customerPosition)
+    {
+        HeatLampStation ready = FindReadyPickupForOrder(order, customerPosition);
+        if (ready != null) return ready;
+        if (order?.lines == null) return null;
+
+        HeatLampStation best = null;
+        int bestQueue = int.MaxValue;
+        float bestDistance = float.MaxValue;
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (station == null || !station.CanProvideAnyItem(order)) continue;
+            int queue = station.PickupQueueCount;
+            float distance = (station.transform.position - customerPosition).sqrMagnitude;
+            if (queue > bestQueue || (queue == bestQueue && distance >= bestDistance)) continue;
+            best = station;
+            bestQueue = queue;
+            bestDistance = distance;
+        }
+        return best;
+    }
+
     public bool CanProvideItem(ItemDefinition item)
     {
         if (item == null) return false;
@@ -382,6 +451,15 @@ public class HeatLampStation : MonoBehaviour
             foreach (ItemDefinition product in GetFlowProducts(flow, lampIndex))
                 if (product == item) return true;
         }
+        return false;
+    }
+
+    public bool CanProvideAnyItem(CustomerOrder customerOrder)
+    {
+        if (customerOrder?.lines == null) return false;
+        foreach (CustomerOrder.OrderLine line in customerOrder.lines)
+            if (line.item != null && line.quantity > 0 && CanProvideItem(line.item))
+                return true;
         return false;
     }
 
@@ -842,14 +920,34 @@ public class HeatLampStation : MonoBehaviour
         return FindSingleItemIndex(item) >= 0;
     }
 
+    public bool HasAnyItemFor(CustomerOrder customerOrder)
+    {
+        return TryGetAvailableItem(customerOrder, out _);
+    }
+
+    public bool TryGetAvailableItem(CustomerOrder customerOrder, out ItemDefinition item)
+    {
+        item = null;
+        if (customerOrder?.lines == null) return false;
+        foreach (CustomerOrder.OrderLine line in customerOrder.lines)
+        {
+            if (line.item == null || line.quantity <= 0 || !HasSingleItem(line.item)) continue;
+            item = line.item;
+            return true;
+        }
+        return false;
+    }
+
     public CustomerOrder TryTakeSingleItem(ItemDefinition item)
     {
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
-        meals.RemoveAt(idx);
+        if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
+        if (meal.order.GetTotalQuantity() <= 0)
+            meals.RemoveAt(idx);
         RefreshStatusLabel();
-        return meal.order;
+        return CustomerOrder.FromItem(item);
     }
 
     public bool TryCustomerTakeSingleItem(ItemDefinition item)
@@ -983,6 +1081,9 @@ public class HeatLampStation : MonoBehaviour
     void RefreshStatusLabel()
     {
         RefreshFoodDisplay();
+        // Stock changes may make a later customer's order ready before the first
+        // customer's order, so reevaluate the full pickup line immediately.
+        RefreshPickupQueueTargets();
         if (statusLabel != null)
             statusLabel.text = GetManagePanelText();
     }

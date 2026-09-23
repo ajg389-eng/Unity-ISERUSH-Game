@@ -158,6 +158,9 @@ public class CustomerSpawner : MonoBehaviour
         CustomerWallDoor entrance = CustomerWallDoor.FindEntryDoor();
         if (entrance != null)
         {
+            // CustomerSpawner owns customer creation. A door is only a passage in
+            // the route, never the point that creates or initially positions one.
+            into.Add(spawnPoint != null ? spawnPoint.position : transform.position);
             entrance.AppendPassage(into, true);
             Vector3 elbowTarget = register != null
                 ? register.GetFrontQueueWorldPosition()

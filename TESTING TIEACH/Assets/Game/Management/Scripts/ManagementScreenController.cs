@@ -32,6 +32,7 @@ public class ManagementScreenController : MonoBehaviour
     void Start()
     {
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        EnsurePanelClickBlocker(managementPanel);
         if (managementPanel != null)
             managementPanel.SetActive(false);
 

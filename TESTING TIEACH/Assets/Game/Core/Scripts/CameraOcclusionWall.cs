@@ -36,6 +36,7 @@ public class CameraOcclusionWall : MonoBehaviour
     readonly List<Material> cutawayMaterialInstances = new List<Material>();
     readonly List<CutawayCap> cutawayCaps = new List<CutawayCap>();
     bool usingCutawayMaterials;
+    bool placementLocked;
     float visualBottom;
     float visualTop;
     static Material brickCutawayTemplate;
@@ -48,6 +49,7 @@ public class CameraOcclusionWall : MonoBehaviour
     }
 
     public float DuckAmount => cutawayAmount;
+    public bool IsPlacementLocked => placementLocked;
 
     void Awake()
     {
@@ -76,6 +78,7 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public void SetPlacementLock(bool locked)
     {
+        placementLocked = locked;
         if (locked)
         {
             targetCutaway = 0f;
@@ -105,6 +108,9 @@ public class CameraOcclusionWall : MonoBehaviour
     // Kept for callers created before cutaway rendering replaced wall movement.
     public Vector3 RestWorldOffset()
     {
+        // During build placement the transform itself is the live preview position.
+        // Applying the saved camera-cutaway offset would leave the wall opening behind.
+        if (placementLocked) return Vector3.zero;
         if (!hasRestPose) return Vector3.zero;
         return restPosition - transform.position;
     }

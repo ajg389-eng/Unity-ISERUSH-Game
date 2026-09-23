@@ -64,6 +64,9 @@ public class InventoryUI : MonoBehaviour
         if (inventoryButton)
             inventoryButton.onClick.AddListener(TogglePanel);
 
+        // The panel can be active in the scene before TogglePanel is ever called.
+        // Make its entire visible rect consume pointer input immediately.
+        EnsurePanelClickBlocker();
         BindOrBuildTabs(forceDefaultLayout: false);
         EnsureExpandUi();
         EnsureUndoFooter();
@@ -229,6 +232,9 @@ public class InventoryUI : MonoBehaviour
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
+            // Entrance and exit are permanent restaurant fixtures. Their definition stays
+            // available internally so the scene can create and move them, but they are not sold.
+            if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall) continue;
 
             if (useSquareCards || rowPrefab == null || rowPrefab.GetComponent<InventoryItemCardUI>() != null)
                 CreateSquareCard(item);

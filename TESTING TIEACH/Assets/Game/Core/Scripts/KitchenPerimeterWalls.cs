@@ -500,12 +500,16 @@ public class KitchenPerimeterWalls : MonoBehaviour
     void CollectDoorsOnWall(Vector3 wallPos, Vector3 along, float length, float thick,
         List<DoorOpening> results)
     {
-        CacheEntranceDoor();
-        if (entranceDoor != null)
-            TryAddDoorOnWall(entranceDoor, wallPos, along, length, thick, results);
-
         CustomerWallDoor[] placedDoors = FindObjectsByType<CustomerWallDoor>(
             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        // The original scene entrance is only a fallback. Once movable doors exist,
+        // their openings completely replace the old fixed opening.
+        if (placedDoors.Length == 0)
+        {
+            CacheEntranceDoor();
+            if (entranceDoor != null)
+                TryAddDoorOnWall(entranceDoor, wallPos, along, length, thick, results);
+        }
         for (int i = 0; i < placedDoors.Length; i++)
         {
             CustomerWallDoor door = placedDoors[i];

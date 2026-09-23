@@ -20,6 +20,8 @@ public class CustomerWallDoor : MonoBehaviour
 
     public WallSide wallSide;
     public DoorRole role = DoorRole.Entrance;
+    [Tooltip("Prevents a required entrance or exit from being deleted or assigned the other role.")]
+    public bool permanentFixture;
 
     const float SwingOpenAngle = 82f;
     const float SwingOpenDegreesPerSecond = 260f;
@@ -44,6 +46,10 @@ public class CustomerWallDoor : MonoBehaviour
     Image entranceButtonImage;
     Image exitButtonImage;
     TextMeshProUGUI titleText;
+    GameObject roleMarker;
+    Image roleMarkerBackground;
+    TextMeshProUGUI roleMarkerText;
+    DoorRole displayedMarkerRole;
 
     void Awake()
     {
@@ -88,6 +94,7 @@ public class CustomerWallDoor : MonoBehaviour
 
     public void ShowRolePopup()
     {
+        if (permanentFixture) return;
         if (activePopupDoor != null && activePopupDoor != this)
             activePopupDoor.HideRolePopup();
 
@@ -112,6 +119,7 @@ public class CustomerWallDoor : MonoBehaviour
     void LateUpdate()
     {
         UpdateDoorSwing();
+        UpdateRoleMarker();
 
         if (rolePopup == null || !rolePopup.activeSelf) return;
         if (ManagementModeController.Instance == null
@@ -121,6 +129,70 @@ public class CustomerWallDoor : MonoBehaviour
             return;
         }
         PositionRolePopup();
+    }
+
+    void EnsureRoleMarker()
+    {
+        if (roleMarker != null || IsGhostDoor) return;
+
+        roleMarker = new GameObject("Door Role Marker", typeof(RectTransform),
+            typeof(Canvas), typeof(CanvasScaler), typeof(Image));
+        roleMarker.transform.SetParent(transform, false);
+        RectTransform rect = roleMarker.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(210f, 46f);
+        rect.localScale = Vector3.one * 0.006f;
+
+        Canvas canvas = roleMarker.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = Camera.main;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 210;
+        roleMarker.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 16f;
+        roleMarkerBackground = roleMarker.GetComponent<Image>();
+        roleMarkerBackground.raycastTarget = false;
+
+        GameObject textObject = new GameObject("Role", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(roleMarker.transform, false);
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(5f, 2f);
+        textRect.offsetMax = new Vector2(-5f, -2f);
+        roleMarkerText = textObject.GetComponent<TextMeshProUGUI>();
+        roleMarkerText.alignment = TextAlignmentOptions.Center;
+        roleMarkerText.fontSize = 24f;
+        roleMarkerText.fontStyle = FontStyles.Bold;
+        roleMarkerText.color = Color.white;
+        roleMarkerText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null)
+            roleMarkerText.font = TMP_Settings.defaultFontAsset;
+
+        displayedMarkerRole = (DoorRole)(-1);
+    }
+
+    void UpdateRoleMarker()
+    {
+        EnsureRoleMarker();
+        if (roleMarker == null) return;
+
+        if (displayedMarkerRole != role)
+        {
+            displayedMarkerRole = role;
+            bool entrance = role == DoorRole.Entrance;
+            roleMarkerText.text = entrance ? "ENTRANCE" : "EXIT";
+            roleMarkerBackground.color = entrance
+                ? new Color(0.10f, 0.48f, 0.25f, 0.94f)
+                : new Color(0.70f, 0.20f, 0.16f, 0.94f);
+        }
+
+        Bounds bounds = GetVisualBounds();
+        roleMarker.transform.position = new Vector3(bounds.center.x, bounds.max.y + 0.32f, bounds.center.z);
+        Camera cam = Camera.main;
+        if (cam != null)
+        {
+            roleMarker.GetComponent<Canvas>().worldCamera = cam;
+            roleMarker.transform.forward = cam.transform.forward;
+        }
     }
 
     bool IsGhostDoor => name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0;
