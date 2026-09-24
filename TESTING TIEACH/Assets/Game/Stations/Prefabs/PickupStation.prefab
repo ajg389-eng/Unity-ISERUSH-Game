@@ -117,7 +117,7 @@ GameObject:
   - component: {fileID: -7273179158514941842}
   - component: {fileID: 2092579472271858498}
   m_Layer: 0
-  m_Name: HeatLamp
+  m_Name: PickupStation
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -133,7 +133,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 3.81597, y: 0, z: 7.28037}
-  m_LocalScale: {x: 2, y: 1, z: 1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2700985414444927873}
@@ -274,10 +274,12 @@ MonoBehaviour:
   cautionIndicatorSize: 0.85
   burgerDisplayPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
   friesDisplayPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
+  drinkDisplayPrefab: {fileID: 2138174889334687165, guid: 078cc9dffd7cf1b498ca9ec56c9787af, type: 3}
   foodDisplayHeight: 0.55
   foodDisplayScale: 2
-  foodDisplayCenter: {x: 0.246, y: 0.032}
-  foodDisplaySpacing: {x: 0.25, y: 0.5}
+  drinkDisplaySize: 0.42
+  foodDisplayCenter: {x: -0.004, y: 0.032}
+  foodDisplaySpacing: {x: 0.5, y: 0.5}
 --- !u!1 &8939223708076402897
 GameObject:
   m_ObjectHideFlags: 0
@@ -306,8 +308,8 @@ Transform:
   m_GameObject: {fileID: 8939223708076402897}
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 0.25, y: -0.5, z: 1}
-  m_LocalScale: {x: 0.5, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: -0.5, z: 1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8581002233608562911}
@@ -398,13 +400,17 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8581002233608562911}
     m_Modifications:
+    - target: {fileID: 7561959216490319392, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 8354605738710675445, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_Name
       value: Prop_Heater
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.55
+      value: 1.1
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalScale.z
@@ -412,7 +418,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.246
+      value: -0.001
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalPosition.y
@@ -420,7 +426,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.032
+      value: 0.014
       objectReference: {fileID: 0}
     - target: {fileID: 8699359136036058447, guid: 708faea70e0a35c4f895785050e0790b, type: 3}
       propertyPath: m_LocalRotation.w

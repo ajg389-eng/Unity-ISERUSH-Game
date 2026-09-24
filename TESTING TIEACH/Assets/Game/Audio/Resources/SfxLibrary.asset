@@ -54,66 +54,66 @@ MonoBehaviour:
     volume: 1
     pitchVariance: 0.05
   - id: 10
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: ffb159a21c8a04135a5616979c828fab, type: 3}
+    volume: 0.8
+    pitchVariance: 0.04
   - id: 11
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: d8d04c6f80a1140db85ede568dab1f51, type: 3}
+    volume: 0.75
+    pitchVariance: 0.04
   - id: 12
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.9
+    pitchVariance: 0.02
   - id: 13
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.65
+    pitchVariance: 0.04
   - id: 14
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: 79180f511d89441b9aa23ccae1992fe0, type: 3}
+    volume: 0.75
+    pitchVariance: 0.04
   - id: 15
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: cf6c0e7fbef9449c98a0cdb5ea0c4d9f, type: 3}
+    volume: 0.65
+    pitchVariance: 0.04
   - id: 16
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: 5039414d94a6e4e70a5ab9e8833e992a, type: 3}
+    volume: 0.75
+    pitchVariance: 0.04
   - id: 17
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: 29bde6326b4c34ad8a12da475f79b50a, type: 3}
+    volume: 0.65
+    pitchVariance: 0.04
   - id: 18
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: 7bd6b897eb5ca4b7d88a205c4a51640c, type: 3}
+    volume: 0.9
+    pitchVariance: 0.03
   - id: 19
     clip: {fileID: 0}
-    volume: 1
+    volume: 0.65
     pitchVariance: 0.05
   - id: 20
-    clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    clip: {fileID: 8300000, guid: 29bde6326b4c34ad8a12da475f79b50a, type: 3}
+    volume: 0.5
+    pitchVariance: 0.06
   - id: 21
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.8
+    pitchVariance: 0.03
   - id: 22
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.35
+    pitchVariance: 0.06
   - id: 23
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.45
+    pitchVariance: 0.06
   - id: 24
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.85
+    pitchVariance: 0.02
   - id: 25
     clip: {fileID: 0}
-    volume: 1
-    pitchVariance: 0.05
+    volume: 0.9
+    pitchVariance: 0

@@ -142,18 +142,15 @@ public class EndOfDaySummaryUI : MonoBehaviour
         string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste);
 
         summaryText.text =
-            "<b>Sales & Cash</b>\n" +
-            $"  Revenue earned     <b>${revenue}</b>\n" +
-            $"  Cash change        <color={cashColor}>{cashSign}${cashChange}</color>\n" +
-            $"  Ending balance     <b>${balance}</b>\n\n" +
-            "<b>Customers</b>\n" +
-            $"  Orders served      <b>{orders}</b>\n" +
-            $"  Walked out         <b>{lost}</b>\n" +
-            $"  Service efficiency <b>{efficiency:F0}%</b>\n\n" +
-            "<b>Operations</b>\n" +
-            $"  Avg wait time      <b>{avgWait:F1}s</b>\n" +
-            $"  Food wasted        <b>{waste}</b>\n\n" +
-            "<b>ISE Diagnosis</b>\n" + diagnosis;
+            "<color=#AAB7D1><b>FINANCIAL</b></color>\n" +
+            $"Revenue<pos=38%><b>${revenue}</b><pos=57%>Cash change<pos=84%><color={cashColor}><b>{cashSign}${cashChange}</b></color>\n" +
+            $"Ending balance<pos=38%><b>${balance}</b>\n\n" +
+            "<color=#AAB7D1><b>CUSTOMERS</b></color>\n" +
+            $"Orders served<pos=38%><b>{orders}</b><pos=57%>Walked out<pos=84%><b>{lost}</b>\n" +
+            $"Service efficiency<pos=38%><b>{efficiency:F0}%</b>\n\n" +
+            "<color=#AAB7D1><b>OPERATIONS</b></color>\n" +
+            $"Average wait<pos=38%><b>{avgWait:F1}s</b><pos=57%>Food wasted<pos=84%><b>{waste}</b>\n\n" +
+            "<color=#AAB7D1><b>PROCESS REVIEW</b></color>\n" + diagnosis;
     }
 
     static string BuildOperationsDiagnosis(StoreStatisticsManager stats, int cashChange, float avgWait, int lost, int waste)
@@ -161,25 +158,26 @@ public class EndOfDaySummaryUI : MonoBehaviour
         var notes = new System.Collections.Generic.List<string>();
 
         if (lost > 0 || avgWait >= 35f)
-            notes.Add("<color=#F2C66D>Queue risk:</color> demand exceeded service capacity. Check the register and the slowest production step.");
+            notes.Add("<color=#F2C66D><b>Queue:</b></color> Demand exceeded capacity. Inspect the register and bottleneck station.");
         else if (stats != null && stats.OrdersCompletedToday > 0)
-            notes.Add("<color=#7DDB8A>Flow:</color> customer waiting remained controlled during the shift.");
+            notes.Add("<color=#7DDB8A><b>Flow:</b></color> Customer waiting remained controlled.");
 
         if (waste > 0)
-            notes.Add("<color=#F2C66D>Overproduction:</color> lower Pickup Station target stock or improve demand matching.");
+            notes.Add("<color=#F2C66D><b>Waste:</b></color> Lower pickup stock or match output to demand.");
         if (cashChange < 0)
-            notes.Add("<color=#F2C66D>Economics:</color> spending exceeded revenue. Check whether added capacity produced enough throughput.");
+            notes.Add("<color=#F2C66D><b>Cost:</b></color> Spending exceeded revenue. Check capacity utilization.");
 
         var workflowNotes = WorkflowAnalysis.GetSystemDiagnostics();
-        for (int i = 0; i < workflowNotes.Count && i < 2; i++)
-            notes.Add("<color=#83D9ED>System:</color> " + workflowNotes[i]);
+        if (workflowNotes.Count > 0 && notes.Count < 3)
+            notes.Add("<color=#83D9ED><b>System:</b></color> " + workflowNotes[0]);
 
         if (notes.Count == 0)
-            notes.Add("No major operational loss was detected. Increase demand or reduce resources to test the design's limit.");
+            notes.Add("<color=#7DDB8A><b>Stable:</b></color> No major operational loss detected.");
 
         var lines = new System.Text.StringBuilder();
-        for (int i = 0; i < notes.Count; i++)
-            lines.Append("  • ").Append(notes[i]).Append(i + 1 < notes.Count ? "\n" : "");
+        int noteCount = Mathf.Min(notes.Count, 3);
+        for (int i = 0; i < noteCount; i++)
+            lines.Append("\u2022 ").Append(notes[i]).Append(i + 1 < noteCount ? "\n" : "");
         return lines.ToString();
     }
 
@@ -217,11 +215,14 @@ public class EndOfDaySummaryUI : MonoBehaviour
     {
         if (panelRoot == null) return;
         if (titleText == null)
-            titleText = panelRoot.transform.Find("Title")?.GetComponent<TextMeshProUGUI>();
+            titleText = panelRoot.transform.Find("Title")?.GetComponent<TextMeshProUGUI>()
+                ?? panelRoot.transform.Find("Card/Title")?.GetComponent<TextMeshProUGUI>();
         if (summaryText == null)
-            summaryText = panelRoot.transform.Find("Summary")?.GetComponent<TextMeshProUGUI>();
+            summaryText = panelRoot.transform.Find("Summary")?.GetComponent<TextMeshProUGUI>()
+                ?? panelRoot.transform.Find("Card/SummaryPanel/Summary")?.GetComponent<TextMeshProUGUI>();
         if (continueButton == null)
-            continueButton = panelRoot.transform.Find("ContinueButton")?.GetComponent<Button>();
+            continueButton = panelRoot.transform.Find("ContinueButton")?.GetComponent<Button>()
+                ?? panelRoot.transform.Find("Card/ContinueButton")?.GetComponent<Button>();
     }
 
     void BuildPanel(Transform canvasTransform)
@@ -246,15 +247,15 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(540f, 640f);
+        cardRt.sizeDelta = new Vector2(680f, 610f);
 
         var cardImg = card.AddComponent<Image>();
         cardImg.color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
         cardImg.raycastTarget = true;
 
         var vlg = card.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(28, 28, 28, 24);
-        vlg.spacing = 16;
+        vlg.padding = new RectOffset(30, 30, 24, 24);
+        vlg.spacing = 10;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -265,16 +266,28 @@ public class EndOfDaySummaryUI : MonoBehaviour
         titleText.fontStyle = FontStyles.Bold;
         titleText.GetComponent<LayoutElement>().minHeight = 40;
 
-        var subtitle = CreateLabel(card.transform, "Subtitle", "Shift summary", 14, TextAlignmentOptions.Center);
+        var subtitle = CreateLabel(card.transform, "Subtitle", "SHIFT PERFORMANCE", 13, TextAlignmentOptions.Center);
         subtitle.color = new Color(0.7f, 0.74f, 0.82f, 1f);
         subtitle.GetComponent<LayoutElement>().minHeight = 22;
 
-        summaryText = CreateLabel(card.transform, "Summary", "", 16, TextAlignmentOptions.TopLeft);
+        var summaryPanel = new GameObject("SummaryPanel", typeof(RectTransform));
+        summaryPanel.transform.SetParent(card.transform, false);
+        var summaryPanelImage = summaryPanel.AddComponent<Image>();
+        summaryPanelImage.color = new Color(0.075f, 0.085f, 0.12f, 0.82f);
+        summaryPanelImage.raycastTarget = false;
+        var summaryPanelLayout = summaryPanel.AddComponent<LayoutElement>();
+        summaryPanelLayout.minHeight = 410f;
+        summaryPanelLayout.flexibleHeight = 1f;
+
+        summaryText = CreateLabel(summaryPanel.transform, "Summary", "", 15, TextAlignmentOptions.TopLeft);
         summaryText.richText = true;
         summaryText.textWrappingMode = TextWrappingModes.Normal;
-        var summaryLe = summaryText.GetComponent<LayoutElement>();
-        summaryLe.minHeight = 430;
-        summaryLe.flexibleHeight = 1;
+        summaryText.lineSpacing = 4f;
+        var summaryRt = (RectTransform)summaryText.transform;
+        summaryRt.anchorMin = Vector2.zero;
+        summaryRt.anchorMax = Vector2.one;
+        summaryRt.offsetMin = new Vector2(18f, 16f);
+        summaryRt.offsetMax = new Vector2(-18f, -16f);
 
         continueButton = CreateButton(card.transform, "ContinueButton", "Continue to Next Day");
         panelRoot.transform.SetAsLastSibling();

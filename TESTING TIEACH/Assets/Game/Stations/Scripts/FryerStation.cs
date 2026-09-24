@@ -8,7 +8,7 @@ public class FryerStation : MonoBehaviour
 {
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
-    [Min(0f)] public float processTimeSeconds = 7.5f;
+    [Min(0f)] public float processTimeSeconds = 12f;
     public Vector3 interactionOffset = Vector3.zero;
 
     bool hasBasket;

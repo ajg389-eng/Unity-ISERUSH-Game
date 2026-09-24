@@ -15,6 +15,6 @@ MonoBehaviour:
   burgerBase: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
   drinkItem: {fileID: 11400000, guid: c4e8a1f29b7d4e6a9f3c5d8e1a2b3c4d, type: 2}
-  burgerChance: 0.85
+  burgerChance: 0.7
   friesChance: 0.7
-  drinkChance: 0.55
+  drinkChance: 0.7

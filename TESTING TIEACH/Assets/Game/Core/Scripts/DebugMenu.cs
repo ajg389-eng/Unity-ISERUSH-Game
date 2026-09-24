@@ -141,7 +141,7 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 820f);
+        prt.sizeDelta = new Vector2(320f, 1000f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
@@ -220,7 +220,18 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Clear All Equipment", ClearAllEquipment);
+        CreateButton(panel.transform, "Place All Stations", () =>
+        {
+            var placer = FindFirstObjectByType<BuildPlacer>();
+            if (placer == null) { Toast("No BuildPlacer"); return; }
+            int placed = placer.DebugPlaceAllStations();
+            Toast(placed > 0
+                ? $"Placed {placed} missing stations"
+                : "All stations already placed or no space");
+            RefreshStatus();
+        });
+
+        CreateButton(panel.transform, "Clear All Stations", ClearAllEquipment);
 
         CreateButton(panel.transform, "Time 1x", () =>
         {
@@ -239,6 +250,13 @@ public class DebugMenu : MonoBehaviour
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.SuperFast);
             Toast("20x");
             RefreshStatus();
+        });
+        CreateButton(panel.transform, "Skip to End of Day", () =>
+        {
+            var time = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
+            if (time == null) { Toast("No GameTimeManager"); return; }
+            if (!time.DebugSkipToEndOfDay()) { Toast("Day already ended"); return; }
+            SetVisible(false);
         });
         CreateButton(panel.transform, "Force Milestone Quiz", () =>
         {
@@ -364,7 +382,7 @@ public class DebugMenu : MonoBehaviour
         GridManager.Instance?.ResyncOccupancyFromScene();
         FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
         FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Include)?.Refresh();
-        Toast($"Cleared {equipment.Count} placed items and equipment inventory");
+        Toast($"Cleared {equipment.Count} stations");
         RefreshStatus();
     }
 

@@ -116,6 +116,16 @@ public class GameTimeManager : MonoBehaviour
         OnDayStarted?.Invoke();
     }
 
+    /// <summary>Debug helper that ends the shift through the normal day-end path.</summary>
+    public bool DebugSkipToEndOfDay()
+    {
+        if (IsShiftOver) return false;
+        CurrentMinutes = DayEndMinutes;
+        OnTimeChanged?.Invoke();
+        EndShift();
+        return true;
+    }
+
     public void SetSpeed(SpeedMode mode)
     {
         if (IsShiftOver && mode != SpeedMode.Paused)

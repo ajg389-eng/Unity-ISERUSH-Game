@@ -19,13 +19,13 @@ public class CustomerOrderConfig : ScriptableObject
     [Header("Order chances (each item rolled independently)")]
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants a burger")]
-    public float burgerChance = 0.85f;
+    public float burgerChance = 0.7f;
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants fries")]
     public float friesChance = 0.7f;
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants a drink")]
-    public float drinkChance = 0.55f;
+    public float drinkChance = 0.7f;
 
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
     [System.NonSerialized] bool burgerEnabled = true;
@@ -140,9 +140,22 @@ public class CustomerOrderConfig : ScriptableObject
 
         if (!wantBurger && !wantFries && !wantDrink)
         {
-            if (burgerBase != null && burgerEnabled) wantBurger = true;
-            else if (friesItem != null && friesEnabled) wantFries = true;
-            else if (drinkItem != null && drinkEnabled) wantDrink = true;
+            // Every order needs at least one item. Pick uniformly from the
+            // currently available menu so this fallback does not favor burgers.
+            var available = new List<ProductKind>();
+            if (burgerBase != null && burgerEnabled) available.Add(ProductKind.Burger);
+            if (friesItem != null && friesEnabled) available.Add(ProductKind.Fries);
+            if (drinkItem != null && drinkEnabled) available.Add(ProductKind.Drink);
+
+            if (available.Count > 0)
+            {
+                switch (available[Random.Range(0, available.Count)])
+                {
+                    case ProductKind.Burger: wantBurger = true; break;
+                    case ProductKind.Fries: wantFries = true; break;
+                    case ProductKind.Drink: wantDrink = true; break;
+                }
+            }
         }
 
         if (wantBurger)

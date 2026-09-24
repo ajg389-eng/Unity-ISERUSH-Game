@@ -1289,6 +1289,173 @@ public class BuildPlacer : MonoBehaviour
         if (undo != null) undo.NotifyStationPlaced(placingItem, placed);
     }
 
+    /// <summary>
+    /// Debug setup helper. Places one missing instance of every station definition
+    /// on valid floor cells or free counter slots without charging the player.
+    /// </summary>
+    public int DebugPlaceAllStations()
+    {
+        if (grid == null) grid = GridManager.Instance != null
+            ? GridManager.Instance
+            : FindFirstObjectByType<GridManager>();
+        if (inventory == null) inventory = FindFirstObjectByType<InventoryManager>();
+        if (grid == null || inventory == null || inventory.allItems == null) return 0;
+
+        CancelPlacement();
+        CancelDrag();
+        grid.ResyncOccupancyFromScene();
+
+        int placedCount = 0;
+        foreach (ItemDefinition item in inventory.allItems)
+        {
+            if (!IsDebugStationDefinition(item)) continue;
+
+            int desiredCount = item.prefab.GetComponentInChildren<HeatLampStation>(true) != null ? 3 : 1;
+            int missingCount = Mathf.Max(0, desiredCount - GetDebugStationPlacedCount(item));
+            for (int copy = 0; copy < missingCount; copy++)
+            {
+                bool placed = item.placementSurface == ItemDefinition.PlacementSurface.Counter
+                    ? DebugPlaceCounterStation(item)
+                    : item.placementSurface == ItemDefinition.PlacementSurface.Floor
+                        && DebugPlaceFloorStation(item);
+                if (!placed) break;
+                placedCount++;
+            }
+        }
+
+        PurchaseUndoManager.Instance?.ClearHistory();
+        grid.ResyncOccupancyFromScene();
+        FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
+        FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Include)?.Refresh();
+        return placedCount;
+    }
+
+    static bool IsDebugStationDefinition(ItemDefinition item)
+    {
+        if (item == null || item.prefab == null
+            || item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            return false;
+        GameObject prefab = item.prefab;
+        return item.buildFunction == ItemDefinition.BuildFunction.Register
+            || prefab.GetComponentInChildren<Register>(true) != null
+            || prefab.GetComponentInChildren<FreezerStation>(true) != null
+            || prefab.GetComponentInChildren<GrillStation>(true) != null
+            || prefab.GetComponentInChildren<FryerStation>(true) != null
+            || prefab.GetComponentInChildren<DrinkStation>(true) != null
+            || prefab.GetComponentInChildren<AssemblyStation>(true) != null
+            || prefab.GetComponentInChildren<HeatLampStation>(true) != null
+            || prefab.GetComponentInChildren<PantryStation>(true) != null;
+    }
+
+    static int GetDebugStationPlacedCount(ItemDefinition item)
+    {
+        GameObject prefab = item.prefab;
+        if (item.buildFunction == ItemDefinition.BuildFunction.Register
+            || prefab.GetComponentInChildren<Register>(true) != null)
+            return FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<FreezerStation>(true) != null)
+            return FindObjectsByType<FreezerStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<GrillStation>(true) != null)
+            return FindObjectsByType<GrillStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<FryerStation>(true) != null)
+            return FindObjectsByType<FryerStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<DrinkStation>(true) != null)
+            return FindObjectsByType<DrinkStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<AssemblyStation>(true) != null)
+            return FindObjectsByType<AssemblyStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<HeatLampStation>(true) != null)
+            return FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        if (prefab.GetComponentInChildren<PantryStation>(true) != null)
+            return FindObjectsByType<PantryStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+
+        int count = 0;
+        foreach (PlacedBuildItem placed in FindObjectsByType<PlacedBuildItem>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            if (placed != null && placed.itemDefinition == item)
+                count++;
+        return count;
+    }
+
+    bool DebugPlaceFloorStation(ItemDefinition item)
+    {
+        BuildFootprint prefabFootprint = item.prefab.GetComponent<BuildFootprint>();
+        int sizeX = Mathf.Max(1, prefabFootprint != null ? prefabFootprint.sizeX : item.footprintX);
+        int sizeY = Mathf.Max(1, prefabFootprint != null ? prefabFootprint.sizeY : item.footprintY);
+        // Debug layouts start against the north wall and fill toward the south.
+        // Rotate the authored placement so each station faces into the kitchen.
+        for (int y = grid.Height - sizeY; y >= 0; y--)
+        {
+            for (int x = 0; x <= grid.Width - sizeX; x++)
+            {
+                if (!grid.CanPlace(x, y, sizeX, sizeY)) continue;
+
+                GameObject placed = Instantiate(item.prefab);
+                placed.name = item.itemName + " (Debug)";
+                placed.transform.localScale = GetPlacementScale(item);
+                // The Assembly prefab is authored opposite the other floor stations.
+                float southFacingYaw = item.prefab.GetComponentInChildren<AssemblyStation>(true) != null
+                    ? 0f
+                    : 180f;
+                placed.transform.rotation = Quaternion.Euler(
+                    item.placementEuler + Vector3.up * southFacingYaw);
+                ConfigurePlacedObject(placed, item);
+                Vector3 position = grid.GetFootprintCenter(x, y, sizeX, sizeY);
+                placed.transform.position = position;
+                position.y = GetYOnFloor(placed, grid.Origin.y);
+                placed.transform.position = position;
+
+                PlacedBuildItem marker = placed.GetComponent<PlacedBuildItem>();
+                if (marker == null) marker = placed.AddComponent<PlacedBuildItem>();
+                marker.itemDefinition = item;
+                grid.SetOccupied(x, y, sizeX, sizeY, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool DebugPlaceCounterStation(ItemDefinition item)
+    {
+        int span = Mathf.Max(1, item.counterSlotSpan);
+        CounterSurface bestSurface = null;
+        int bestSlot = -1;
+        float northernmostZ = float.NegativeInfinity;
+        foreach (CounterSurface surface in FindObjectsByType<CounterSurface>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (surface.GetComponentInParent<CounterMountedItem>() != null) continue;
+            for (int slot = 0; slot <= Mathf.Max(1, surface.slotCount) - span; slot++)
+            {
+                if (!surface.IsSlotRangeAvailable(slot, span)) continue;
+                float z = surface.GetSlotWorldCenter(slot, span).z;
+                if (z <= northernmostZ) continue;
+                northernmostZ = z;
+                bestSurface = surface;
+                bestSlot = slot;
+            }
+        }
+        if (bestSurface == null || bestSlot < 0) return false;
+
+        GameObject placed = Instantiate(item.prefab);
+        placed.name = item.itemName + " (Debug)";
+        ConfigurePlacedObject(placed, item);
+        CounterMountedItem mounted = placed.GetComponent<CounterMountedItem>();
+        if (mounted == null) mounted = placed.AddComponent<CounterMountedItem>();
+        mounted.itemDefinition = item;
+        PositionOnCounter(placed, item, bestSurface, bestSlot, 0);
+        if (!bestSurface.Attach(mounted, bestSlot))
+        {
+            Destroy(placed);
+            return false;
+        }
+        FinalizeMountedOrientation(placed);
+
+        PlacedBuildItem marker = placed.GetComponent<PlacedBuildItem>();
+        if (marker == null) marker = placed.AddComponent<PlacedBuildItem>();
+        marker.itemDefinition = item;
+        return true;
+    }
+
     static void ConfigurePlacedObject(GameObject placed, ItemDefinition item)
     {
         if (placed == null || item == null) return;

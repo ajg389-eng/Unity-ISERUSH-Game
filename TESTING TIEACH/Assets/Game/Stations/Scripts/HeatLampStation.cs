@@ -64,14 +64,18 @@ public class HeatLampStation : MonoBehaviour
     public GameObject burgerDisplayPrefab;
     [Tooltip("Finished fries model shown on an occupied Pickup Station tile.")]
     public GameObject friesDisplayPrefab;
+    [Tooltip("Finished drink model shown on an occupied Pickup Station tile.")]
+    public GameObject drinkDisplayPrefab;
     [Tooltip("Height of product models above the Pickup Station root.")]
     public float foodDisplayHeight = 0.55f;
     [Tooltip("Uniform world-space scale used by displayed food models.")]
     public float foodDisplayScale = 0.42f;
+    [Tooltip("Maximum world-space size of the drink model. Drink prefabs use different native dimensions than food prefabs.")]
+    public float drinkDisplaySize = 0.42f;
     [Tooltip("Local X/Z center of the four display pans on the current 1x1 model.")]
-    public Vector2 foodDisplayCenter = new Vector2(0.246f, 0.032f);
+    public Vector2 foodDisplayCenter = new Vector2(-0.004f, 0.032f);
     [Tooltip("Local X/Z spacing between the four display positions.")]
-    public Vector2 foodDisplaySpacing = new Vector2(0.25f, 0.5f);
+    public Vector2 foodDisplaySpacing = new Vector2(0.5f, 0.5f);
 
     readonly List<HeldMeal> meals = new List<HeldMeal>();
     readonly List<CustomerAI> customerPickupQueue = new List<CustomerAI>();
@@ -152,7 +156,10 @@ public class HeatLampStation : MonoBehaviour
             display.name = "HeldFood_" + i + "_" + prefab.name;
             display.transform.localPosition = GetFoodDisplaySlot(i);
             display.transform.localRotation = Quaternion.identity;
-            SetUniformWorldScale(display.transform, foodDisplayScale);
+            if (prefab == drinkDisplayPrefab)
+                NormalizeDisplaySize(display, drinkDisplaySize);
+            else
+                SetUniformWorldScale(display.transform, foodDisplayScale);
             DisableDisplayColliders(display);
             foodDisplayObjects.Add(display);
         }
@@ -207,6 +214,7 @@ public class HeatLampStation : MonoBehaviour
         {
             if (config.IsBurger(item)) return burgerDisplayPrefab;
             if (config.IsFries(item)) return friesDisplayPrefab;
+            if (config.IsDrink(item)) return drinkDisplayPrefab;
         }
 
         string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
@@ -214,6 +222,8 @@ public class HeatLampStation : MonoBehaviour
             return burgerDisplayPrefab;
         if (label.IndexOf("fries", System.StringComparison.OrdinalIgnoreCase) >= 0)
             return friesDisplayPrefab;
+        if (label.IndexOf("drink", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return drinkDisplayPrefab;
         return null;
     }
 
@@ -224,6 +234,25 @@ public class HeatLampStation : MonoBehaviour
             scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
             scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
             scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
+    static void NormalizeDisplaySize(GameObject display, float targetSize)
+    {
+        display.transform.localScale = Vector3.one;
+
+        Renderer[] renderers = display.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        float largestDimension = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+        if (largestDimension > 0.0001f)
+        {
+            float uniformScale = Mathf.Max(0.01f, targetSize) / largestDimension;
+            display.transform.localScale = Vector3.one * uniformScale;
+        }
     }
 
     static void DisableDisplayColliders(GameObject display)
@@ -690,13 +719,25 @@ public class HeatLampStation : MonoBehaviour
 
         Dictionary<ItemDefinition, float> incoming = GetIncomingRates();
 
+        // A pickup station should only report products from flows that actually
+        // deliver to this specific station. Previously, every demanded item was
+        // checked and a missing incoming entry was interpreted as a zero rate.
+        // That made unrelated underproduction show a caution sign here.
+        var needs = production.GetRequiredOutputByItem(includeDrinks: true);
         var shortfalls = new List<string>();
-        foreach (ProductionManager.ItemOutputNeed need in production.GetRequiredOutputByItem(includeDrinks: true))
+        foreach (KeyValuePair<ItemDefinition, float> delivery in incoming)
         {
-            if (need.item == null || need.requiredPerMinute <= 0.01f) continue;
-            incoming.TryGetValue(need.item, out float supplied);
-            if (supplied + 0.01f < need.requiredPerMinute)
-                shortfalls.Add(GetItemDisplayName(need.item) + " is underproducing");
+            if (delivery.Key == null || delivery.Value <= 0.01f) continue;
+
+            float requiredPerMinute = 0f;
+            foreach (ProductionManager.ItemOutputNeed need in needs)
+            {
+                if (need.item != null && CustomerOrder.ItemsEquivalent(need.item, delivery.Key))
+                    requiredPerMinute += Mathf.Max(0f, need.requiredPerMinute);
+            }
+
+            if (requiredPerMinute > 0.01f && delivery.Value + 0.01f < requiredPerMinute)
+                shortfalls.Add(GetItemDisplayName(delivery.Key) + " is underproducing");
         }
         if (shortfalls.Count == 0) return false;
         details = string.Join("\n", shortfalls);
@@ -960,6 +1001,54 @@ public class HeatLampStation : MonoBehaviour
             item = line.item;
             return true;
         }
+        return false;
+    }
+
+    /// <summary>
+    /// Takes one ready item from any placed pickup station while preserving the
+    /// customer's priority in the pickup queue they are currently standing in.
+    /// Pickup stations therefore behave as one shared serving inventory instead
+    /// of trapping customers behind the stock assigned to a particular counter.
+    /// </summary>
+    public static bool TryCustomerTakeAvailableItem(CustomerAI customer,
+        HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item)
+    {
+        item = null;
+        if (customer == null || customerOrder?.lines == null) return false;
+
+        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+        foreach (CustomerOrder.OrderLine line in customerOrder.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+
+            int totalHeld = 0;
+            foreach (HeatLampStation station in stations)
+                if (station != null)
+                    totalHeld += station.CountHeldMatching(line.item);
+
+            int claimsAhead = queueStation != null
+                ? queueStation.CountClaimsAhead(customer, line.item)
+                : 0;
+            if (totalHeld <= claimsAhead) continue;
+
+            HeatLampStation source = null;
+            float nearestDistance = float.MaxValue;
+            foreach (HeatLampStation station in stations)
+            {
+                if (station == null || !station.HasSingleItem(line.item)) continue;
+                float distance = (station.transform.position - customer.transform.position).sqrMagnitude;
+                if (distance >= nearestDistance) continue;
+                nearestDistance = distance;
+                source = station;
+            }
+
+            if (source == null || !source.TryCustomerTakeSingleItem(line.item)) continue;
+            item = line.item;
+            return true;
+        }
+
         return false;
     }
 

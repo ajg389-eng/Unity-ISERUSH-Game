@@ -444,20 +444,6 @@ public class CustomerAI : MonoBehaviour
             }
             return;
         }
-        if (waitingForPickup && pickupStation != null && !pickupStation.HasAnyItemFor(order))
-        {
-            HeatLampStation readyElsewhere = HeatLampStation.FindReadyPickupForOrder(
-                order, transform.position, pickupStation);
-            if (readyElsewhere != null)
-            {
-                pickupStation.LeavePickupQueue(this);
-                pickupStation = null;
-                hasQueueSlot = false;
-                hasTarget = false;
-                if (readyElsewhere.TryJoinPickupQueue(this))
-                    return;
-            }
-        }
         if (waitingForPickup && pickupStation == null)
         {
             JoinNextPickupStation();
@@ -520,8 +506,8 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        if (!pickupStation.TryGetAvailableItemForCustomer(this, order, out ItemDefinition item)) return;
-        if (!pickupStation.TryCustomerTakeSingleItem(item)) return;
+        if (!HeatLampStation.TryCustomerTakeAvailableItem(
+                this, pickupStation, order, out ItemDefinition item)) return;
         if (!order.TryRemoveOne(item)) return;
 
         RefreshOrderLabel();
@@ -529,7 +515,8 @@ public class CustomerAI : MonoBehaviour
 
         if (IsOrderFullyDelivered)
             FinishPickupAndLeave();
-        // Otherwise stay in this pickup slot until the rest of the order is ready.
+        // Otherwise stay in this pickup slot. Remaining items may arrive at any
+        // placed pickup station and can be collected from this same queue.
     }
 
     void FinishPickupAndLeave()

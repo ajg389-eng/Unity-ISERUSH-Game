@@ -49,9 +49,9 @@ public class StationNode : MonoBehaviour
         else if (GetComponent<FreezerStation>() != null)
             SetIo(0f, 5f, "-", "patties");
         else if (GetComponent<FryerStation>() != null)
-            SetIo(10f, 10f, "raw fries", "cooked fries");
+            SetIo(5f, 5f, "raw fries", "cooked fries");
         else if (GetComponent<DrinkStation>() != null)
-            SetIo(0f, 10f, "-", "drinks");
+            SetIo(0f, 5f, "-", "drinks");
         else if (GetComponent<PantryStation>() != null)
             SetIo(0f, 10f, "-", "ingredients");
         else if (GetComponent<Register>() != null)
