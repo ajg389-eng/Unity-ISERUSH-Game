@@ -222,6 +222,7 @@ public class CustomerAI : MonoBehaviour
 
     public void SetTargetRegister(Register r)
     {
+        if (r != null && !r.IsPlacedRegister) return;
         reg = r;
         if (reg == null) return;
         reg.TryJoinQueue(this);
@@ -389,6 +390,9 @@ public class CustomerAI : MonoBehaviour
         if (routeIndex >= route.Count)
         {
             phase = Phase.GoingToSlot;
+            // Entry uses direct door waypoints; start a fresh grid path for the queue.
+            gridPath.Clear();
+            gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
             ApplyQueueSlotMovement();
             // If join happened but slot never arrived, ask register to refresh.
             if (!hasQueueSlot && reg != null)
@@ -396,7 +400,9 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        if (MoveOnCustomerGrid(route[routeIndex]))
+        // Door waypoints already provide panel clearance. Re-snapping each one
+        // onto the grid can send the customer backwards between waypoints.
+        if (MoveStraightTo(route[routeIndex]))
             routeIndex++;
     }
 

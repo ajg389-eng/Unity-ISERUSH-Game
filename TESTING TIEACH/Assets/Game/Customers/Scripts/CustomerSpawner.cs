@@ -226,7 +226,7 @@ public class CustomerSpawner : MonoBehaviour
         RefreshPlacedRegisters();
         foreach (var r in registers)
         {
-            if (r != null && r.gameObject.activeInHierarchy)
+            if (r != null && r.IsPlacedRegister)
                 return r;
         }
         return null;
@@ -234,10 +234,10 @@ public class CustomerSpawner : MonoBehaviour
 
     void RefreshPlacedRegisters()
     {
-        registers.RemoveAll(r => r == null || !r.gameObject.activeInHierarchy);
+        registers.RemoveAll(r => r == null || !r.IsPlacedRegister);
         Register[] placed = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         foreach (Register register in placed)
-            if (register != null && !registers.Contains(register))
+            if (register != null && register.IsPlacedRegister && !registers.Contains(register))
                 registers.Add(register);
     }
 }

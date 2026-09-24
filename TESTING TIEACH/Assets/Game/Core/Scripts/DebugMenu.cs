@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.UI;
 using TMPro;
 
@@ -219,6 +220,8 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
+        CreateButton(panel.transform, "Clear All Equipment", ClearAllEquipment);
+
         CreateButton(panel.transform, "Time 1x", () =>
         {
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
@@ -305,6 +308,70 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateButton(panel.transform, "Close", () => SetVisible(false));
+    }
+
+    void ClearAllEquipment()
+    {
+        var management = ManagementModeController.Instance;
+        if (management != null && management.IsCapturingFlow) management.CancelFlowCapture();
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null) { placer.CancelPlacement(); placer.CancelDrag(); }
+
+        var equipment = new HashSet<GameObject>();
+        CollectEquipment<FreezerStation>(equipment);
+        CollectEquipment<GrillStation>(equipment);
+        CollectEquipment<FryerStation>(equipment);
+        CollectEquipment<DrinkStation>(equipment);
+        CollectEquipment<AssemblyStation>(equipment);
+        CollectEquipment<PantryStation>(equipment);
+        CollectEquipment<HeatLampStation>(equipment);
+        CollectEquipment<Register>(equipment);
+
+        var production = ProductionManager.Instance;
+        if (production != null && production.productionFlows != null)
+        {
+            foreach (var flow in production.productionFlows)
+            {
+                if (flow == null) continue;
+                flow.Clean();
+                if (!flow.stations.Exists(station => equipment.Contains(station))) continue;
+                foreach (var worker in flow.workers)
+                    if (worker != null) worker.ClearAllOperatedStations();
+                flow.workers.Clear();
+                flow.stations.Clear();
+                flow.stepIds.Clear();
+            }
+            production.lastFlowBalance = null;
+            production.SyncLegacyFlowSelection();
+        }
+
+        var inventory = FindFirstObjectByType<InventoryManager>();
+        foreach (var node in FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (equipment.Contains(node.gameObject)) node.ClearWorker();
+            if (equipment.Contains(node.gameObject) || equipment.Contains(node.outputTarget)) node.SetOutput(null);
+        }
+        foreach (var station in equipment)
+        {
+            var mounted = station.GetComponent<CounterMountedItem>();
+            if (mounted != null && mounted.surface != null) mounted.surface.Release(mounted);
+            // Inactive before Destroy so occupancy scans exclude it in this frame.
+            station.SetActive(false);
+            Destroy(station);
+        }
+        inventory?.DebugClearEquipmentInventory();
+        PurchaseUndoManager.Instance?.ClearHistory();
+        GridManager.Instance?.ResyncOccupancyFromScene();
+        FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
+        FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Include)?.Refresh();
+        Toast($"Cleared {equipment.Count} placed items and equipment inventory");
+        RefreshStatus();
+    }
+
+    static void CollectEquipment<T>(HashSet<GameObject> equipment) where T : Component
+    {
+        foreach (var station in FindObjectsByType<T>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            equipment.Add(station.gameObject);
     }
 
     void JumpToMilestone(int number)

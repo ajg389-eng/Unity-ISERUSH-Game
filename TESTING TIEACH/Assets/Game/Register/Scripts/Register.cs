@@ -4,6 +4,8 @@ using UnityEngine;
 public class Register : MonoBehaviour
 {
     public bool isEnabled = true;
+    [System.NonSerialized] public bool isPlacementPreview;
+    public bool IsPlacedRegister => !isPlacementPreview && isActiveAndEnabled;
 
     [Header("Queue")]
     public Transform queueStart;
@@ -91,6 +93,7 @@ public class Register : MonoBehaviour
 
     public bool HasSpace()
     {
+        if (!IsPlacedRegister) return false;
         if (!isEnabled) return false;
         if (queue.Count >= EffectiveMaxQueue) return false;
         if (pickup.Count >= EffectiveMaxPickup) return false;
@@ -446,6 +449,7 @@ public class Register : MonoBehaviour
 
     void Update()
     {
+        if (!IsPlacedRegister) return;
         // Line 1: order at register. Line 2: wait at heat lamp for food.
         TryTakeFrontOrder();
     }

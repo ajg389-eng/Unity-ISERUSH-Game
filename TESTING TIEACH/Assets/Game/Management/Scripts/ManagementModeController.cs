@@ -214,6 +214,13 @@ public class ManagementModeController : MonoBehaviour
         if (IsPointerOverUI()) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (IsCapturingFlow)
+        {
+            CustomerWallDoor.HideActivePopup();
+            StationNode flowStation = FindFlowStationUnderRay(ray);
+            if (flowStation != null) AddCapturedFlowStation(flowStation);
+            return;
+        }
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
             CustomerWallDoor.HideActivePopup();
@@ -257,12 +264,6 @@ public class ManagementModeController : MonoBehaviour
                 ClearSelection();
             }
             CancelOutputDrag();
-            return;
-        }
-
-        if (IsCapturingFlow)
-        {
-            AddCapturedFlowStation(node);
             return;
         }
 
@@ -2072,9 +2073,27 @@ public class ManagementModeController : MonoBehaviour
     {
         if (Camera.main == null || IsPointerOverUI()) return null;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (IsCapturingFlow) return FindFlowStationUnderRay(ray);
         return Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer)
             ? StationNode.FindFromCollider(hit.collider)
             : null;
+    }
+
+    StationNode FindFlowStationUnderRay(Ray ray)
+    {
+        // Mounted stations can overlap the counter collider. Look through scenery
+        // while capturing a flow, choosing the nearest actual station on the ray.
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, clickLayer);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
+        {
+            StationNode node = StationNode.FindFromCollider(hit.collider);
+            if (node == null) continue;
+            Register register = node.GetComponent<Register>();
+            if (register != null && !register.IsPlacedRegister) continue;
+            return node;
+        }
+        return null;
     }
 
     void SetWorkflowDecisionHudVisible(bool show)

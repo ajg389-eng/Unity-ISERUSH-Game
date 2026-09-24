@@ -236,6 +236,11 @@ public class BuildPlacer : MonoBehaviour
         if (ghost) Destroy(ghost);
         ghost = Instantiate(item.prefab);
         ghost.name = item.prefab.name + " Ghost";
+        foreach (var previewRegister in ghost.GetComponentsInChildren<Register>(true))
+        {
+            previewRegister.isPlacementPreview = true;
+            previewRegister.isEnabled = false;
+        }
         ghost.transform.localScale = GetPlacementScale(item);
         ghost.transform.rotation = Quaternion.Euler(item.placementEuler + Vector3.up * (placementRotation * 90f));
 
@@ -269,7 +274,11 @@ public class BuildPlacer : MonoBehaviour
         placingItem = null;
         hasDoorPreviewWallLocation = false;
 
-        if (ghost) Destroy(ghost);
+        if (ghost)
+        {
+            ghost.SetActive(false);
+            Destroy(ghost);
+        }
         ghost = null;
 
         SetHint(false);

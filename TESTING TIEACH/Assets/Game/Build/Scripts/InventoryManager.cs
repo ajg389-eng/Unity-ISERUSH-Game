@@ -123,6 +123,28 @@ public class InventoryManager : MonoBehaviour
     }
 
     /// <summary>Add one item back to inventory (e.g. when removing a placed object). Does not spend money.</summary>
+    public void DebugClearEquipmentInventory()
+    {
+        foreach (var item in allItems)
+        {
+            if (item == null || item.prefab == null) continue;
+            var prefab = item.prefab;
+            bool equipment = item.buildFunction == ItemDefinition.BuildFunction.Register
+                || prefab.GetComponentInChildren<Register>(true) != null
+                || prefab.GetComponentInChildren<FreezerStation>(true) != null
+                || prefab.GetComponentInChildren<GrillStation>(true) != null
+                || prefab.GetComponentInChildren<FryerStation>(true) != null
+                || prefab.GetComponentInChildren<DrinkStation>(true) != null
+                || prefab.GetComponentInChildren<AssemblyStation>(true) != null
+                || prefab.GetComponentInChildren<HeatLampStation>(true) != null
+                || prefab.GetComponentInChildren<PantryStation>(true) != null;
+            if (!equipment) continue;
+            counts[item] = 0;
+            acquired[item] = 0;
+            if (SelectedItem == item) SelectedItem = null;
+        }
+    }
+
     public void AddOne(ItemDefinition item)
     {
         if (item == null) return;

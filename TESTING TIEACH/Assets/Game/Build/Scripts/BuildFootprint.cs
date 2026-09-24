@@ -38,6 +38,7 @@ public class CustomerWallDoor : MonoBehaviour
 
     readonly List<SwingLeaf> swingLeaves = new List<SwingLeaf>();
     bool swingReady;
+    float passageClearance = 2f;
     float swingAngle;
     int swingDirection; // -1 open in (arrivals), +1 open out (departures), 0 closed
 
@@ -145,6 +146,7 @@ public class CustomerWallDoor : MonoBehaviour
     {
         swingLeaves.Clear();
         swingReady = false;
+        passageClearance = 2f;
         swingAngle = 0f;
         swingDirection = 0;
 
@@ -170,6 +172,18 @@ public class CustomerWallDoor : MonoBehaviour
             localCenter.y = 0f;
             if (localCenter.sqrMagnitude < 0.01f)
                 localCenter = Vector3.left;
+
+            // The customer must clear the full hinge-to-edge reach before turning.
+            // Measure the closed leaf, so opening/closing never moves route targets.
+            Renderer leafRenderer = leaf.GetComponentInChildren<Renderer>();
+            if (leafRenderer != null)
+            {
+                Bounds leafBounds = leafRenderer.bounds;
+                Vector3 hinge = leaf.position;
+                float reachX = Mathf.Max(Mathf.Abs(leafBounds.min.x - hinge.x), Mathf.Abs(leafBounds.max.x - hinge.x));
+                float reachZ = Mathf.Max(Mathf.Abs(leafBounds.min.z - hinge.z), Mathf.Abs(leafBounds.max.z - hinge.z));
+                passageClearance = Mathf.Max(passageClearance, Mathf.Sqrt(reachX * reachX + reachZ * reachZ) + 0.75f);
+            }
 
             Vector3 worldSwing = leaf.TransformDirection(Vector3.Cross(Vector3.up, localCenter));
             float sign = Mathf.Sign(Vector3.Dot(worldSwing, outward));
@@ -220,20 +234,26 @@ public class CustomerWallDoor : MonoBehaviour
 
         float nearestEnter = float.MaxValue;
         float nearestLeave = float.MaxValue;
+        bool customerInSweep = false;
+        float triggerRadius = Mathf.Max(SwingTriggerRadius, passageClearance + 1f);
         for (int i = 0; i < customers.Length; i++)
         {
             CustomerAI customer = customers[i];
             if (customer == null) continue;
             float dist = HorizontalDistance(doorPos, customer.transform.position);
-            if (dist > SwingTriggerRadius) continue;
+            if (dist < passageClearance) customerInSweep = true;
+            if (dist > triggerRadius) continue;
             if (customer.IsEntering)
                 nearestEnter = Mathf.Min(nearestEnter, dist);
             else if (customer.IsLeaving)
                 nearestLeave = Mathf.Min(nearestLeave, dist);
         }
 
-        bool enterNear = nearestEnter <= SwingTriggerRadius;
-        bool leaveNear = nearestLeave <= SwingTriggerRadius;
+        // Preserve the opening direction until everyone has cleared the panel,
+        // including customers who have just switched from entry to queue movement.
+        if (customerInSweep && swingDirection != 0) return swingDirection;
+        bool enterNear = nearestEnter <= triggerRadius;
+        bool leaveNear = nearestLeave <= triggerRadius;
         if (enterNear && (!leaveNear || nearestEnter <= nearestLeave))
             return -1;
         if (leaveNear)
@@ -462,9 +482,9 @@ public class CustomerWallDoor : MonoBehaviour
     public void AppendPassage(List<Vector3> into, bool entering)
     {
         if (into == null) return;
-        Vector3 outside = GetCustomerWaypoint(true, 2.4f);
+        Vector3 outside = GetCustomerWaypoint(true, Mathf.Max(2.4f, passageClearance));
         Vector3 threshold = GetCustomerWaypoint(true, 0.15f);
-        float insideDistance = wallSide == WallSide.East ? 1.0f : 2.0f;
+        float insideDistance = passageClearance;
         Vector3 inside = GetCustomerWaypoint(false, insideDistance);
         bool hasBus = TryGetBusAlightPoint(out Vector3 bus);
 

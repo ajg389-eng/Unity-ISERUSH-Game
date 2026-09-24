@@ -212,6 +212,11 @@ public class PurchaseUndoManager : MonoBehaviour
         stack.Add(entry);
     }
 
+    public void ClearHistory()
+    {
+        stack.Clear();
+    }
+
     public void NotifyWorkerFired(KitchenEmployee employee)
     {
         if (employee == null) return;
