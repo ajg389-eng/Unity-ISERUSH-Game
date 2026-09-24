@@ -1108,6 +1108,11 @@ public class BuildPlacer : MonoBehaviour
         if (walls != null) walls.FitToGrid();
     }
 
+    public void EnsureCustomerEntrance()
+    {
+        EnsureRequiredCustomerDoors();
+    }
+
     void EnsureRequiredCustomerDoors()
     {
         CustomerWallDoor entrance = null;

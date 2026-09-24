@@ -8,6 +8,19 @@ using UnityEngine.Rendering;
 /// </summary>
 public class ParkingLotDressing : MonoBehaviour
 {
+    public static Vector3 DeliveryStallCenter { get; private set; }
+    public static Quaternion DeliveryStallFacing { get; private set; } = Quaternion.LookRotation(Vector3.left, Vector3.up);
+    public static bool HasDeliveryStall { get; private set; }
+    public static float DeliveryAisleX { get; private set; }
+    public static float LotEntryZ { get; private set; }
+
+    public static bool TryGetDeliveryStall(out Vector3 center, out Quaternion facing)
+    {
+        center = DeliveryStallCenter;
+        facing = DeliveryStallFacing;
+        return HasDeliveryStall;
+    }
+
     const float StallWidth = 2.65f;
     const float StallDepth = 5.4f;
     const float LineWidth = 0.09f;
@@ -57,6 +70,14 @@ public class ParkingLotDressing : MonoBehaviour
         }
 
         ParkCars(lot, west, east, z0, stallCount);
+        int middle = stallCount >= 3 ? stallCount / 2 : 1;
+        Vector3 middleStall = StallCenter(west, east, z0, Mathf.Clamp(middle, 0, stallCount - 1));
+        middleStall.y = lot.min.y;
+        DeliveryStallCenter = middleStall;
+        DeliveryStallFacing = Quaternion.LookRotation(Vector3.left, Vector3.up);
+        DeliveryAisleX = west - 2.15f;
+        LotEntryZ = lot.max.z - 0.65f;
+        HasDeliveryStall = true;
     }
 
     static bool TryGetLotBounds(out Bounds lot)
@@ -132,9 +153,9 @@ public class ParkingLotDressing : MonoBehaviour
 
         Renderer bus = FindBus();
         var occupied = new List<int>();
-        int[] preferred = stallCount >= 4
-            ? new[] { 1, stallCount - 2 }
-            : new[] { 0, stallCount - 1 };
+        int[] preferred = stallCount >= 3
+            ? new[] { stallCount - 1 }
+            : new[] { stallCount - 1 };
 
         for (int p = 0; p < preferred.Length; p++)
         {
@@ -158,6 +179,18 @@ public class ParkingLotDressing : MonoBehaviour
         Bounds pad = bus.bounds;
         pad.Expand(1.6f);
         return pad.Contains(new Vector3(stallCenter.x, pad.center.y, stallCenter.z));
+    }
+
+    public static bool TryGetBusBounds(out Bounds bounds)
+    {
+        Renderer bus = FindBus();
+        if (bus == null)
+        {
+            bounds = default;
+            return false;
+        }
+        bounds = bus.bounds;
+        return true;
     }
 
     static Renderer FindBus()

@@ -342,6 +342,16 @@ public class PurchaseUndoManager : MonoBehaviour
             : FindFirstObjectByType<KitchenInventory>();
         if (kitchen == null || rec.item == null)
             return false;
+
+        var delivery = IngredientDeliveryService.Instance;
+        if (delivery != null && delivery.TryCancelPack(rec.item, rec.packSize))
+        {
+            var moneyRefund = FindFirstObjectByType<MoneyManager>();
+            if (moneyRefund != null)
+                moneyRefund.AddMoney(rec.paid);
+            return true;
+        }
+
         if (!kitchen.TryConsume(rec.item, rec.packSize))
             return false;
 

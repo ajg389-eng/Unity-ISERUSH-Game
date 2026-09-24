@@ -55,7 +55,8 @@ public class OnboardingTutorial : MonoBehaviour
         Drink,
         Assembly,
         HeatLamp,
-        Pantry
+        Pantry,
+        Door
     }
 
     struct Step
@@ -124,8 +125,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Open <b>Inventory</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
+            "Front door",
+            "Customers and deliveries use the <b>door</b> on the east wall to come in from the parking lot. It is already on the wall — you cannot buy another from Inventory.\n\nDouble-click the door later if you want to slide it along the wall.",
+            "Next", Highlight.Door, requirePlaced: true),
+        new Step(
             "Buy stations",
-            "Open <b>Inventory</b> (top-left). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
+            "Open <b>Inventory</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
@@ -166,12 +171,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Buy ingredients",
-            "Stations do nothing without stock. Open <b>Management</b> (top-left), then the <b>Ingredients</b> tab.\n\n" +
-            "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash and fill kitchen stock the freezer and pantry use.",
+            "Stations do nothing without stock. Open <b>Management</b> (top-left, or press 2), then the <b>Ingredients</b> tab.\n\n" +
+            "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
-            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press M).\n\n" +
+            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press 2).\n\n" +
             "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. A worker can cover up to three stations; extra people you do not assign will stand idle.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
@@ -444,6 +449,7 @@ public class OnboardingTutorial : MonoBehaviour
         switch (step.highlight)
         {
             case Highlight.Register: return "Place register on counter";
+            case Highlight.Door: return "East door is already placed";
             case Highlight.Freezer: return "Place freezer";
             case Highlight.Grill: return "Place grill";
             case Highlight.Fryer: return "Place fryer";
@@ -542,6 +548,7 @@ public class OnboardingTutorial : MonoBehaviour
     bool AllTutorialStationsPlaced()
     {
         return HasPlacedStation(Highlight.Register)
+            && HasPlacedStation(Highlight.Door)
             && HasPlacedStation(Highlight.Freezer)
             && HasPlacedStation(Highlight.Grill)
             && HasPlacedStation(Highlight.Fryer)
@@ -562,6 +569,16 @@ public class OnboardingTutorial : MonoBehaviour
                     if (!starterKitchen.Contains(register.gameObject)
                         && register.GetComponent<PlacedBuildItem>() != null)
                         return true;
+                return false;
+            case Highlight.Door:
+                var doors = FindObjectsByType<CustomerWallDoor>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                foreach (var door in doors)
+                {
+                    if (door == null || !CustomerWallDoor.IsGameplayDoor(door)) continue;
+                    if (starterKitchen.Contains(door.gameObject)) continue;
+                    if (door.GetComponent<PlacedBuildItem>() == null) continue;
+                    return true;
+                }
                 return false;
             case Highlight.Freezer: return HasActiveStation<FreezerStation>();
             case Highlight.Grill: return HasActiveStation<GrillStation>();
@@ -634,6 +651,10 @@ public class OnboardingTutorial : MonoBehaviour
         Sfx.Play(skipped ? SfxId.UiClose : SfxId.MissionComplete);
         var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         if (inventoryUI != null) inventoryUI.RefreshAll();
+
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null)
+            placer.EnsureCustomerEntrance();
     }
 
     void PrepareEmptyKitchen()
@@ -650,6 +671,10 @@ public class OnboardingTutorial : MonoBehaviour
         if (stock != null)
             stock.ClearAllStock();
 
+        ClearExtraDoors();
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null)
+            placer.EnsureCustomerEntrance();
         ResyncGridSoon();
     }
 
@@ -681,6 +706,20 @@ public class OnboardingTutorial : MonoBehaviour
         CollectStarter<AssemblyStation>();
         CollectStarter<HeatLampStation>();
         CollectStarter<PantryStation>();
+        CollectStarter<CustomerWallDoor>();
+    }
+
+    void ClearExtraDoors()
+    {
+        CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < doors.Length; i++)
+        {
+            CustomerWallDoor door = doors[i];
+            if (door == null || !CustomerWallDoor.IsGameplayDoor(door)) continue;
+            if (starterKitchen.Contains(door.gameObject)) continue;
+            Destroy(door.gameObject);
+        }
     }
 
     void CollectStarter<T>() where T : MonoBehaviour
@@ -850,6 +889,7 @@ public class OnboardingTutorial : MonoBehaviour
         switch (kind)
         {
             case Highlight.Register: return item.buildFunction == ItemDefinition.BuildFunction.Register;
+            case Highlight.Door: return item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor;
             case Highlight.Freezer: return name.Contains("freezer");
             case Highlight.Grill: return name.Contains("grill");
             case Highlight.Fryer: return name.Contains("fryer");
@@ -873,6 +913,9 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Register:
                 var reg = FindFirstObjectByType<Register>();
                 return reg != null ? reg.transform : null;
+            case Highlight.Door:
+                var door = FindFirstObjectByType<CustomerWallDoor>();
+                return door != null && CustomerWallDoor.IsGameplayDoor(door) ? door.transform : null;
             case Highlight.Inventory:
                 var tabsInv = FindFirstObjectByType<MainHudTabs>();
                 return tabsInv != null ? tabsInv.InventoryTabTransform : null;

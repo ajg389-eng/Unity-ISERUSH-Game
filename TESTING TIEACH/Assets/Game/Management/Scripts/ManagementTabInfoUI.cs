@@ -317,7 +317,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>Items to sell</b>\nThe green toggle determines whether customers can order that product. Each item also shows its station sequence and the material used at every step.\n\n" +
                 "<b>Workflow</b>\nRead the stations from left to right. A product can only be completed when its required stations exist, have materials, and belong to a usable worker flow.\n\n" +
-                "<b>Buy ingredients</b>\nEach row shows the ingredient, current stock, pack size, and purchase price. Ordering adds one pack to kitchen inventory and subtracts its cost from your money.\n\n" +
+                "<b>Buy ingredients</b>\nEach row shows the ingredient, current stock, pack size, and purchase price. Ordering spends cash and starts a <b>1-minute delivery</b>. A delivery person comes in the front door and hands the pack over at the counter when the timer ends.\n\n" +
                 "<b>Undo purchase</b>\nThe bottom button reverses your latest eligible purchase.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Inventory protects production from shortages, but excess stock ties up money. Match purchasing to expected demand.";
             return;

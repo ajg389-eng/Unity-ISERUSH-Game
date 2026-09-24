@@ -417,12 +417,26 @@ public class IngredientsOrderUI : MonoBehaviour
             int price = inventory.GetPackPrice(row.item);
             int stock = inventory.GetCount(row.item);
 
+            int incoming = 0;
+            var delivery = IngredientDeliveryService.Instance;
+            if (delivery != null)
+                incoming = delivery.GetIncomingCount(row.item);
+
             if (row.infoText != null)
                 row.infoText.text = name + "\n<size=85%>Pack of " + pack + "</size>";
             if (row.stockText != null)
-                row.stockText.text = "Stock\n" + stock;
+            {
+                row.stockText.text = incoming > 0
+                    ? "Stock\n" + stock + "\n<size=80%>+" + incoming + " incoming</size>"
+                    : "Stock\n" + stock;
+            }
             if (row.orderButtonLabel != null)
-                row.orderButtonLabel.text = "Order $" + price;
+            {
+                float remaining = delivery != null ? delivery.GetRemainingFor(row.item) : -1f;
+                row.orderButtonLabel.text = remaining >= 0f
+                    ? "Arrives " + IngredientDeliveryService.FormatCountdown(remaining)
+                    : "Order $" + price;
+            }
 
             bool can = money == null || money.CanAfford(price);
             if (row.orderButton != null)

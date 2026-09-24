@@ -6,7 +6,8 @@ using UnityEngine;
 /// </summary>
 public class RoadTrafficController : MonoBehaviour
 {
-    const float LaneOffset = 2.35f;
+    public const float HighwayLaneOffset = 2.35f;
+    const float LaneOffset = HighwayLaneOffset;
     const float MinSpawnGap = 16f;
 
     [SerializeField] float minSpawnInterval = 2.4f;
@@ -16,6 +17,25 @@ public class RoadTrafficController : MonoBehaviour
 
     readonly List<GameObject> carPrefabs = new List<GameObject>();
     readonly List<DrivingCar> liveCars = new List<DrivingCar>();
+
+    public static float WestSpawnX { get; private set; }
+    public static float EastSpawnX { get; private set; }
+    public static float HighwayZ { get; private set; }
+    public static float HighwayY { get; private set; }
+    public static bool HasHighway { get; private set; }
+
+    static RoadTrafficController instance;
+    int eastboundHold;
+    float eastboundHoldUntil;
+
+    public static bool TryGetHighway(out float westX, out float eastX, out float roadZ, out float roadY)
+    {
+        westX = WestSpawnX;
+        eastX = EastSpawnX;
+        roadZ = HighwayZ;
+        roadY = HighwayY;
+        return HasHighway;
+    }
 
     float westSpawnX;
     float eastSpawnX;
@@ -36,6 +56,7 @@ public class RoadTrafficController : MonoBehaviour
 
     void Start()
     {
+        instance = this;
         LoadCarPrefabs();
         ExtendRoadIntoTunnels();
         ResolveDrivePath();
@@ -49,12 +70,16 @@ public class RoadTrafficController : MonoBehaviour
     {
         if (carPrefabs.Count == 0) return;
 
-        nextEastbound -= Time.deltaTime;
+        bool holdEast = eastboundHold > 0 || Time.time < eastboundHoldUntil;
+        SetEastboundPaused(holdEast);
+
+        nextEastbound -= holdEast ? 0f : Time.deltaTime;
         nextWestbound -= Time.deltaTime;
         if (nextEastbound <= 0f)
         {
-            SpawnCar(1f);
-            nextEastbound = Random.Range(minSpawnInterval, maxSpawnInterval);
+            if (!holdEast)
+                SpawnCar(1f);
+            nextEastbound = holdEast ? 0.8f : Random.Range(minSpawnInterval, maxSpawnInterval);
         }
         if (nextWestbound <= 0f)
         {
@@ -197,6 +222,62 @@ public class RoadTrafficController : MonoBehaviour
             westEndX = westSpawnX - 4f;
             eastEndX = eastSpawnX + 4f;
         }
+
+        WestSpawnX = westSpawnX;
+        EastSpawnX = eastSpawnX;
+        HighwayZ = roadZ;
+        HighwayY = roadY;
+        HasHighway = true;
+    }
+
+    public static void BeginDeliveryLaneClearance()
+    {
+        if (instance == null)
+            instance = FindFirstObjectByType<RoadTrafficController>();
+        if (instance == null) return;
+        instance.eastboundHold++;
+        instance.eastboundHoldUntil = Time.time + 2.5f;
+        instance.DespawnEastbound();
+        instance.SetEastboundPaused(true);
+    }
+
+    public static void KeepDeliveryLaneClear(float extraSeconds = 1.5f)
+    {
+        if (instance == null)
+            instance = FindFirstObjectByType<RoadTrafficController>();
+        if (instance == null) return;
+        instance.eastboundHoldUntil = Mathf.Max(instance.eastboundHoldUntil, Time.time + extraSeconds);
+    }
+
+    public static void EndDeliveryLaneClearance()
+    {
+        if (instance == null) return;
+        instance.eastboundHold = Mathf.Max(0, instance.eastboundHold - 1);
+        instance.eastboundHoldUntil = Mathf.Max(instance.eastboundHoldUntil, Time.time + 1.8f);
+    }
+
+    void DespawnEastbound()
+    {
+        PruneCars();
+        for (int i = liveCars.Count - 1; i >= 0; i--)
+        {
+            DrivingCar car = liveCars[i];
+            if (car == null) continue;
+            if (car.Direction <= 0f) continue;
+            Destroy(car.gameObject);
+            liveCars.RemoveAt(i);
+        }
+    }
+
+    void SetEastboundPaused(bool paused)
+    {
+        PruneCars();
+        for (int i = 0; i < liveCars.Count; i++)
+        {
+            DrivingCar car = liveCars[i];
+            if (car == null || car.Direction <= 0f) continue;
+            car.SetPaused(paused);
+        }
     }
 
     void SpawnCar(float direction)
@@ -207,6 +288,8 @@ public class RoadTrafficController : MonoBehaviour
         float spawnX = direction > 0f ? westSpawnX : eastSpawnX;
         float laneZ = roadZ + (direction > 0f ? -LaneOffset : LaneOffset);
         if (LaneOccupied(spawnX, laneZ, direction))
+            return;
+        if (DeliveryVanBlocksLane(spawnX, laneZ, direction))
             return;
 
         GameObject prefab = carPrefabs[Random.Range(0, carPrefabs.Count)];
@@ -234,6 +317,15 @@ public class RoadTrafficController : MonoBehaviour
                 return true;
         }
         return false;
+    }
+
+    static bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction)
+    {
+        DeliveryVan van = FindFirstObjectByType<DeliveryVan>();
+        if (van == null) return false;
+        if (Mathf.Abs(van.transform.position.z - laneZ) > 2.8f) return false;
+        float along = (van.transform.position.x - spawnX) * direction;
+        return along >= -10f && along < MinSpawnGap + 14f;
     }
 
     void PruneCars()

@@ -10,7 +10,7 @@ public class ManagementScreenController : MonoBehaviour
 {
     [Header("Open / Close")]
     public GameModeManager modeManager;
-    public KeyCode toggleKey = KeyCode.M;
+    public KeyCode toggleKey = KeyCode.Alpha2;
     public Button openButton;
     public GameObject managementPanel;
     public Button closeButton;
@@ -207,7 +207,10 @@ public class ManagementScreenController : MonoBehaviour
     void Update()
     {
         if (UIInputFocusGuard.IsTyping) return;
-        if (Input.GetKeyDown(toggleKey))
+        if (Input.GetKeyDown(toggleKey)
+            || Input.GetKeyDown(KeyCode.Alpha2)
+            || Input.GetKeyDown(KeyCode.Keypad2)
+            || Input.GetKeyDown(KeyCode.M))
             Toggle();
     }
 

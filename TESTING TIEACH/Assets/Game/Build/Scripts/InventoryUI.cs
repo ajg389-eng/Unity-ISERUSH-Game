@@ -79,6 +79,10 @@ public class InventoryUI : MonoBehaviour
 
     void Update()
     {
+        if (!UIInputFocusGuard.IsTyping
+            && (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)))
+            TogglePanel();
+
         ApplyModeState();
         RefreshExpandButton();
 
@@ -232,9 +236,8 @@ public class InventoryUI : MonoBehaviour
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
-            // Entrance and exit are permanent restaurant fixtures. Their definition stays
-            // available internally so the scene can create and move them, but they are not sold.
-            if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall) continue;
+            if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
+                continue;
 
             if (useSquareCards || rowPrefab == null || rowPrefab.GetComponent<InventoryItemCardUI>() != null)
                 CreateSquareCard(item);

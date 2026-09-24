@@ -129,6 +129,7 @@ public class CustomerSpawner : MonoBehaviour
             : (spawnPoint != null ? spawnPoint.position : transform.position);
 
         var c = Instantiate(customerPrefab, spawnPos, Quaternion.identity);
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstCustomerArrived);
         var ai = c.GetComponent<CustomerAI>();
         if (ai == null) return true;
 

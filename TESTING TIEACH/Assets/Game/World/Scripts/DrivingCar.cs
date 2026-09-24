@@ -14,6 +14,13 @@ public class DrivingCar : MonoBehaviour
     float groundY;
     Transform[] wheels;
 
+    public float Direction => direction;
+
+    public void SetPaused(bool paused)
+    {
+        enabled = !paused;
+    }
+
     public void Configure(float driveSpeed, float driveDirection, float stopX)
     {
         speed = Mathf.Max(1f, driveSpeed);

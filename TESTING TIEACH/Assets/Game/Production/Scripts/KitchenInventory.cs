@@ -190,7 +190,7 @@ public class KitchenInventory : MonoBehaviour
         return item.name;
     }
 
-    /// <summary>Spend money and add one pack of the ingredient.</summary>
+    /// <summary>Spend money and queue a one-minute ingredient delivery.</summary>
     public bool TryOrderPack(ItemDefinition item)
     {
         if (item == null) return false;
@@ -205,7 +205,13 @@ public class KitchenInventory : MonoBehaviour
                 return false;
         }
 
-        AddStock(item, pack);
+        IngredientDeliveryService service = IngredientDeliveryService.Instance;
+        if (service == null)
+        {
+            var host = new GameObject("IngredientDeliveryService");
+            service = host.AddComponent<IngredientDeliveryService>();
+        }
+        service.QueuePack(item, pack);
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
             undo.RecordIngredientPack(item, pack, money != null ? price : 0);

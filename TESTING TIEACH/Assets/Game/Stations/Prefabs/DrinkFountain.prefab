@@ -263,7 +263,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81fb9bd2e76693c4ead66d5ebc927cdd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DrinkStation
-  interactionTimeSeconds: 1.5
+  processTimeSeconds: 7.5
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!1 &8939223708076402897
 GameObject:

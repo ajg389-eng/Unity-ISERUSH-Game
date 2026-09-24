@@ -997,6 +997,78 @@ public class CounterSurface : MonoBehaviour
             && modeManager.CurrentMode == GameModeManager.Mode.Build;
         if (gridVisual.activeSelf != visible) gridVisual.SetActive(visible);
     }
+
+    /// <summary>
+    /// Empty counter tile (no register / pickup) plus a lobby stand two tiles east of it.
+    /// </summary>
+    public static bool TryGetEmptyDeliverySpot(out Vector3 dropTop, out Vector3 lobbyStand)
+    {
+        dropTop = Vector3.zero;
+        lobbyStand = Vector3.zero;
+        float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
+        Register[] registers = Object.FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        HeatLampStation[] lamps = Object.FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        CounterSurface[] surfaces = Object.FindObjectsByType<CounterSurface>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+        Vector3 hint = Vector3.zero;
+        if (registers.Length > 0 && registers[0] != null)
+            hint = registers[0].transform.position;
+
+        bool found = false;
+        float bestScore = float.MaxValue;
+        Bounds bestSlab = default;
+        Vector3 bestDrop = Vector3.zero;
+
+        for (int s = 0; s < surfaces.Length; s++)
+        {
+            CounterSurface surface = surfaces[s];
+            if (surface == null) continue;
+            Bounds slab = surface.GetBaseBounds();
+            int slots = Mathf.Max(1, surface.slotCount);
+            for (int slot = 0; slot < slots; slot++)
+            {
+                if (!surface.IsSlotAvailable(slot)) continue;
+                Vector3 center = surface.GetSlotWorldCenter(slot);
+                if (TileBlockedByStation(center, registers, lamps)) continue;
+                float score = (center - hint).sqrMagnitude;
+                if (found && score >= bestScore) continue;
+                found = true;
+                bestScore = score;
+                bestDrop = center;
+                bestSlab = slab;
+            }
+        }
+
+        if (!found) return false;
+
+        dropTop = new Vector3(bestDrop.x, bestSlab.max.y, bestDrop.z);
+        GameObject floor = GameObject.Find("CustomerFloor");
+        Renderer floorRenderer = floor != null ? floor.GetComponentInChildren<Renderer>() : null;
+        float standY = dropTop.y;
+        if (floorRenderer != null)
+            standY = floorRenderer.bounds.max.y;
+        lobbyStand = new Vector3(bestSlab.max.x + 2f * cell, standY, bestDrop.z);
+        return true;
+    }
+
+    static bool TileBlockedByStation(Vector3 slotCenter, Register[] registers, HeatLampStation[] lamps)
+    {
+        for (int i = 0; i < registers.Length; i++)
+        {
+            if (registers[i] == null) continue;
+            Vector3 p = registers[i].transform.position;
+            if (Mathf.Abs(p.x - slotCenter.x) < 0.85f && Mathf.Abs(p.z - slotCenter.z) < 0.85f)
+                return true;
+        }
+        for (int i = 0; i < lamps.Length; i++)
+        {
+            if (lamps[i] == null) continue;
+            Vector3 p = lamps[i].transform.position;
+            if (Mathf.Abs(p.x - slotCenter.x) < 0.85f && Mathf.Abs(p.z - slotCenter.z) < 0.85f)
+                return true;
+        }
+        return false;
+    }
 }
 
 /// <summary>Excludes the counter's build overlay from placement bounds.</summary>

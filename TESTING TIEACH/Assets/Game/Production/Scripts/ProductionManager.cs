@@ -1223,7 +1223,7 @@ public class ProductionManager : MonoBehaviour
     public float GetFryerProcessTime(KitchenEmployee forEmployee = null)
     {
         var f = GetFryerFor(forEmployee);
-        return f != null ? f.processTimeSeconds : 5f;
+        return f != null ? f.processTimeSeconds : 7.5f;
     }
 
     public bool TryLoadFryer(KitchenEmployee forEmployee = null)
@@ -1242,7 +1242,7 @@ public class ProductionManager : MonoBehaviour
     public float GetDrinkProcessTime(KitchenEmployee forEmployee = null)
     {
         var d = GetDrinkFor(forEmployee);
-        return d != null ? d.processTimeSeconds : 1.5f;
+        return d != null ? d.processTimeSeconds : 7.5f;
     }
 
     public bool TryDispenseDrink(KitchenEmployee forEmployee = null)

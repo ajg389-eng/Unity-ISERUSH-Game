@@ -47,7 +47,6 @@ public class Register : MonoBehaviour
     float orderTimer;
     MoneyManager moneyManager;
     HeatLampStation cachedHeatLamp;
-    static bool raisedFirstCustomerEvent;
     static bool raisedFirstOrderServedEvent;
     bool queueGrowingRaised;
 
@@ -107,12 +106,6 @@ public class Register : MonoBehaviour
         queue.Add(customer);
         TryUnlockPickup();
         UpdateQueueTargets();
-
-        if (!raisedFirstCustomerEvent)
-        {
-            raisedFirstCustomerEvent = true;
-            TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstCustomerArrived);
-        }
 
         Sfx.Play(SfxId.CustomerArrive);
         return true;
@@ -545,6 +538,59 @@ public class Register : MonoBehaviour
 
     /// <summary>World position of the front order-queue stand (lobby side).</summary>
     public Vector3 GetFrontQueueWorldPosition() => GetQueueSlot(0);
+
+    /// <summary>Second lobby tile east of the counter — well clear of the wood.</summary>
+    public Vector3 GetDeliveryStandPosition()
+    {
+        if (CounterSurface.TryGetEmptyDeliverySpot(out _, out Vector3 stand))
+            return SlotHeight(stand);
+
+        float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
+        Vector3 fallback = GetQueueSlot(1);
+        fallback.x += cell;
+        return SlotHeight(fallback);
+    }
+
+    public Vector3 GetCounterDropPosition()
+    {
+        if (CounterSurface.TryGetEmptyDeliverySpot(out Vector3 drop, out _))
+            return drop;
+
+        Bounds slab = GetDropSurfaceBounds();
+        Vector3 stand = GetDeliveryStandPosition();
+        return new Vector3(slab.center.x, slab.max.y, stand.z);
+    }
+
+    public Vector3 PushOutOfCounter(Vector3 position, float radius)
+    {
+        Vector3 stand = GetDeliveryStandPosition();
+        if (position.x < stand.x)
+            position.x = stand.x;
+        return position;
+    }
+
+    public Bounds GetDropSurfaceBounds()
+    {
+        CounterSurface[] surfaces = FindObjectsByType<CounterSurface>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        bool found = false;
+        Bounds best = GetRegisterBounds();
+        float bestDist = float.MaxValue;
+        Vector3 here = transform.position;
+        for (int i = 0; i < surfaces.Length; i++)
+        {
+            if (surfaces[i] == null) continue;
+            Bounds b = surfaces[i].GetBaseBounds();
+            float dx = Mathf.Abs(b.center.x - here.x);
+            float dz = Mathf.Abs(b.center.z - here.z);
+            if (dx > 4f || dz > 8f) continue;
+            float dist = dx * dx + dz * dz;
+            if (found && dist >= bestDist) continue;
+            found = true;
+            bestDist = dist;
+            best = b;
+        }
+        return best;
+    }
 
     /// <summary>World position used by build-mode customer queue previews.</summary>
     public Vector3 GetQueuePreviewPosition(int index) => GetQueueSlot(Mathf.Max(0, index));
