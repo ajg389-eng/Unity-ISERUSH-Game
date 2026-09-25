@@ -30,6 +30,7 @@ public class DrivingCar : MonoBehaviour
         bouncePhase = Random.Range(0f, Mathf.PI * 2f);
         bounceAmount = Random.Range(0.015f, 0.035f);
         CacheWheels();
+        if (GetComponent<VehicleHeadlights>() == null) gameObject.AddComponent<VehicleHeadlights>();
     }
 
     void CacheWheels()

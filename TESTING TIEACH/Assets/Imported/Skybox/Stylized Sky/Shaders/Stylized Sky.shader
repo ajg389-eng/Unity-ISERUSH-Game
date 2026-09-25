@@ -2,6 +2,9 @@
 {
     Properties
     {
+        _WeatherDaylight ("Daytime clouds", Float) = 1
+        _WeatherTime ("Cloud drift", Float) = 0
+        _ConstellationIndex ("Nightly constellation", Float) = 0
         [Header(Sun Disc)]
         _SunDiscColor ("Color", Color) = (1, 1, 1, 1)
         _SunDiscMultiplier ("Multiplier", float) = 25
@@ -36,8 +39,10 @@
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
 
             #include "UnityCG.cginc"
+            #include "SkyWeather.cginc"
             
             float3 _SunDiscColor;
             float _SunDiscExponent;
@@ -101,7 +106,7 @@
                 float3 skyGradientColor = lerp(_SkyGradientTop, _SkyGradientBottom, pow(1 - saturate(maskHorizon), _SkyGradientExponent));
 
                 float3 finalColor = lerp(saturate(sunHaloColor + horizonLineColor + skyGradientColor), _SunDiscColor, maskSun);
-                return float4(finalColor, 1);
+                return float4(SkyWeather(finalColor, normalize(i.worldPosition)), 1);
             }
             ENDCG
         }

@@ -36,6 +36,7 @@ public class DeliveryVan : MonoBehaviour
         onParked = parkedCallback;
         speed = 12.6f;
         CacheWheels();
+        if (GetComponent<VehicleHeadlights>() == null) gameObject.AddComponent<VehicleHeadlights>();
         path.Clear();
         BuildArrivePath(transform.position, stallCenter);
         index = 0;

@@ -382,6 +382,11 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
             value = Night;
 
         SetPreset(value);
+        float daylight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 9f, hour))
+            * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(17f, 20f, hour)));
+        runtimeSkybox.SetFloat("_WeatherDaylight", daylight);
+        runtimeSkybox.SetFloat("_WeatherTime", minutes * 0.008f);
+        runtimeSkybox.SetFloat("_ConstellationIndex", (clock.CurrentDay - 1) % 3);
         lastAppliedMinutes = minutes;
 
         if (forceEnvironmentRefresh || Time.unscaledTime >= nextEnvironmentRefresh)
@@ -450,6 +455,8 @@ public sealed class CelestialBodyController : MonoBehaviour
     Mesh circleMesh;
     Material sunMaterial;
     Material moonMaterial;
+    Mesh moonPhaseMesh;
+    int moonPhaseDay = -1;
 
     public static void EnsureOn(GameObject host)
     {
@@ -534,6 +541,8 @@ public sealed class CelestialBodyController : MonoBehaviour
         if (clock == null || viewCamera == null || sun == null || moon == null)
             return;
 
+        UpdateMoonPhase();
+
         float hour = clock.CurrentMinutes / 60f;
         float phase = ((hour - SunriseHour) / (SunsetHour - SunriseHour)) * Mathf.PI;
         Vector3 sunDirection = new Vector3(-Mathf.Cos(phase), Mathf.Sin(phase), 0.28f).normalized;
@@ -554,6 +563,35 @@ public sealed class CelestialBodyController : MonoBehaviour
         body.localScale = Vector3.one * diameter;
     }
 
+    void UpdateMoonPhase()
+    {
+        if (moonPhaseDay == clock.CurrentDay) return;
+        moonPhaseDay = clock.CurrentDay;
+        float fullness = Mathf.Lerp(0.15f, 1f, Mathf.Clamp01((moonPhaseDay - 1f) / 6f));
+        const int segments = 48;
+        var vertices = new Vector3[(segments + 1) * 2];
+        var triangles = new int[segments * 6];
+        for (int i = 0; i <= segments; i++)
+        {
+            float angle = Mathf.Lerp(-Mathf.PI * 0.5f, Mathf.PI * 0.5f, i / (float)segments);
+            float y = Mathf.Sin(angle) * 0.5f;
+            float rim = Mathf.Cos(angle) * 0.5f;
+            vertices[i * 2] = new Vector3((1f - 2f * fullness) * rim, y, 0);
+            vertices[i * 2 + 1] = new Vector3(rim, y, 0);
+            if (i == segments) continue;
+            int t = i * 6, v = i * 2;
+            triangles[t] = v; triangles[t+1] = v+2; triangles[t+2] = v+1;
+            triangles[t+3] = v+1; triangles[t+4] = v+2; triangles[t+5] = v+3;
+        }
+        if (moonPhaseMesh == null) moonPhaseMesh = new Mesh { name = "Daily Moon Phase" };
+        moonPhaseMesh.Clear();
+        moonPhaseMesh.vertices = vertices;
+        moonPhaseMesh.triangles = triangles;
+        moonPhaseMesh.RecalculateNormals();
+        moonPhaseMesh.RecalculateBounds();
+        moon.GetComponent<MeshFilter>().sharedMesh = moonPhaseMesh;
+    }
+
     void OnDestroy()
     {
         if (sun != null) Destroy(sun.gameObject);
@@ -561,5 +599,6 @@ public sealed class CelestialBodyController : MonoBehaviour
         if (sunMaterial != null) Destroy(sunMaterial);
         if (moonMaterial != null) Destroy(moonMaterial);
         if (circleMesh != null) Destroy(circleMesh);
+        if (moonPhaseMesh != null) Destroy(moonPhaseMesh);
     }
 }
