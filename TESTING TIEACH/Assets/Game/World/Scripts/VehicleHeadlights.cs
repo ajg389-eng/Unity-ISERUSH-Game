@@ -56,8 +56,8 @@ public class VehicleHeadlights : MonoBehaviour
         float hour=GameTimeManager.Instance!=null?GameTimeManager.Instance.CurrentMinutes/60f:12f;
         float darkness=1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(6,9,hour))*(1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(17,20,hour)));
         float strength=Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.2f,0.75f,darkness));
-        foreach(var lamp in lamps) { lamp.enabled=strength>0.01f; lamp.intensity=7*strength; }
-        if(lensMaterial!=null) lensMaterial.SetColor("_EmissionColor",new Color(1,0.94f,0.78f)*3*strength);
+        foreach(var lamp in lamps) { lamp.enabled=strength>0.01f; lamp.intensity=12*strength; }
+        if(lensMaterial!=null) lensMaterial.SetColor("_EmissionColor",new Color(1,0.94f,0.78f)*5*strength);
     }
     void OnDestroy() { if(lensMaterial!=null) Destroy(lensMaterial); }
 }

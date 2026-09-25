@@ -3,6 +3,7 @@
     Properties
     {
         _WeatherDaylight ("Daytime clouds", Float) = 1
+        _CloudVisibility ("Cloud visibility", Float) = 1
         _WeatherTime ("Cloud drift", Float) = 0
         _ConstellationIndex ("Nightly constellation", Float) = 0
         [Header(Sun Disc)]

@@ -1,4 +1,4 @@
-float _WeatherDaylight, _WeatherTime, _ConstellationIndex;
+float _WeatherDaylight, _WeatherTime, _ConstellationIndex, _CloudVisibility;
 float SkyHash(float2 p) { return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453); }
 float Puff(float2 p,float2 c,float2 r) { return 1-smoothstep(0.86,1.04,length((p-c)/r)); }
 float SkyLink(float2 p,float2 a,float2 b) {
@@ -53,5 +53,5 @@ float3 SkyWeather(float3 sky,float3 d) {
  c=max(c,Puff(q,float2(0.105,0.005),float2(0.058,0.044)));
  if(c>coverage) { coverage=c; shade=saturate((q.y+0.05)/0.15); }
  }
- return lerp(sky,lerp(float3(0.72,0.78,0.85),float3(1,0.99,0.96),shade),coverage*smoothstep(0.02,0.09,d.y)*_WeatherDaylight*0.96);
+ return lerp(sky,lerp(float3(0.72,0.78,0.85),float3(1,0.99,0.96),shade),coverage*smoothstep(0.02,0.09,d.y)*_CloudVisibility*0.96);
 }

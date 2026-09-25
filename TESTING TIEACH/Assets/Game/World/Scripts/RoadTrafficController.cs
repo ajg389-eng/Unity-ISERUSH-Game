@@ -60,6 +60,8 @@ public class RoadTrafficController : MonoBehaviour
         LoadCarPrefabs();
         ExtendRoadIntoTunnels();
         ResolveDrivePath();
+        if (GetComponent<RoadStreetlights>() == null)
+            gameObject.AddComponent<RoadStreetlights>();
         nextEastbound = Random.Range(0.2f, 1.2f);
         nextWestbound = Random.Range(0.8f, 2.0f);
         SpawnCar(1f);

@@ -310,16 +310,16 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
 
     static readonly SkyPreset Night = new SkyPreset
     {
-        top = new Color(0.0279f, 0.0499f, 0.0882f, 1f),
-        bottom = new Color(0.1268f, 0.3134f, 0.3750f, 1f),
+        top = new Color(0.008f, 0.015f, 0.035f, 1f),
+        bottom = new Color(0.025f, 0.055f, 0.085f, 1f),
         gradientExponent = 0.75f,
         sun = new Color(0.64f, 0.76f, 0.86f, 1f),
         sunMultiplier = 500f,
         sunExponent = 250000f,
         halo = new Color(0.0476f, 0.8088f, 0.7143f, 1f),
         haloExponent = 500f,
-        haloContribution = 0.2f,
-        horizon = new Color(0.1268f, 0.3134f, 0.3750f, 1f),
+        haloContribution = 0.04f,
+        horizon = new Color(0.025f, 0.055f, 0.085f, 1f),
         horizonExponent = 12.3f,
         horizonContribution = 0.121f
     };
@@ -329,6 +329,11 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     GameTimeManager clock;
     float lastAppliedMinutes = float.MinValue;
     float nextEnvironmentRefresh;
+    Light daylightSource;
+    float originalSunIntensity;
+    float originalAmbientIntensity;
+    float originalReflectionIntensity;
+    bool lightingCaptured;
 
     public static void EnsureOn(GameObject host)
     {
@@ -353,6 +358,20 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
             : new Material(shader);
         runtimeSkybox.name = "Time Of Day Skybox (Runtime)";
         RenderSettings.skybox = runtimeSkybox;
+        daylightSource = RenderSettings.sun;
+        if (daylightSource == null)
+        {
+            foreach (Light candidate in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (candidate.type != LightType.Directional || !candidate.isActiveAndEnabled) continue;
+                if (daylightSource == null || candidate.intensity > daylightSource.intensity)
+                    daylightSource = candidate;
+            }
+        }
+        if (daylightSource != null) originalSunIntensity = daylightSource.intensity;
+        originalAmbientIntensity = RenderSettings.ambientIntensity;
+        originalReflectionIntensity = RenderSettings.reflectionIntensity;
+        lightingCaptured = true;
         ApplySky(forceEnvironmentRefresh: true);
     }
 
@@ -385,6 +404,14 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         float daylight = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 9f, hour))
             * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(17f, 20f, hour)));
         runtimeSkybox.SetFloat("_WeatherDaylight", daylight);
+        float cloudVisibility = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 9f, hour))
+            * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(16f, 18f, hour)));
+        runtimeSkybox.SetFloat("_CloudVisibility", cloudVisibility);
+        // Dim the world illumination too, so local lamps remain visible after dusk.
+        if (daylightSource != null)
+            daylightSource.intensity = originalSunIntensity * Mathf.Lerp(0.07f, 1f, daylight);
+        RenderSettings.ambientIntensity = originalAmbientIntensity * Mathf.Lerp(0.22f, 1f, daylight);
+        RenderSettings.reflectionIntensity = originalReflectionIntensity * Mathf.Lerp(0.2f, 1f, daylight);
         runtimeSkybox.SetFloat("_WeatherTime", minutes * 0.008f);
         runtimeSkybox.SetFloat("_ConstellationIndex", (clock.CurrentDay - 1) % 3);
         lastAppliedMinutes = minutes;
@@ -437,6 +464,12 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     {
         if (RenderSettings.skybox == runtimeSkybox)
             RenderSettings.skybox = originalSkybox;
+        if (lightingCaptured)
+        {
+            if (daylightSource != null) daylightSource.intensity = originalSunIntensity;
+            RenderSettings.ambientIntensity = originalAmbientIntensity;
+            RenderSettings.reflectionIntensity = originalReflectionIntensity;
+        }
         if (runtimeSkybox != null)
             Destroy(runtimeSkybox);
     }
