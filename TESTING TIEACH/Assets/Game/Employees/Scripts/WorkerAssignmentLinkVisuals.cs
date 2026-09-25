@@ -227,7 +227,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 bool isStart = i == 0;
                 bool isEnd = i == chain.Count - 1;
                 StationNode stopNode = StationNode.EnsureOn(chain[i]);
-                bool isHandoff = isEnd && stopNode != null && stopNode.IsWorkStation && stopNode.assignedWorker != worker;
+                bool isHandoff = isEnd && stopNode != null && stopNode.IsWorkStation && !stopNode.IsWorkerAssigned(worker);
                 string role = isHandoff ? "HANDOFF" : isStart && isEnd ? "START / END" : isStart ? "START" : isEnd ? "END" : "STOP " + i;
                 Color markerColor = isStart ? startColor : isEnd ? endColor : stopColor;
                 string owner = showOwner ? worker.employeeName + "\n" : "";
@@ -288,7 +288,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             StationNode node = StationNode.EnsureOn(current);
             GameObject next = node != null ? node.outputTarget : null;
             StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
-            if (nextNode != null && nextNode.IsWorkStation && nextNode.assignedWorker != worker)
+            if (nextNode != null && nextNode.IsWorkStation && !nextNode.IsWorkerAssigned(worker))
             {
                 chain.Add(next);
                 break;

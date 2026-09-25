@@ -403,20 +403,29 @@ public class ProductionManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// True if this station is locked to a different flow.
-    /// Heat lamps are shared pass-throughs and may appear on multiple flows.
-    /// </summary>
+    /// <summary>Stations are shared resources and may appear on multiple flows.</summary>
     public bool IsStationOnOtherFlow(GameObject station, ProductionFlowPlan except)
     {
-        if (station == null || productionFlows == null) return false;
-        if (station.GetComponent<HeatLampStation>() != null)
-            return false;
-
-        foreach (ProductionFlowPlan flow in productionFlows)
-            if (flow != null && flow != except && flow.stations != null && flow.stations.Contains(station))
-                return true;
         return false;
+    }
+
+    public ProductionFlowPlan GetFlowForWorker(KitchenEmployee worker)
+    {
+        if (worker == null || productionFlows == null) return null;
+        foreach (ProductionFlowPlan flow in productionFlows)
+            if (flow != null && flow.workers != null && flow.workers.Contains(worker))
+                return flow;
+        return null;
+    }
+
+    /// <summary>Returns the next stop from this worker's flow, allowing one station to have different routes in different flows.</summary>
+    public GameObject GetFlowOutput(KitchenEmployee worker, GameObject station)
+    {
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        if (flow?.stations == null || station == null) return null;
+        int index = flow.stations.IndexOf(station);
+        if (index < 0 || index + 1 >= flow.stations.Count) return null;
+        return flow.stations[index + 1];
     }
 
     public void AddWorkerToSelectedFlow(KitchenEmployee employee)

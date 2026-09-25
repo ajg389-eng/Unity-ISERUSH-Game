@@ -17,6 +17,16 @@ public class AssignmentRow
 /// </summary>
 public class KitchenEmployee : MonoBehaviour
 {
+    static readonly HashSet<KitchenEmployee> ActiveEmployees = new HashSet<KitchenEmployee>();
+    static readonly Dictionary<Vector2Int, WorkerCellReservation> CellReservations
+        = new Dictionary<Vector2Int, WorkerCellReservation>();
+
+    struct WorkerCellReservation
+    {
+        public KitchenEmployee owner;
+        public float expiresAt;
+    }
+
     public enum HeldPreviewKind
     {
         None,
@@ -46,6 +56,8 @@ public class KitchenEmployee : MonoBehaviour
     public GridManager grid;
     [Tooltip("How close to a cell center counts as arrived (then snaps exactly to center).")]
     public float cellArrivalDistance = 0.04f;
+    [Tooltip("Horizontal body radius used to keep workers from moving through one another.")]
+    [Min(0.1f)] public float workerCollisionRadius = 0.48f;
 
     [Header("Identity")]
     public string employeeName = "Worker";
@@ -194,8 +206,8 @@ public class KitchenEmployee : MonoBehaviour
         {
             if (go == null) continue;
             var node = go.GetComponent<StationNode>();
-            if (node != null && node.assignedWorker == this)
-                node.ClearWorker();
+            if (node != null && node.IsWorkerAssigned(this))
+                node.RemoveWorker(this);
             else
                 RemoveOperatedStation(go);
         }
@@ -243,13 +255,11 @@ public class KitchenEmployee : MonoBehaviour
             return "Unassigned";
 
         var parts = new List<string>();
-        GameObject cur = operatedStations[0];
-        var seen = new HashSet<GameObject>();
-        while (cur != null && seen.Add(cur))
+        foreach (GameObject station in WorkflowAnalysis.GetOrderedRoute(this))
         {
-            var node = StationNode.EnsureOn(cur);
-            parts.Add(node != null ? node.DisplayName : cur.name);
-            cur = node != null ? node.outputTarget : null;
+            if (station == null) continue;
+            var node = StationNode.EnsureOn(station);
+            parts.Add(node != null ? node.DisplayName : station.name);
         }
         return string.Join(" → ", parts);
     }
@@ -566,6 +576,10 @@ public class KitchenEmployee : MonoBehaviour
     List<Vector3> path = new List<Vector3>();
     Vector3 pathDestination;
     Vector3 moveVelocity;
+    float workerBlockedTime;
+    float dynamicRepathCooldown;
+    bool hasReservedCell;
+    Vector2Int reservedCell;
     float ArrivalRadius => Mathf.Max(0.02f, cellArrivalDistance);
 
     enum Step
@@ -726,6 +740,17 @@ public class KitchenEmployee : MonoBehaviour
             look.hatChance = 0.85f;
     }
 
+    void OnEnable()
+    {
+        ActiveEmployees.Add(this);
+    }
+
+    void OnDisable()
+    {
+        ReleaseCellReservation();
+        ActiveEmployees.Remove(this);
+    }
+
     void OnGridChanged()
     {
         path.Clear();
@@ -733,16 +758,18 @@ public class KitchenEmployee : MonoBehaviour
 
     void OnDestroy()
     {
+        ReleaseCellReservation();
+        ActiveEmployees.Remove(this);
         if (grid != null)
             grid.GridChanged -= OnGridChanged;
         if (operatedStations != null)
         {
-            foreach (var go in operatedStations)
+            foreach (var go in new List<GameObject>(operatedStations))
             {
                 if (go == null) continue;
                 var node = go.GetComponent<StationNode>();
-                if (node != null && node.assignedWorker == this)
-                    node.assignedWorker = null;
+                if (node != null && node.IsWorkerAssigned(this))
+                    node.RemoveWorker(this);
             }
         }
         if (manager != null)
@@ -841,7 +868,7 @@ public class KitchenEmployee : MonoBehaviour
         {
             var n = nodes[i];
             if (n == null) continue;
-            if (n.assignedWorker != this) continue;
+            if (!n.IsWorkerAssigned(this)) continue;
             if (n.StationType == stationType)
                 return n;
         }
@@ -880,7 +907,8 @@ public class KitchenEmployee : MonoBehaviour
         }
 
         var node = ResolveStationNodeForStep(currentJob.CurrentStationType.Value);
-        if (node == null || !node.HasOutput)
+        GameObject flowOutput = node != null ? manager.GetFlowOutput(this, node.gameObject) : null;
+        if (node == null || (flowOutput == null && !node.HasOutput))
         {
             // Finished work but no output — wait until player assigns one
             awaitingOutputDelivery = true;
@@ -890,7 +918,7 @@ public class KitchenEmployee : MonoBehaviour
         }
 
         awaitingOutputDelivery = true;
-        deliverTarget = node.outputTarget;
+        deliverTarget = flowOutput ?? node.outputTarget;
         heldDeliveryItem = currentJob.product;
         if (heldUnits <= 0)
             heldUnits = 1;
@@ -1090,8 +1118,8 @@ public class KitchenEmployee : MonoBehaviour
         if (deliverTarget == null && sourceType.HasValue)
         {
             StationNode source = ResolveStationNodeForStep(sourceType.Value);
-            if (source != null && source.HasOutput)
-                deliverTarget = source.outputTarget;
+            if (source != null)
+                deliverTarget = manager.GetFlowOutput(this, source.gameObject) ?? source.outputTarget;
         }
         return deliverTarget != null;
     }
@@ -1964,6 +1992,200 @@ public class KitchenEmployee : MonoBehaviour
         moveVelocity = Vector3.zero;
     }
 
+    /// <summary>
+    /// Moves toward a requested point without allowing this worker's horizontal body circle
+    /// to overlap another worker. Returns true only when the full requested move was possible.
+    /// </summary>
+    bool TryMoveWithoutWorkerOverlap(Vector3 requestedPosition)
+    {
+        Vector3 start = transform.position;
+        start.y = GroundY;
+        requestedPosition.y = GroundY;
+
+        Vector2 from = new Vector2(start.x, start.z);
+        Vector2 to = new Vector2(requestedPosition.x, requestedPosition.z);
+        Vector2 delta = to - from;
+        float distance = delta.magnitude;
+        if (distance <= 0.00001f)
+            return true;
+
+        float allowedDistance = distance;
+        Vector2 direction = delta / distance;
+
+        foreach (KitchenEmployee other in ActiveEmployees)
+        {
+            if (other == null || other == this || !other.isActiveAndEnabled)
+                continue;
+
+            Vector3 otherWorld = other.transform.position;
+            Vector2 otherPosition = new Vector2(otherWorld.x, otherWorld.z);
+            float combinedRadius = Mathf.Max(0.1f, workerCollisionRadius)
+                                   + Mathf.Max(0.1f, other.workerCollisionRadius);
+            Vector2 offset = from - otherPosition;
+            float startDistanceSq = offset.sqrMagnitude;
+            float combinedRadiusSq = combinedRadius * combinedRadius;
+
+            // Old saves or spawn points may already overlap. Permit only motion that separates them.
+            if (startDistanceSq < combinedRadiusSq - 0.0001f)
+            {
+                if ((to - otherPosition).sqrMagnitude <= startDistanceSq)
+                    allowedDistance = 0f;
+                continue;
+            }
+
+            // Find the first point where this movement segment would enter the other body circle.
+            float projection = Vector2.Dot(offset, direction);
+            float discriminant = projection * projection - (startDistanceSq - combinedRadiusSq);
+            if (discriminant < 0f)
+                continue;
+
+            float entryDistance = -projection - Mathf.Sqrt(discriminant);
+            if (entryDistance < 0f || entryDistance > distance)
+                continue;
+
+            allowedDistance = Mathf.Min(allowedDistance, Mathf.Max(0f, entryDistance - 0.002f));
+        }
+
+        if (allowedDistance <= 0.00001f)
+            return false;
+
+        Vector2 resolved = from + direction * allowedDistance;
+        transform.position = new Vector3(resolved.x, GroundY, resolved.y);
+        moveVelocity = Vector3.zero;
+        return allowedDistance >= distance - 0.0001f;
+    }
+
+    void ReleaseCellReservation()
+    {
+        if (!hasReservedCell) return;
+        if (CellReservations.TryGetValue(reservedCell, out WorkerCellReservation reservation)
+            && reservation.owner == this)
+            CellReservations.Remove(reservedCell);
+        hasReservedCell = false;
+    }
+
+    static void RemoveExpiredCellReservations()
+    {
+        if (CellReservations.Count == 0) return;
+        var expired = new List<Vector2Int>();
+        foreach (var pair in CellReservations)
+        {
+            if (pair.Value.owner == null
+                || !pair.Value.owner.isActiveAndEnabled
+                || pair.Value.expiresAt <= Time.time)
+                expired.Add(pair.Key);
+        }
+        foreach (Vector2Int cell in expired)
+            CellReservations.Remove(cell);
+    }
+
+    bool TryReserveMovementCell(Vector3 requestedWaypoint)
+    {
+        if (grid == null
+            || !grid.WorldToCell(requestedWaypoint, out int targetX, out int targetY)
+            || !grid.WorldToCell(transform.position, out int currentX, out int currentY))
+            return true;
+
+        RemoveExpiredCellReservations();
+        int x = currentX + Math.Sign(targetX - currentX);
+        int y = currentY + Math.Sign(targetY - currentY);
+
+        // Once inside the requested cell, physical separation is enough. Release the
+        // approach reservation so right-of-way progresses one grid cell at a time.
+        if (x == currentX && y == currentY)
+        {
+            ReleaseCellReservation();
+            return true;
+        }
+
+        var requestedCell = new Vector2Int(x, y);
+
+        // Never reserve a tile another worker still physically occupies. This prevents
+        // two adjacent workers from reserving one another's tiles in a permanent swap.
+        foreach (KitchenEmployee other in ActiveEmployees)
+        {
+            if (other == null || other == this || !other.isActiveAndEnabled) continue;
+            if (grid.WorldToCell(other.transform.position, out int otherX, out int otherY)
+                && otherX == x && otherY == y)
+                return false;
+        }
+
+        if (CellReservations.TryGetValue(requestedCell, out WorkerCellReservation existing)
+            && existing.owner != null
+            && existing.owner != this
+            && existing.expiresAt > Time.time)
+            return false;
+
+        if (hasReservedCell && reservedCell != requestedCell)
+            ReleaseCellReservation();
+
+        reservedCell = requestedCell;
+        hasReservedCell = true;
+        CellReservations[requestedCell] = new WorkerCellReservation
+        {
+            owner = this,
+            expiresAt = Time.time + 0.5f
+        };
+        return true;
+    }
+
+    void RecordWorkerMovement(bool completedRequestedMove, Vector3 finalDestination)
+    {
+        if (completedRequestedMove)
+        {
+            workerBlockedTime = 0f;
+            return;
+        }
+
+        workerBlockedTime += Time.deltaTime;
+        if (dynamicRepathCooldown > 0f || workerBlockedTime < 0.35f || grid == null)
+            return;
+
+        var blockedCells = new HashSet<Vector2Int>();
+        foreach (KitchenEmployee other in ActiveEmployees)
+        {
+            if (other == null || other == this || !other.isActiveAndEnabled)
+                continue;
+            if (grid.WorldToCell(other.transform.position, out int x, out int y))
+                blockedCells.Add(new Vector2Int(x, y));
+        }
+
+
+        RemoveExpiredCellReservations();
+        foreach (var pair in CellReservations)
+        {
+            if (pair.Value.owner != this)
+                blockedCells.Add(pair.Key);
+        }
+
+        if (grid.WorldToCell(transform.position, out int selfX, out int selfY))
+            blockedCells.Remove(new Vector2Int(selfX, selfY));
+        if (grid.WorldToCell(finalDestination, out int goalX, out int goalY))
+            blockedCells.Remove(new Vector2Int(goalX, goalY));
+
+        Vector3 queryTarget = grid.GetCellCenter(finalDestination);
+        List<Vector3> alternatePath = grid.GetPath(transform.position, queryTarget, blockedCells);
+        if (alternatePath.Count > 0)
+        {
+            while (alternatePath.Count > 0
+                   && HorizontalDistSq(transform.position, alternatePath[0]) <= ArrivalRadius * ArrivalRadius)
+                alternatePath.RemoveAt(0);
+
+            if (alternatePath.Count > 0)
+            {
+                float maxApproach = grid.cellSize * 1.25f;
+                int lastIndex = alternatePath.Count - 1;
+                if (HorizontalDistSq(alternatePath[lastIndex], finalDestination) <= maxApproach * maxApproach)
+                    alternatePath[lastIndex] = finalDestination;
+                path = alternatePath;
+                pathDestination = finalDestination;
+            }
+        }
+
+        workerBlockedTime = 0f;
+        dynamicRepathCooldown = 0.4f;
+    }
+
     /// <summary>Snap a destination to its grid cell center when a grid is available.</summary>
     Vector3 SnapTarget(Vector3 target)
     {
@@ -1979,6 +2201,7 @@ public class KitchenEmployee : MonoBehaviour
     /// </summary>
     bool MoveToward(Vector3 target)
     {
+        dynamicRepathCooldown = Mathf.Max(0f, dynamicRepathCooldown - Time.deltaTime);
         Vector3 exactTarget = target;
         exactTarget.y = GroundY;
 
@@ -1988,7 +2211,10 @@ public class KitchenEmployee : MonoBehaviour
         // Already at the exact stand point
         if (HorizontalDistSq(transform.position, exactTarget) <= ArrivalRadius * ArrivalRadius)
         {
-            SnapToWorldXZ(exactTarget);
+            bool reached = TryMoveWithoutWorkerOverlap(exactTarget);
+            RecordWorkerMovement(reached, exactTarget);
+            if (!reached)
+                return false;
             path.Clear();
             return true;
         }
@@ -2004,7 +2230,10 @@ public class KitchenEmployee : MonoBehaviour
 
             while (path.Count > 0 && HorizontalDistSq(transform.position, path[0]) <= ArrivalRadius * ArrivalRadius)
             {
-                SnapToWorldXZ(path[0]);
+                bool reachedWaypoint = TryMoveWithoutWorkerOverlap(path[0]);
+                RecordWorkerMovement(reachedWaypoint, exactTarget);
+                if (!reachedWaypoint)
+                    return false;
                 path.RemoveAt(0);
             }
 
@@ -2040,7 +2269,19 @@ public class KitchenEmployee : MonoBehaviour
 
         if (dist <= step)
         {
-            SnapToWorldXZ(waypoint);
+            if (!TryReserveMovementCell(waypoint))
+            {
+                RecordWorkerMovement(false, exactTarget);
+                FaceMoveTarget(waypoint);
+                return false;
+            }
+            bool reachedWaypoint = TryMoveWithoutWorkerOverlap(waypoint);
+            RecordWorkerMovement(reachedWaypoint, exactTarget);
+            if (!reachedWaypoint)
+            {
+                FaceMoveTarget(waypoint);
+                return false;
+            }
             path.RemoveAt(0);
             if (path.Count == 0)
                 return true;
@@ -2049,9 +2290,15 @@ public class KitchenEmployee : MonoBehaviour
 
         Vector3 nextPos = Vector3.MoveTowards(pos, waypoint, step);
         nextPos.y = GroundY;
-        transform.position = nextPos;
+        if (!TryReserveMovementCell(waypoint))
+        {
+            RecordWorkerMovement(false, exactTarget);
+            FaceMoveTarget(waypoint);
+            return false;
+        }
+        bool completedMove = TryMoveWithoutWorkerOverlap(nextPos);
+        RecordWorkerMovement(completedMove, exactTarget);
         FaceMoveTarget(waypoint);
-        moveVelocity = Vector3.zero;
         return false;
     }
 
@@ -2064,6 +2311,7 @@ public class KitchenEmployee : MonoBehaviour
 
     bool MoveTowardStraight(Vector3 target)
     {
+        dynamicRepathCooldown = Mathf.Max(0f, dynamicRepathCooldown - Time.deltaTime);
         target.y = GroundY;
         Vector3 pos = transform.position;
         pos.y = GroundY;
@@ -2071,12 +2319,28 @@ public class KitchenEmployee : MonoBehaviour
         float step = moveSpeed * Time.deltaTime;
         if (dist <= step || dist <= ArrivalRadius)
         {
-            SnapToWorldXZ(target);
-            return true;
+            if (!TryReserveMovementCell(target))
+            {
+                RecordWorkerMovement(false, target);
+                FaceMoveTarget(target);
+                return false;
+            }
+            bool reached = TryMoveWithoutWorkerOverlap(target);
+            RecordWorkerMovement(reached, target);
+            if (!reached)
+                FaceMoveTarget(target);
+            return reached;
         }
         Vector3 nextPos = Vector3.MoveTowards(pos, target, step);
         nextPos.y = GroundY;
-        transform.position = nextPos;
+        if (!TryReserveMovementCell(target))
+        {
+            RecordWorkerMovement(false, target);
+            FaceMoveTarget(target);
+            return false;
+        }
+        bool completedMove = TryMoveWithoutWorkerOverlap(nextPos);
+        RecordWorkerMovement(completedMove, target);
         FaceMoveTarget(target);
         return false;
     }

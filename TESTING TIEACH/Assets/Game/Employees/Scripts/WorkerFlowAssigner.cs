@@ -254,7 +254,7 @@ public static class WorkerFlowAssigner
             bool isHeatLamp = nodes[i].GetComponent<HeatLampStation>() != null;
             if (!isHeatLamp && assigned < KitchenEmployee.MaxStations)
             {
-                node.SetWorker(emp);
+                node.AddWorker(emp);
                 assigned++;
             }
 
@@ -300,9 +300,7 @@ public static class WorkerFlowAssigner
             if (register != null && !register.isEnabled)
                 continue;
 
-            var node = StationNode.EnsureOn(go);
-            if (node.assignedWorker == null || node.assignedWorker == emp)
-                return go;
+            return go;
         }
         return null;
     }
@@ -447,12 +445,6 @@ public static class WorkerFlowAssigner
             foreach (GameObject station in flow.stations)
             {
                 if (station == null) continue;
-                StationNode node = StationNode.EnsureOn(station);
-                if (node.assignedWorker != null && !team.Contains(node.assignedWorker))
-                {
-                    result.message = node.DisplayName + " belongs to another flow. Remove or reassign its worker first.";
-                    return result;
-                }
                 route.Add(station);
             }
         }
@@ -534,7 +526,7 @@ public static class WorkerFlowAssigner
             for (int j = 0; j < take; j++)
             {
                 StationNode node = StationNode.EnsureOn(workStations[start + j]);
-                node.SetWorker(worker);
+                node.AddWorker(worker);
                 stationNames.Add(node.DisplayName);
             }
             worker.assignedFlow = flow.kind;
@@ -634,7 +626,7 @@ public static class WorkerFlowAssigner
             Register register = station.GetComponent<Register>();
             if (register != null && !register.isEnabled) continue;
             StationNode node = StationNode.EnsureOn(station);
-            if (!node.IsWorkStation || node.assignedWorker == null || team.Contains(node.assignedWorker))
+            if (node.IsWorkStation)
                 return station;
         }
         return null;
@@ -668,6 +660,30 @@ public static class WorkflowAnalysis
         if (employee == null || employee.operatedStations == null || employee.operatedStations.Count == 0)
             return route;
 
+        ProductionManager production = ProductionManager.Instance;
+        ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
+        if (flow?.stations != null && flow.stations.Count > 0)
+        {
+            int first = int.MaxValue;
+            int last = -1;
+            for (int i = 0; i < flow.stations.Count; i++)
+            {
+                GameObject station = flow.stations[i];
+                if (station == null || !employee.operatedStations.Contains(station)) continue;
+                first = Mathf.Min(first, i);
+                last = Mathf.Max(last, i);
+            }
+
+            if (last >= 0)
+            {
+                int routeEnd = Mathf.Min(flow.stations.Count - 1, last + 1);
+                for (int i = first; i <= routeEnd; i++)
+                    if (flow.stations[i] != null)
+                        route.Add(flow.stations[i]);
+                return route;
+            }
+        }
+
         GameObject current = FindRouteHead(employee.operatedStations);
         var visited = new HashSet<GameObject>();
         while (current != null && visited.Add(current))
@@ -676,7 +692,7 @@ public static class WorkflowAnalysis
             StationNode node = StationNode.EnsureOn(current);
             GameObject next = node != null ? node.outputTarget : null;
             StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
-            if (nextNode != null && nextNode.IsWorkStation && nextNode.assignedWorker != employee)
+            if (nextNode != null && nextNode.IsWorkStation && !nextNode.IsWorkerAssigned(employee))
             {
                 route.Add(next);
                 break;
@@ -727,7 +743,7 @@ public static class WorkflowAnalysis
         foreach (GameObject station in GetOrderedRoute(employee))
         {
             StationNode node = StationNode.EnsureOn(station);
-            if (node == null || !node.IsWorkStation || node.assignedWorker == employee)
+            if (node == null || !node.IsWorkStation || node.IsWorkerAssigned(employee))
                 work += GetStationWorkSeconds(station);
         }
         float walkWorld = GetRouteDistanceTiles(employee)
@@ -789,7 +805,7 @@ public static class WorkflowAnalysis
             if (node == null || !node.IsWorkStation) continue;
             Register register = node.GetComponent<Register>();
             if (register != null && !register.isEnabled) continue;
-            if (node.assignedWorker == null) unstaffed++;
+            if (!node.HasAssignedWorker) unstaffed++;
             if (RequiresOutput(node) && node.outputTarget == null) missingOutputs++;
         }
 

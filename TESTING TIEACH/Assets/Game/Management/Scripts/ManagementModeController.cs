@@ -1774,17 +1774,6 @@ public class ManagementModeController : MonoBehaviour
             SetStatus("That object cannot be used in a production flow.");
             return;
         }
-        ProductionManager production = ProductionManager.Instance;
-        if (production != null && production.IsStationOnOtherFlow(node.gameObject, capturedFlow))
-        {
-            SetStatus(node.DisplayName + " already belongs to another flow.");
-            return;
-        }
-        if (node.assignedWorker != null && !capturedFlow.workers.Contains(node.assignedWorker))
-        {
-            SetStatus(node.DisplayName + " is assigned to " + node.assignedWorker.employeeName + ". Remove that worker first.");
-            return;
-        }
         if (capturedFlow.stations.Contains(node.gameObject))
         {
             int index = capturedFlow.stations.IndexOf(node.gameObject);

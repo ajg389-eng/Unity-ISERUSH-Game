@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -8,6 +9,8 @@ public class StationNode : MonoBehaviour
 {
     [Tooltip("Worker currently assigned to operate this station")]
     public KitchenEmployee assignedWorker;
+    [Tooltip("All workers allowed to operate this shared station. The first is kept in assignedWorker for legacy UI.")]
+    public List<KitchenEmployee> assignedWorkers = new List<KitchenEmployee>();
 
     [Tooltip("Where product from this station is sent (e.g. Pantry → Grill)")]
     public GameObject outputTarget;
@@ -24,6 +27,7 @@ public class StationNode : MonoBehaviour
 
     void Awake()
     {
+        SyncAssignedWorkers();
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
     }
@@ -85,24 +89,75 @@ public class StationNode : MonoBehaviour
 
     public bool IsWorkStation => StationType.HasValue;
 
+    public bool HasAssignedWorker
+    {
+        get
+        {
+            SyncAssignedWorkers();
+            return assignedWorkers.Count > 0;
+        }
+    }
+
+    public bool IsWorkerAssigned(KitchenEmployee worker)
+    {
+        if (worker == null) return false;
+        SyncAssignedWorkers();
+        return assignedWorkers.Contains(worker);
+    }
+
+    void SyncAssignedWorkers()
+    {
+        if (assignedWorkers == null)
+            assignedWorkers = new List<KitchenEmployee>();
+        assignedWorkers.RemoveAll(worker => worker == null);
+        if (assignedWorker != null && !assignedWorkers.Contains(assignedWorker))
+            assignedWorkers.Insert(0, assignedWorker);
+        assignedWorker = assignedWorkers.Count > 0 ? assignedWorkers[0] : null;
+    }
+
+    public void AddWorker(KitchenEmployee worker)
+    {
+        if (worker == null) return;
+        SyncAssignedWorkers();
+        if (!assignedWorkers.Contains(worker))
+            assignedWorkers.Add(worker);
+        assignedWorker = assignedWorkers[0];
+        worker.AddOperatedStation(gameObject);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+    }
+
+    public void RemoveWorker(KitchenEmployee worker)
+    {
+        if (worker == null) return;
+        SyncAssignedWorkers();
+        assignedWorkers.Remove(worker);
+        if (worker.IsAssignedTo(gameObject))
+            worker.RemoveOperatedStation(gameObject);
+        assignedWorker = assignedWorkers.Count > 0 ? assignedWorkers[0] : null;
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+    }
+
     public void SetWorker(KitchenEmployee worker)
     {
-        if (assignedWorker == worker) return;
-
-        if (assignedWorker != null)
-            assignedWorker.RemoveOperatedStation(gameObject);
-
-        assignedWorker = worker;
-
-        if (worker != null)
-            worker.AddOperatedStation(gameObject);
-
-        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee existing in new List<KitchenEmployee>(assignedWorkers))
+            if (existing != worker)
+                RemoveWorker(existing);
+        if (worker == null)
+            ClearWorker();
+        else
+            AddWorker(worker);
     }
 
     public void ClearWorker()
     {
-        SetWorker(null);
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee worker in new List<KitchenEmployee>(assignedWorkers))
+            if (worker != null && worker.IsAssignedTo(gameObject))
+                worker.RemoveOperatedStation(gameObject);
+        assignedWorkers.Clear();
+        assignedWorker = null;
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     public void SetOutput(GameObject target)

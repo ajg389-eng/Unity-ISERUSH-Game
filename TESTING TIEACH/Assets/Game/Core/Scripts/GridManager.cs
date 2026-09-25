@@ -699,6 +699,13 @@ public class GridManager : MonoBehaviour
 
     /// <summary>Path from current world position to target world position using only walkable cells. Returns cell-center world positions.</summary>
     public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld)
+        => GetPath(fromWorld, toWorld, null);
+
+    /// <summary>
+    /// Pathfinds while treating the supplied cells as temporary obstacles. The start and goal
+    /// remain usable so an agent can leave its own cell and queue for an occupied destination.
+    /// </summary>
+    public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld, ISet<Vector2Int> temporarilyBlocked)
     {
         var result = new List<Vector3>();
         if (Nodes == null || Width == 0 || Height == 0) return result;
@@ -750,9 +757,10 @@ public class GridManager : MonoBehaviour
                 return result;
             }
 
-            foreach (var (nx, ny) in Neighbors(cur.x, cur.y))
+            foreach (var (nx, ny) in PathNeighbors(cur.x, cur.y, sx, sy, gx, gy, temporarilyBlocked))
             {
-                if (!IsWalkable(nx, ny) || closed.Contains((nx, ny))) continue;
+                if (!IsPathCellWalkable(nx, ny, sx, sy, gx, gy, temporarilyBlocked)
+                    || closed.Contains((nx, ny))) continue;
                 bool diagonal = nx != cur.x && ny != cur.y;
                 float g = cur.g + (diagonal ? 1.41421356f : 1f);
                 if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)
@@ -764,6 +772,47 @@ public class GridManager : MonoBehaviour
             }
         }
         return result;
+    }
+
+    bool IsPathCellWalkable(
+        int x,
+        int y,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        ISet<Vector2Int> temporarilyBlocked)
+    {
+        if (!IsWalkable(x, y)) return false;
+        if (temporarilyBlocked == null) return true;
+        if ((x == startX && y == startY) || (x == goalX && y == goalY)) return true;
+        return !temporarilyBlocked.Contains(new Vector2Int(x, y));
+    }
+
+    IEnumerable<(int x, int y)> PathNeighbors(
+        int x,
+        int y,
+        int startX,
+        int startY,
+        int goalX,
+        int goalY,
+        ISet<Vector2Int> temporarilyBlocked)
+    {
+        if (x > 0) yield return (x - 1, y);
+        if (x < Width - 1) yield return (x + 1, y);
+        if (y > 0) yield return (x, y - 1);
+        if (y < Height - 1) yield return (x, y + 1);
+        for (int dx = -1; dx <= 1; dx += 2)
+        for (int dy = -1; dy <= 1; dy += 2)
+        {
+            int nx = x + dx;
+            int ny = y + dy;
+            if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
+            if (!IsPathCellWalkable(x + dx, y, startX, startY, goalX, goalY, temporarilyBlocked)
+                || !IsPathCellWalkable(x, y + dy, startX, startY, goalX, goalY, temporarilyBlocked))
+                continue;
+            yield return (nx, ny);
+        }
     }
 
     static float Heuristic(int x, int y, int gx, int gy)
