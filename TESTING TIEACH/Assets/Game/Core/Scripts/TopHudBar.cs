@@ -126,13 +126,9 @@ public class TopHudBar : MonoBehaviour
 
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(16, 16, 8, 8);
-        hlg.spacing = 12f;
-        hlg.childAlignment = TextAnchor.MiddleCenter;
-        hlg.childControlWidth = true;
-        hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false;
-        hlg.childForceExpandHeight = true;
+        // Sections are anchored explicitly so variable-width utility text cannot
+        // push the clock away from the screen center.
+        hlg.enabled = false;
 
         var fitter = GetComponent<ContentSizeFitter>();
         if (fitter != null)
@@ -143,9 +139,12 @@ public class TopHudBar : MonoBehaviour
         {
             var le = moneySection.GetComponent<LayoutElement>();
             if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 90f;
-            le.preferredWidth = 100f;
+            le.preferredWidth = 110f;
             le.flexibleWidth = 0f;
+            PositionSection(moneySection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(16f, 0f), new Vector2(110f, barHeight - 16f));
         }
 
         var timeSection = transform.Find(TimeSectionName) as RectTransform;
@@ -153,9 +152,12 @@ public class TopHudBar : MonoBehaviour
         {
             var le = timeSection.GetComponent<LayoutElement>();
             if (le == null) le = timeSection.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 320f;
-            le.preferredWidth = 400f;
-            le.flexibleWidth = 1f;
+            le.ignoreLayout = true;
+            le.minWidth = 170f;
+            le.preferredWidth = 170f;
+            le.flexibleWidth = 0f;
+            PositionSection(timeSection, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(170f, barHeight - 16f));
         }
 
         if (moneyText != null)
@@ -172,19 +174,34 @@ public class TopHudBar : MonoBehaviour
         if (musicSection != null)
         {
             var le = musicSection.GetComponent<LayoutElement>() ?? musicSection.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 220f;
-            le.preferredWidth = 220f;
+            le.ignoreLayout = true;
+            le.minWidth = 206f;
+            le.preferredWidth = 206f;
             le.flexibleWidth = 0f;
+            PositionSection(musicSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-116f, 0f), new Vector2(206f, barHeight - 16f));
         }
 
         var noticeSection = transform.Find(TopHudUtilityControls.NotificationSectionName) as RectTransform;
         if (noticeSection != null)
         {
             var le = noticeSection.GetComponent<LayoutElement>() ?? noticeSection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 92f;
             le.preferredWidth = 92f;
             le.flexibleWidth = 0f;
+            PositionSection(noticeSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-16f, 0f), new Vector2(92f, barHeight - 16f));
         }
+    }
+
+    static void PositionSection(RectTransform section, Vector2 anchor, Vector2 pivot, Vector2 position, Vector2 size)
+    {
+        section.anchorMin = anchor;
+        section.anchorMax = anchor;
+        section.pivot = pivot;
+        section.anchoredPosition = position;
+        section.sizeDelta = size;
     }
 
     void EnsureUtilityControls()

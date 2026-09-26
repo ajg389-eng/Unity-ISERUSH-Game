@@ -8,16 +8,16 @@ using UnityEngine.UI;
 public static class HudTabColors
 {
     /// <summary>Selected tab — muted purple-gray (Management Store Stats style).</summary>
-    public static readonly Color Active = new Color(0.45f, 0.45f, 0.55f, 1f);
+    public static readonly Color Active = GameUITheme.Coral;
 
     /// <summary>Unselected tab.</summary>
-    public static readonly Color Idle = new Color(0.27f, 0.29f, 0.35f, 1f);
+    public static readonly Color Idle = GameUITheme.Surface;
 
     /// <summary>Outer strip / tab bar chrome.</summary>
-    public static readonly Color Strip = new Color(0.08f, 0.09f, 0.12f, 0.98f);
+    public static readonly Color Strip = GameUITheme.Backdrop;
 
     /// <summary>Panel content background (Management ContentBox).</summary>
-    public static readonly Color Panel = new Color(0.2f, 0.2f, 0.25f, 0.98f);
+    public static readonly Color Panel = GameUITheme.Panel;
 
     public static void Apply(Button button, bool active)
     {

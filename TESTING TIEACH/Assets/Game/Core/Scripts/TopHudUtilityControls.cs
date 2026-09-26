@@ -122,9 +122,13 @@ public class TopHudUtilityControls : MonoBehaviour
         {
             trackText = CreateLabel(section.transform, "TrackText", "No track", 13);
             var le = trackText.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 132f;
-            le.preferredWidth = 132f;
+            le.minWidth = 116f;
+            le.preferredWidth = 116f;
         }
+        var trackLayout = trackText.GetComponent<LayoutElement>() ?? trackText.gameObject.AddComponent<LayoutElement>();
+        trackLayout.minWidth = 116f;
+        trackLayout.preferredWidth = 116f;
+        trackLayout.flexibleWidth = 0f;
         trackText.alignment = TextAlignmentOptions.MidlineRight;
         trackText.overflowMode = TextOverflowModes.Ellipsis;
         trackText.enableWordWrapping = false;

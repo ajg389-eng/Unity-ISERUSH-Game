@@ -41,8 +41,6 @@ public class CustomerAI : MonoBehaviour
     int salePrice;
     bool waitingInQueue;
     bool waitingForPickup;
-    bool waitingAtDesignatedArea;
-    bool hasWaitAreaReservation;
     HeatLampStation pickupStation;
     bool leaving;
     bool leavingImpatient;
@@ -206,7 +204,6 @@ public class CustomerAI : MonoBehaviour
 
     public void LeaveImpatient(Transform exit)
     {
-        ReleaseWaitAreaReservation();
         StopPatienceMeter();
         reg = null;
         hasTarget = false;
@@ -331,7 +328,6 @@ public class CustomerAI : MonoBehaviour
 
     public void OnServed(Transform exit)
     {
-        ReleaseWaitAreaReservation();
         StopPatienceMeter();
         waitingForPickup = false;
         if (pickupStation != null) pickupStation.LeavePickupQueue(this);
@@ -421,10 +417,6 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        // Keep a wait tile reserved until this customer has begun leaving it.
-        if (hasWaitAreaReservation && !waitingAtDesignatedArea && HorizontalDist(transform.position, targetPos) > 0.6f)
-            ReleaseWaitAreaReservation();
-
         if (waitingForPickup)
             TrySelfServeFromHeatLamp();
 
@@ -439,15 +431,6 @@ public class CustomerAI : MonoBehaviour
 
     void UpdateWaiting()
     {
-        if (waitingAtDesignatedArea)
-        {
-            HeatLampStation ready = HeatLampStation.FindReadyPickupForOrder(order, transform.position);
-            if (ready != null && ready.TryJoinPickupQueue(this))
-            {
-                waitingAtDesignatedArea = false;
-            }
-            return;
-        }
         if (waitingForPickup && pickupStation == null)
         {
             JoinNextPickupStation();
@@ -535,13 +518,6 @@ public class CustomerAI : MonoBehaviour
         isFront = false;
         if (reg != null)
             reg.CompleteServe(this, order);
-    }
-
-    void ReleaseWaitAreaReservation()
-    {
-        if (!hasWaitAreaReservation) return;
-        CustomerWaitAreaManager.Instance?.Release(this);
-        hasWaitAreaReservation = false;
     }
 
     void UpdateLeaving()

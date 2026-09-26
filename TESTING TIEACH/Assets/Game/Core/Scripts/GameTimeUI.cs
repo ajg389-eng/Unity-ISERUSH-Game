@@ -397,7 +397,9 @@ public class GameTimeUI : MonoBehaviour
         {
             bool accelerated = timeManager.CurrentSpeed == GameTimeManager.SpeedMode.FastForward ||
                                timeManager.CurrentSpeed == GameTimeManager.SpeedMode.SuperFast;
-            speedMultiplierText.gameObject.SetActive(accelerated);
+            // Keep its reserved position even at normal speed so the clock never
+            // shifts when the multiplier appears.
+            speedMultiplierText.gameObject.SetActive(true);
             speedMultiplierText.text = accelerated ? timeManager.GetSpeedLabel() : "";
             speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
         }
@@ -425,27 +427,26 @@ public class GameTimeUI : MonoBehaviour
         {
             var hlg = row.GetComponent<HorizontalLayoutGroup>();
             if (hlg != null)
-            {
-                hlg.spacing = 8f;
-                hlg.childControlWidth = true;
-                hlg.childControlHeight = true;
-                hlg.childForceExpandWidth = false;
-            }
+                hlg.enabled = false;
         }
 
         if (dayText != null)
         {
             var le = dayText.GetComponent<LayoutElement>() ?? dayText.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 64f;
-            le.preferredWidth = 70f;
+            le.ignoreLayout = true;
+            le.minWidth = 76f;
+            le.preferredWidth = 76f;
             le.flexibleWidth = 0f;
+            PositionTimeLabel(dayText.rectTransform, -205f, 76f);
         }
         if (clockText != null)
         {
             var le = clockText.GetComponent<LayoutElement>() ?? clockText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 110f;
             le.preferredWidth = 118f;
             le.flexibleWidth = 0f;
+            PositionTimeLabel(clockText.rectTransform, 0f, 118f);
             clockText.enableAutoSizing = true;
             clockText.fontSizeMin = 16;
             clockText.fontSizeMax = 20;
@@ -455,18 +456,32 @@ public class GameTimeUI : MonoBehaviour
         if (speedMultiplierText != null)
         {
             var le = speedMultiplierText.GetComponent<LayoutElement>() ?? speedMultiplierText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 38f;
             le.preferredWidth = 38f;
             le.flexibleWidth = 0f;
+            PositionTimeLabel(speedMultiplierText.rectTransform, 82f, 38f);
         }
         if (rushText != null)
         {
             var le = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 56f;
             le.preferredWidth = 56f;
             le.flexibleWidth = 0f;
             rushText.gameObject.SetActive(true);
+            PositionTimeLabel(rushText.rectTransform, -113f, 56f);
         }
+    }
+
+    static void PositionTimeLabel(RectTransform label, float centerX, float width)
+    {
+        if (label == null) return;
+        label.anchorMin = new Vector2(0.5f, 0f);
+        label.anchorMax = new Vector2(0.5f, 1f);
+        label.pivot = new Vector2(0.5f, 0.5f);
+        label.anchoredPosition = new Vector2(centerX, 0f);
+        label.sizeDelta = new Vector2(width, 0f);
     }
 
     void EnsureSpeedMultiplierLabel()

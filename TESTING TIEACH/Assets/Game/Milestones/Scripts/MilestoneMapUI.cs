@@ -29,13 +29,13 @@ public class MilestoneMapUI : MonoBehaviour
     {
         if (on) OpenProgressionTab();
         else if (MissionListUI.Instance != null)
-            MissionListUI.Instance.ShowTasksTab();
+            MissionListUI.Instance.SetVisible(false);
     }
 
     public void Hide()
     {
         if (MissionListUI.Instance != null)
-            MissionListUI.Instance.ShowTasksTab();
+            MissionListUI.Instance.SetVisible(false);
     }
 
     static void OpenProgressionTab()

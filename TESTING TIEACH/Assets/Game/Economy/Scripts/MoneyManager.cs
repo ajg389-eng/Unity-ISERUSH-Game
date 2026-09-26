@@ -24,4 +24,9 @@ public class MoneyManager : MonoBehaviour
         if (amount <= 0) return;
         CurrentMoney += amount;
     }
+
+    public void SetMoney(int amount)
+    {
+        CurrentMoney = Mathf.Max(0, amount);
+    }
 }

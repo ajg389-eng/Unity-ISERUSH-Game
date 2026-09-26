@@ -5,7 +5,7 @@ using TMPro;
 
 /// <summary>
 /// Escape pause overlay. Main screen matches a simple Resume / Options / Quit list.
-/// Options holds Audio, Video, and Visual (per-wall cutaway locks).
+/// Options holds Audio, Video, Visual (per-wall cutaway locks), and Keybinds.
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
 {
@@ -24,6 +24,7 @@ public class PauseMenuUI : MonoBehaviour
     static readonly Color MainBoxColor = new Color(0.16f, 0.16f, 0.18f, 0.95f);
     static readonly Color ButtonTextColor = new Color(0.08f, 0.08f, 0.1f, 1f);
     static readonly Color PanelColor = new Color(0.12f, 0.13f, 0.18f, 0.96f);
+    static readonly Color OptionsButtonColor = new Color(0.32f, 0.35f, 0.44f, 1f);
 
     public static PauseMenuUI Instance { get; private set; }
     public static bool IsOpen => Instance != null && Instance.visible;
@@ -41,9 +42,11 @@ public class PauseMenuUI : MonoBehaviour
     GameObject audioPage;
     GameObject videoPage;
     GameObject visualPage;
+    GameObject keybindsPage;
     Button audioTab;
     Button videoTab;
     Button visualTab;
+    Button keybindsTab;
     Toggle lockNorthToggle;
     Toggle lockEastToggle;
     Toggle lockSouthToggle;
@@ -279,12 +282,12 @@ public class PauseMenuUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(500f, 470f);
+        cardRt.sizeDelta = new Vector2(520f, 430f);
         card.GetComponent<Image>().color = PanelColor;
 
         var vlg = card.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(22, 22, 18, 16);
-        vlg.spacing = 10f;
+        vlg.padding = new RectOffset(24, 24, 14, 14);
+        vlg.spacing = 8f;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -293,32 +296,39 @@ public class PauseMenuUI : MonoBehaviour
 
         var title = CreateLabel(card.transform, "OptionsTitle", "Options", 24, TextAlignmentOptions.Center);
         title.fontStyle = FontStyles.Bold;
-        title.GetComponent<LayoutElement>().preferredHeight = 32f;
+        title.GetComponent<LayoutElement>().preferredHeight = 30f;
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         tabs.transform.SetParent(card.transform, false);
-        tabs.GetComponent<LayoutElement>().preferredHeight = 36f;
+        var tabsLayout = tabs.GetComponent<LayoutElement>();
+        tabsLayout.minHeight = 38f;
+        tabsLayout.preferredHeight = 38f;
+        tabsLayout.flexibleHeight = 0f;
         var tabsH = tabs.GetComponent<HorizontalLayoutGroup>();
         tabsH.spacing = 8f;
         tabsH.childAlignment = TextAnchor.MiddleCenter;
         tabsH.childControlWidth = true;
         tabsH.childControlHeight = true;
         tabsH.childForceExpandWidth = true;
-        tabsH.childForceExpandHeight = true;
+        tabsH.childForceExpandHeight = false;
         audioTab = CreateTabButton(tabs.transform, "AudioTab", "Audio", () => SelectTab(0));
         videoTab = CreateTabButton(tabs.transform, "VideoTab", "Video", () => SelectTab(1));
         visualTab = CreateTabButton(tabs.transform, "VisualTab", "Visual", () => SelectTab(2));
+        keybindsTab = CreateTabButton(tabs.transform, "KeybindsTab", "Keybinds", () => SelectTab(3));
 
         var pages = new GameObject("Pages", typeof(RectTransform), typeof(LayoutElement));
         pages.transform.SetParent(card.transform, false);
-        pages.GetComponent<LayoutElement>().preferredHeight = 280f;
-        pages.GetComponent<LayoutElement>().flexibleHeight = 1f;
+        var pagesLayout = pages.GetComponent<LayoutElement>();
+        pagesLayout.minHeight = 244f;
+        pagesLayout.preferredHeight = 244f;
+        pagesLayout.flexibleHeight = 0f;
 
         audioPage = BuildAudioPage(pages.transform);
         videoPage = BuildVideoPage(pages.transform);
         visualPage = BuildVisualPage(pages.transform);
+        keybindsPage = BuildKeybindsPage(pages.transform);
 
-        var back = CreateMenuButton(card.transform, "BackButton", "Back");
+        var back = CreateMenuButton(card.transform, "BackButton", "Back", 42f, 300f, 18f, OptionsButtonColor);
         back.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
@@ -333,8 +343,8 @@ public class PauseMenuUI : MonoBehaviour
         page.transform.SetParent(parent, false);
         Stretch((RectTransform)page.transform);
         var v = page.GetComponent<VerticalLayoutGroup>();
-        v.spacing = 10f;
-        v.padding = new RectOffset(4, 4, 8, 4);
+        v.spacing = 8f;
+        v.padding = new RectOffset(4, 4, 10, 4);
         v.childAlignment = TextAnchor.UpperCenter;
         v.childControlWidth = true;
         v.childControlHeight = true;
@@ -358,8 +368,8 @@ public class PauseMenuUI : MonoBehaviour
         page.transform.SetParent(parent, false);
         Stretch((RectTransform)page.transform);
         var v = page.GetComponent<VerticalLayoutGroup>();
-        v.spacing = 12f;
-        v.padding = new RectOffset(4, 4, 8, 4);
+        v.spacing = 10f;
+        v.padding = new RectOffset(4, 4, 10, 4);
         v.childAlignment = TextAnchor.UpperCenter;
         v.childControlWidth = true;
         v.childControlHeight = true;
@@ -372,14 +382,17 @@ public class PauseMenuUI : MonoBehaviour
 
         var row = new GameObject("ResolutionRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(page.transform, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 36f;
+        var rowLe = row.GetComponent<LayoutElement>();
+        rowLe.minHeight = 42f;
+        rowLe.preferredHeight = 42f;
+        rowLe.flexibleHeight = 0f;
         var h = row.GetComponent<HorizontalLayoutGroup>();
         h.spacing = 8f;
         h.childAlignment = TextAnchor.MiddleCenter;
         h.childControlWidth = true;
         h.childControlHeight = true;
         h.childForceExpandWidth = false;
-        h.childForceExpandHeight = true;
+        h.childForceExpandHeight = false;
 
         var prev = CreateSmallButton(row.transform, "PrevRes", "<");
         prev.onClick.AddListener(() => CycleResolution(-1));
@@ -392,13 +405,15 @@ public class PauseMenuUI : MonoBehaviour
         var next = CreateSmallButton(row.transform, "NextRes", ">");
         next.onClick.AddListener(() => CycleResolution(1));
 
-        var apply = CreateMenuButton(page.transform, "ApplyResolution", "Apply");
-        apply.GetComponent<LayoutElement>().preferredHeight = 40f;
+        var apply = CreateMenuButton(page.transform, "ApplyResolution", "Apply", 40f, 260f, 17f, OptionsButtonColor);
         apply.onClick.AddListener(ApplySelectedResolution);
 
         var fsRow = new GameObject("FullscreenRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         fsRow.transform.SetParent(page.transform, false);
-        fsRow.GetComponent<LayoutElement>().preferredHeight = 28f;
+        var fsLe = fsRow.GetComponent<LayoutElement>();
+        fsLe.minHeight = 34f;
+        fsLe.preferredHeight = 34f;
+        fsLe.flexibleHeight = 0f;
         var fsH = fsRow.GetComponent<HorizontalLayoutGroup>();
         fsH.spacing = 10f;
         fsH.childAlignment = TextAnchor.MiddleLeft;
@@ -419,7 +434,7 @@ public class PauseMenuUI : MonoBehaviour
         page.transform.SetParent(parent, false);
         Stretch((RectTransform)page.transform);
         var v = page.GetComponent<VerticalLayoutGroup>();
-        v.spacing = 8f;
+        v.spacing = 7f;
         v.padding = new RectOffset(4, 4, 8, 4);
         v.childAlignment = TextAnchor.UpperCenter;
         v.childControlWidth = true;
@@ -432,7 +447,8 @@ public class PauseMenuUI : MonoBehaviour
         header.GetComponent<LayoutElement>().preferredHeight = 22f;
 
         var hint = CreateLabel(page.transform, "VisualHint", "Locked walls stay full height and will not drop when the camera faces them.", 13, TextAlignmentOptions.Left);
-        hint.GetComponent<LayoutElement>().preferredHeight = 36f;
+        hint.textWrappingMode = TextWrappingModes.Normal;
+        hint.GetComponent<LayoutElement>().preferredHeight = 32f;
 
         lockNorthToggle = CreateWallLockRow(page.transform, "LockNorth", "North wall", CameraWallCutaway.WallSide.North);
         lockEastToggle = CreateWallLockRow(page.transform, "LockEast", "East wall", CameraWallCutaway.WallSide.East);
@@ -442,11 +458,157 @@ public class PauseMenuUI : MonoBehaviour
         return page;
     }
 
+    GameObject BuildKeybindsPage(Transform parent)
+    {
+        var page = new GameObject("KeybindsPage", typeof(RectTransform));
+        page.transform.SetParent(parent, false);
+        Stretch((RectTransform)page.transform);
+
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
+        viewport.transform.SetParent(page.transform, false);
+        var viewportRt = (RectTransform)viewport.transform;
+        viewportRt.anchorMin = Vector2.zero;
+        viewportRt.anchorMax = Vector2.one;
+        viewportRt.offsetMin = new Vector2(4f, 4f);
+        viewportRt.offsetMax = new Vector2(-18f, -4f);
+        var viewportImage = viewport.GetComponent<Image>();
+        viewportImage.color = new Color(0.09f, 0.1f, 0.14f, 0.45f);
+        viewportImage.raycastTarget = true;
+
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        var contentRt = (RectTransform)content.transform;
+        contentRt.anchorMin = new Vector2(0f, 1f);
+        contentRt.anchorMax = new Vector2(1f, 1f);
+        contentRt.pivot = new Vector2(0.5f, 1f);
+        contentRt.anchoredPosition = Vector2.zero;
+        contentRt.sizeDelta = Vector2.zero;
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(8, 8, 7, 7);
+        contentLayout.spacing = 4f;
+        contentLayout.childAlignment = TextAnchor.UpperCenter;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        CreateKeybindSection(content.transform, "Camera");
+        CreateKeybindRow(content.transform, "Move camera", "WASD / Arrow Keys");
+        CreateKeybindRow(content.transform, "Rotate camera", "Hold Right Mouse + Drag");
+        CreateKeybindRow(content.transform, "Zoom camera", "Mouse Wheel");
+
+        CreateKeybindSection(content.transform, "Menus");
+        CreateKeybindRow(content.transform, "Inventory", "1 / Numpad 1");
+        CreateKeybindRow(content.transform, "Management", "2 / Numpad 2 / M");
+        CreateKeybindRow(content.transform, "Progression", "J");
+        CreateKeybindRow(content.transform, "Pause / back / cancel", "Esc");
+
+        CreateKeybindSection(content.transform, "Building and interaction");
+        CreateKeybindRow(content.transform, "Select / interact / place", "Left Mouse");
+        CreateKeybindRow(content.transform, "Rotate placement", "R");
+        CreateKeybindRow(content.transform, "Cancel moved station", "Right Mouse / Esc");
+        CreateKeybindRow(content.transform, "Undo last purchase", "Ctrl + Z");
+
+        CreateKeybindSection(content.transform, "Guidebook");
+        CreateKeybindRow(content.transform, "Previous page", "A / Left Arrow");
+        CreateKeybindRow(content.transform, "Next page", "D / Right Arrow");
+
+        CreateKeybindSection(content.transform, "Debug");
+        CreateKeybindRow(content.transform, "Toggle debug menu", "F1 / `");
+
+        var scrollbarGo = new GameObject("Scrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        scrollbarGo.transform.SetParent(page.transform, false);
+        var scrollbarRt = (RectTransform)scrollbarGo.transform;
+        scrollbarRt.anchorMin = new Vector2(1f, 0f);
+        scrollbarRt.anchorMax = Vector2.one;
+        scrollbarRt.pivot = new Vector2(1f, 0.5f);
+        scrollbarRt.offsetMin = new Vector2(-12f, 4f);
+        scrollbarRt.offsetMax = new Vector2(-4f, -4f);
+        scrollbarGo.GetComponent<Image>().color = new Color(0.11f, 0.12f, 0.16f, 0.9f);
+
+        var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handle.transform.SetParent(scrollbarGo.transform, false);
+        var handleRt = (RectTransform)handle.transform;
+        handleRt.anchorMin = Vector2.zero;
+        handleRt.anchorMax = Vector2.one;
+        handleRt.offsetMin = new Vector2(2f, 2f);
+        handleRt.offsetMax = new Vector2(-2f, -2f);
+        handle.GetComponent<Image>().color = new Color(0.55f, 0.62f, 0.78f, 1f);
+
+        var scrollbar = scrollbarGo.GetComponent<Scrollbar>();
+        scrollbar.handleRect = handleRt;
+        scrollbar.targetGraphic = handle.GetComponent<Image>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+
+        var scrollRect = page.AddComponent<ScrollRect>();
+        scrollRect.content = contentRt;
+        scrollRect.viewport = viewportRt;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 24f;
+        scrollRect.verticalScrollbar = scrollbar;
+        scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        return page;
+    }
+
+    static void CreateKeybindSection(Transform parent, string label)
+    {
+        var text = CreateLabel(parent, label.Replace(" ", string.Empty) + "Header", label.ToUpperInvariant(), 11f, TextAlignmentOptions.MidlineLeft);
+        text.fontStyle = FontStyles.Bold;
+        text.color = new Color(0.72f, 0.78f, 0.92f, 1f);
+        var layout = text.GetComponent<LayoutElement>();
+        layout.minHeight = 22f;
+        layout.preferredHeight = 22f;
+    }
+
+    static void CreateKeybindRow(Transform parent, string action, string binding)
+    {
+        var row = new GameObject(action.Replace(" ", string.Empty) + "Row", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.92f);
+        row.GetComponent<Image>().raycastTarget = false;
+        var rowLayout = row.GetComponent<LayoutElement>();
+        rowLayout.minHeight = 30f;
+        rowLayout.preferredHeight = 30f;
+        rowLayout.flexibleHeight = 0f;
+
+        var horizontal = row.GetComponent<HorizontalLayoutGroup>();
+        horizontal.padding = new RectOffset(10, 10, 3, 3);
+        horizontal.spacing = 8f;
+        horizontal.childAlignment = TextAnchor.MiddleLeft;
+        horizontal.childControlWidth = true;
+        horizontal.childControlHeight = true;
+        horizontal.childForceExpandWidth = false;
+        horizontal.childForceExpandHeight = false;
+
+        var actionText = CreateLabel(row.transform, "Action", action, 13f, TextAlignmentOptions.MidlineLeft);
+        var actionLayout = actionText.GetComponent<LayoutElement>();
+        actionLayout.minWidth = 180f;
+        actionLayout.flexibleWidth = 1f;
+        actionLayout.minHeight = 22f;
+        actionLayout.preferredHeight = 22f;
+
+        var bindingText = CreateLabel(row.transform, "Binding", binding, 13f, TextAlignmentOptions.MidlineRight);
+        bindingText.fontStyle = FontStyles.Bold;
+        bindingText.color = new Color(0.92f, 0.82f, 0.42f, 1f);
+        var bindingLayout = bindingText.GetComponent<LayoutElement>();
+        bindingLayout.minWidth = 190f;
+        bindingLayout.preferredWidth = 190f;
+        bindingLayout.flexibleWidth = 0f;
+        bindingLayout.minHeight = 22f;
+        bindingLayout.preferredHeight = 22f;
+    }
+
     Toggle CreateWallLockRow(Transform parent, string id, string label, CameraWallCutaway.WallSide side)
     {
         var row = new GameObject(id + "Row", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 28f;
+        var rowLe = row.GetComponent<LayoutElement>();
+        rowLe.minHeight = 32f;
+        rowLe.preferredHeight = 32f;
+        rowLe.flexibleHeight = 0f;
         var h = row.GetComponent<HorizontalLayoutGroup>();
         h.spacing = 10f;
         h.childAlignment = TextAnchor.MiddleLeft;
@@ -467,43 +629,46 @@ public class PauseMenuUI : MonoBehaviour
 
     Slider CreateVolumeRow(Transform parent, string id, string label, out TextMeshProUGUI valueLabel)
     {
-        var block = new GameObject(id + "Block", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
-        block.transform.SetParent(parent, false);
-        block.GetComponent<LayoutElement>().preferredHeight = 52f;
-        var bv = block.GetComponent<VerticalLayoutGroup>();
-        bv.spacing = 4f;
-        bv.childAlignment = TextAnchor.UpperLeft;
-        bv.childControlWidth = true;
-        bv.childControlHeight = true;
-        bv.childForceExpandWidth = true;
-        bv.childForceExpandHeight = false;
-
-        var header = CreateLabel(block.transform, id + "Label", label, 14, TextAlignmentOptions.Left);
-        header.GetComponent<LayoutElement>().preferredHeight = 18f;
-
-        var row = new GameObject(id + "Row", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        row.transform.SetParent(block.transform, false);
-        row.GetComponent<LayoutElement>().preferredHeight = 18f;
+        var row = new GameObject(id + "Row", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.8f);
+        row.GetComponent<Image>().raycastTarget = false;
+        var rowLe = row.GetComponent<LayoutElement>();
+        rowLe.minHeight = 52f;
+        rowLe.preferredHeight = 52f;
+        rowLe.flexibleHeight = 0f;
         var h = row.GetComponent<HorizontalLayoutGroup>();
-        h.spacing = 10f;
-        h.padding = new RectOffset(0, 40, 0, 0);
+        h.spacing = 12f;
+        h.padding = new RectOffset(12, 12, 8, 8);
         h.childAlignment = TextAnchor.MiddleLeft;
         h.childControlWidth = true;
         h.childControlHeight = true;
         h.childForceExpandWidth = false;
-        h.childForceExpandHeight = true;
+        h.childForceExpandHeight = false;
+
+        var header = CreateLabel(row.transform, id + "Label", label, 14, TextAlignmentOptions.MidlineLeft);
+        var headerLe = header.GetComponent<LayoutElement>();
+        headerLe.minWidth = 126f;
+        headerLe.preferredWidth = 126f;
+        headerLe.flexibleWidth = 0f;
+        headerLe.minHeight = 24f;
+        headerLe.preferredHeight = 24f;
 
         var slider = CreateSlider(row.transform, id + "Slider");
         var sliderLe = slider.GetComponent<LayoutElement>();
-        sliderLe.preferredWidth = 210f;
-        sliderLe.flexibleWidth = 0f;
-        sliderLe.minWidth = 210f;
-        sliderLe.preferredHeight = 14f;
+        sliderLe.preferredWidth = 238f;
+        sliderLe.flexibleWidth = 1f;
+        sliderLe.minWidth = 180f;
+        sliderLe.minHeight = 22f;
+        sliderLe.preferredHeight = 22f;
+        sliderLe.flexibleHeight = 0f;
 
-        valueLabel = CreateLabel(row.transform, id + "Value", "100%", 13, TextAlignmentOptions.MidlineRight);
+        valueLabel = CreateLabel(row.transform, id + "Value", "100%", 13, TextAlignmentOptions.Center);
         var valLe = valueLabel.GetComponent<LayoutElement>();
-        valLe.preferredWidth = 44f;
-        valLe.minWidth = 44f;
+        valLe.preferredWidth = 48f;
+        valLe.minWidth = 48f;
+        valLe.minHeight = 24f;
+        valLe.preferredHeight = 24f;
         return slider;
     }
 
@@ -512,9 +677,11 @@ public class PauseMenuUI : MonoBehaviour
         if (audioPage != null) audioPage.SetActive(index == 0);
         if (videoPage != null) videoPage.SetActive(index == 1);
         if (visualPage != null) visualPage.SetActive(index == 2);
+        if (keybindsPage != null) keybindsPage.SetActive(index == 3);
         HudTabColors.Apply(audioTab, index == 0);
         HudTabColors.Apply(videoTab, index == 1);
         HudTabColors.Apply(visualTab, index == 2);
+        HudTabColors.Apply(keybindsTab, index == 3);
         if (playSound)
             Sfx.Play(SfxId.UiClick);
     }
@@ -787,9 +954,11 @@ public class PauseMenuUI : MonoBehaviour
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
         var le = go.GetComponent<LayoutElement>();
-        le.preferredHeight = 36f;
-        le.minHeight = 36f;
-        le.preferredWidth = 44f;
+        le.preferredHeight = 38f;
+        le.minHeight = 38f;
+        le.flexibleHeight = 0f;
+        le.preferredWidth = 42f;
+        le.minWidth = 42f;
         var img = go.GetComponent<Image>();
         img.color = ButtonColor;
         var btn = go.GetComponent<Button>();
@@ -814,22 +983,27 @@ public class PauseMenuUI : MonoBehaviour
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Slider), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
-        go.GetComponent<LayoutElement>().preferredHeight = 14f;
+        var sliderLayout = go.GetComponent<LayoutElement>();
+        sliderLayout.minHeight = 22f;
+        sliderLayout.preferredHeight = 22f;
+        sliderLayout.flexibleHeight = 0f;
 
         var bg = new GameObject("Background", typeof(RectTransform), typeof(Image));
         bg.transform.SetParent(go.transform, false);
-        Stretch((RectTransform)bg.transform);
         var bgRt = (RectTransform)bg.transform;
-        bgRt.offsetMin = new Vector2(0f, 4f);
-        bgRt.offsetMax = new Vector2(0f, -4f);
-        bg.GetComponent<Image>().color = new Color(0.22f, 0.24f, 0.3f, 1f);
+        bgRt.anchorMin = new Vector2(0f, 0.5f);
+        bgRt.anchorMax = new Vector2(1f, 0.5f);
+        bgRt.offsetMin = new Vector2(0f, -3f);
+        bgRt.offsetMax = new Vector2(0f, 3f);
+        bg.GetComponent<Image>().color = new Color(0.25f, 0.28f, 0.35f, 1f);
 
         var fillArea = new GameObject("Fill Area", typeof(RectTransform));
         fillArea.transform.SetParent(go.transform, false);
         var faRt = (RectTransform)fillArea.transform;
-        Stretch(faRt);
-        faRt.offsetMin = new Vector2(0f, 4f);
-        faRt.offsetMax = new Vector2(-8f, -4f);
+        faRt.anchorMin = new Vector2(0f, 0.5f);
+        faRt.anchorMax = new Vector2(1f, 0.5f);
+        faRt.offsetMin = new Vector2(0f, -3f);
+        faRt.offsetMax = new Vector2(-8f, 3f);
 
         var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
@@ -839,12 +1013,17 @@ public class PauseMenuUI : MonoBehaviour
         var handleArea = new GameObject("Handle Slide Area", typeof(RectTransform));
         handleArea.transform.SetParent(go.transform, false);
         Stretch((RectTransform)handleArea.transform);
+        var handleAreaRt = (RectTransform)handleArea.transform;
+        handleAreaRt.offsetMin = new Vector2(8f, 0f);
+        handleAreaRt.offsetMax = new Vector2(-8f, 0f);
 
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(handleArea.transform, false);
         var handleRt = (RectTransform)handle.transform;
-        handleRt.sizeDelta = new Vector2(12f, 12f);
-        handle.GetComponent<Image>().color = Color.white;
+        handleRt.anchorMin = new Vector2(0.5f, 0.5f);
+        handleRt.anchorMax = new Vector2(0.5f, 0.5f);
+        handleRt.sizeDelta = new Vector2(16f, 20f);
+        handle.GetComponent<Image>().color = new Color(0.92f, 0.94f, 1f, 1f);
 
         var slider = go.GetComponent<Slider>();
         slider.fillRect = (RectTransform)fill.transform;
@@ -863,10 +1042,12 @@ public class PauseMenuUI : MonoBehaviour
         var go = new GameObject(name, typeof(RectTransform), typeof(Toggle), typeof(Image), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
         var le = go.GetComponent<LayoutElement>();
-        le.preferredWidth = 24f;
-        le.preferredHeight = 24f;
-        le.minWidth = 24f;
-        go.GetComponent<Image>().color = ButtonColor;
+        le.preferredWidth = 22f;
+        le.preferredHeight = 22f;
+        le.minWidth = 22f;
+        le.minHeight = 22f;
+        le.flexibleHeight = 0f;
+        go.GetComponent<Image>().color = new Color(0.3f, 0.33f, 0.4f, 1f);
 
         var check = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
         check.transform.SetParent(go.transform, false);

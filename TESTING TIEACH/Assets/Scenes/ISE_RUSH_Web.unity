@@ -17286,14 +17286,11 @@ MonoBehaviour:
   closeButton: {fileID: 0}
   pauseWhileOpen: 0
   tabButtons:
-  - {fileID: 0}
   - {fileID: 1748840785}
   - {fileID: 1703027995}
   tabPanels:
-  - {fileID: 206538839}
   - {fileID: 324577160}
   - {fileID: 1771794267}
-  statsSection: {fileID: 206538839}
 --- !u!1 &1830083236
 GameObject:
   m_ObjectHideFlags: 0

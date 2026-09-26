@@ -23,9 +23,6 @@ public class ManagementScreenController : MonoBehaviour
     public Button[] tabButtons;
     public GameObject[] tabPanels;
 
-    [Header("Sections (optional)")]
-    public GameObject statsSection;
-
     bool isOpen;
     ManagementTabInfoUI tabInfoUI;
 
