@@ -3,22 +3,131 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Paints parking stalls on the east (right) side of the restaurant lot
-/// and parks a couple of cars in those spaces.
+/// Paints parking stalls on the east side of the restaurant lot and
+/// tracks which stalls are free for arriving cars and the delivery van.
+/// The scene bus is hidden and kept as the pose a visiting bus parks in.
 /// </summary>
 public class ParkingLotDressing : MonoBehaviour
 {
+    sealed class Stall
+    {
+        public Vector3 center;
+        public Quaternion facing;
+        public bool taken;
+        public bool overlapsBus;
+    }
+
     public static Vector3 DeliveryStallCenter { get; private set; }
     public static Quaternion DeliveryStallFacing { get; private set; } = Quaternion.LookRotation(Vector3.left, Vector3.up);
     public static bool HasDeliveryStall { get; private set; }
+    public static bool HasParkingStalls => stalls.Count > 0;
+    public static bool HasBusBay { get; private set; }
     public static float DeliveryAisleX { get; private set; }
     public static float LotEntryZ { get; private set; }
 
-    public static bool TryGetDeliveryStall(out Vector3 center, out Quaternion facing)
+    static readonly List<Stall> stalls = new List<Stall>();
+    static bool busBayTaken;
+    static Vector3 busBayPosition;
+    static Quaternion busBayRotation;
+    static Bounds busBayBounds;
+    static bool hasBusBayBounds;
+    static GameObject busTemplate;
+
+    public static bool TryClaimRandomStall(out int stallId, out Vector3 center, out Quaternion facing)
     {
-        center = DeliveryStallCenter;
+        stallId = -1;
+        center = default;
         facing = DeliveryStallFacing;
-        return HasDeliveryStall;
+        int available = 0;
+        for (int i = 0; i < stalls.Count; i++)
+        {
+            if (IsStallFree(stalls[i]))
+                available++;
+        }
+        if (available == 0) return false;
+
+        int choice = Random.Range(0, available);
+        for (int i = 0; i < stalls.Count; i++)
+        {
+            if (!IsStallFree(stalls[i])) continue;
+            if (choice > 0)
+            {
+                choice--;
+                continue;
+            }
+
+            stalls[i].taken = true;
+            stallId = i;
+            center = stalls[i].center;
+            facing = stalls[i].facing;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static void ReleaseStall(int stallId)
+    {
+        if (stallId < 0 || stallId >= stalls.Count) return;
+        stalls[stallId].taken = false;
+    }
+
+    public static bool TryClaimBusBay(out Vector3 position, out Quaternion rotation)
+    {
+        position = busBayPosition;
+        rotation = busBayRotation;
+        if (!HasBusBay || busBayTaken) return false;
+        for (int i = 0; i < stalls.Count; i++)
+        {
+            if (stalls[i].overlapsBus && stalls[i].taken)
+                return false;
+        }
+
+        busBayTaken = true;
+        return true;
+    }
+
+    public static void ReleaseBusBay()
+    {
+        busBayTaken = false;
+    }
+
+    public static GameObject CreateBus(Vector3 position, Quaternion rotation)
+    {
+        if (busTemplate == null) return null;
+        GameObject bus = Instantiate(busTemplate, position, rotation);
+        bus.SetActive(true);
+        bus.name = "ArrivingBus";
+        return bus;
+    }
+
+    public static void RoadApproach(out Vector3 spawnPos, out Quaternion spawnFacing)
+    {
+        if (RoadTrafficController.TryGetHighway(out float westX, out _, out float roadZ, out float roadY))
+        {
+            float laneZ = roadZ - RoadTrafficController.HighwayLaneOffset;
+            float x = westX;
+            for (int n = 0; n < 6; n++)
+            {
+                if (!VehiclePathMotion.VehicleWithin(new Vector3(x, roadY, laneZ), 7f))
+                    break;
+                x -= 8f;
+            }
+
+            spawnPos = new Vector3(x, roadY, laneZ);
+            spawnFacing = Quaternion.LookRotation(Vector3.right, Vector3.up);
+            return;
+        }
+
+        spawnPos = DeliveryStallCenter + Vector3.forward * 16f + Vector3.left * 4f;
+        spawnFacing = Quaternion.LookRotation(Vector3.right, Vector3.up);
+    }
+
+    static bool IsStallFree(Stall stall)
+    {
+        if (stall == null || stall.taken) return false;
+        if (stall.overlapsBus && busBayTaken) return false;
+        return true;
     }
 
     const float StallWidth = 2.65f;
@@ -36,6 +145,9 @@ public class ParkingLotDressing : MonoBehaviour
 
     void Start()
     {
+        stalls.Clear();
+        HasDeliveryStall = false;
+        CaptureBusBay();
         if (!TryGetLotBounds(out Bounds lot))
             return;
 
@@ -69,15 +181,84 @@ public class ParkingLotDressing : MonoBehaviour
                 new Vector3(StallDepth, LineHeight, LineWidth));
         }
 
-        ParkCars(lot, west, east, z0, stallCount);
+        Quaternion facing = Quaternion.LookRotation(Vector3.left, Vector3.up);
+        for (int i = 0; i < stallCount; i++)
+        {
+            Vector3 center = StallCenter(west, east, z0, i);
+            center.y = lot.min.y;
+            stalls.Add(new Stall
+            {
+                center = center,
+                facing = facing,
+                overlapsBus = OverlapsBusBay(center)
+            });
+        }
+
         int middle = stallCount >= 3 ? stallCount / 2 : 1;
-        Vector3 middleStall = StallCenter(west, east, z0, Mathf.Clamp(middle, 0, stallCount - 1));
-        middleStall.y = lot.min.y;
-        DeliveryStallCenter = middleStall;
-        DeliveryStallFacing = Quaternion.LookRotation(Vector3.left, Vector3.up);
+        DeliveryStallCenter = stalls[Mathf.Clamp(middle, 0, stallCount - 1)].center;
+        DeliveryStallFacing = facing;
         DeliveryAisleX = west - 2.15f;
         LotEntryZ = lot.max.z - 0.65f;
-        HasDeliveryStall = true;
+        HasDeliveryStall = stalls.Count > 0;
+    }
+
+    static void CaptureBusBay()
+    {
+        HasBusBay = false;
+        hasBusBayBounds = false;
+        busBayTaken = false;
+        busTemplate = null;
+
+        GameObject root = FindBusRoot();
+        if (root == null) return;
+
+        busBayPosition = root.transform.position;
+        busBayRotation = root.transform.rotation;
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool found = false;
+        Bounds bounds = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] == null) continue;
+            if (!found)
+            {
+                bounds = renderers[i].bounds;
+                found = true;
+            }
+            else
+                bounds.Encapsulate(renderers[i].bounds);
+        }
+
+        if (found)
+        {
+            busBayBounds = bounds;
+            hasBusBayBounds = true;
+        }
+
+        busTemplate = root;
+        HasBusBay = true;
+        root.SetActive(false);
+    }
+
+    static bool OverlapsBusBay(Vector3 stallCenter)
+    {
+        if (!hasBusBayBounds) return false;
+        Bounds pad = busBayBounds;
+        pad.Expand(1.6f);
+        return pad.Contains(new Vector3(stallCenter.x, pad.center.y, stallCenter.z));
+    }
+
+    static GameObject FindBusRoot()
+    {
+        Renderer bus = FindBus();
+        if (bus == null) return null;
+        Transform root = bus.transform;
+        for (Transform t = bus.transform; t != null; t = t.parent)
+        {
+            if (t.name.IndexOf("Bus", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                root = t;
+        }
+        return root.gameObject;
     }
 
     static bool TryGetLotBounds(out Bounds lot)
@@ -146,39 +327,9 @@ public class ParkingLotDressing : MonoBehaviour
         renderer.receiveShadows = false;
     }
 
-    static void ParkCars(Bounds lot, float west, float east, float z0, int stallCount)
-    {
-        GameObject[] prefabs = Resources.LoadAll<GameObject>("Traffic");
-        if (prefabs == null || prefabs.Length == 0) return;
-
-        Renderer bus = FindBus();
-        var occupied = new List<int>();
-        int[] preferred = stallCount >= 3
-            ? new[] { stallCount - 1 }
-            : new[] { stallCount - 1 };
-
-        for (int p = 0; p < preferred.Length; p++)
-        {
-            int stall = Mathf.Clamp(preferred[p], 0, stallCount - 1);
-            if (occupied.Contains(stall)) continue;
-            Vector3 stallCenter = StallCenter(west, east, z0, stall);
-            if (bus != null && OverlapsBus(stallCenter, bus))
-                continue;
-            occupied.Add(stall);
-            PlaceParkedCar(prefabs[p % prefabs.Length], stallCenter, lot.min.y);
-        }
-    }
-
     static Vector3 StallCenter(float west, float east, float z0, int stall)
     {
         return new Vector3((west + east) * 0.5f, 0f, z0 + (stall + 0.5f) * StallWidth);
-    }
-
-    static bool OverlapsBus(Vector3 stallCenter, Renderer bus)
-    {
-        Bounds pad = bus.bounds;
-        pad.Expand(1.6f);
-        return pad.Contains(new Vector3(stallCenter.x, pad.center.y, stallCenter.z));
     }
 
     public static bool TryGetBusBounds(out Bounds bounds)
@@ -218,17 +369,5 @@ public class ParkingLotDressing : MonoBehaviour
             bestSize = size;
         }
         return best;
-    }
-
-    static void PlaceParkedCar(GameObject prefab, Vector3 stallCenter, float groundY)
-    {
-        if (prefab == null) return;
-        Quaternion facing = Quaternion.LookRotation(Vector3.left, Vector3.up);
-        GameObject car = Instantiate(prefab, new Vector3(stallCenter.x, groundY, stallCenter.z), facing);
-        car.name = "Parked_" + prefab.name;
-        Collider[] colliders = car.GetComponentsInChildren<Collider>(true);
-        for (int i = 0; i < colliders.Length; i++)
-            if (colliders[i] != null)
-                colliders[i].enabled = false;
     }
 }

@@ -343,7 +343,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
                 "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) become rush hours with more arrivals — prepare inventory and labor before the peak.\n\n" +
+                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. Customers arrive as a Poisson process, so the count jumps around the average. That average is lowest on <b>Milestone 1</b> and rises with each later milestone. From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) become rush hours with a higher rate — prepare inventory and labor before the peak.\n\n" +
                 "<b>Live demand and throughput</b>\nOutstanding is the exact number of items customers still need. Ready and in production are live counts. Ordered and completed are measured totals from the trailing 60 simulation seconds, not forecasts.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Demand changes over time. Capacity that works during a quiet hour may fail during the peak.";
             return;

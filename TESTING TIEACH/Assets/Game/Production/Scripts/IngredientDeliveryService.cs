@@ -259,10 +259,10 @@ public class IngredientDeliveryService : MonoBehaviour
         shipment.dispatched = true;
         Vector3 stall;
         Quaternion facing;
-        if (!ParkingLotDressing.TryGetDeliveryStall(out stall, out facing))
+        if (!ParkingLotDressing.TryClaimRandomStall(out int stallId, out stall, out facing))
         {
-            stall = GetHandoffPoint() + Vector3.right * 8f;
-            facing = Quaternion.LookRotation(Vector3.left, Vector3.up);
+            shipment.dispatched = false;
+            return;
         }
 
         ResolveVanSpawn(stall, facing, out Vector3 spawnPos, out Quaternion spawnFacing);
@@ -285,6 +285,7 @@ public class IngredientDeliveryService : MonoBehaviour
         }
 
         var van = vanGo.AddComponent<DeliveryVan>();
+        van.StallId = stallId;
         van.Arrive(stall, facing, () => SpawnDriver(shipment, van));
         shipment.van = van;
     }

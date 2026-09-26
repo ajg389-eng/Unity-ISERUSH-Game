@@ -330,10 +330,10 @@ public class HeatLampStation : MonoBehaviour
         int rowZ = Mathf.FloorToInt((centerZ - origin.z) / cell);
 
         Vector3 slot = new Vector3(
-            origin.x + (firstX + Mathf.Max(0, index) + 0.5f) * cell,
+            origin.x + (firstX + 0.5f) * cell,
             transform.position.y,
             origin.z + (rowZ + 0.5f) * cell);
-        return SnapPickupToGround(slot);
+        return SnapPickupToGround(CustomerStandLine.Place(slot, index, cell));
     }
 
     public static HeatLampStation FindNearest(Vector3 worldPosition)
@@ -542,8 +542,8 @@ public class HeatLampStation : MonoBehaviour
         float queueStep = GridManager.Instance != null
             ? Mathf.Max(0.01f, GridManager.Instance.cellSize)
             : customerPickupSpacing;
-        Vector3 pos = origin + alongCounter * lateral + Vector3.right * (queueStep * Mathf.Max(0, index));
-        return SnapPickupToGround(pos);
+        Vector3 pos = origin + alongCounter * lateral;
+        return SnapPickupToGround(CustomerStandLine.Place(pos, index, queueStep));
     }
 
     float GetCustomerStandDistance()

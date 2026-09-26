@@ -388,7 +388,11 @@ public class Register : MonoBehaviour
         else
             removed |= queue.Remove(front);
         if (!removed)
+        {
+            if (front != null)
+                front.OnServed(storeExit);
             return;
+        }
 
         if (sale > 0)
         {
@@ -619,15 +623,15 @@ public class Register : MonoBehaviour
         float cell = placementGrid != null ? Mathf.Max(0.01f, placementGrid.cellSize) : 1f;
         Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
 
-        // First cell immediately east of the register, aligned to the same grid as
-        // the customer floor. Every following customer occupies the next cell east.
+        // First cell immediately east of the register. Each following customer
+        // stands on the next cell in the same row.
         int firstX = Mathf.FloorToInt((bounds.max.x + 0.01f - origin.x) / cell);
         int rowZ = Mathf.FloorToInt((bounds.center.z - origin.z) / cell);
-        Vector3 slot = new Vector3(
-            origin.x + (firstX + Mathf.Max(0, index) + 0.5f) * cell,
+        Vector3 first = new Vector3(
+            origin.x + (firstX + 0.5f) * cell,
             transform.position.y,
             origin.z + (rowZ + 0.5f) * cell);
-        return SlotHeight(slot);
+        return SlotHeight(CustomerStandLine.Place(first, index, cell));
     }
 
     /// <summary>
@@ -659,9 +663,8 @@ public class Register : MonoBehaviour
             anchor = orderFront + alongCounter * spacing;
         }
 
-        // Pickup queues use the same eastbound customer-side lineup.
-        Vector3 pos = anchor + Vector3.right * (spacing * Mathf.Max(0, index));
-        return SlotHeight(pos);
+        float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
+        return SlotHeight(CustomerStandLine.Place(anchor, index, cell));
     }
 
     void UpdateQueueTargets()

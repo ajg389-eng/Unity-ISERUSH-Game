@@ -62,32 +62,61 @@ public class RoadTrafficController : MonoBehaviour
         ResolveDrivePath();
         if (GetComponent<RoadStreetlights>() == null)
             gameObject.AddComponent<RoadStreetlights>();
-        nextEastbound = Random.Range(0.2f, 1.2f);
-        nextWestbound = Random.Range(0.8f, 2.0f);
-        SpawnCar(1f);
-        SpawnCar(-1f);
+        if (MilestoneFeatures.HighestReachedNumberedStage() <= 1)
+        {
+            nextEastbound = Random.Range(4f, 8f);
+            nextWestbound = Random.Range(9f, 15f);
+        }
+        else
+        {
+            nextEastbound = Random.Range(0.6f, 1.8f);
+            nextWestbound = Random.Range(1.4f, 3.2f);
+            SpawnCar(1f);
+        }
     }
 
     void Update()
     {
         if (carPrefabs.Count == 0) return;
 
-        bool holdEast = eastboundHold > 0 || Time.time < eastboundHoldUntil;
-        SetEastboundPaused(holdEast);
+        // Highway traffic keeps its speed. Customer cars turn off the road
+        // without freezing everyone already driving.
+        SetEastboundPaused(false);
 
-        nextEastbound -= holdEast ? 0f : Time.deltaTime;
+        nextEastbound -= Time.deltaTime;
         nextWestbound -= Time.deltaTime;
+        SpawnWindow(out float minInterval, out float maxInterval);
         if (nextEastbound <= 0f)
         {
-            if (!holdEast)
-                SpawnCar(1f);
-            nextEastbound = holdEast ? 0.8f : Random.Range(minSpawnInterval, maxSpawnInterval);
+            SpawnCar(1f);
+            nextEastbound = Random.Range(minInterval, maxInterval);
         }
         if (nextWestbound <= 0f)
         {
             SpawnCar(-1f);
-            nextWestbound = Random.Range(minSpawnInterval, maxSpawnInterval);
+            nextWestbound = Random.Range(minInterval, maxInterval);
         }
+    }
+
+    void SpawnWindow(out float minInterval, out float maxInterval)
+    {
+        int stage = MilestoneFeatures.HighestReachedNumberedStage();
+        if (stage <= 1)
+        {
+            minInterval = 12f;
+            maxInterval = 20f;
+            return;
+        }
+
+        if (stage == 2)
+        {
+            minInterval = 6f;
+            maxInterval = 11f;
+            return;
+        }
+
+        minInterval = minSpawnInterval;
+        maxInterval = maxSpawnInterval;
     }
 
     void LoadCarPrefabs()
@@ -239,7 +268,6 @@ public class RoadTrafficController : MonoBehaviour
         if (instance == null) return;
         instance.eastboundHold++;
         instance.eastboundHoldUntil = Time.time + 2.5f;
-        instance.DespawnEastbound();
         instance.SetEastboundPaused(true);
     }
 
@@ -289,9 +317,10 @@ public class RoadTrafficController : MonoBehaviour
 
         float spawnX = direction > 0f ? westSpawnX : eastSpawnX;
         float laneZ = roadZ + (direction > 0f ? -LaneOffset : LaneOffset);
-        if (LaneOccupied(spawnX, laneZ, direction))
+        float gap = CurrentMinGap();
+        if (LaneOccupied(spawnX, laneZ, direction, gap))
             return;
-        if (DeliveryVanBlocksLane(spawnX, laneZ, direction))
+        if (DeliveryVanBlocksLane(spawnX, laneZ, direction, gap))
             return;
 
         GameObject prefab = carPrefabs[Random.Range(0, carPrefabs.Count)];
@@ -303,11 +332,18 @@ public class RoadTrafficController : MonoBehaviour
         var driver = car.GetComponent<DrivingCar>();
         if (driver == null)
             driver = car.AddComponent<DrivingCar>();
-        driver.Configure(Random.Range(minSpeed, maxSpeed), direction, direction > 0f ? eastEndX : westEndX);
+        float slow = MilestoneFeatures.HighestReachedNumberedStage() <= 1 ? 12f : minSpeed;
+        float fast = MilestoneFeatures.HighestReachedNumberedStage() <= 1 ? 14f : maxSpeed;
+        driver.Configure(Random.Range(slow, fast), direction, direction > 0f ? eastEndX : westEndX);
         liveCars.Add(driver);
     }
 
-    bool LaneOccupied(float spawnX, float laneZ, float direction)
+    static float CurrentMinGap()
+    {
+        return MilestoneFeatures.HighestReachedNumberedStage() <= 1 ? 28f : MinSpawnGap;
+    }
+
+    bool LaneOccupied(float spawnX, float laneZ, float direction, float gap)
     {
         for (int i = 0; i < liveCars.Count; i++)
         {
@@ -315,19 +351,32 @@ public class RoadTrafficController : MonoBehaviour
             if (car == null) continue;
             if (Mathf.Abs(car.transform.position.z - laneZ) > 1.2f) continue;
             float along = (car.transform.position.x - spawnX) * direction;
-            if (along >= 0f && along < MinSpawnGap)
+            if (along >= 0f && along < gap)
                 return true;
         }
         return false;
     }
 
-    static bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction)
+    static bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction, float gap)
     {
-        DeliveryVan van = FindFirstObjectByType<DeliveryVan>();
-        if (van == null) return false;
-        if (Mathf.Abs(van.transform.position.z - laneZ) > 2.8f) return false;
-        float along = (van.transform.position.x - spawnX) * direction;
-        return along >= -10f && along < MinSpawnGap + 14f;
+        if (BlocksLane(spawnX, laneZ, direction, gap, FindObjectsByType<DeliveryVan>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)))
+            return true;
+        return BlocksLane(spawnX, laneZ, direction, gap, FindObjectsByType<LotArrivalVehicle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+    }
+
+    static bool BlocksLane<T>(float spawnX, float laneZ, float direction, float gap, T[] vehicles) where T : Component
+    {
+        if (vehicles == null) return false;
+        for (int i = 0; i < vehicles.Length; i++)
+        {
+            T vehicle = vehicles[i];
+            if (vehicle == null) continue;
+            if (Mathf.Abs(vehicle.transform.position.z - laneZ) > 2.8f) continue;
+            float along = (vehicle.transform.position.x - spawnX) * direction;
+            if (along >= -10f && along < gap + 14f)
+                return true;
+        }
+        return false;
     }
 
     void PruneCars()

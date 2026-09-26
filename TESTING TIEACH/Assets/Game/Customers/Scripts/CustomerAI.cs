@@ -68,6 +68,32 @@ public class CustomerAI : MonoBehaviour
 
     public bool IsEntering => phase == Phase.Entering;
     public bool IsLeaving => phase == Phase.Leaving;
+
+    /// <summary>
+    /// Distance along <paramref name="forward"/> to the nearest customer
+    /// walking between a car and the building. Large when the lane is clear.
+    /// </summary>
+    public static float ClosestWalkerAhead(Vector3 from, Vector3 forward, float sideLimit)
+    {
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.01f) return 80f;
+        forward.Normalize();
+        Vector3 side = new Vector3(-forward.z, 0f, forward.x);
+        float best = 80f;
+        for (int i = 0; i < ActiveCustomers.Count; i++)
+        {
+            CustomerAI customer = ActiveCustomers[i];
+            if (customer == null) continue;
+            if (!customer.IsEntering && !customer.IsLeaving) continue;
+            Vector3 to = customer.transform.position - from;
+            to.y = 0f;
+            float along = Vector3.Dot(to, forward);
+            if (along < 0.15f || along >= best) continue;
+            if (Mathf.Abs(Vector3.Dot(to, side)) > sideLimit) continue;
+            best = along;
+        }
+        return best;
+    }
     public bool HasReservedSlot => hasQueueSlot;
     public Vector3 ReservedSlotPosition => queuedSlotPos;
 
@@ -75,6 +101,18 @@ public class CustomerAI : MonoBehaviour
     bool standYReady;
     static float cachedFloorY;
     static int cachedFloorFrame = -1;
+    static readonly List<CustomerAI> ActiveCustomers = new List<CustomerAI>();
+
+    void OnEnable()
+    {
+        if (!ActiveCustomers.Contains(this))
+            ActiveCustomers.Add(this);
+    }
+
+    void OnDisable()
+    {
+        ActiveCustomers.Remove(this);
+    }
 
     void Awake()
     {
@@ -113,6 +151,8 @@ public class CustomerAI : MonoBehaviour
             for (int i = 0; i < worldPoints.Count; i++)
                 route.Add(worldPoints[i]);
         }
+
+        DetourAroundBus(route);
 
         while (route.Count > 0 && HorizontalDist(transform.position, route[0]) <= arrivalDistance)
             route.RemoveAt(0);
@@ -331,6 +371,7 @@ public class CustomerAI : MonoBehaviour
 
     public void OnServed(Transform exit)
     {
+        if (leaving) return;
         ReleaseWaitAreaReservation();
         StopPatienceMeter();
         waitingForPickup = false;
@@ -368,10 +409,28 @@ public class CustomerAI : MonoBehaviour
             route.Add(fallbackExit.position);
         else
             route.Add(transform.position + Vector3.forward * 8f);
+
+        AppendCarReturn(route);
+        DetourAroundBus(route);
+    }
+
+    void AppendCarReturn(List<Vector3> into)
+    {
+        var ride = GetComponent<ParkedCarRide>();
+        if (ride == null || !ride.TryGetReturnPoint(out Vector3 door)) return;
+        door.y = transform.position.y;
+        into.Add(door);
     }
 
     void Update()
     {
+        if (!leaving && order != null && IsOrderFullyDelivered
+            && phase != Phase.Entering)
+        {
+            FinishPickupAndLeave();
+            return;
+        }
+
         switch (phase)
         {
             case Phase.Entering:
@@ -525,6 +584,7 @@ public class CustomerAI : MonoBehaviour
 
     void FinishPickupAndLeave()
     {
+        if (leaving) return;
         if (pickupStation != null)
         {
             pickupStation.LeavePickupQueue(this);
@@ -533,8 +593,13 @@ public class CustomerAI : MonoBehaviour
         hasQueueSlot = false;
         hasTarget = false;
         isFront = false;
+        Transform exit = reg != null ? reg.storeExit : null;
         if (reg != null)
             reg.CompleteServe(this, order);
+        // The register only starts the walk home when this customer is still
+        // in its queue. A finished order must leave either way.
+        if (!leaving)
+            OnServed(exit);
     }
 
     void ReleaseWaitAreaReservation()
@@ -544,6 +609,8 @@ public class CustomerAI : MonoBehaviour
         hasWaitAreaReservation = false;
     }
 
+    float leaveStuckTime;
+
     void UpdateLeaving()
     {
         if (routeIndex >= route.Count)
@@ -552,8 +619,59 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
+        Vector3 before = transform.position;
         if (MoveOnCustomerGrid(route[routeIndex]))
+        {
             routeIndex++;
+            leaveStuckTime = 0f;
+            gridPath.Clear();
+            return;
+        }
+
+        if (HorizontalDist(before, transform.position) < 0.03f)
+            leaveStuckTime += Time.deltaTime;
+        else
+            leaveStuckTime = 0f;
+
+        // A bad doorway point or a neighbor in the corner must not trap the group.
+        if (leaveStuckTime < 1.6f) return;
+        routeIndex++;
+        leaveStuckTime = 0f;
+        gridPath.Clear();
+    }
+
+    void DetourAroundBus(List<Vector3> points)
+    {
+        if (points == null || points.Count < 2) return;
+        if (!ParkingLotDressing.TryGetBusBounds(out Bounds bus)) return;
+
+        Bounds pad = bus;
+        pad.Expand(0.8f);
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            if (!SegmentCrossesBus(points[i], points[i + 1], pad)) continue;
+            float y = points[i].y;
+            float nextX = points[i + 1].x;
+            bool goNorth = (points[i].z + points[i + 1].z) * 0.5f >= bus.center.z;
+            float sideZ = goNorth ? pad.max.z + 0.75f : pad.min.z - 0.75f;
+            points.Insert(i + 1, new Vector3(points[i].x, y, sideZ));
+            points.Insert(i + 2, new Vector3(nextX, y, sideZ));
+            i += 2;
+        }
+    }
+
+    static bool SegmentCrossesBus(Vector3 a, Vector3 b, Bounds pad)
+    {
+        Vector3 aa = new Vector3(a.x, pad.center.y, a.z);
+        Vector3 bb = new Vector3(b.x, pad.center.y, b.z);
+        if (pad.Contains(aa) || pad.Contains(bb))
+            return true;
+        for (int i = 1; i < 8; i++)
+        {
+            if (pad.Contains(Vector3.Lerp(aa, bb, i / 8f)))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -692,29 +810,61 @@ public class CustomerAI : MonoBehaviour
 
     bool IsBlockedByOtherCustomer(Vector3 dest)
     {
-        if (phase != Phase.GoingToSlot && phase != Phase.Waiting) return false;
-
-        // Pickup queues are waiting areas with unique assigned grid slots. A
-        // customer heading to a rear slot may need to cross a tile occupied by
-        // somebody nearer the counter. Blocking here deadlocks every slot behind
-        // the first one, so pickup customers can pass through each other while
-        // travelling and separate again at their assigned destinations.
-        if (waitingForPickup) return false;
-
-        const float personalSpace = 0.65f;
-        float myDist = HorizontalDist(transform.position, dest);
-        CustomerAI[] others = FindObjectsByType<CustomerAI>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        for (int i = 0; i < others.Length; i++)
+        // Leaving customers have to clear the door. Holding them for the person
+        // ahead piles the whole group in the corner.
+        if (phase == Phase.Leaving) return false;
+        // Register and pickup slots are one tile apart in a straight file.
+        // Always finish the walk onto your own tile. Only refuse a step that
+        // would land on someone who is already standing on a different tile.
+        if (hasQueueSlot && StepApproachesOwnSlot(dest))
         {
-            CustomerAI other = others[i];
-            if (other == null || other == this || other.IsLeaving || other.IsEntering) continue;
-            if (HorizontalDist(other.transform.position, dest) >= personalSpace) continue;
-            // Only yield to someone already closer to this cell (ahead in line).
-            if (HorizontalDist(other.transform.position, dest) < myDist - 0.05f)
+            for (int i = 0; i < ActiveCustomers.Count; i++)
+            {
+                CustomerAI other = ActiveCustomers[i];
+                if (other == null || other == this || !other.hasQueueSlot) continue;
+                // The order line stands between the register and the pickup.
+                // Walking to the pickup station has to pass those people.
+                if (waitingForPickup && !other.waitingForPickup) continue;
+                if (HorizontalDist(other.queuedSlotPos, queuedSlotPos) < 0.35f) continue;
+                bool otherHome = HorizontalDist(other.transform.position, other.queuedSlotPos) <= 0.3f;
+                if (!otherHome) continue;
+                if (HorizontalDist(dest, other.transform.position) < 0.45f)
+                    return true;
+            }
+            return false;
+        }
+
+        const float followDistance = 0.82f;
+        Vector3 move = dest - transform.position;
+        move.y = 0f;
+        if (move.sqrMagnitude < 0.0001f) return false;
+        Vector3 moveDir = move.normalized;
+
+        for (int i = 0; i < ActiveCustomers.Count; i++)
+        {
+            CustomerAI other = ActiveCustomers[i];
+            if (other == null || other == this) continue;
+            if (waitingForPickup && !other.waitingForPickup) continue;
+
+            Vector3 toOther = other.transform.position - transform.position;
+            toOther.y = 0f;
+            float gap = toOther.magnitude;
+            if (gap >= followDistance) continue;
+            if (gap < 0.001f) return GetInstanceID() > other.GetInstanceID();
+
+            float ahead = Vector3.Dot(moveDir, toOther / gap);
+            if (ahead > 0.35f)
                 return true;
         }
+
         return false;
+    }
+
+    bool StepApproachesOwnSlot(Vector3 dest)
+    {
+        float now = HorizontalDist(transform.position, queuedSlotPos);
+        float next = HorizontalDist(dest, queuedSlotPos);
+        return next <= 0.25f || next < now - 0.02f;
     }
 
     void SnapXZ(Vector3 world)

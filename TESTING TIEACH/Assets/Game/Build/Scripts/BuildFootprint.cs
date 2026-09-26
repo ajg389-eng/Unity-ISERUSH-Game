@@ -486,16 +486,9 @@ public class CustomerWallDoor : MonoBehaviour
         Vector3 threshold = GetCustomerWaypoint(true, 0.15f);
         float insideDistance = passageClearance;
         Vector3 inside = GetCustomerWaypoint(false, insideDistance);
-        bool hasBus = TryGetBusAlightPoint(out Vector3 bus);
 
         if (entering)
         {
-            if (hasBus)
-            {
-                into.Add(bus);
-                Vector3 curb = new Vector3(Mathf.Lerp(bus.x, outside.x, 0.55f), outside.y, Mathf.Lerp(bus.z, outside.z, 0.35f));
-                into.Add(curb);
-            }
             into.Add(outside);
             into.Add(threshold);
             into.Add(inside);
@@ -505,12 +498,6 @@ public class CustomerWallDoor : MonoBehaviour
             into.Add(inside);
             into.Add(threshold);
             into.Add(outside);
-            if (hasBus)
-            {
-                Vector3 curb = new Vector3(Mathf.Lerp(bus.x, outside.x, 0.55f), outside.y, Mathf.Lerp(bus.z, outside.z, 0.35f));
-                into.Add(curb);
-                into.Add(bus);
-            }
         }
     }
 

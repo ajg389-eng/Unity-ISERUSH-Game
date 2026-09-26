@@ -78,11 +78,17 @@ public class DrivingCar : MonoBehaviour
         bouncePhase += dt * 18f;
         float bodyBob = Mathf.Sin(bouncePhase) * bounceAmount;
         Vector3 pos = transform.position;
-        pos.x += direction * speed * dt;
+        Vector3 forward = direction > 0f ? Vector3.right : Vector3.left;
+        float bumperGap = VehiclePathMotion.ClosestVehicleAhead(transform, forward, 1.8f);
+        float step = speed * dt;
+        float room = bumperGap - 1.7f;
+        if (step > room)
+            step = Mathf.Max(0f, room);
+        pos.x += direction * step;
         pos.y = groundY + bodyBob;
         transform.position = pos;
 
-        float spin = (speed * dt / Mathf.Max(0.08f, wheelRadius)) * Mathf.Rad2Deg * -direction;
+        float spin = (step / Mathf.Max(0.08f, wheelRadius)) * Mathf.Rad2Deg * -direction;
         for (int i = 0; i < wheels.Length; i++)
         {
             if (wheels[i] == null) continue;

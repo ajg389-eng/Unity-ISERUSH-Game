@@ -660,6 +660,7 @@ public class BuildPlacer : MonoBehaviour
             return;
         PositionOnCounter(draggingObject, draggingMountedItem.itemDefinition, surface, slot, dragRotation);
         if (!surface.Attach(draggingMountedItem, slot)) return;
+        RememberCounterPlacement(draggingMountedItem.itemDefinition, slot, dragRotation);
         FinalizeMountedOrientation(draggingObject);
         Sfx.Play(SfxId.BuildPlace);
         EndDrag();
@@ -1275,6 +1276,7 @@ public class BuildPlacer : MonoBehaviour
         mounted.itemDefinition = placingItem;
         PositionOnCounter(placed, placingItem, surface, slot, placementRotation);
         surface.Attach(mounted, slot);
+        RememberCounterPlacement(placingItem, slot, placementRotation);
         FinalizeMountedOrientation(placed);
 
         var pbi = placed.GetComponent<PlacedBuildItem>();
@@ -1304,14 +1306,20 @@ public class BuildPlacer : MonoBehaviour
         CancelPlacement();
         CancelDrag();
         grid.ResyncOccupancyFromScene();
+        RememberPlacedRegisterAndPickup();
 
         int placedCount = 0;
         foreach (ItemDefinition item in inventory.allItems)
         {
             if (!IsDebugStationDefinition(item)) continue;
 
-            int desiredCount = item.prefab.GetComponentInChildren<HeatLampStation>(true) != null ? 3 : 1;
-            int missingCount = Mathf.Max(0, desiredCount - GetDebugStationPlacedCount(item));
+            int existing = GetDebugStationPlacedCount(item);
+            // Register and pickup stay on the slots the player chose.
+            // Do not add extra copies on a different part of the counter.
+            int desiredCount = IsPlayerAnchoredStation(item)
+                ? Mathf.Max(existing, 1)
+                : 1;
+            int missingCount = Mathf.Max(0, desiredCount - existing);
             for (int copy = 0; copy < missingCount; copy++)
             {
                 bool placed = item.placementSurface == ItemDefinition.PlacementSurface.Counter
@@ -1414,9 +1422,70 @@ public class BuildPlacer : MonoBehaviour
         return false;
     }
 
+    const string RegisterSlotPref = "tieach.place.registerSlot";
+    const string RegisterRotPref = "tieach.place.registerRot";
+    const string PickupSlotPref = "tieach.place.pickupSlot";
+    const string PickupRotPref = "tieach.place.pickupRot";
+
+    static bool IsPlayerAnchoredStation(ItemDefinition item)
+    {
+        if (item == null || item.prefab == null) return false;
+        return item.buildFunction == ItemDefinition.BuildFunction.Register
+            || item.prefab.GetComponentInChildren<Register>(true) != null
+            || item.prefab.GetComponentInChildren<HeatLampStation>(true) != null;
+    }
+
+    static bool IsPickupStation(ItemDefinition item)
+    {
+        return item != null && item.prefab != null
+            && item.prefab.GetComponentInChildren<HeatLampStation>(true) != null
+            && item.prefab.GetComponentInChildren<Register>(true) == null
+            && item.buildFunction != ItemDefinition.BuildFunction.Register;
+    }
+
+    static void RememberCounterPlacement(ItemDefinition item, int slot, int rotation)
+    {
+        if (!IsPlayerAnchoredStation(item) || slot < 0) return;
+        bool pickup = IsPickupStation(item);
+        PlayerPrefs.SetInt(pickup ? PickupSlotPref : RegisterSlotPref, slot);
+        PlayerPrefs.SetInt(pickup ? PickupRotPref : RegisterRotPref, ((rotation % 4) + 4) % 4);
+    }
+
+    static void RememberPlacedRegisterAndPickup()
+    {
+        foreach (CounterMountedItem mounted in FindObjectsByType<CounterMountedItem>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (mounted == null || mounted.itemDefinition == null || mounted.slotIndex < 0) continue;
+            if (!IsPlayerAnchoredStation(mounted.itemDefinition)) continue;
+            int rotation = MountedRotationSteps(mounted);
+            RememberCounterPlacement(mounted.itemDefinition, mounted.slotIndex, rotation);
+        }
+    }
+
+    static int MountedRotationSteps(CounterMountedItem mounted)
+    {
+        if (mounted == null || mounted.surface == null || mounted.itemDefinition == null) return 0;
+        Quaternion local = Quaternion.Inverse(mounted.surface.transform.rotation) * mounted.transform.rotation;
+        float delta = Mathf.DeltaAngle(mounted.itemDefinition.placementEuler.y, local.eulerAngles.y);
+        return ((Mathf.RoundToInt(delta / 90f) % 4) + 4) % 4;
+    }
+
     bool DebugPlaceCounterStation(ItemDefinition item)
     {
         int span = Mathf.Max(1, item.counterSlotSpan);
+        if (IsPlayerAnchoredStation(item))
+        {
+            bool pickup = IsPickupStation(item);
+            string slotKey = pickup ? PickupSlotPref : RegisterSlotPref;
+            string rotKey = pickup ? PickupRotPref : RegisterRotPref;
+            if (!PlayerPrefs.HasKey(slotKey))
+                return false;
+            int slot = PlayerPrefs.GetInt(slotKey);
+            int rotation = PlayerPrefs.GetInt(rotKey, 0);
+            return TryMountDebugStation(item, slot, span, rotation);
+        }
+
         CounterSurface bestSurface = null;
         int bestSlot = -1;
         float northernmostZ = float.NegativeInfinity;
@@ -1435,15 +1504,32 @@ public class BuildPlacer : MonoBehaviour
             }
         }
         if (bestSurface == null || bestSlot < 0) return false;
+        return MountDebugStation(item, bestSurface, bestSlot, 0);
+    }
 
+    bool TryMountDebugStation(ItemDefinition item, int slot, int span, int rotation)
+    {
+        foreach (CounterSurface surface in FindObjectsByType<CounterSurface>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (surface.GetComponentInParent<CounterMountedItem>() != null) continue;
+            if (slot < 0 || slot > Mathf.Max(1, surface.slotCount) - span) continue;
+            if (!surface.IsSlotRangeAvailable(slot, span)) continue;
+            return MountDebugStation(item, surface, slot, rotation);
+        }
+        return false;
+    }
+
+    bool MountDebugStation(ItemDefinition item, CounterSurface surface, int slot, int rotation)
+    {
         GameObject placed = Instantiate(item.prefab);
         placed.name = item.itemName + " (Debug)";
         ConfigurePlacedObject(placed, item);
         CounterMountedItem mounted = placed.GetComponent<CounterMountedItem>();
         if (mounted == null) mounted = placed.AddComponent<CounterMountedItem>();
         mounted.itemDefinition = item;
-        PositionOnCounter(placed, item, bestSurface, bestSlot, 0);
-        if (!bestSurface.Attach(mounted, bestSlot))
+        PositionOnCounter(placed, item, surface, slot, rotation);
+        if (!surface.Attach(mounted, slot))
         {
             Destroy(placed);
             return false;

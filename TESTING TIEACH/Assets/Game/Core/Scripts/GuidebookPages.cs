@@ -143,9 +143,10 @@ public static class GuidebookPages
         new Page(
             "Service",
             "Customers",
-            "Customers walk off the <b>bus</b>, go through a placed door, and queue at the <b>register</b>. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
+            "Customers arrive by <b>car</b>, park in an open stall, and walk through a placed door to queue at the <b>register</b>. The car leaves once that customer is done. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
             "They only have so much patience in line. If they wait too long they leave and you lose the sale.\n\n" +
-            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) show <b>RUSH</b> and more customers arrive. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
+            "The time between customers is random, but the first one arrives in the opening hour and later gaps stay short, so the morning does not sit empty. The average rate is lowest on <b>Milestone 1</b> and rises with each later milestone.\n\n" +
+            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) show <b>RUSH</b> and the arrival rate jumps. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
         new Page(
             "Progress",
             "Tasks and milestones",

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Pickup that leaves a highway tunnel, parks in the middle stall, then
+/// Pickup that leaves a highway tunnel, parks in an open stall, then
 /// returns to a tunnel after the driver is back on board.
 /// </summary>
 public class DeliveryVan : MonoBehaviour
@@ -11,13 +11,22 @@ public class DeliveryVan : MonoBehaviour
     readonly List<Vector3> path = new List<Vector3>();
     int index;
     float speed = 7.5f;
+    float cruise = 12.6f;
     bool leaving;
+    bool settling;
+    float settleT;
+    Vector3 settleFrom;
+    Quaternion settleFromRot;
     Quaternion stallFacing;
     Vector3 stall;
     Action onParked;
     bool parked;
     Transform[] wheels;
     float wheelRadius = 0.35f;
+
+    public int StallId = -1;
+    public bool IsParked => parked && !leaving;
+    bool stallReleased;
 
     public Vector3 DriverDoorPosition
     {
@@ -34,45 +43,60 @@ public class DeliveryVan : MonoBehaviour
         stall = stallCenter;
         stallFacing = facing;
         onParked = parkedCallback;
-        speed = 12.6f;
+        cruise = 10f;
+        speed = 3.5f;
+        settling = false;
         CacheWheels();
         if (GetComponent<VehicleHeadlights>() == null) gameObject.AddComponent<VehicleHeadlights>();
         path.Clear();
         BuildArrivePath(transform.position, stallCenter);
+        VehiclePathMotion.RoundCorners(path, 3.1f);
         index = 0;
         RoadTrafficController.BeginDeliveryLaneClearance();
+    }
+
+    void OnDestroy()
+    {
+        if (stallReleased || StallId < 0) return;
+        stallReleased = true;
+        ParkingLotDressing.ReleaseStall(StallId);
     }
 
     public void Leave()
     {
         leaving = true;
         parked = false;
-        speed = 14f;
+        settling = false;
+        cruise = 11f;
+        speed = 3.5f;
         path.Clear();
         BuildLeavePath(transform.position);
+        VehiclePathMotion.RoundCorners(path, 3.1f);
         index = 0;
         RoadTrafficController.BeginDeliveryLaneClearance();
     }
 
     void Update()
     {
+        if (settling)
+        {
+            TickSettle();
+            return;
+        }
+
         if (index >= path.Count)
         {
             if (leaving)
             {
+                if (ContinueToRoadExit())
+                    return;
                 RoadTrafficController.EndDeliveryLaneClearance();
                 Destroy(gameObject);
                 return;
             }
 
             if (!parked)
-            {
-                parked = true;
-                transform.SetPositionAndRotation(stall, stallFacing);
-                RoadTrafficController.EndDeliveryLaneClearance();
-                onParked?.Invoke();
-                onParked = null;
-            }
+                BeginSettle();
             return;
         }
 
@@ -82,18 +106,59 @@ public class DeliveryVan : MonoBehaviour
                 RoadTrafficController.KeepDeliveryLaneClear(2f);
         }
 
-        Vector3 target = path[index];
-        target.y = transform.position.y;
-        Vector3 to = target - transform.position;
-        to.y = 0f;
-        float step = speed * Time.deltaTime;
-        if (to.sqrMagnitude > 0.01f)
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(to.normalized, Vector3.up), Time.deltaTime * 5f);
+        if (!VehiclePathMotion.Advance(transform, path, ref index, ref speed, cruise, 120f, 3, Time.deltaTime, wheels, wheelRadius))
+            return;
 
-        transform.position = Vector3.MoveTowards(transform.position, target, step);
-        SpinWheels(step);
-        if (Vector3.Distance(Flatten(transform.position), Flatten(target)) <= 0.35f)
-            index++;
+        if (leaving)
+        {
+            if (ContinueToRoadExit())
+                return;
+            RoadTrafficController.EndDeliveryLaneClearance();
+            Destroy(gameObject);
+            return;
+        }
+
+        BeginSettle();
+    }
+
+    bool ContinueToRoadExit()
+    {
+        if (!RoadTrafficController.TryGetHighway(out _, out float eastX, out float roadZ, out _))
+            return false;
+        if (transform.position.x >= eastX - 2f)
+            return false;
+
+        path.Clear();
+        path.Add(transform.position);
+        path.Add(new Vector3(eastX, transform.position.y, roadZ - RoadTrafficController.HighwayLaneOffset));
+        index = 0;
+        return true;
+    }
+
+    void BeginSettle()
+    {
+        settling = true;
+        settleT = 0f;
+        settleFrom = transform.position;
+        settleFromRot = transform.rotation;
+    }
+
+    void TickSettle()
+    {
+        settleT += Time.deltaTime / 0.7f;
+        float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(settleT));
+        Vector3 pos = Vector3.Lerp(settleFrom, stall, t);
+        pos.y = Mathf.Lerp(settleFrom.y, stall.y, t);
+        transform.SetPositionAndRotation(pos, Quaternion.Slerp(settleFromRot, stallFacing, t));
+        SpinWheels(Mathf.Lerp(speed, 0f, t) * Time.deltaTime);
+        if (t < 1f) return;
+
+        settling = false;
+        parked = true;
+        speed = 0f;
+        RoadTrafficController.EndDeliveryLaneClearance();
+        onParked?.Invoke();
+        onParked = null;
     }
 
     void BuildArrivePath(Vector3 from, Vector3 stallCenter)
@@ -207,11 +272,5 @@ public class DeliveryVan : MonoBehaviour
     {
         a.y = b.y;
         return Vector3.Distance(a, b);
-    }
-
-    static Vector3 Flatten(Vector3 p)
-    {
-        p.y = 0f;
-        return p;
     }
 }
