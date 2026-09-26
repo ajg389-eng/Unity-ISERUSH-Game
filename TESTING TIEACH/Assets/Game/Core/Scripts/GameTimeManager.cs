@@ -126,6 +126,16 @@ public class GameTimeManager : MonoBehaviour
         SetSpeed(SpeedMode.Play);
     }
 
+    public void RestoreCheckpoint(int day, float minutes)
+    {
+        CurrentDay = Mathf.Max(1, day);
+        CurrentMinutes = Mathf.Clamp(minutes, DayStartMinutes, DayEndMinutes);
+        IsShiftOver = false;
+        SetSpeed(SpeedMode.Play);
+        OnTimeChanged?.Invoke();
+        if (CurrentMinutes >= DayEndMinutes) EndShift();
+    }
+
     /// <summary>Debug helper that ends the shift through the normal day-end path.</summary>
     public bool DebugSkipToEndOfDay()
     {

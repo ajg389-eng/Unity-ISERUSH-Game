@@ -90,6 +90,15 @@ public class CustomerAI : MonoBehaviour
             if (Mathf.Abs(Vector3.Dot(to, side)) > sideLimit) continue;
             best = along;
         }
+        foreach (IngredientCourier courier in IngredientCourier.ActiveCouriers)
+        {
+            if (courier == null) continue;
+            Vector3 to = courier.transform.position - from;
+            to.y = 0f;
+            float along = Vector3.Dot(to, forward);
+            if (along < 0f || along >= best) continue;
+            if (Mathf.Abs(Vector3.Dot(to, side)) <= sideLimit) best = along;
+        }
         return best;
     }
     public bool HasReservedSlot => hasQueueSlot;
@@ -415,6 +424,7 @@ public class CustomerAI : MonoBehaviour
         var ride = GetComponent<ParkedCarRide>();
         if (ride == null || !ride.TryGetReturnPoint(out Vector3 door)) return;
         door.y = transform.position.y;
+        into.Add(ParkingLotDressing.PedestrianAislePoint(door));
         into.Add(door);
     }
 
@@ -479,6 +489,7 @@ public class CustomerAI : MonoBehaviour
         if (waitingForPickup)
             TrySelfServeFromHeatLamp();
 
+        if (leaving) return;
         if (MoveOnCustomerGrid(targetPos))
         {
             phase = Phase.Waiting;
@@ -490,6 +501,12 @@ public class CustomerAI : MonoBehaviour
 
     void UpdateWaiting()
     {
+        if (leaving) return;
+        if (waitingForPickup && IsOrderFullyDelivered)
+        {
+            FinishPickupAndLeave();
+            return;
+        }
         if (waitingForPickup && pickupStation == null)
         {
             JoinNextPickupStation();
@@ -543,14 +560,15 @@ public class CustomerAI : MonoBehaviour
 
     void TrySelfServeFromHeatLamp()
     {
-        if (reg == null || pickupStation == null || leaving) return;
-        if (HorizontalDist(transform.position, queuedSlotPos) > 0.85f) return;
-
+        if (leaving) return;
         if (IsOrderFullyDelivered)
         {
             FinishPickupAndLeave();
             return;
         }
+
+        if (reg == null || pickupStation == null) return;
+        if (HorizontalDist(transform.position, queuedSlotPos) > 0.85f) return;
 
         if (!HeatLampStation.TryCustomerTakeAvailableItem(
                 this, pickupStation, order, out ItemDefinition item)) return;

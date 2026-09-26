@@ -452,6 +452,9 @@ public class IngredientDeliveryService : MonoBehaviour
         var path = new List<Vector3>();
         Add(path, from);
         Vector3 handoff = GetHandoffPoint();
+        Vector3 aisle = ParkingLotDressing.PedestrianAislePoint(from);
+        Add(path, aisle);
+        from = aisle;
         CustomerWallDoor door = CustomerWallDoor.FindEntryDoor();
         if (door != null)
         {
@@ -482,7 +485,9 @@ public class IngredientDeliveryService : MonoBehaviour
             outside = door.GetCustomerWaypoint(true, 2.4f);
             Add(path, outside);
         }
-        AppendAroundBus(path, path.Count > 0 ? path[path.Count - 1] : from, vanDoor);
+        Vector3 aisle = ParkingLotDressing.PedestrianAislePoint(vanDoor);
+        AppendAroundBus(path, path.Count > 0 ? path[path.Count - 1] : from, aisle);
+        Add(path, aisle);
         Add(path, vanDoor);
         return path;
     }

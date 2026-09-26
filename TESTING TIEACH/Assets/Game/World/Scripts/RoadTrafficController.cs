@@ -85,15 +85,18 @@ public class RoadTrafficController : MonoBehaviour
 
         nextEastbound -= Time.deltaTime;
         nextWestbound -= Time.deltaTime;
+        bool deliveryManeuvering = false;
+        foreach (DeliveryVan van in FindObjectsByType<DeliveryVan>(FindObjectsSortMode.None))
+            if (van != null && !van.IsParked) { deliveryManeuvering = true; break; }
         SpawnWindow(out float minInterval, out float maxInterval);
         if (nextEastbound <= 0f)
         {
-            SpawnCar(1f);
+            if (!deliveryManeuvering) SpawnCar(1f);
             nextEastbound = Random.Range(minInterval, maxInterval);
         }
         if (nextWestbound <= 0f)
         {
-            SpawnCar(-1f);
+            if (!deliveryManeuvering) SpawnCar(-1f);
             nextWestbound = Random.Range(minInterval, maxInterval);
         }
     }

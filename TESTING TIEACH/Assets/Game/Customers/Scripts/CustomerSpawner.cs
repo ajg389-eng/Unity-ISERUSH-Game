@@ -252,6 +252,8 @@ public class CustomerSpawner : MonoBehaviour
             if (entryPointsBuffer.Count > 0)
                 spawnPos.y = entryPointsBuffer[0].y;
             entryPointsBuffer.Insert(0, spawnPos);
+            if (rideHome != null && !rideHome.HoldsBusBay)
+                entryPointsBuffer.Insert(1, ParkingLotDressing.PedestrianAislePoint(spawnPos));
         }
         else
         {

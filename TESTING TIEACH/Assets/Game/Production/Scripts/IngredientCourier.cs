@@ -7,6 +7,9 @@ using UnityEngine;
 /// </summary>
 public class IngredientCourier : MonoBehaviour
 {
+    public static readonly List<IngredientCourier> ActiveCouriers = new List<IngredientCourier>();
+    void OnEnable() { if (!ActiveCouriers.Contains(this)) ActiveCouriers.Add(this); }
+    void OnDisable() { ActiveCouriers.Remove(this); }
     enum Phase
     {
         ToCounter,
@@ -18,7 +21,7 @@ public class IngredientCourier : MonoBehaviour
     DeliveryVan van;
     readonly List<Vector3> path = new List<Vector3>();
     int index;
-    float speed = 6.02f;
+    float speed = 2.8f;
     Phase phase = Phase.ToCounter;
     float handoffTimer;
     Vector3 handoff;
@@ -52,7 +55,7 @@ public class IngredientCourier : MonoBehaviour
         for (int i = 0; i < outbound.Count; i++)
             path.Add(outbound[i]);
         index = 0;
-        speed = 6.44f;
+        speed = 2.8f;
     }
 
     public void CancelAndLeave()
@@ -110,7 +113,7 @@ public class IngredientCourier : MonoBehaviour
     {
         var facing = PartyCharacterAnimator.EnsureOn(gameObject);
         if (facing != null)
-            facing.FaceTowardAdjacent(target, smooth: true);
+            facing.FaceMovementToward(target, smooth: true);
     }
 
     void DisableCollision()

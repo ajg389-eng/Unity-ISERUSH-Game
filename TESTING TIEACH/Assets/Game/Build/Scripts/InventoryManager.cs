@@ -145,6 +145,13 @@ public class InventoryManager : MonoBehaviour
         }
     }
 
+    public void RestoreCounts(ItemDefinition item, int stored, int totalAcquired)
+    {
+        if (item == null) return;
+        counts[item] = Mathf.Max(0, stored);
+        acquired[item] = Mathf.Max(counts[item], totalAcquired);
+    }
+
     public void AddOne(ItemDefinition item)
     {
         if (item == null) return;

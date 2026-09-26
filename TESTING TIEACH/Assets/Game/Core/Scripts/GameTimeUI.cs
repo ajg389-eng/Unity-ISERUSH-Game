@@ -43,6 +43,7 @@ public class GameTimeUI : MonoBehaviour
             timeManager.OnTimeChanged += Refresh;
             timeManager.OnSpeedChanged += Refresh;
             timeManager.OnDayEnded += Refresh;
+            timeManager.OnDayStarted += Refresh;
         }
         EnsureSpeedStrip();
         CacheButtonHighlights();
@@ -58,13 +59,24 @@ public class GameTimeUI : MonoBehaviour
             timeManager.OnTimeChanged -= Refresh;
             timeManager.OnSpeedChanged -= Refresh;
             timeManager.OnDayEnded -= Refresh;
+            timeManager.OnDayStarted -= Refresh;
         }
     }
 
     void Update()
     {
         if (timeManager == null)
+        {
             timeManager = GameTimeManager.Instance;
+            if (timeManager != null)
+            {
+                timeManager.OnTimeChanged += Refresh;
+                timeManager.OnSpeedChanged += Refresh;
+                timeManager.OnDayEnded += Refresh;
+                timeManager.OnDayStarted += Refresh;
+                Refresh();
+            }
+        }
         ApplyClockText();
     }
 

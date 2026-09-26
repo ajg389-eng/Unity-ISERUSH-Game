@@ -81,7 +81,9 @@ public class DrivingCar : MonoBehaviour
         Vector3 forward = direction > 0f ? Vector3.right : Vector3.left;
         float bumperGap = VehiclePathMotion.ClosestVehicleAhead(transform, forward, 1.8f);
         float step = speed * dt;
-        float room = bumperGap - 1.7f;
+        float walkerGap = CustomerAI.ClosestWalkerAhead(pos, forward, 1.85f);
+        float room = Mathf.Min(bumperGap - 1.7f,
+            walkerGap - VehiclePathMotion.NoseLength(transform) - 0.85f);
         if (step > room)
             step = Mathf.Max(0f, room);
         pos.x += direction * step;

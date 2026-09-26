@@ -313,7 +313,7 @@ public class TitleScreenController : MonoBehaviour
                 string played = info.lastPlayedUtc == System.DateTime.MinValue
                     ? "Saved game"
                     : info.lastPlayedUtc.ToLocalTime().ToString("MMM d, h:mm tt");
-                status = $"Day {info.day}  |  ${info.cash:N0}  |  {played}";
+                status = $"Day {info.day}  |  ${info.cash:N0}  |  Saved {played}";
                 action = "CONTINUE  >";
             }
             else
@@ -355,7 +355,7 @@ public class TitleScreenController : MonoBehaviour
     void StartGame(int slotIndex)
     {
         if (!showingTitle) return;
-        GameSaveSlots.SelectAndLoad(slotIndex);
+        if (!GameSaveSlots.SelectAndLoad(slotIndex)) return;
         choosingSave = false;
         showingTitle = false;
 

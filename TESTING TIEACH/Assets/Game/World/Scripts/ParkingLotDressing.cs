@@ -15,6 +15,7 @@ public class ParkingLotDressing : MonoBehaviour
         public Quaternion facing;
         public bool taken;
         public bool overlapsBus;
+        public bool deliveryOnly;
     }
 
     public static Vector3 DeliveryStallCenter { get; private set; }
@@ -125,12 +126,12 @@ public class ParkingLotDressing : MonoBehaviour
 
     static bool IsStallFree(Stall stall)
     {
-        if (stall == null || stall.taken) return false;
+        if (stall == null || stall.taken || stall.deliveryOnly) return false;
         if (stall.overlapsBus && busBayTaken) return false;
         return true;
     }
 
-    const float StallWidth = 2.65f;
+    const float StallWidth = 4.4f;
     const float StallDepth = 5.4f;
     const float LineWidth = 0.09f;
     const float LineHeight = 0.035f;
@@ -160,7 +161,7 @@ public class ParkingLotDressing : MonoBehaviour
         float west = east - StallDepth;
         float south = lot.min.z + 0.35f;
         float north = lot.max.z - 0.35f;
-        int stallCount = Mathf.Max(3, Mathf.FloorToInt((north - south) / StallWidth));
+        int stallCount = Mathf.Max(1, Mathf.FloorToInt((north - south) / StallWidth));
         float used = stallCount * StallWidth;
         float z0 = (south + north - used) * 0.5f;
 
@@ -178,7 +179,7 @@ public class ParkingLotDressing : MonoBehaviour
         {
             AddLine(root, paint,
                 new Vector3((west + east) * 0.5f, paintY, z0 + i * StallWidth),
-                new Vector3(StallDepth, LineHeight, LineWidth));
+                new Vector3(StallDepth, LineHeight, 1.2f));
         }
 
         Quaternion facing = Quaternion.LookRotation(Vector3.left, Vector3.up);
@@ -197,9 +198,15 @@ public class ParkingLotDressing : MonoBehaviour
         int middle = stallCount >= 3 ? stallCount / 2 : 1;
         DeliveryStallCenter = stalls[Mathf.Clamp(middle, 0, stallCount - 1)].center;
         DeliveryStallFacing = facing;
+        stalls[Mathf.Clamp(middle, 0, stallCount - 1)].deliveryOnly = true;
         DeliveryAisleX = west - 2.15f;
         LotEntryZ = lot.max.z - 0.65f;
         HasDeliveryStall = stalls.Count > 0;
+    }
+
+    public static Vector3 PedestrianAislePoint(Vector3 door)
+    {
+        return HasDeliveryStall ? new Vector3(DeliveryAisleX, door.y, door.z) : door;
     }
 
     static void CaptureBusBay()

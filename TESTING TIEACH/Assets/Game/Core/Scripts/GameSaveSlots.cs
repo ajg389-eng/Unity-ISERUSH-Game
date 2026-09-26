@@ -2,8 +2,7 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// Lightweight three-slot persistence for the core campaign state shown on the title screen.
-/// World-layout serialization can be added behind this API without changing the slot UI.
+/// Three-slot persistence for kitchen checkpoints and campaign metadata.
 /// </summary>
 public static class GameSaveSlots
 {
@@ -12,6 +11,8 @@ public static class GameSaveSlots
 
     const string Prefix = "ISE_RUSH.Save.";
     static bool slotSelectedThisSession;
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetSession() { slotSelectedThisSession = false; }
 
     public readonly struct SlotInfo
     {
@@ -44,7 +45,7 @@ public static class GameSaveSlots
         return new SlotInfo(slotIndex, exists, day, cash, lastPlayed);
     }
 
-    public static void SelectAndLoad(int slotIndex)
+    public static bool SelectAndLoad(int slotIndex)
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
         SlotInfo info = GetSlot(slotIndex);
@@ -56,8 +57,25 @@ public static class GameSaveSlots
 
         if (info.exists)
         {
-            if (time != null) time.RestoreDay(info.day);
-            if (money != null) money.SetMoney(info.cash);
+            string json = PlayerPrefs.GetString(Key(slotIndex, "Kitchen"), "");
+            if (!string.IsNullOrEmpty(json))
+            {
+                KitchenSaveSnapshot checkpoint = null;
+                try { checkpoint = JsonUtility.FromJson<KitchenSaveSnapshot>(json); }
+                catch (Exception ex) { Debug.LogError("Could not read kitchen save: " + ex.Message); }
+                if (checkpoint == null || !checkpoint.Restore())
+                {
+                    slotSelectedThisSession = false;
+                    Debug.LogError("Kitchen save could not be restored. The saved checkpoint has been preserved.");
+                    return false;
+                }
+            }
+            else
+            {
+                // Older saves never contained a layout or clock time.
+                if (time != null) time.RestoreDay(info.day);
+                if (money != null) money.SetMoney(info.cash);
+            }
         }
         else
         {
@@ -66,6 +84,7 @@ public static class GameSaveSlots
         }
 
         SaveActiveSlot();
+        return true;
     }
 
     public static void SaveActiveSlot()
@@ -78,6 +97,8 @@ public static class GameSaveSlots
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>();
         int day = time != null ? time.CurrentDay : 1;
         int cash = money != null ? money.CurrentMoney : 1000;
+        string checkpoint = JsonUtility.ToJson(KitchenSaveSnapshot.Capture());
+        PlayerPrefs.SetString(Key(slotIndex, "Kitchen"), checkpoint);
 
         PlayerPrefs.SetInt(Key(slotIndex, "Exists"), 1);
         PlayerPrefs.SetInt(Key(slotIndex, "Day"), Mathf.Max(1, day));
@@ -98,6 +119,14 @@ public sealed class GameSaveSlotAutosave : MonoBehaviour
     }
 
     GameTimeManager clock;
+    float nextSave;
+
+    void Update()
+    {
+        if (Time.unscaledTime < nextSave) return;
+        nextSave = Time.unscaledTime + 30f;
+        Save();
+    }
 
     void Start()
     {

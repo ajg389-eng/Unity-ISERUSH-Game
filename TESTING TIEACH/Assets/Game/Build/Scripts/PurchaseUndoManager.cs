@@ -57,6 +57,12 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public int Count => stack.Count;
     public bool CanUndo => stack.Count > 0;
+    public bool CanUndoIngredient => stack.Count > 0 && stack[stack.Count - 1].kind == Kind.Ingredient;
+
+    public bool TryUndoIngredient()
+    {
+        return CanUndoIngredient && TryUndo();
+    }
 
     public bool CanUndoFloor
     {
@@ -138,7 +144,13 @@ public class PurchaseUndoManager : MonoBehaviour
     {
         if (UIInputFocusGuard.IsTyping) return;
         if ((Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && Input.GetKeyDown(KeyCode.Z))
-            TryUndo();
+        {
+            var foodMenu = FindFirstObjectByType<IngredientsOrderUI>();
+            if (foodMenu != null && foodMenu.isActiveAndEnabled)
+                TryUndoIngredient();
+            else
+                TryUndo();
+        }
     }
 
     public void RecordStationPurchase(ItemDefinition item, int paid)

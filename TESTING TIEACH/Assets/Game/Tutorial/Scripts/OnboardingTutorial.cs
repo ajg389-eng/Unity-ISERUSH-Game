@@ -25,6 +25,22 @@ public class OnboardingTutorial : MonoBehaviour
     bool liveCustomerSpawned;
     bool starterKitchenHidden;
     int stepIndex;
+    public int SaveStepIndex => stepIndex;
+    public void RestoreCheckpoint(bool complete, int savedStep)
+    {
+        PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
+        pendingStart = false;
+        running = !complete;
+        stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
+        furthestStepIndex = stepIndex;
+        if (complete)
+        {
+            HideUI();
+            ClearHighlight();
+            GameTimeManager.Instance?.ReleaseExternalPause(PauseSource);
+        }
+        else ShowStep();
+    }
     int furthestStepIndex = -1;
     bool flowEditCompleted;
     readonly List<Outline> tutorialControlOutlines = new List<Outline>();

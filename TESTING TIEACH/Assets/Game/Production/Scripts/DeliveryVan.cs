@@ -34,7 +34,7 @@ public class DeliveryVan : MonoBehaviour
         {
             Vector3 right = transform.right;
             Vector3 back = -transform.forward;
-            return transform.position + right * -1.25f + back * 0.15f;
+            return transform.position + right * -2.2f + back * 0.15f;
         }
     }
 
@@ -141,6 +141,11 @@ public class DeliveryVan : MonoBehaviour
         settleT = 0f;
         settleFrom = transform.position;
         settleFromRot = transform.rotation;
+        // A parking bay accepts either heading; keep the one nearest the approach
+        // instead of forcing a half-turn after the vehicle has already arrived.
+        Quaternion opposite = stallFacing * Quaternion.Euler(0f, 180f, 0f);
+        if (Quaternion.Angle(settleFromRot, opposite) < Quaternion.Angle(settleFromRot, stallFacing))
+            stallFacing = opposite;
     }
 
     void TickSettle()

@@ -48,7 +48,7 @@ public class LotArrivalVehicle : MonoBehaviour
             }
         }
 
-        return transform.position - transform.right * 1.4f - transform.forward * 0.15f;
+        return transform.position - transform.right * 2.2f - transform.forward * 0.15f;
     }
 
     public Vector3 NextBoardingPoint()
@@ -206,6 +206,11 @@ public class LotArrivalVehicle : MonoBehaviour
         settleT = 0f;
         settleFrom = transform.position;
         settleFromRot = transform.rotation;
+        // A parking bay accepts either heading; keep the one nearest the approach
+        // instead of forcing a half-turn after the vehicle has already arrived.
+        Quaternion opposite = stallFacing * Quaternion.Euler(0f, 180f, 0f);
+        if (Quaternion.Angle(settleFromRot, opposite) < Quaternion.Angle(settleFromRot, stallFacing))
+            stallFacing = opposite;
     }
 
     void TickSettle()
@@ -370,6 +375,8 @@ public class LotArrivalVehicle : MonoBehaviour
 /// </summary>
 public static class VehiclePathMotion
 {
+    static readonly Dictionary<Transform, float> noseLengths = new Dictionary<Transform, float>();
+    static int noseCacheFrame = -1;
     public static void RoundCorners(List<Vector3> path, float radius)
     {
         if (path == null || path.Count < 3) return;
@@ -453,7 +460,7 @@ public static class VehiclePathMotion
             cursor = point;
         }
 
-        float turnScale = Mathf.Lerp(1f, 0.55f, Mathf.InverseLerp(18f, 70f, corner));
+        float turnScale = Mathf.Lerp(1f, 0.75f, Mathf.InverseLerp(18f, 70f, corner));
         float endScale = Mathf.Lerp(0.5f, 1f, Mathf.Clamp01(remaining / 5.5f));
         float brakeForTurn = BrakeBeforeTurn(path, index, pos);
         // Ease off before a corner, then hold a steady pace. Never coast to a stop.
@@ -466,25 +473,29 @@ public static class VehiclePathMotion
             body.rotation = Quaternion.RotateTowards(body.rotation, want, yawPerSecond * deltaTime);
         }
 
-        Vector3 drive = target - pos;
-        drive.y = 0f;
-        if (drive.sqrMagnitude < 0.01f)
-            drive = body.forward;
-        float vehicleGap = ClosestVehicleAhead(body, drive, 2.15f);
-        float walkerGap = CustomerAI.ClosestWalkerAhead(pos, drive, 1.85f);
-        float selfNose = NoseLength(body);
-        float step = speed * deltaTime;
-        float room = Mathf.Min(vehicleGap - 1.6f, walkerGap - selfNose - 0.85f);
-        if (HoldBeforeDriveway(body, path, index))
-            room = Mathf.Min(room, 0f);
-        if (step > room)
+        float budget = speed * deltaTime;
+        float moved = 0f;
+        bool hold = HoldBeforeDriveway(body, path, index);
+        // Spend the full travel budget across the short fillet segments. Each
+        // segment still checks vehicles and walkers before advancing.
+        while (budget > 0f && index < path.Count && !hold)
         {
-            step = Mathf.Max(0f, room);
-            speed = step / Mathf.Max(0.0001f, deltaTime);
+            target = path[index];
+            target.y = body.position.y;
+            Vector3 drive = target - body.position;
+            float distance = drive.magnitude;
+            if (distance < 0.001f) { index++; continue; }
+            float vehicleGap = ClosestVehicleAhead(body, drive, 2.15f);
+            float walkerGap = CustomerAI.ClosestWalkerAhead(body.position, drive, 1.85f);
+            float room = Mathf.Max(0f, Mathf.Min(vehicleGap - 1.2f, walkerGap - NoseLength(body) - 0.85f));
+            float step = Mathf.Min(budget, Mathf.Min(distance, room));
+            body.position += drive / distance * step;
+            moved += step;
+            budget -= step;
+            if (step >= distance - 0.001f) index++;
+            if (room < Mathf.Min(budget + step, distance)) { speed = 0f; break; }
         }
-        Vector3 next = Vector3.MoveTowards(pos, target, step);
-        float moved = Vector3.Distance(pos, next);
-        body.position = next;
+        if (hold) speed = 0f;
         if (wheels != null && moved > 0f)
         {
             float spin = (moved / Mathf.Max(0.08f, wheelRadius)) * Mathf.Rad2Deg;
@@ -495,8 +506,7 @@ public static class VehiclePathMotion
             }
         }
 
-        if (Vector3.Distance(body.position, target) <= 0.2f)
-            index++;
+
         return index >= path.Count;
     }
 
@@ -521,7 +531,7 @@ public static class VehiclePathMotion
             leg.y = 0f;
             float step = leg.magnitude;
             if (step > 0.25f && Vector3.Angle(forward, leg) > 25f)
-                return Mathf.Lerp(0.4f, 1f, Mathf.InverseLerp(1.4f, 13f, traveled));
+                return Mathf.Lerp(0.65f, 1f, Mathf.InverseLerp(1.4f, 13f, traveled));
             traveled += step;
             at = point;
         }
@@ -628,12 +638,32 @@ public static class VehiclePathMotion
             best = bumper;
     }
 
-    static float NoseLength(Transform body)
+    public static float NoseLength(Transform body)
     {
         if (body == null) return 1.8f;
-        Renderer renderer = body.GetComponentInChildren<Renderer>();
-        if (renderer == null) return 1.8f;
-        return Mathf.Max(1.2f, Mathf.Max(renderer.bounds.extents.x, renderer.bounds.extents.z));
+        if (noseCacheFrame != Time.frameCount)
+        {
+            noseLengths.Clear();
+            noseCacheFrame = Time.frameCount;
+        }
+        if (noseLengths.TryGetValue(body, out float cached)) return cached;
+        // The first renderer can be a wheel, which understates pedestrian clearance.
+        float length = 1.2f;
+        foreach (Renderer renderer in body.GetComponentsInChildren<Renderer>())
+        {
+            Bounds bounds = renderer.localBounds;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 offset = Vector3.Scale(bounds.extents, new Vector3(
+                    (corner & 1) == 0 ? -1f : 1f,
+                    (corner & 2) == 0 ? -1f : 1f,
+                    (corner & 4) == 0 ? -1f : 1f));
+                Vector3 world = renderer.transform.TransformPoint(bounds.center + offset);
+                length = Mathf.Max(length, Mathf.Abs(Vector3.Dot(world - body.position, body.forward)));
+            }
+        }
+        noseLengths[body] = length;
+        return length;
     }
 
     public static bool VehicleWithin(Vector3 world, float radius)

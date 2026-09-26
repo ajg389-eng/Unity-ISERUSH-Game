@@ -98,6 +98,7 @@ public class KitchenEmployee : MonoBehaviour
     public int AssignedStationCount => OperatedStationCount;
     public bool CanTakeJobs => OperatedStationCount > 0;
     public int UpgradeLevel => Mathf.Clamp(upgradeLevel, 0, MaxUpgradeLevel);
+    public void RestoreUpgradeLevel(int level) { upgradeLevel = Mathf.Clamp(level, 0, MaxUpgradeLevel); }
     public bool IsMaxUpgraded => UpgradeLevel >= MaxUpgradeLevel;
 
     /// <summary>How many items this worker can carry per trip (1–4 by stars).</summary>
@@ -1150,6 +1151,32 @@ public class KitchenEmployee : MonoBehaviour
             return true;
         if (manager == null || currentJob == null)
             return false;
+
+        if ((step == Step.AtOutput || step == Step.GoToOutput) && deliverTarget != null)
+        {
+            var currentLamp = deliverTarget.GetComponent<HeatLampStation>();
+            if (currentLamp != null && !currentLamp.HasSpace)
+            {
+                HeatLampStation available = null;
+                float nearest = float.PositiveInfinity;
+                foreach (var candidate in FindObjectsByType<HeatLampStation>(FindObjectsSortMode.None))
+                {
+                    if (!candidate.isActiveAndEnabled || !candidate.HasSpace || candidate.name.Contains("Ghost")) continue;
+                    var mounted = candidate.GetComponent<CounterMountedItem>();
+                    if (mounted != null && mounted.surface == null) continue;
+                    float distance = (candidate.GetInteractionPosition() - transform.position).sqrMagnitude;
+                    if (distance < nearest) { available = candidate; nearest = distance; }
+                }
+                if (available != null)
+                {
+                    deliverTarget = available.gameObject;
+                    currentJob.deliveryHeatLamp = available;
+                    step = Step.GoToOutput;
+                    path.Clear();
+                    pathDestination = Vector3.zero;
+                }
+            }
+        }
 
         if (step == Step.AtFreezer && heldUnits <= 0 && !manager.HasPattyInStock())
             return true;

@@ -1542,7 +1542,7 @@ public class BuildPlacer : MonoBehaviour
         return true;
     }
 
-    static void ConfigurePlacedObject(GameObject placed, ItemDefinition item)
+    public static void ConfigurePlacedObject(GameObject placed, ItemDefinition item)
     {
         if (placed == null || item == null) return;
 
