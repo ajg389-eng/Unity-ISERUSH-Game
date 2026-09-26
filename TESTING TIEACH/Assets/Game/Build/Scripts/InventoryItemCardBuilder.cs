@@ -15,7 +15,7 @@ public static class InventoryItemCardBuilder
         cardGo.transform.SetParent(parent, false);
 
         var cardImg = cardGo.GetComponent<Image>();
-        cardImg.color = new Color(0.92f, 0.93f, 0.95f, 1f);
+        cardImg.color = InventoryItemCardUI.CardColor;
         cardImg.raycastTarget = true;
 
         var cardLe = cardGo.GetComponent<LayoutElement>();
@@ -40,12 +40,12 @@ public static class InventoryItemCardBuilder
         nameGo.transform.SetParent(cardGo.transform, false);
         nameGo.GetComponent<LayoutElement>().preferredHeight = 28f;
         var nameBg = nameGo.GetComponent<Image>();
-        nameBg.color = new Color(1f, 1f, 1f, 0.01f);
+        nameBg.color = InventoryItemCardUI.CardColor;
         nameBg.raycastTarget = true;
         var nameBtn = nameGo.GetComponent<Button>();
         nameBtn.targetGraphic = nameBg;
         nameBtn.transition = Selectable.Transition.None;
-        card.nameText = CreateTmp(nameGo.transform, "Label", "Item", 16, FontStyles.Bold, new Color(0.15f, 0.16f, 0.2f, 1f));
+        card.nameText = CreateTmp(nameGo.transform, "Label", "Item", 16, FontStyles.Bold, InventoryItemCardUI.TextColor);
 
         // Preview area (click to place)
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
@@ -56,7 +56,7 @@ public static class InventoryItemCardBuilder
         previewLe.preferredHeight = 140f;
 
         var previewBg = previewGo.GetComponent<Image>();
-        previewBg.color = new Color(0.18f, 0.19f, 0.23f, 1f);
+        previewBg.color = ItemPreviewThumbnails.BackgroundColor;
         var previewBtn = previewGo.GetComponent<Button>();
         previewBtn.targetGraphic = previewBg;
         previewBtn.transition = Selectable.Transition.None;
@@ -110,11 +110,11 @@ public static class InventoryItemCardBuilder
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
         var bg = go.GetComponent<Image>();
-        bg.color = Color.white;
+        bg.color = InventoryItemCardUI.ChipColor;
         bg.raycastTarget = false;
         go.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
-        return CreateTmp(go.transform, "Text", value, 15, FontStyles.Bold, new Color(0.18f, 0.18f, 0.2f, 1f));
+        return CreateTmp(go.transform, "Text", value, 15, FontStyles.Bold, InventoryItemCardUI.TextColor);
     }
 
     static Button CreateBuyButton(Transform parent)

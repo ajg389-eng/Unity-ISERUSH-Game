@@ -8,7 +8,6 @@ public class InventoryUI : MonoBehaviour
     public const string TabBarName = "TabBar";
     public const string StationsPanelName = "StationsPanel";
     public const string FloorPanelName = "FloorPanel";
-    public const string CustomerManagementPanelName = "CustomerManagementPanel";
 
     public GameModeManager modeManager;
     public InventoryManager inventory;
@@ -86,11 +85,6 @@ public class InventoryUI : MonoBehaviour
         ApplyModeState();
         RefreshExpandButton();
 
-        // Management can close Inventory directly; never leave customer-tile
-        // editing active after its tab is hidden.
-        if (!IsPanelOpen && CustomerWaitAreaManager.Instance != null)
-            CustomerWaitAreaManager.Instance.SetEditing(false);
-
         int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
         if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
@@ -128,8 +122,6 @@ public class InventoryUI : MonoBehaviour
         if (!opening && tabInfoUI != null)
             tabInfoUI.Close();
         panel.SetActive(opening);
-        if (!opening && CustomerWaitAreaManager.Instance != null)
-            CustomerWaitAreaManager.Instance.SetEditing(false);
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
@@ -200,8 +192,6 @@ public class InventoryUI : MonoBehaviour
             EnsureUndoFooter();
         if (stationUndoFooter != null)
             stationUndoFooter.gameObject.SetActive(activeTab == 0);
-
-        CustomerWaitAreaManager.Ensure().SetEditing(activeTab == 2 && IsPanelOpen);
 
         if (activeTab == 0)
             RefreshAll();
@@ -529,6 +519,7 @@ public class InventoryUI : MonoBehaviour
     void BindOrBuildTabs(bool forceDefaultLayout)
     {
         if (panel == null) return;
+        RemoveLegacyCustomerManagement();
 
         if (TryBindExistingTabs() && useSceneLayout && !forceDefaultLayout)
             return;
@@ -547,20 +538,17 @@ public class InventoryUI : MonoBehaviour
         var tabBar = contentBox.Find(TabBarName);
         var stationsPanel = contentBox.Find(StationsPanelName);
         var floorPanel = contentBox.Find(FloorPanelName);
-        var customerPanel = contentBox.Find(CustomerManagementPanelName);
-        if (tabBar == null || stationsPanel == null || floorPanel == null || customerPanel == null)
+        if (tabBar == null || stationsPanel == null || floorPanel == null)
             return false;
 
         var stationsTab = tabBar.Find("Tab_Stations")?.GetComponent<Button>();
         var floorTab = tabBar.Find("Tab_Floor")?.GetComponent<Button>();
-        var customerTab = tabBar.Find("Tab_CustomerManagement")?.GetComponent<Button>();
-        if (stationsTab == null || floorTab == null || customerTab == null)
+        if (stationsTab == null || floorTab == null)
             return false;
 
-        tabButtons = new[] { stationsTab, floorTab, customerTab };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customerPanel.gameObject };
+        tabButtons = new[] { stationsTab, floorTab };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
         floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
-        ConfigureCustomerManagementPanel(customerPanel);
 
         var scrollContent = stationsPanel.Find("Scroll View/Viewport/Content")
             ?? stationsPanel.Find("Scroll View/Content");
@@ -664,20 +652,6 @@ public class InventoryUI : MonoBehaviour
             floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
         }
 
-        Transform customerPanel = contentBox.Find(CustomerManagementPanelName);
-        if (customerPanel == null)
-        {
-            var customerGo = new GameObject(CustomerManagementPanelName, typeof(RectTransform), typeof(Image));
-            customerPanel = customerGo.transform;
-            customerPanel.SetParent(contentBox, false);
-            StretchFull((RectTransform)customerPanel);
-            ((RectTransform)customerPanel).offsetMax = new Vector2(0f, -86f);
-            ((RectTransform)customerPanel).offsetMin = new Vector2(20f, 72f);
-            customerGo.GetComponent<Image>().color = Color.clear;
-            customerGo.GetComponent<Image>().raycastTarget = false;
-        }
-        ConfigureCustomerManagementPanel(customerPanel);
-
         Transform tabBar = contentBox.Find(TabBarName);
         if (tabBar == null)
         {
@@ -709,48 +683,42 @@ public class InventoryUI : MonoBehaviour
 
         EnsureTabButton(tabBar, "Tab_Stations", "Stations");
         EnsureTabButton(tabBar, "Tab_Floor", "Floor");
-        EnsureTabButton(tabBar, "Tab_CustomerManagement", "Customers");
 
         tabButtons = new[]
         {
             tabBar.Find("Tab_Stations").GetComponent<Button>(),
-            tabBar.Find("Tab_Floor").GetComponent<Button>(),
-            tabBar.Find("Tab_CustomerManagement").GetComponent<Button>()
+            tabBar.Find("Tab_Floor").GetComponent<Button>()
         };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customerPanel.gameObject };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
     }
 
-    void ConfigureCustomerManagementPanel(Transform customerPanel)
+    void RemoveLegacyCustomerManagement()
     {
-        if (customerPanel == null) return;
-        var title = customerPanel.Find("Instructions")?.GetComponent<TextMeshProUGUI>();
-        if (title == null)
+        if (panel != null)
         {
-            var go = new GameObject("Instructions", typeof(RectTransform));
-            go.transform.SetParent(customerPanel, false);
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = new Vector2(0f, 1f); rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(.5f, 1f); rt.anchoredPosition = new Vector2(0f, -28f); rt.sizeDelta = new Vector2(-48f, 120f);
-            title = go.AddComponent<TextMeshProUGUI>();
-            title.fontSize = 20f; title.alignment = TextAlignmentOptions.TopLeft; title.color = Color.white;
+            Transform contentBox = panel.transform.Find(ContentBoxName);
+            Transform oldTab = contentBox != null ? contentBox.Find(TabBarName + "/Tab_CustomerManagement") : null;
+            Transform oldPanel = contentBox != null ? contentBox.Find("CustomerManagementPanel") : null;
+            DisableAndDestroy(oldTab);
+            DisableAndDestroy(oldPanel);
         }
-        title.text = "Customer Management\n\nClick and drag across the customer grid to create a rectangular waiting area. Click one tile to toggle it. Blue tiles are places customers can wait after ordering.";
 
-        var clear = customerPanel.Find("ClearWaitAreas")?.GetComponent<Button>();
-        if (clear == null)
+        CustomerWaitAreaManager oldManager = CustomerWaitAreaManager.Instance != null
+            ? CustomerWaitAreaManager.Instance
+            : FindFirstObjectByType<CustomerWaitAreaManager>();
+        if (oldManager != null)
         {
-            var go = new GameObject("ClearWaitAreas", typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(customerPanel, false);
-            var rt = (RectTransform)go.transform;
-            rt.anchorMin = rt.anchorMax = new Vector2(.5f, 1f); rt.pivot = new Vector2(.5f, 1f);
-            rt.anchoredPosition = new Vector2(0f, -180f); rt.sizeDelta = new Vector2(260f, 46f);
-            go.GetComponent<Image>().color = HudTabColors.Idle;
-            clear = go.GetComponent<Button>();
-            var labelGo = new GameObject("Label", typeof(RectTransform)); labelGo.transform.SetParent(go.transform, false); StretchFull((RectTransform)labelGo.transform);
-            var label = labelGo.AddComponent<TextMeshProUGUI>(); label.text = "Clear Wait Areas"; label.fontSize = 18f; label.alignment = TextAlignmentOptions.Center; label.color = Color.white;
+            oldManager.SetEditing(false);
+            oldManager.ClearAreas();
+            DestroyObject(oldManager.gameObject);
         }
-        clear.onClick.RemoveAllListeners();
-        clear.onClick.AddListener(() => CustomerWaitAreaManager.Ensure().ClearAreas());
+    }
+
+    static void DisableAndDestroy(Transform target)
+    {
+        if (target == null) return;
+        target.gameObject.SetActive(false);
+        DestroyObject(target.gameObject);
     }
 
     void WireTabButtons()

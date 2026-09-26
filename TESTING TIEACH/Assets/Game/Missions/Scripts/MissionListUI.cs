@@ -11,6 +11,9 @@ using TMPro;
 public class MissionListUI : MonoBehaviour
 {
     public const string PanelObjectName = "SideMenuPanel";
+    const string TopTabsObjectName = "TasksProgressionTabs";
+    const float TopTabsWidth = 550f;
+    const float TopTabsHeight = 60f;
 
     public enum SideTab
     {
@@ -53,6 +56,10 @@ public class MissionListUI : MonoBehaviour
     SideTab activeTab = SideTab.Tasks;
     bool built;
     ManagementTabInfoUI tabInfoUI;
+    GameObject topTabsRoot;
+    Button topTasksButton;
+    Button topProgressionButton;
+    bool panelOpen;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
@@ -72,6 +79,7 @@ public class MissionListUI : MonoBehaviour
             milestones = MilestoneProgressManager.Instance ?? FindObjectOfType<MilestoneProgressManager>();
 
         EnsureUI();
+        EnsureTopTabs();
         SelectTab(SideTab.Tasks, playSound: false);
 
         if (progress != null)
@@ -81,7 +89,9 @@ public class MissionListUI : MonoBehaviour
 
         RefreshAll();
         if (panelRoot != null)
-            panelRoot.SetActive(true);
+            panelRoot.SetActive(false);
+        panelOpen = false;
+        RefreshTopTabs();
     }
 
     void OnDestroy()
@@ -100,8 +110,51 @@ public class MissionListUI : MonoBehaviour
             ApplyLayout();
     }
 
-    public void ShowTasksTab() => SelectTab(SideTab.Tasks);
-    public void ShowProgressionTab() => SelectTab(SideTab.Progression);
+    void LateUpdate()
+    {
+        if (topTabsRoot != null)
+            topTabsRoot.transform.SetAsLastSibling();
+        RefreshTopTabs();
+    }
+
+    public bool IsOpen => panelOpen && panelRoot != null && panelRoot.activeSelf;
+
+    public void ShowTasksTab()
+    {
+        SetVisible(true);
+        SelectTab(SideTab.Tasks);
+    }
+
+    public void ShowProgressionTab()
+    {
+        SetVisible(true);
+        SelectTab(SideTab.Progression);
+    }
+
+    public void SetVisible(bool visible)
+    {
+        EnsureUI();
+        EnsureTopTabs();
+        panelOpen = visible;
+        if (panelRoot != null)
+            panelRoot.SetActive(visible);
+        if (!visible && tabInfoUI != null)
+            tabInfoUI.Close();
+        RefreshTopTabs();
+    }
+
+    void ToggleTopTab(SideTab tab)
+    {
+        if (IsOpen && activeTab == tab)
+        {
+            SetVisible(false);
+            Sfx.Play(SfxId.UiClose);
+            return;
+        }
+
+        SetVisible(true);
+        SelectTab(tab);
+    }
 
     public void SelectTab(SideTab tab, bool playSound = true)
     {
@@ -143,6 +196,8 @@ public class MissionListUI : MonoBehaviour
 
         if (playSound)
             Sfx.Play(SfxId.UiClick);
+
+        RefreshTopTabs();
     }
 
     void RefreshAll()
@@ -376,6 +431,7 @@ public class MissionListUI : MonoBehaviour
         built = true;
         ApplyLayout();
         WireTabs();
+        EnsureTopTabs();
     }
 
     void TryFindScenePanel()
@@ -549,19 +605,118 @@ public class MissionListUI : MonoBehaviour
         }
     }
 
+    void EnsureTopTabs()
+    {
+        if (targetCanvas == null) return;
+
+        Transform existing = targetCanvas.transform.Find(TopTabsObjectName);
+        topTabsRoot = existing != null
+            ? existing.gameObject
+            : new GameObject(TopTabsObjectName, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+        if (topTabsRoot.transform.parent != targetCanvas.transform)
+            topTabsRoot.transform.SetParent(targetCanvas.transform, false);
+
+        var rt = (RectTransform)topTabsRoot.transform;
+        rt.anchorMin = new Vector2(1f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(1f, 1f);
+        rt.anchoredPosition = new Vector2(-25f, 0f);
+        rt.sizeDelta = new Vector2(TopTabsWidth, TopTabsHeight);
+
+        var bg = topTabsRoot.GetComponent<Image>() ?? topTabsRoot.AddComponent<Image>();
+        bg.color = HudTabColors.Strip;
+        bg.raycastTarget = true;
+
+        var layout = topTabsRoot.GetComponent<HorizontalLayoutGroup>() ?? topTabsRoot.AddComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(8, 8, 6, 6);
+        layout.spacing = 10f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        topTasksButton = FindOrCreateTopTab("TasksTopTab", "Tasks");
+        topProgressionButton = FindOrCreateTopTab("ProgressionTopTab", "Progression");
+
+        topTasksButton.onClick.RemoveAllListeners();
+        topTasksButton.onClick.AddListener(() => ToggleTopTab(SideTab.Tasks));
+        topProgressionButton.onClick.RemoveAllListeners();
+        topProgressionButton.onClick.AddListener(() => ToggleTopTab(SideTab.Progression));
+        RefreshTopTabs();
+    }
+
+    Button FindOrCreateTopTab(string objectName, string label)
+    {
+        Transform existing = topTabsRoot.transform.Find(objectName);
+        Button button = existing != null ? existing.GetComponent<Button>() : null;
+        if (button == null)
+        {
+            var go = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            go.transform.SetParent(topTabsRoot.transform, false);
+            button = go.GetComponent<Button>();
+            button.targetGraphic = go.GetComponent<Image>();
+
+            var textGo = new GameObject("Label", typeof(RectTransform));
+            textGo.transform.SetParent(go.transform, false);
+            var textRt = (RectTransform)textGo.transform;
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = new Vector2(8f, 2f);
+            textRt.offsetMax = new Vector2(-8f, -2f);
+            var text = textGo.AddComponent<TextMeshProUGUI>();
+            text.text = label;
+            text.fontSize = 16f;
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = Color.white;
+            text.raycastTarget = false;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.overflowMode = TextOverflowModes.Ellipsis;
+            if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        }
+
+        var le = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        le.minWidth = 168f;
+        le.preferredWidth = 168f;
+        le.flexibleWidth = 1f;
+        le.minHeight = 40f;
+        le.preferredHeight = 40f;
+        button.transition = Selectable.Transition.None;
+        return button;
+    }
+
+    void RefreshTopTabs()
+    {
+        SetTopTabVisual(topTasksButton, IsOpen && activeTab == SideTab.Tasks);
+        SetTopTabVisual(topProgressionButton, IsOpen && activeTab == SideTab.Progression);
+    }
+
+    static void SetTopTabVisual(Button button, bool active)
+    {
+        if (button == null) return;
+        var image = button.GetComponent<Image>();
+        if (image != null)
+            image.color = active ? HudTabColors.Active : HudTabColors.Idle;
+    }
+
     void ApplyLayout()
     {
         if (panelRoot == null) return;
 
-        if (!useSceneLayout)
-        {
-            var rt = (RectTransform)panelRoot.transform;
-            rt.anchorMin = panelAnchor;
-            rt.anchorMax = panelAnchor;
-            rt.pivot = panelPivot;
-            rt.anchoredPosition = screenOffset;
-            rt.sizeDelta = panelSize;
-        }
+        // Mirror the Inventory / Management presentation on the right side.
+        var rt = (RectTransform)panelRoot.transform;
+        rt.anchorMin = new Vector2(1f, 0f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(1f, 0.5f);
+        rt.offsetMin = new Vector2(-525f, 16f);
+        rt.offsetMax = new Vector2(-25f, -68f);
+
+        if (headerText != null)
+            headerText.gameObject.SetActive(false);
+        Transform nestedTabs = panelRoot.transform.Find("Tabs");
+        if (nestedTabs != null)
+            nestedTabs.gameObject.SetActive(false);
 
         var bg = panelRoot.GetComponent<Image>();
         if (bg != null)

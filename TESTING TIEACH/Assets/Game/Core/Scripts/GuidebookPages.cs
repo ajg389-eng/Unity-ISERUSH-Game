@@ -35,8 +35,7 @@ public static class GuidebookPages
             "<b>Management</b> (top-left, or press M)\n" +
             "• Workers — hire staff, create and edit flows, assign people to those flows\n" +
             "• Food — choose what to sell and buy ingredient packs\n" +
-            "• Store Stats — live numbers that show bottlenecks\n" +
-            "• Customers — demand and visit trends\n\n" +
+            "• Customers — live demand, throughput, and visit trends\n\n" +
             "<b>Side panel</b>\n" +
             "• Tasks — current milestone missions\n" +
             "• Progression — tutorial chapter, then numbered milestones and quizzes\n\n" +
@@ -87,8 +86,7 @@ public static class GuidebookPages
             "Tabs:\n" +
             "• <b>Workers</b> — hire, create/edit flows, assign people\n" +
             "• <b>Food</b> — menu toggles and ingredient packs\n" +
-            "• <b>Store Stats</b> — queues, wait, throughput, waste\n" +
-            "• <b>Customers</b> — visit trend and demand\n\n" +
+            "• <b>Customers</b> — visits, live demand, throughput, and outstanding orders\n\n" +
             "Clicking a station in Manage is for inspecting that machine (rates, recipe, Pickup Station inventory). Staffing and delivery paths are owned by <b>flows</b> on the Workers tab — not by a per-station Assign Worker / Assign Output panel.\n\n" +
             "Inventory and Management cannot stay open together. Closing Management returns you to Play."),
         new Page(
@@ -124,22 +122,19 @@ public static class GuidebookPages
             "Undo works here if you ordered the wrong pack."),
         new Page(
             "Management",
-            "Store Stats",
-            "Store Stats is a live report of the kitchen as a system. Use it when lines form or money stalls.\n\n" +
-            "From <b>Milestone 2</b> it also shows queue lengths and utilization. Use those numbers to decide where extra people or stations belong.\n\n" +
-            "• <b>Customers in system</b> — people inside the flow (WIP). High numbers mean congestion.\n" +
-            "• <b>Queue length</b> — where people wait. Long queues mark bottlenecks.\n" +
-            "• <b>Wait / completion time</b> — service speed from the customer's view.\n" +
-            "• <b>Throughput</b> — orders finished per minute.\n" +
-            "• <b>Utilization</b> — how busy stations and workers are. 100% often means they are the limit.\n" +
-            "• <b>Pickup stock / waste / revenue</b> — expired products are money lost; completed pickups earn revenue."),
+            "Customers",
+            "The Customers tab is a live report of demand and service. Use it when lines form or production falls behind.\n\n" +
+            "• <b>In store now</b> — customers currently inside the system. This is customer work-in-process, or WIP.\n" +
+            "• <b>Visited today</b> — everyone who entered during the shift.\n" +
+            "• <b>Walked out</b> — customers who left without completing service.\n" +
+            "• <b>Visit trend</b> — actual arrivals by hour, which reveals peak periods.\n" +
+            "• <b>Live demand and throughput</b> — exact product demand and completed output over the last 60 simulation seconds."),
         new Page(
             "Management",
-            "Reading the numbers",
-            "If wait time is high and one station's queue is long, add a worker to that flow, add a matching station, or edit the flow so products actually reach the Pickup Station.\n\n" +
-            "If workers are idle but customers wait, the layout, the flow order, or ingredient stock is probably wrong — not headcount.\n\n" +
-            "If the Pickup Station is empty, upstream stations are too slow. If it is full and products expire, you are overproducing.\n\n" +
-            "Stats will not place stations for you. They tell you <i>where</i> to look next."),
+            "Reading demand",
+            "Each product shows its ready stock, items currently in production, shortfall, orders per minute, and completed items per minute. These are measured values, not forecasts.\n\n" +
+            "If orders per minute stay above completions, increase capacity on that product's flow or shorten its route. If ready stock stays high while orders are low, reduce production to avoid waste.\n\n" +
+            "If workers are idle while shortfall rises, check the flow order, ingredient stock, and station availability before hiring more people."),
         new Page(
             "Service",
             "Customers",
@@ -164,11 +159,11 @@ public static class GuidebookPages
             "4. Management → Workers: hire at least one person (first hire free).\n" +
             "5. Create Flow and click stations in order toward the Pickup Station.\n" +
             "6. Assign that worker to the flow.\n" +
-            "7. Close Management and serve. When the line grows, open Store Stats and fix the slowest step — do not buy everything at once."),
+            "7. Close Management and serve. When the line grows, open Customers and fix the slowest step — do not buy everything at once."),
         new Page(
             "Guide",
             "Remember",
-            "Inventory builds the kitchen. Management runs it with <b>flows</b>. Store Stats tells you if the plan is working.\n\n" +
+            "Inventory builds the kitchen. Management runs it with <b>flows</b>. The Customers tab tells you if the plan is working.\n\n" +
             "Place → Stock → Hire → Create flow → Assign workers → Watch the numbers.\n\n" +
             "Come back to this book whenever a screen feels unclear. The tabs in the game match the chapters here."),
         new Page(

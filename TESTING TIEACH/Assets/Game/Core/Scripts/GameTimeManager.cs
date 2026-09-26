@@ -118,6 +118,14 @@ public class GameTimeManager : MonoBehaviour
         OnDayStarted?.Invoke();
     }
 
+    /// <summary>Restores the saved campaign day before gameplay begins.</summary>
+    public void RestoreDay(int day)
+    {
+        CurrentDay = Mathf.Max(1, day);
+        ResetDayClock();
+        SetSpeed(SpeedMode.Play);
+    }
+
     /// <summary>Debug helper that ends the shift through the normal day-end path.</summary>
     public bool DebugSkipToEndOfDay()
     {

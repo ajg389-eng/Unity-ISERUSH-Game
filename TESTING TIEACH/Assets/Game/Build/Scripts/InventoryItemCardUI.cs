@@ -7,6 +7,10 @@ using TMPro;
 /// </summary>
 public class InventoryItemCardUI : MonoBehaviour
 {
+    public static readonly Color CardColor = GameUITheme.Panel;
+    public static readonly Color ChipColor = GameUITheme.Surface;
+    public static readonly Color TextColor = GameUITheme.Cream;
+
     public TextMeshProUGUI nameText;
     public Image previewImage;
     public RawImage previewRawImage;
@@ -18,10 +22,15 @@ public class InventoryItemCardUI : MonoBehaviour
     bool tutorialHighlight;
     bool tutorialLocked;
     Image cardImage;
-    Color cardBaseColor = new Color(0.92f, 0.93f, 0.95f, 1f);
+    Color cardBaseColor = CardColor;
     Outline cardOutline;
     TextMeshProUGUI tutorialPrompt;
     ItemDefinition boundItem;
+
+    void Awake()
+    {
+        ApplyPalette();
+    }
 
     public void Bind(
         ItemDefinition item,
@@ -31,6 +40,7 @@ public class InventoryItemCardUI : MonoBehaviour
         int? displayPrice = null)
     {
         if (item == null) return;
+        ApplyPalette();
         boundItem = item;
 
         if (nameText != null)
@@ -60,6 +70,40 @@ public class InventoryItemCardUI : MonoBehaviour
             if (onBuy != null)
                 buyButton.onClick.AddListener(() => onBuy());
         }
+    }
+
+    void ApplyPalette()
+    {
+        cardImage = GetComponent<Image>();
+        if (cardImage != null)
+        {
+            cardImage.color = CardColor;
+            cardBaseColor = CardColor;
+        }
+
+        SetTextAndParentColor(nameText, TextColor, CardColor);
+        SetTextAndParentColor(qtyText, TextColor, ChipColor);
+        SetTextAndParentColor(priceText, TextColor, ChipColor);
+
+        Transform preview = previewRawImage != null ? previewRawImage.transform.parent
+            : previewImage != null ? previewImage.transform.parent : null;
+        if (preview != null && preview.TryGetComponent(out Image previewBackground))
+            previewBackground.color = ItemPreviewThumbnails.BackgroundColor;
+
+        if (buyButton != null)
+        {
+            var label = buyButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null)
+                label.color = Color.white;
+        }
+    }
+
+    static void SetTextAndParentColor(TextMeshProUGUI text, Color textColor, Color backgroundColor)
+    {
+        if (text == null) return;
+        text.color = textColor;
+        if (text.transform.parent != null && text.transform.parent.TryGetComponent(out Image background))
+            background.color = backgroundColor;
     }
 
     public void SetQuantity(int quantity)

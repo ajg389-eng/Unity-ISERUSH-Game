@@ -7,8 +7,12 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 3;
+    const int CacheVersion = 5;
     const string RootName = "__ItemPreviewThumbnails";
+
+    // Shared with the inventory preview frame so fitted square thumbnails do not
+    // reveal a second background shade around their edges.
+    public static readonly Color BackgroundColor = GameUITheme.Backdrop;
 
     static readonly Dictionary<int, RenderTexture> cache = new Dictionary<int, RenderTexture>();
     static Camera previewCamera;
@@ -113,7 +117,7 @@ public static class ItemPreviewThumbnails
 
         previewCamera = camT.GetComponent<Camera>();
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
-        previewCamera.backgroundColor = new Color(0.16f, 0.17f, 0.2f, 1f);
+        previewCamera.backgroundColor = BackgroundColor;
         previewCamera.cullingMask = 1 << 31;
         previewCamera.enabled = false;
         previewCamera.nearClipPlane = 0.05f;
