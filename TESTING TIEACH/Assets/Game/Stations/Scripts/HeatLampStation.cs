@@ -88,6 +88,7 @@ public class HeatLampStation : MonoBehaviour
     CanvasGroup cautionMessageGroup;
     float cautionMessageShownAt = float.NegativeInfinity;
     float nextCautionRefresh;
+    bool productionShortfallWasActive;
     Transform foodDisplayRoot;
     readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
 
@@ -349,6 +350,29 @@ public class HeatLampStation : MonoBehaviour
             if (distance >= bestDistance) continue;
             bestDistance = distance;
             best = station;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Pickup queues are physical waiting areas only. Customers use the shortest
+    /// available line regardless of which station currently holds their items.
+    /// </summary>
+    public static HeatLampStation FindBestWaitingArea(Vector3 worldPosition)
+    {
+        HeatLampStation best = null;
+        int bestQueue = int.MaxValue;
+        float bestDistance = float.MaxValue;
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (station == null || !station.isActiveAndEnabled) continue;
+            int queue = station.PickupQueueCount;
+            float distance = (station.transform.position - worldPosition).sqrMagnitude;
+            if (queue > bestQueue || (queue == bestQueue && distance >= bestDistance)) continue;
+            best = station;
+            bestQueue = queue;
+            bestDistance = distance;
         }
         return best;
     }
@@ -746,7 +770,13 @@ public class HeatLampStation : MonoBehaviour
 
     void RefreshCautionIndicator()
     {
-        bool show = HasProductionShortfall();
+        bool show = TryGetProductionShortfallDetails(out string details);
+        if (show && !productionShortfallWasActive)
+        {
+            NotificationCenter.Post(details.Replace("\n", ". "), GameNotificationKind.Warning,
+                "pickup-shortfall-" + GetInstanceID(), 30f);
+        }
+        productionShortfallWasActive = show;
         if (show && cautionIndicator == null)
             cautionIndicator = CreateCautionIndicator();
         if (cautionIndicator != null)
@@ -858,7 +888,8 @@ public class HeatLampStation : MonoBehaviour
         foreach (ProductionManager.ItemOutputNeed need in production.GetRequiredOutputByItem(includeDrinks: true))
         {
             if (need.item == null) continue;
-            parts.Add(GetItemDisplayName(need.item) + ": " + FormatRate(need.requiredPerMinute) + "/min");
+            parts.Add(GetItemDisplayName(need.item) + ": " + need.requested + " open, "
+                + need.orderedLastMinute + "/min ordered");
         }
 
         if (parts.Count == 0)
@@ -922,6 +953,8 @@ public class HeatLampStation : MonoBehaviour
 
         meals.Add(new HeldMeal(order.Clone(), Time.time));
         totalDelivered++;
+        if (ProductionManager.Instance != null)
+            ProductionManager.Instance.RecordCompletedOutput(order);
         Sfx.Play(SfxId.HeatLampStock);
         RefreshStatusLabel();
         return true;
@@ -987,8 +1020,8 @@ public class HeatLampStation : MonoBehaviour
     }
 
     /// <summary>
-    /// Next ready item this customer may take. People ahead in this pickup line
-    /// keep first claim on matching food.
+    /// Next ready item this customer may take. Earlier customers across all
+    /// waiting areas keep first claim on matching food.
     /// </summary>
     public bool TryGetAvailableItemForCustomer(CustomerAI customer, CustomerOrder customerOrder, out ItemDefinition item)
     {
@@ -997,7 +1030,7 @@ public class HeatLampStation : MonoBehaviour
         foreach (CustomerOrder.OrderLine line in customerOrder.lines)
         {
             if (line.item == null || line.quantity <= 0) continue;
-            if (CountHeldMatching(line.item) <= CountClaimsAhead(customer, line.item)) continue;
+            if (CountHeldMatching(line.item) <= CountGlobalClaimsAhead(customer, line.item)) continue;
             item = line.item;
             return true;
         }
@@ -1005,10 +1038,9 @@ public class HeatLampStation : MonoBehaviour
     }
 
     /// <summary>
-    /// Takes one ready item from any placed pickup station while preserving the
-    /// customer's priority in the pickup queue they are currently standing in.
-    /// Pickup stations therefore behave as one shared serving inventory instead
-    /// of trapping customers behind the stock assigned to a particular counter.
+    /// Takes one ready item from any placed pickup station while preserving order
+    /// priority across every waiting area. Pickup stations behave as one shared
+    /// serving inventory.
     /// </summary>
     public static bool TryCustomerTakeAvailableItem(CustomerAI customer,
         HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item)
@@ -1028,9 +1060,7 @@ public class HeatLampStation : MonoBehaviour
                 if (station != null)
                     totalHeld += station.CountHeldMatching(line.item);
 
-            int claimsAhead = queueStation != null
-                ? queueStation.CountClaimsAhead(customer, line.item)
-                : 0;
+            int claimsAhead = CountGlobalClaimsAhead(customer, line.item, stations);
             if (totalHeld <= claimsAhead) continue;
 
             HeatLampStation source = null;
@@ -1065,18 +1095,30 @@ public class HeatLampStation : MonoBehaviour
         return n;
     }
 
-    int CountClaimsAhead(CustomerAI customer, ItemDefinition item)
+    static int CountGlobalClaimsAhead(CustomerAI customer, ItemDefinition item,
+        HeatLampStation[] stations = null)
     {
         if (customer == null || item == null) return 0;
+        if (stations == null)
+            stations = FindObjectsByType<HeatLampStation>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
         int claims = 0;
-        for (int i = 0; i < customerPickupQueue.Count; i++)
+        foreach (HeatLampStation station in stations)
         {
-            CustomerAI other = customerPickupQueue[i];
-            if (other == customer) break;
-            if (other == null) continue;
-            CustomerOrder otherOrder = other.GetOrder();
-            if (otherOrder == null) continue;
-            claims += otherOrder.CountQuantityOf(item);
+            if (station == null) continue;
+            for (int i = 0; i < station.customerPickupQueue.Count; i++)
+            {
+                CustomerAI other = station.customerPickupQueue[i];
+                if (other == null || other == customer) continue;
+                bool joinedEarlier = other.QueueJoinTime < customer.QueueJoinTime ||
+                    (Mathf.Approximately(other.QueueJoinTime, customer.QueueJoinTime) &&
+                     other.GetInstanceID() < customer.GetInstanceID());
+                if (!joinedEarlier) continue;
+                CustomerOrder otherOrder = other.GetOrder();
+                if (otherOrder != null)
+                    claims += otherOrder.CountQuantityOf(item);
+            }
         }
         return claims;
     }

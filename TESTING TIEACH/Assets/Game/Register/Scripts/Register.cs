@@ -17,8 +17,8 @@ public class Register : MonoBehaviour
     public float serveArrivalRadius = 0.6f;
     public int maxQueue = 6;
 
-    [Header("Pickup line")]
-    [Tooltip("Customers wait in front of the Pickup Station linked to this register (customer / lobby side).")]
+    [Header("Pickup line (legacy)")]
+    [Tooltip("Legacy value retained for scene compatibility. Pickup waiting areas no longer limit register ordering.")]
     public int maxPickup = 8;
 
     readonly List<CustomerAI> queue = new List<CustomerAI>();
@@ -84,20 +84,13 @@ public class Register : MonoBehaviour
         tiles.EnsureHighlightReference();
     }
 
-    static bool IsDayOne =>
-        GameTimeManager.Instance == null || GameTimeManager.Instance.CurrentDay <= 1;
-
     int EffectiveMaxQueue => Mathf.Min(maxQueue, 5);
-    int EffectiveMaxPickup => Mathf.Min(maxPickup, IsDayOne ? 2 : 3);
-    int EffectiveMaxInside => IsDayOne ? 5 : 8;
 
     public bool HasSpace()
     {
         if (!IsPlacedRegister) return false;
         if (!isEnabled) return false;
-        if (queue.Count >= EffectiveMaxQueue) return false;
-        if (pickup.Count >= EffectiveMaxPickup) return false;
-        return queue.Count + pickup.Count < EffectiveMaxInside;
+        return queue.Count < EffectiveMaxQueue;
     }
 
     public bool TryJoinQueue(CustomerAI customer)
@@ -182,7 +175,6 @@ public class Register : MonoBehaviour
     public void SendCustomerToPickup(CustomerAI customer)
     {
         if (customer == null || pickup.Contains(customer)) return;
-        if (pickup.Count >= EffectiveMaxPickup) return;
         if (!queue.Contains(customer)) return;
 
         queue.Remove(customer);
@@ -200,7 +192,6 @@ public class Register : MonoBehaviour
     public bool TryTakeFrontOrder()
     {
         if (!isEnabled) return false;
-        if (pickup.Count >= EffectiveMaxPickup) return false;
 
         var front = GetFrontCustomer();
         if (front == null || !IsFrontCustomerReady())

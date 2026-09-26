@@ -31,7 +31,32 @@ public class IngredientDeliveryService : MonoBehaviour
     readonly List<Shipment> shipments = new List<Shipment>();
 
     public IReadOnlyList<Shipment> Shipments => shipments;
-    public bool HasPending => shipments.Count > 0;
+    public bool HasPending
+    {
+        get
+        {
+            for (int i = 0; i < shipments.Count; i++)
+                if (shipments[i] != null && shipments[i].packs.Count > 0)
+                    return true;
+            return false;
+        }
+    }
+
+    public float NextDeliveryRemaining
+    {
+        get
+        {
+            float best = -1f;
+            for (int i = 0; i < shipments.Count; i++)
+            {
+                Shipment shipment = shipments[i];
+                if (shipment == null || shipment.packs.Count == 0) continue;
+                if (best < 0f || shipment.remaining < best)
+                    best = shipment.remaining;
+            }
+            return best;
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -82,6 +107,65 @@ public class IngredientDeliveryService : MonoBehaviour
         }
 
         shipment.packs.Add(new Pack { item = item, amount = amount });
+    }
+
+    /// <summary>Queue one shipment containing every line in a cart.</summary>
+    public bool QueueOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts)
+    {
+        if (HasPending || items == null || amounts == null || items.Count != amounts.Count)
+            return false;
+
+        var shipment = new Shipment
+        {
+            remaining = DeliveryDuration(),
+            duration = DeliveryDuration()
+        };
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i] == null || amounts[i] <= 0) continue;
+            shipment.packs.Add(new Pack { item = items[i], amount = amounts[i] });
+        }
+
+        if (shipment.packs.Count == 0)
+            return false;
+
+        shipments.Add(shipment);
+        return true;
+    }
+
+    /// <summary>Cancel the outstanding shipment only when it matches the recorded order.</summary>
+    public bool TryCancelOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts)
+    {
+        if (items == null || amounts == null || items.Count != amounts.Count)
+            return false;
+
+        for (int i = shipments.Count - 1; i >= 0; i--)
+        {
+            Shipment shipment = shipments[i];
+            if (shipment == null || shipment.packs.Count != items.Count) continue;
+
+            bool[] matched = new bool[shipment.packs.Count];
+            bool same = true;
+            for (int line = 0; line < items.Count && same; line++)
+            {
+                bool found = false;
+                for (int p = 0; p < shipment.packs.Count; p++)
+                {
+                    Pack pack = shipment.packs[p];
+                    if (matched[p] || pack.item != items[line] || pack.amount != amounts[line]) continue;
+                    matched[p] = true;
+                    found = true;
+                    break;
+                }
+                if (!found) same = false;
+            }
+
+            if (!same) continue;
+            CancelShipment(i);
+            return true;
+        }
+        return false;
     }
 
     public bool TryCancelPack(ItemDefinition item, int amount)

@@ -194,16 +194,15 @@ public class KitchenInventory : MonoBehaviour
     public bool TryOrderPack(ItemDefinition item)
     {
         if (item == null) return false;
+        var cart = new Dictionary<ItemDefinition, int> { { item, 1 } };
+        return TryOrderCart(cart);
+    }
+
+    /// <summary>Pay for and dispatch every selected pack as one atomic shipment.</summary>
+    public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
+    {
+        if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
-
-        int price = GetPackPrice(item);
-        int pack = GetPackSize(item);
-
-        if (money != null)
-        {
-            if (!money.TrySpend(price))
-                return false;
-        }
 
         IngredientDeliveryService service = IngredientDeliveryService.Instance;
         if (service == null)
@@ -211,10 +210,32 @@ public class KitchenInventory : MonoBehaviour
             var host = new GameObject("IngredientDeliveryService");
             service = host.AddComponent<IngredientDeliveryService>();
         }
-        service.QueuePack(item, pack);
+        if (service.HasPending) return false;
+
+        var items = new List<ItemDefinition>();
+        var amounts = new List<int>();
+        int totalPrice = 0;
+        foreach (var pair in packCounts)
+        {
+            if (pair.Key == null || pair.Value <= 0) continue;
+            items.Add(pair.Key);
+            amounts.Add(GetPackSize(pair.Key) * pair.Value);
+            totalPrice += GetPackPrice(pair.Key) * pair.Value;
+        }
+        if (items.Count == 0) return false;
+
+        if (money != null && !money.TrySpend(totalPrice))
+            return false;
+
+        if (!service.QueueOrder(items, amounts))
+        {
+            if (money != null) money.AddMoney(totalPrice);
+            return false;
+        }
+
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
-            undo.RecordIngredientPack(item, pack, money != null ? price : 0);
+            undo.RecordIngredientOrder(items, amounts, money != null ? totalPrice : 0);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.IngredientsOrdered);
         return true;
     }

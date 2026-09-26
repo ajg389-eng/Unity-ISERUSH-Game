@@ -45,23 +45,55 @@ public class StationNode : MonoBehaviour
         if (!force && !string.IsNullOrEmpty(outputUnit))
             return;
 
-        // inputAmount 0 = no input shown (source stations)
-        if (GetComponent<GrillStation>() != null)
-            SetIo(5f, 5f, "patties", "cooked patties");
-        else if (GetComponent<AssemblyStation>() != null)
-            SetIo(10f, 10f, "cooked patties", "burgers");
-        else if (GetComponent<FreezerStation>() != null)
-            SetIo(0f, 5f, "-", "patties");
-        else if (GetComponent<FryerStation>() != null)
-            SetIo(5f, 5f, "raw fries", "cooked fries");
-        else if (GetComponent<DrinkStation>() != null)
-            SetIo(0f, 5f, "-", "drinks");
-        else if (GetComponent<PantryStation>() != null)
-            SetIo(0f, 10f, "-", "ingredients");
+        // A cycle processes the active worker's carried batch. Source stations show no input.
+        int batchSize = GetActiveBatchSize();
+        GrillStation grill = GetComponent<GrillStation>();
+        AssemblyStation assembly = GetComponent<AssemblyStation>();
+        FreezerStation freezer = GetComponent<FreezerStation>();
+        FryerStation fryer = GetComponent<FryerStation>();
+        DrinkStation drink = GetComponent<DrinkStation>();
+        PantryStation pantry = GetComponent<PantryStation>();
+        if (grill != null)
+            SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
+        else if (assembly != null)
+            SetIo(RateForCycle(assembly.processTimeSeconds, batchSize), RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties", "burgers");
+        else if (freezer != null)
+            SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-", "patties");
+        else if (fryer != null)
+            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "raw fries", "cooked fries");
+        else if (drink != null)
+            SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
+        else if (pantry != null)
+            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "-", "ingredients");
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
         else
             SetIo(0f, 10f, "-", "items");
+    }
+
+    int GetActiveBatchSize()
+    {
+        int batch = 1;
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee worker in assignedWorkers)
+            if (worker != null)
+                batch = Mathf.Max(batch, worker.CarryCapacity);
+
+        ProductionManager production = ProductionManager.Instance;
+        if (production?.productionFlows == null) return batch;
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow?.stations == null || !flow.stations.Contains(gameObject) || flow.workers == null) continue;
+            foreach (KitchenEmployee worker in flow.workers)
+                if (worker != null)
+                    batch = Mathf.Max(batch, worker.CarryCapacity);
+        }
+        return Mathf.Clamp(batch, 1, 4);
+    }
+
+    static float RateForCycle(float seconds, int batchSize)
+    {
+        return seconds > 0.001f ? 60f * Mathf.Max(1, batchSize) / seconds : 0f;
     }
 
     void SetIo(float input, float output, string inUnit, string outUnit)

@@ -171,6 +171,23 @@ public class MilestoneProgressManager : MonoBehaviour
 
         OnMilestoneCompleted?.Invoke(current);
 
+        string completionMessage = string.IsNullOrWhiteSpace(current.displayName)
+            ? "Milestone completed."
+            : current.displayName + " completed.";
+        var unlockedNames = new List<string>();
+        if (current.unlocks != null)
+        {
+            foreach (MilestoneUnlock unlock in current.unlocks)
+            {
+                if (unlock != null && !string.IsNullOrWhiteSpace(unlock.displayName))
+                    unlockedNames.Add(unlock.displayName);
+            }
+        }
+        if (unlockedNames.Count > 0)
+            completionMessage += " Unlocked: " + string.Join(", ", unlockedNames) + ".";
+        NotificationCenter.Post(completionMessage, GameNotificationKind.Message,
+            "milestone-" + current.milestoneId);
+
         int index = database != null ? database.IndexOf(current.milestoneId) : -1;
         MilestoneDefinition next = null;
         if (database != null && index >= 0 && index + 1 < database.milestones.Count)

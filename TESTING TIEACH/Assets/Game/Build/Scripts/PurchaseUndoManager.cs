@@ -31,8 +31,8 @@ public class PurchaseUndoManager : MonoBehaviour
 
     struct IngredientRecord
     {
-        public ItemDefinition item;
-        public int packSize;
+        public List<ItemDefinition> items;
+        public List<int> amounts;
         public int paid;
     }
 
@@ -88,8 +88,7 @@ public class PurchaseUndoManager : MonoBehaviour
                 return "Undo Hire $" + e.worker.paid;
             if (e.kind == Kind.Ingredient)
             {
-                string iname = e.ingredient.item != null ? e.ingredient.item.itemName : "Ingredients";
-                return "Undo " + iname + " $" + e.ingredient.paid;
+                return "Undo Ingredient Order $" + e.ingredient.paid;
             }
             string name = e.station.item != null ? e.station.item.itemName : "Station";
             return "Undo " + name + " $" + e.station.paid;
@@ -194,13 +193,31 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordIngredientPack(ItemDefinition item, int packSize, int paid)
     {
         if (item == null) return;
+        RecordIngredientOrder(
+            new List<ItemDefinition> { item },
+            new List<int> { Mathf.Max(1, packSize) },
+            paid);
+    }
+
+    public void RecordIngredientOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts, int paid)
+    {
+        if (items == null || amounts == null || items.Count == 0 || items.Count != amounts.Count) return;
+        var recordedItems = new List<ItemDefinition>();
+        var recordedAmounts = new List<int>();
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i] == null || amounts[i] <= 0) continue;
+            recordedItems.Add(items[i]);
+            recordedAmounts.Add(amounts[i]);
+        }
+        if (recordedItems.Count == 0) return;
         ReplaceLast(new Entry
         {
             kind = Kind.Ingredient,
             ingredient = new IngredientRecord
             {
-                item = item,
-                packSize = Mathf.Max(1, packSize),
+                items = recordedItems,
+                amounts = recordedAmounts,
                 paid = Mathf.Max(0, paid)
             }
         });
@@ -345,11 +362,11 @@ public class PurchaseUndoManager : MonoBehaviour
         var kitchen = KitchenInventory.Instance != null
             ? KitchenInventory.Instance
             : FindFirstObjectByType<KitchenInventory>();
-        if (kitchen == null || rec.item == null)
+        if (kitchen == null || rec.items == null || rec.amounts == null || rec.items.Count != rec.amounts.Count)
             return false;
 
         var delivery = IngredientDeliveryService.Instance;
-        if (delivery != null && delivery.TryCancelPack(rec.item, rec.packSize))
+        if (delivery != null && delivery.TryCancelOrder(rec.items, rec.amounts))
         {
             var moneyRefund = FindFirstObjectByType<MoneyManager>();
             if (moneyRefund != null)
@@ -357,8 +374,12 @@ public class PurchaseUndoManager : MonoBehaviour
             return true;
         }
 
-        if (!kitchen.TryConsume(rec.item, rec.packSize))
-            return false;
+        for (int i = 0; i < rec.items.Count; i++)
+            if (!kitchen.Has(rec.items[i], rec.amounts[i]))
+                return false;
+
+        for (int i = 0; i < rec.items.Count; i++)
+            kitchen.TryConsume(rec.items[i], rec.amounts[i]);
 
         var money = FindFirstObjectByType<MoneyManager>();
         if (money != null)

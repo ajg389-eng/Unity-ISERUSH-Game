@@ -32,6 +32,7 @@ public class TopHudBar : MonoBehaviour
         BindReferences();
         ApplyFitLayout();
         RemoveUndoFromBar();
+        EnsureUtilityControls();
     }
 
     void Update()
@@ -71,6 +72,7 @@ public class TopHudBar : MonoBehaviour
             existing.BindReferences();
             existing.ApplyFitLayout();
             existing.RemoveUndoFromBar();
+            existing.EnsureUtilityControls();
             return existing;
         }
 
@@ -111,7 +113,7 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(560f, barHeight);
+        rt.sizeDelta = new Vector2(860f, barHeight);
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
@@ -164,6 +166,33 @@ public class TopHudBar : MonoBehaviour
             moneyText.fontSizeMin = 18;
             moneyText.fontSizeMax = 24;
         }
+
+
+        var musicSection = transform.Find(TopHudUtilityControls.MusicSectionName) as RectTransform;
+        if (musicSection != null)
+        {
+            var le = musicSection.GetComponent<LayoutElement>() ?? musicSection.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 220f;
+            le.preferredWidth = 220f;
+            le.flexibleWidth = 0f;
+        }
+
+        var noticeSection = transform.Find(TopHudUtilityControls.NotificationSectionName) as RectTransform;
+        if (noticeSection != null)
+        {
+            var le = noticeSection.GetComponent<LayoutElement>() ?? noticeSection.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 92f;
+            le.preferredWidth = 92f;
+            le.flexibleWidth = 0f;
+        }
+    }
+
+    void EnsureUtilityControls()
+    {
+        var controls = GetComponent<TopHudUtilityControls>();
+        if (controls == null)
+            controls = gameObject.AddComponent<TopHudUtilityControls>();
+        controls.EnsureLayout();
     }
 
     public void RemoveUndoFromBar()

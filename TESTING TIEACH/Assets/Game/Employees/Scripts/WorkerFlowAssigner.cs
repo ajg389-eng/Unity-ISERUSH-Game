@@ -1144,7 +1144,7 @@ public static class WorkflowAnalysis
 
         StationNode node = StationNode.EnsureOn(station);
         if (node == null) return false;
-        node.EnsureIoDefaults();
+        node.EnsureIoDefaults(force: true);
         if (node.outputAmountPerMinute <= 0.01f) return false;
 
         outputPerMinute = node.outputAmountPerMinute;

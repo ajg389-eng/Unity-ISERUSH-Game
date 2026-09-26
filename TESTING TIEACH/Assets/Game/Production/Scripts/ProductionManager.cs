@@ -115,6 +115,15 @@ public class ProductionManager : MonoBehaviour
     [HideInInspector] public List<string> hireFlowSteps = new List<string>();
 
     readonly List<ProductionJob> pendingJobs = new List<ProductionJob>();
+    sealed class TimedItemCount
+    {
+        public ItemDefinition item;
+        public int count;
+        public float time;
+    }
+    readonly List<TimedItemCount> orderedHistory = new List<TimedItemCount>();
+    readonly List<TimedItemCount> completedHistory = new List<TimedItemCount>();
+    const float ThroughputWindowSeconds = 60f;
     MoneyManager moneyManager;
 
     FreezerStation freezer;
@@ -136,13 +145,17 @@ public class ProductionManager : MonoBehaviour
         public int requested;
         public int ready;
         public int cooking;
+        /// <summary>Exact number of this item ordered during the trailing simulation minute.</summary>
+        public int orderedLastMinute;
+        /// <summary>Exact number delivered to pickup stations during the trailing simulation minute.</summary>
+        public int completedLastMinute;
         /// <summary>Kitchen units still short of live orders (absolute).</summary>
         public int requiredOutput;
         /// <summary>Target production rate (items per real minute) to meet demand.</summary>
         public float requiredPerMinute;
     }
 
-    public List<ItemOutputNeed> GetRequiredOutputByItem(bool includeDrinks = false)
+    public List<ItemOutputNeed> GetRequiredOutputByItem(bool includeDrinks = true)
     {
         var requested = new Dictionary<ItemDefinition, int>();
         foreach (var order in GetAllQueuedOrders())
@@ -165,31 +178,34 @@ public class ProductionManager : MonoBehaviour
             if (lamp == null) continue;
             foreach (var meal in lamp.Meals)
             {
-                ItemDefinition item = meal?.order != null ? meal.order.PrimaryItem : null;
-                if (item == null) continue;
-                ready[item] = ready.TryGetValue(item, out int c) ? c + 1 : 1;
+                if (meal?.order?.lines == null) continue;
+                foreach (var line in meal.order.lines)
+                {
+                    if (line.item == null || line.quantity <= 0) continue;
+                    ready[line.item] = ready.TryGetValue(line.item, out int c) ? c + line.quantity : line.quantity;
+                }
             }
         }
         foreach (var job in pendingJobs)
         {
             ItemDefinition item = job?.product;
             if (item == null) continue;
-            cooking[item] = cooking.TryGetValue(item, out int c) ? c + 1 : 1;
+            int units = Mathf.Max(1, job.heldUnits);
+            cooking[item] = cooking.TryGetValue(item, out int c) ? c + units : units;
         }
 
-        float customersPerMinute = EstimateCustomersPerMinute();
-        var chanceByItem = EstimateOrderChanceByItem(includeDrinks);
+        PruneThroughputHistory();
+        var orderedLastMinute = SumHistory(orderedHistory);
+        var completedLastMinute = SumHistory(completedHistory);
 
         var items = new HashSet<ItemDefinition>();
         foreach (var kv in requested) items.Add(kv.Key);
         foreach (var kv in ready) items.Add(kv.Key);
         foreach (var kv in cooking) items.Add(kv.Key);
-        foreach (var kv in chanceByItem) items.Add(kv.Key);
+        foreach (var kv in orderedLastMinute) items.Add(kv.Key);
+        foreach (var kv in completedLastMinute) items.Add(kv.Key);
         foreach (var item in GetCookableMenuItems())
             if (item != null) items.Add(item);
-
-        // Clear live shortfall within a few minutes so backlog also drives rate.
-        const float backlogClearMinutes = 3f;
 
         var list = new List<ItemOutputNeed>(items.Count);
         foreach (var item in items)
@@ -200,10 +216,8 @@ public class ProductionManager : MonoBehaviour
             cooking.TryGetValue(item, out int cookingCount);
             int shortfall = Mathf.Max(0, req - readyCount - cookingCount);
 
-            chanceByItem.TryGetValue(item, out float chance);
-            float arrivalRate = customersPerMinute * Mathf.Clamp01(chance);
-            float backlogRate = shortfall / backlogClearMinutes;
-            float requiredPerMinute = Mathf.Max(arrivalRate, backlogRate);
+            orderedLastMinute.TryGetValue(item, out int orderedRate);
+            completedLastMinute.TryGetValue(item, out int completedRate);
 
             list.Add(new ItemOutputNeed
             {
@@ -211,8 +225,10 @@ public class ProductionManager : MonoBehaviour
                 requested = req,
                 ready = readyCount,
                 cooking = cookingCount,
+                orderedLastMinute = orderedRate,
+                completedLastMinute = completedRate,
                 requiredOutput = shortfall,
-                requiredPerMinute = requiredPerMinute
+                requiredPerMinute = orderedRate
             });
         }
 
@@ -227,6 +243,49 @@ public class ProductionManager : MonoBehaviour
             return string.CompareOrdinal(an, bn);
         });
         return list;
+    }
+
+    public void RecordCustomerOrder(CustomerOrder order)
+    {
+        RecordHistory(orderedHistory, order);
+    }
+
+    public void RecordCompletedOutput(CustomerOrder order)
+    {
+        RecordHistory(completedHistory, order);
+    }
+
+    void RecordHistory(List<TimedItemCount> history, CustomerOrder order)
+    {
+        if (history == null || order?.lines == null) return;
+        float now = Time.time;
+        foreach (var line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            history.Add(new TimedItemCount { item = line.item, count = line.quantity, time = now });
+        }
+        PruneThroughputHistory();
+    }
+
+    void PruneThroughputHistory()
+    {
+        float cutoff = Time.time - ThroughputWindowSeconds;
+        orderedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+        completedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+    }
+
+    static Dictionary<ItemDefinition, int> SumHistory(List<TimedItemCount> history)
+    {
+        var totals = new Dictionary<ItemDefinition, int>();
+        if (history == null) return totals;
+        foreach (TimedItemCount entry in history)
+        {
+            if (entry?.item == null || entry.count <= 0) continue;
+            totals[entry.item] = totals.TryGetValue(entry.item, out int count)
+                ? count + entry.count
+                : entry.count;
+        }
+        return totals;
     }
 
     float EstimateCustomersPerMinute()
@@ -931,14 +990,14 @@ public class ProductionManager : MonoBehaviour
     List<CustomerOrder> GetAllQueuedOrders()
     {
         var list = new List<CustomerOrder>();
-        foreach (var reg in registers)
+        CustomerAI[] customers = FindObjectsByType<CustomerAI>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (CustomerAI customer in customers)
         {
-            if (reg == null || !reg.isEnabled) continue;
-            foreach (var order in reg.GetQueuedOrders())
-            {
-                if (order != null)
-                    list.Add(order);
-            }
+            if (customer == null || customer.IsLeaving) continue;
+            CustomerOrder order = customer.GetOrder();
+            if (order != null && order.GetTotalQuantity() > 0)
+                list.Add(order);
         }
         return list;
     }

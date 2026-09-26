@@ -310,8 +310,8 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
 
     static readonly SkyPreset Night = new SkyPreset
     {
-        top = new Color(0.008f, 0.015f, 0.035f, 1f),
-        bottom = new Color(0.025f, 0.055f, 0.085f, 1f),
+        top = new Color(0.035f, 0.065f, 0.13f, 1f),
+        bottom = new Color(0.09f, 0.14f, 0.20f, 1f),
         gradientExponent = 0.75f,
         sun = new Color(0.64f, 0.76f, 0.86f, 1f),
         sunMultiplier = 500f,
@@ -319,7 +319,7 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         halo = new Color(0.0476f, 0.8088f, 0.7143f, 1f),
         haloExponent = 500f,
         haloContribution = 0.04f,
-        horizon = new Color(0.025f, 0.055f, 0.085f, 1f),
+        horizon = new Color(0.10f, 0.15f, 0.21f, 1f),
         horizonExponent = 12.3f,
         horizonContribution = 0.121f
     };
@@ -407,11 +407,12 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         float cloudVisibility = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 9f, hour))
             * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(16f, 18f, hour)));
         runtimeSkybox.SetFloat("_CloudVisibility", cloudVisibility);
-        // Dim the world illumination too, so local lamps remain visible after dusk.
+        // Keep night visibly darker than day without obscuring stations, workers,
+        // floor markings, or customer queues.
         if (daylightSource != null)
-            daylightSource.intensity = originalSunIntensity * Mathf.Lerp(0.07f, 1f, daylight);
-        RenderSettings.ambientIntensity = originalAmbientIntensity * Mathf.Lerp(0.22f, 1f, daylight);
-        RenderSettings.reflectionIntensity = originalReflectionIntensity * Mathf.Lerp(0.2f, 1f, daylight);
+            daylightSource.intensity = originalSunIntensity * Mathf.Lerp(0.30f, 1f, daylight);
+        RenderSettings.ambientIntensity = originalAmbientIntensity * Mathf.Lerp(0.55f, 1f, daylight);
+        RenderSettings.reflectionIntensity = originalReflectionIntensity * Mathf.Lerp(0.45f, 1f, daylight);
         runtimeSkybox.SetFloat("_WeatherTime", minutes * 0.008f);
         runtimeSkybox.SetFloat("_ConstellationIndex", (clock.CurrentDay - 1) % 3);
         lastAppliedMinutes = minutes;

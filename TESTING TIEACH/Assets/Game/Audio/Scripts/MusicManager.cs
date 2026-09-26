@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Action = System.Action;
 using UnityEngine;
 
 /// <summary>
@@ -29,6 +30,9 @@ public class MusicManager : MonoBehaviour
     AudioSource source;
     readonly List<AudioClip> tracks = new List<AudioClip>();
     int index;
+    bool explicitlyPaused;
+
+    public event Action OnPlaybackChanged;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -64,7 +68,7 @@ public class MusicManager : MonoBehaviour
     void Update()
     {
         if (source == null || tracks.Count == 0) return;
-        if (!source.isPlaying && source.clip != null)
+        if (!explicitlyPaused && !source.isPlaying && source.clip != null)
             Next();
     }
 
@@ -140,7 +144,9 @@ public class MusicManager : MonoBehaviour
         source.clip = clip;
         source.volume = volume;
         source.loop = tracks.Count == 1;
+        explicitlyPaused = false;
         source.Play();
+        OnPlaybackChanged?.Invoke();
     }
 
     public void Play(AudioClip clip)
@@ -166,10 +172,35 @@ public class MusicManager : MonoBehaviour
         PlayCurrent();
     }
 
+    public void TogglePause()
+    {
+        if (source == null || tracks.Count == 0) return;
+
+        if (explicitlyPaused)
+        {
+            explicitlyPaused = false;
+            source.UnPause();
+        }
+        else if (source.isPlaying)
+        {
+            explicitlyPaused = true;
+            source.Pause();
+        }
+        else
+        {
+            PlayCurrent();
+            return;
+        }
+
+        OnPlaybackChanged?.Invoke();
+    }
+
     public void Stop()
     {
         if (source != null)
             source.Stop();
+        explicitlyPaused = false;
+        OnPlaybackChanged?.Invoke();
     }
 
     public void SetVolume(float value)
@@ -186,4 +217,17 @@ public class MusicManager : MonoBehaviour
     }
 
     public bool IsPlaying => source != null && source.isPlaying;
+    public bool IsPaused => explicitlyPaused;
+    public string CurrentTrackName => source != null && source.clip != null
+        ? CleanTrackName(source.clip.name)
+        : "No track";
+
+    static string CleanTrackName(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "Untitled";
+        string value = raw.Trim();
+        if (value.StartsWith("Picratio - ", System.StringComparison.OrdinalIgnoreCase))
+            value = value.Substring("Picratio - ".Length);
+        return value;
+    }
 }

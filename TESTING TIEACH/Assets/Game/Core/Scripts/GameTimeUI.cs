@@ -11,6 +11,7 @@ public class GameTimeUI : MonoBehaviour
     public GameTimeManager timeManager;
     public TextMeshProUGUI dayText;
     public TextMeshProUGUI clockText;
+    public TextMeshProUGUI speedMultiplierText;
     public TextMeshProUGUI rushText;
     public Button pauseButton;
     public Button playButton;
@@ -74,6 +75,8 @@ public class GameTimeUI : MonoBehaviour
 
         if (clockText == null)
             clockText = FindComponentByNames<TextMeshProUGUI>("ClockText", "Clock", "TimeText");
+        if (speedMultiplierText == null)
+            speedMultiplierText = FindComponentByNames<TextMeshProUGUI>("SpeedMultiplierText");
         if (rushText == null)
             rushText = FindComponentByNames<TextMeshProUGUI>("RushText");
 
@@ -147,6 +150,11 @@ public class GameTimeUI : MonoBehaviour
         clockText.enableAutoSizing = true;
         clockText.fontSizeMin = 16;
         clockText.fontSizeMax = 20;
+
+        speedMultiplierText = CreateLabel(row.transform, "SpeedMultiplierText", "3x", 15, 38f);
+        speedMultiplierText.fontStyle = FontStyles.Bold;
+        speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        speedMultiplierText.gameObject.SetActive(false);
 
         rushText = CreateLabel(row.transform, "RushText", "RUSH", 16, 56f);
         rushText.fontStyle = FontStyles.Bold;
@@ -374,6 +382,7 @@ public class GameTimeUI : MonoBehaviour
     void ApplyClockText()
     {
         if (timeManager == null) return;
+        EnsureSpeedMultiplierLabel();
         EnsureRushLabel();
 
         if (clockText != null)
@@ -382,6 +391,15 @@ public class GameTimeUI : MonoBehaviour
             clockText.overflowMode = TextOverflowModes.Truncate;
             clockText.text = timeManager.GetClockText();
             clockText.color = Color.white;
+        }
+
+        if (speedMultiplierText != null)
+        {
+            bool accelerated = timeManager.CurrentSpeed == GameTimeManager.SpeedMode.FastForward ||
+                               timeManager.CurrentSpeed == GameTimeManager.SpeedMode.SuperFast;
+            speedMultiplierText.gameObject.SetActive(accelerated);
+            speedMultiplierText.text = accelerated ? timeManager.GetSpeedLabel() : "";
+            speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
         }
 
         if (rushText != null)
@@ -434,6 +452,13 @@ public class GameTimeUI : MonoBehaviour
             clockText.enableWordWrapping = false;
             clockText.overflowMode = TextOverflowModes.Truncate;
         }
+        if (speedMultiplierText != null)
+        {
+            var le = speedMultiplierText.GetComponent<LayoutElement>() ?? speedMultiplierText.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = 38f;
+            le.preferredWidth = 38f;
+            le.flexibleWidth = 0f;
+        }
         if (rushText != null)
         {
             var le = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
@@ -442,6 +467,19 @@ public class GameTimeUI : MonoBehaviour
             le.flexibleWidth = 0f;
             rushText.gameObject.SetActive(true);
         }
+    }
+
+    void EnsureSpeedMultiplierLabel()
+    {
+        if (speedMultiplierText != null) return;
+        Transform parent = clockText != null ? clockText.transform.parent : transform;
+        if (parent == null) return;
+
+        speedMultiplierText = CreateLabel(parent, "SpeedMultiplierText", "", 15, 38f);
+        speedMultiplierText.fontStyle = FontStyles.Bold;
+        speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        if (clockText != null)
+            speedMultiplierText.transform.SetSiblingIndex(clockText.transform.GetSiblingIndex() + 1);
     }
 
     void EnsureRushLabel()

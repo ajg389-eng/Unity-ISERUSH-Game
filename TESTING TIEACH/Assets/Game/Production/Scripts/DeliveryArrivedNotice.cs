@@ -19,6 +19,8 @@ public class DeliveryArrivedNotice : MonoBehaviour
     public static void Show(IngredientDeliveryService.Shipment shipment)
     {
         string body = FormatBody(shipment);
+        NotificationCenter.Post("Ingredient delivery arrived: " + body,
+            GameNotificationKind.Message, "ingredient-delivery", 2f);
         DeliveryArrivedNotice live = instance;
         if (live == null)
             live = FindFirstObjectByType<DeliveryArrivedNotice>();

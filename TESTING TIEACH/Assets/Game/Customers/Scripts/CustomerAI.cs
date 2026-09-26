@@ -129,6 +129,8 @@ public class CustomerAI : MonoBehaviour
     {
         order = o != null ? o.Clone() : new CustomerOrder();
         salePrice = order.GetSalePrice();
+        if (ProductionManager.Instance != null)
+            ProductionManager.Instance.RecordCustomerOrder(order);
         if (orderLabel != null)
         {
             orderLabel.EnsureHierarchy();
@@ -272,7 +274,9 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
-        HeatLampStation next = HeatLampStation.FindBestPickupForOrder(order, transform.position);
+        // Pickup lines are shared waiting areas. Choose the least crowded area;
+        // the customer's order can be fulfilled from inventory at any pass.
+        HeatLampStation next = HeatLampStation.FindBestWaitingArea(transform.position);
         if (next == null)
             next = HeatLampStation.FindNearest(transform.position);
         if (next == null || !next.TryJoinPickupQueue(this))
@@ -689,6 +693,14 @@ public class CustomerAI : MonoBehaviour
     bool IsBlockedByOtherCustomer(Vector3 dest)
     {
         if (phase != Phase.GoingToSlot && phase != Phase.Waiting) return false;
+
+        // Pickup queues are waiting areas with unique assigned grid slots. A
+        // customer heading to a rear slot may need to cross a tile occupied by
+        // somebody nearer the counter. Blocking here deadlocks every slot behind
+        // the first one, so pickup customers can pass through each other while
+        // travelling and separate again at their assigned destinations.
+        if (waitingForPickup) return false;
+
         const float personalSpace = 0.65f;
         float myDist = HorizontalDist(transform.position, dest);
         CustomerAI[] others = FindObjectsByType<CustomerAI>(
