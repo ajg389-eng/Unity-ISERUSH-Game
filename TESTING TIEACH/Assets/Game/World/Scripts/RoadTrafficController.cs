@@ -60,6 +60,8 @@ public class RoadTrafficController : MonoBehaviour
         LoadCarPrefabs();
         ExtendRoadIntoTunnels();
         ResolveDrivePath();
+        if (GetComponent<StreetScenery>() == null)
+            gameObject.AddComponent<StreetScenery>();
         if (GetComponent<RoadStreetlights>() == null)
             gameObject.AddComponent<RoadStreetlights>();
         if (MilestoneFeatures.HighestReachedNumberedStage() <= 1)

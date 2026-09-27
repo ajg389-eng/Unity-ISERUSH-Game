@@ -8,6 +8,11 @@ using UnityEngine.Serialization;
 /// </summary>
 public class PantryStation : MonoBehaviour
 {
+    void Start()
+    {
+        RestaurantDetails.StockPantry(transform);
+    }
+
     [Tooltip("Ingredients this pantry can dispense (must also have stock in KitchenInventory)")]
     public List<ItemDefinition> stockedItems = new List<ItemDefinition>();
     [FormerlySerializedAs("interactionTimeSeconds")]
