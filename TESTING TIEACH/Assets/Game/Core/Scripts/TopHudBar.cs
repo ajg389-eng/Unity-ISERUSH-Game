@@ -8,8 +8,10 @@ using TMPro;
 public class TopHudBar : MonoBehaviour
 {
     public const string BarObjectName = "TopHudBar";
+    public const string BackdropObjectName = "TopHudConnectedBackdrop";
     public const string TimeSectionName = "TimeSection";
     public const string MoneyTextName = "MoneyText";
+    const float BarWidth = 760f;
 
     [Header("References")]
     public MoneyManager money;
@@ -113,11 +115,17 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(860f, barHeight);
+        // 760 fits between the 550-wide left and right tab strips at 1920
+        // without either side covering the money or notification controls.
+        rt.sizeDelta = new Vector2(BarWidth, barHeight);
+
+        EnsureConnectedBackdrop(rt.parent, Mathf.Max(60f, barHeight));
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
-        bg.color = new Color(0.06f, 0.06f, 0.09f, 0.96f);
+        // The full-width sibling supplies the shared background. Keep this
+        // graphic as a raycast surface without tinting the center a second time.
+        bg.color = Color.clear;
         bg.raycastTarget = true;
 
         var mask = GetComponent<RectMask2D>();
@@ -193,6 +201,34 @@ public class TopHudBar : MonoBehaviour
             PositionSection(noticeSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                 new Vector2(-16f, 0f), new Vector2(92f, barHeight - 16f));
         }
+    }
+
+    static void EnsureConnectedBackdrop(Transform canvasTransform, float height)
+    {
+        if (canvasTransform == null) return;
+
+        Transform existing = canvasTransform.Find(BackdropObjectName);
+        GameObject backdrop = existing != null
+            ? existing.gameObject
+            : new GameObject(BackdropObjectName, typeof(RectTransform), typeof(Image));
+
+        if (backdrop.transform.parent != canvasTransform)
+            backdrop.transform.SetParent(canvasTransform, false);
+
+        var rect = (RectTransform)backdrop.transform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(0f, height);
+
+        var image = backdrop.GetComponent<Image>();
+        image.color = HudTabColors.Strip;
+        image.raycastTarget = false;
+
+        // It only fills the gaps between the existing controls and must never
+        // cover or reposition them.
+        backdrop.transform.SetAsFirstSibling();
     }
 
     static void PositionSection(RectTransform section, Vector2 anchor, Vector2 pivot, Vector2 position, Vector2 size)

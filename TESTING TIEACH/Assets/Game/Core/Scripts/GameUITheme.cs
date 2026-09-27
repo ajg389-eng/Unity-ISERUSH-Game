@@ -246,6 +246,37 @@ public class GameUITheme : MonoBehaviour
         styled.styleVersion = ButtonStyleVersion;
     }
 
+    /// <summary>
+    /// Adds the shared font, edge, shadow, hover lift, and pressed motion to a
+    /// compact control without replacing colors managed by its gameplay state.
+    /// </summary>
+    public static void ApplyCompactControlEffects(Button button)
+    {
+        if (button == null) return;
+        button.transition = Selectable.Transition.None;
+
+        var tmp = button.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (tmp != null)
+        {
+            ApplyTitleScreenFont(tmp);
+            tmp.color = TextPrimary;
+            tmp.fontStyle |= FontStyles.Bold;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.raycastTarget = false;
+        }
+
+        AddEdge(button.gameObject, new Vector2(1f, -1f));
+        AddDropShadow(button.gameObject, new Vector2(0f, -1f));
+
+        var motion = button.GetComponent<GameUIThemeButtonMotion>();
+        if (motion == null) motion = button.gameObject.AddComponent<GameUIThemeButtonMotion>();
+        motion.EnableMotion(1.025f, 0.98f);
+
+        var styled = button.GetComponent<GameUIThemeStyled>();
+        if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
+        styled.styleVersion = ButtonStyleVersion;
+    }
+
     static void ApplyTabChrome(Button button)
     {
         if (button == null) return;

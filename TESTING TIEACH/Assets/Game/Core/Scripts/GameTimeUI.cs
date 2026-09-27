@@ -236,6 +236,10 @@ public class GameTimeUI : MonoBehaviour
         if (fastForwardButton == null)
             fastForwardButton = CreateSpeedButton(strip.transform, "FastForwardButton", ">>", out fastHighlight);
 
+        GameUITheme.ApplyCompactControlEffects(pauseButton);
+        GameUITheme.ApplyCompactControlEffects(playButton);
+        GameUITheme.ApplyCompactControlEffects(fastForwardButton);
+
         pauseButton.transform.SetSiblingIndex(0);
         playButton.transform.SetSiblingIndex(1);
         fastForwardButton.transform.SetSiblingIndex(2);

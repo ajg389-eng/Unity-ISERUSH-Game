@@ -63,7 +63,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.matchWidthOrHeight = 0f;
         gameObject.AddComponent<GraphicRaycaster>();
 
         var backgroundObject = new GameObject("CutsceneBackground", typeof(RectTransform),

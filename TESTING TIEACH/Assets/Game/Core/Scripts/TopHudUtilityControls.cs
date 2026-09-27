@@ -115,7 +115,7 @@ public class TopHudUtilityControls : MonoBehaviour
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = false;
-        layout.childForceExpandHeight = true;
+        layout.childForceExpandHeight = false;
 
         trackText = FindText(section.transform, "TrackText");
         if (trackText == null)
@@ -129,21 +129,26 @@ public class TopHudUtilityControls : MonoBehaviour
         trackLayout.minWidth = 116f;
         trackLayout.preferredWidth = 116f;
         trackLayout.flexibleWidth = 0f;
-        trackText.alignment = TextAlignmentOptions.MidlineRight;
+        trackText.alignment = TextAlignmentOptions.Center;
         trackText.overflowMode = TextOverflowModes.Ellipsis;
         trackText.enableWordWrapping = false;
+        EnsureTrackBox(section.transform);
 
         Button pause = FindButton(section.transform, "MusicPauseButton");
         if (pause == null)
             pause = CreateButton(section.transform, "MusicPauseButton", "||", 34f, out playPauseText);
         else
             playPauseText = pause.GetComponentInChildren<TextMeshProUGUI>(true);
+        SetSquareButtonLayout(pause, 34f);
+        GameUITheme.ApplyCompactControlEffects(pause);
         pause.onClick.RemoveAllListeners();
         pause.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.TogglePause(); });
 
         Button next = FindButton(section.transform, "MusicNextButton");
         if (next == null)
-            next = CreateButton(section.transform, "MusicNextButton", ">>", 40f, out _);
+            next = CreateButton(section.transform, "MusicNextButton", ">>", 34f, out _);
+        SetSquareButtonLayout(next, 34f);
+        GameUITheme.ApplyCompactControlEffects(next);
         next.onClick.RemoveAllListeners();
         next.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.Next(); });
     }
@@ -328,6 +333,76 @@ public class TopHudUtilityControls : MonoBehaviour
         return go.GetComponent<Button>();
     }
 
+    static void SetSquareButtonLayout(Button button, float size)
+    {
+        if (button == null) return;
+        var layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        layout.minWidth = size;
+        layout.preferredWidth = size;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = size;
+        layout.preferredHeight = size;
+        layout.flexibleHeight = 0f;
+    }
+
+    void EnsureTrackBox(Transform section)
+    {
+        if (section == null || trackText == null) return;
+
+        Transform existing = section.Find("MusicTrackBox");
+        int siblingIndex = trackText.transform.parent == section
+            ? trackText.transform.GetSiblingIndex()
+            : 0;
+        GameObject box = existing != null
+            ? existing.gameObject
+            : new GameObject("MusicTrackBox", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+
+        if (box.transform.parent != section)
+            box.transform.SetParent(section, false);
+        box.transform.SetSiblingIndex(siblingIndex);
+
+        var layout = box.GetComponent<LayoutElement>() ?? box.AddComponent<LayoutElement>();
+        layout.minWidth = 116f;
+        layout.preferredWidth = 116f;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = 34f;
+        layout.preferredHeight = 34f;
+        layout.flexibleHeight = 0f;
+
+        var image = box.GetComponent<Image>() ?? box.AddComponent<Image>();
+        image.color = GameUITheme.Surface;
+        image.raycastTarget = false;
+
+        var outline = box.GetComponent<Outline>() ?? box.AddComponent<Outline>();
+        outline.effectColor = GameUITheme.Edge;
+        outline.effectDistance = new Vector2(1f, -1f);
+        outline.useGraphicAlpha = true;
+
+        Shadow shadow = null;
+        foreach (var effect in box.GetComponents<Shadow>())
+        {
+            if (effect != null && effect.GetType() == typeof(Shadow))
+            {
+                shadow = effect;
+                break;
+            }
+        }
+        if (shadow == null) shadow = box.AddComponent<Shadow>();
+        shadow.effectColor = new Color(0f, 0f, 0f, 0.48f);
+        shadow.effectDistance = new Vector2(0f, -1f);
+        shadow.useGraphicAlpha = true;
+
+        // Prevent the global container pass from changing this control to a
+        // panel shade after it has been matched to the adjacent buttons.
+        if (box.GetComponent<GameUIThemeStyled>() == null)
+            box.AddComponent<GameUIThemeStyled>();
+
+        if (trackText.transform.parent != box.transform)
+            trackText.transform.SetParent(box.transform, false);
+        SetRect(trackText.rectTransform, Vector2.zero, Vector2.one,
+            new Vector2(8f, 2f), new Vector2(-8f, -2f));
+    }
+
     static TextMeshProUGUI CreateLabel(Transform parent, string name, string value, float size)
     {
         var go = new GameObject(name, typeof(RectTransform));
@@ -358,6 +433,11 @@ public class TopHudUtilityControls : MonoBehaviour
     static TextMeshProUGUI FindText(Transform parent, string name)
     {
         Transform t = parent.Find(name);
-        return t != null ? t.GetComponent<TextMeshProUGUI>() : null;
+        if (t != null) return t.GetComponent<TextMeshProUGUI>();
+
+        foreach (var text in parent.GetComponentsInChildren<TextMeshProUGUI>(true))
+            if (text != null && text.name == name)
+                return text;
+        return null;
     }
 }

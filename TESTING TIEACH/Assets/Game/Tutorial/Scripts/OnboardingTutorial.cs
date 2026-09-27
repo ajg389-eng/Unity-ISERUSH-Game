@@ -1048,7 +1048,7 @@ public class OnboardingTutorial : MonoBehaviour
         var scaler = canvasRoot.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.matchWidthOrHeight = 0f;
         canvasRoot.AddComponent<GraphicRaycaster>();
 
         panel = new GameObject("Panel", typeof(RectTransform));

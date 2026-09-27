@@ -93,7 +93,9 @@ public class MainHudTabs : MonoBehaviour
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
         bg.raycastTarget = true;
-        bg.color = StripColor;
+        // The connected top-HUD backdrop supplies the strip color across the
+        // full screen, including the gaps between all three control groups.
+        bg.color = Color.clear;
 
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();

@@ -385,7 +385,7 @@ public class MissionListUI : MonoBehaviour
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.matchWidthOrHeight = 0f;
         }
 
         if (panelRoot == null)
@@ -624,7 +624,9 @@ public class MissionListUI : MonoBehaviour
         rt.sizeDelta = new Vector2(TopTabsWidth, TopTabsHeight);
 
         var bg = topTabsRoot.GetComponent<Image>() ?? topTabsRoot.AddComponent<Image>();
-        bg.color = HudTabColors.Strip;
+        // Use the full-width top-HUD backdrop so this strip visually connects
+        // to the center and left controls without changing its placement.
+        bg.color = Color.clear;
         bg.raycastTarget = true;
 
         var layout = topTabsRoot.GetComponent<HorizontalLayoutGroup>() ?? topTabsRoot.AddComponent<HorizontalLayoutGroup>();
@@ -695,9 +697,9 @@ public class MissionListUI : MonoBehaviour
     static void SetTopTabVisual(Button button, bool active)
     {
         if (button == null) return;
-        var image = button.GetComponent<Image>();
-        if (image != null)
-            image.color = active ? HudTabColors.Active : HudTabColors.Idle;
+        // Use the same authoritative chrome, font, edge, shadow, and hover
+        // motion as the Inventory and Management tabs.
+        HudTabColors.Apply(button, active);
     }
 
     void ApplyLayout()

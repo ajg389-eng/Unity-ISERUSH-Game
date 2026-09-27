@@ -39,6 +39,7 @@ public class ManagementScreenController : MonoBehaviour
         toggleKey = KeyCode.E;
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
         EnsurePanelClickBlocker(managementPanel);
+        ApplyManagementBackdrop();
         if (managementPanel != null)
             managementPanel.SetActive(false);
 
@@ -264,6 +265,7 @@ public class ManagementScreenController : MonoBehaviour
         managementPanel.SetActive(true);
         Sfx.Play(SfxId.UiOpen);
         EnsurePanelClickBlocker(managementPanel);
+        ApplyManagementBackdrop();
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
@@ -280,6 +282,22 @@ public class ManagementScreenController : MonoBehaviour
             else
                 Time.timeScale = 0f;
         }
+    }
+
+    void ApplyManagementBackdrop()
+    {
+        if (managementPanel == null) return;
+
+        var rootImage = managementPanel.GetComponent<Image>();
+        if (rootImage != null)
+            rootImage.color = HudTabColors.Strip;
+
+        // ContentBox is the visible fill in the scene-authored hierarchy. Match
+        // it to the connected top HUD instead of leaving a lighter slate block.
+        Transform contentBox = managementPanel.transform.Find("ContentBox");
+        var contentImage = contentBox != null ? contentBox.GetComponent<Image>() : null;
+        if (contentImage != null)
+            contentImage.color = HudTabColors.Strip;
     }
 
     /// <summary>
