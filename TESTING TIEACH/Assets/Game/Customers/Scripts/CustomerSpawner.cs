@@ -18,9 +18,9 @@ public class CustomerSpawner : MonoBehaviour
     public GridManager grid;
 
     [Header("Arrivals (Poisson process)")]
-    [Tooltip("Mean customers per real minute on Milestone 1. A shift is 12 real minutes, so 0.8 ≈ 10 expected arrivals. Later milestones add to this. Gaps stay random, but they are capped so the morning is not empty.")]
+    [Tooltip("Mean customers per real minute on Milestone 1. A shift is 12 real minutes, so 2.4 is about 29 expected arrivals. Later milestones add to this. Gaps stay random, but they are capped so the morning is not empty.")]
     [Min(0.05f)]
-    public float milestoneOneCustomersPerMinute = 0.8f;
+    public float milestoneOneCustomersPerMinute = 2.4f;
 
     [Tooltip("Added to the mean arrival rate for each numbered milestone after the first.")]
     [Min(0f)]
@@ -40,6 +40,7 @@ public class CustomerSpawner : MonoBehaviour
     bool arrivalScheduled;
     bool waitingForOpening = true;
     bool clockHooked;
+    bool nextArrivalOnFoot;
     readonly List<Vector3> entryPointsBuffer = new List<Vector3>();
 
     /// <summary>
@@ -167,7 +168,8 @@ public class CustomerSpawner : MonoBehaviour
         waitRemaining -= Time.deltaTime;
         if (waitRemaining > 0f) return;
 
-        if (!TrySpawn(false, true))
+        bool allowCar = !nextArrivalOnFoot;
+        if (!TrySpawn(false, allowCar))
         {
             // A full lot or a missing register should retry soon, not skip
             // the rest of the morning.
@@ -176,6 +178,7 @@ public class CustomerSpawner : MonoBehaviour
             return;
         }
 
+        nextArrivalOnFoot = false;
         waitingForOpening = false;
         ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
     }
@@ -187,6 +190,19 @@ public class CustomerSpawner : MonoBehaviour
         if (!TrySpawn(force, false)) return false;
         ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
         return true;
+    }
+
+    /// <summary>
+    /// Clears the tutorial arrival block and schedules a visible on-foot customer
+    /// promptly. Later arrivals return to the normal randomized car/foot system.
+    /// </summary>
+    public void ResumeAfterTutorial()
+    {
+        waitingForOpening = false;
+        nextArrivalOnFoot = true;
+        scheduledRatePerSecond = MeanCustomersPerMinute() / 60f;
+        waitRemaining = 3f;
+        arrivalScheduled = true;
     }
 
     bool TrySpawn(bool force = false, bool allowCar = false)

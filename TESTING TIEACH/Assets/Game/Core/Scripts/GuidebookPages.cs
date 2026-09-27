@@ -29,10 +29,10 @@ public static class GuidebookPages
         new Page(
             "Guidebook",
             "What's inside",
-            "<b>Inventory</b> (top-left)\n" +
+            "<b>Inventory</b> (top-left, or press Q)\n" +
             "• Stations — buy and place kitchen equipment\n" +
             "• Floor — expand the kitchen grid\n\n" +
-            "<b>Management</b> (top-left, or press M)\n" +
+            "<b>Management</b> (top-left, or press E)\n" +
             "• Workers — hire staff, create and edit flows, assign people to those flows\n" +
             "• Food — choose what to sell and buy ingredient packs\n" +
             "• Customers — live demand, throughput, and visit trends\n\n" +
@@ -82,7 +82,7 @@ public static class GuidebookPages
         new Page(
             "Management",
             "Management",
-            "Open <b>Management</b> from the top-left tabs or press <b>M</b>. Time pauses so you can think, but you can still click the kitchen.\n\n" +
+            "Open <b>Management</b> from the top-left tabs or press <b>E</b>. Time pauses so you can think, but you can still click the kitchen.\n\n" +
             "Tabs:\n" +
             "• <b>Workers</b> — hire, create/edit flows, assign people\n" +
             "• <b>Food</b> — menu toggles and ingredient packs\n" +

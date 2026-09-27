@@ -2746,7 +2746,9 @@ MonoBehaviour:
   entryWaypoints: []
   exitPath: {fileID: 0}
   grid: {fileID: 0}
-  spawnInterval: 1
+  milestoneOneCustomersPerMinute: 2.4
+  extraCustomersPerMinutePerMilestone: 0.85
+  rushArrivalMultiplier: 2.2
   orderConfig: {fileID: 11400000, guid: 9fb664fbbdd2ba84495002dcef899cf7, type: 2}
   registers:
   - {fileID: 1883022301}
@@ -13062,7 +13064,7 @@ Transform:
   m_GameObject: {fileID: 1435504772}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0.70710677, w: 0.7071068}
-  m_LocalPosition: {x: -73, y: -0.0000009536743, z: 20}
+  m_LocalPosition: {x: -71.33, y: -0.0000009536743, z: 20}
   m_LocalScale: {x: 22, y: 10, z: 22}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -13582,6 +13584,9 @@ MonoBehaviour:
   animatedTitle: {fileID: 0}
   titleBobDistance: 10
   titleBobCyclesPerSecond: 0.35
+  introBackground: {fileID: 0}
+  gusPrefab: {fileID: 7742650942893025642, guid: b508ace33888d604dbf39f6e9cc9413a, type: 3}
+  gusPortrait: {fileID: 0}
   titleCamera: {fileID: 105010214}
   gameCamera: {fileID: 330585545}
   inGameUIRoot: {fileID: 285744407}

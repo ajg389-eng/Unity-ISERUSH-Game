@@ -8,9 +8,16 @@ using TMPro;
 /// </summary>
 public class ManagementScreenController : MonoBehaviour
 {
+    static readonly KeyCode[] NumberRowTabKeys =
+    {
+        KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
+        KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6,
+        KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9
+    };
+
     [Header("Open / Close")]
     public GameModeManager modeManager;
-    public KeyCode toggleKey = KeyCode.Alpha2;
+    public KeyCode toggleKey = KeyCode.E;
     public Button openButton;
     public GameObject managementPanel;
     public Button closeButton;
@@ -28,6 +35,8 @@ public class ManagementScreenController : MonoBehaviour
 
     void Start()
     {
+        // Older scenes serialized Alpha2 here. Keep the runtime binding authoritative.
+        toggleKey = KeyCode.E;
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
         EnsurePanelClickBlocker(managementPanel);
         if (managementPanel != null)
@@ -203,13 +212,46 @@ public class ManagementScreenController : MonoBehaviour
 
     void Update()
     {
-        if (UIInputFocusGuard.IsTyping) return;
-        if (Input.GetKeyDown(toggleKey)
-            || Input.GetKeyDown(KeyCode.Alpha2)
-            || Input.GetKeyDown(KeyCode.Keypad2)
-            || Input.GetKeyDown(KeyCode.M))
+        if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
+        if (Input.GetKeyDown(toggleKey))
+        {
             Toggle();
+            return;
+        }
+
+        if (isOpen)
+            HandleNumberRowTabShortcut();
     }
+
+    void HandleNumberRowTabShortcut()
+    {
+        int requestedPosition = -1;
+        for (int i = 0; i < NumberRowTabKeys.Length; i++)
+        {
+            if (!Input.GetKeyDown(NumberRowTabKeys[i])) continue;
+            requestedPosition = i;
+            break;
+        }
+        if (requestedPosition < 0) return;
+
+        int count = tabPanels != null && tabButtons != null
+            ? Mathf.Min(Mathf.Min(tabPanels.Length, tabButtons.Length), NumberRowTabKeys.Length)
+            : 0;
+        if (requestedPosition >= count) return;
+
+        int[] visualOrder = new int[count];
+        for (int i = 0; i < count; i++)
+            visualOrder[i] = i;
+        System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
+            .CompareTo(GetTabSiblingIndex(tabButtons[b])));
+
+        SelectTab(visualOrder[requestedPosition]);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static int GetTabSiblingIndex(Button button) => button != null
+        ? button.transform.GetSiblingIndex()
+        : int.MaxValue;
 
     public void Open()
     {

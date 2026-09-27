@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 1, day, cash, width, height, milestone, tutorialStep;
+    public int version = 2, day, cash, width, height, milestone, tutorialStep;
     public float minutes;
     public bool tutorialComplete;
     public List<Equipment> equipment = new List<Equipment>();
@@ -78,7 +78,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version!=1 || inv==null || pm==null) return false;
+        if(version<1 || version>2 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
@@ -130,7 +130,11 @@ public class KitchenSaveSnapshot
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
-        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,tutorialStep);
+        // Version 1 checkpoints included the removed door lesson at index 2.
+        int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
+            ? tutorialStep - 1
+            : tutorialStep;
+        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
         if(milestone>0 && MilestoneProgressManager.Instance!=null) MilestoneProgressManager.Instance.DebugJumpToNumberedMilestone(milestone,out _);
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);

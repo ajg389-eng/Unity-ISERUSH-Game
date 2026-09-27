@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Escape pause overlay. Main screen matches a simple Resume / Options / Quit list.
+/// Escape pause overlay. Main screen matches a simple Resume / Options / Quit to Menu list.
 /// Options holds Audio, Video, Visual (per-wall cutaway locks), and Keybinds.
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
@@ -19,12 +20,12 @@ public class PauseMenuUI : MonoBehaviour
     const string PrefFullscreen = "PauseMenu.Fullscreen";
     const float MusicFullVolume = 0.35f;
 
-    static readonly Color ButtonColor = new Color(0.82f, 0.82f, 0.84f, 1f);
-    static readonly Color MainButtonColor = new Color(0.48f, 0.48f, 0.51f, 1f);
-    static readonly Color MainBoxColor = new Color(0.16f, 0.16f, 0.18f, 0.95f);
-    static readonly Color ButtonTextColor = new Color(0.08f, 0.08f, 0.1f, 1f);
-    static readonly Color PanelColor = new Color(0.12f, 0.13f, 0.18f, 0.96f);
-    static readonly Color OptionsButtonColor = new Color(0.32f, 0.35f, 0.44f, 1f);
+    static readonly Color ButtonColor = GameUITheme.Surface;
+    static readonly Color MainButtonColor = GameUITheme.Surface;
+    static readonly Color MainBoxColor = GameUITheme.Backdrop;
+    static readonly Color ButtonTextColor = GameUITheme.TextPrimary;
+    static readonly Color PanelColor = GameUITheme.Backdrop;
+    static readonly Color OptionsButtonColor = GameUITheme.Surface;
 
     public static PauseMenuUI Instance { get; private set; }
     public static bool IsOpen => Instance != null && Instance.visible;
@@ -65,6 +66,8 @@ public class PauseMenuUI : MonoBehaviour
     bool built;
     bool showingOptions;
     bool showingGuidebook;
+    bool titleSettingsMode;
+    System.Action titleSettingsClosed;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -100,6 +103,12 @@ public class PauseMenuUI : MonoBehaviour
 
     void LateUpdate()
     {
+        if (IntroCutsceneUI.IsPlaying)
+        {
+            EscapeHandledThisFrame = false;
+            return;
+        }
+
         bool escape = !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape);
         if (escape && !EscapeHandledThisFrame && !IsTitleVisible())
         {
@@ -119,6 +128,9 @@ public class PauseMenuUI : MonoBehaviour
     {
         EnsureUi();
         if (overlay == null) return;
+
+        if (titleSettingsMode)
+            CloseTitleSettings(invokeCallback: false);
 
         overlay.SetActive(true);
         overlay.transform.SetAsLastSibling();
@@ -154,6 +166,11 @@ public class PauseMenuUI : MonoBehaviour
 
     void ShowMain()
     {
+        if (titleSettingsMode)
+        {
+            CloseTitleSettings();
+            return;
+        }
         showingOptions = false;
         showingGuidebook = false;
         if (guidebook != null)
@@ -191,6 +208,132 @@ public class PauseMenuUI : MonoBehaviour
         RefreshVisualControls();
     }
 
+    /// <summary>
+    /// Shows the functional settings controls over the title screen without the pause
+    /// backdrop or outer card. The controls occupy the area previously used by the
+    /// title menu buttons.
+    /// </summary>
+    public void ShowOnTitleScreen(RectTransform firstButton, RectTransform lastButton,
+        System.Action onClosed)
+    {
+        EnsureUi();
+        if (overlay == null || optionsPage == null) return;
+
+        titleSettingsMode = true;
+        titleSettingsClosed = onClosed;
+        visible = false;
+        showingOptions = true;
+        showingGuidebook = false;
+
+        overlay.SetActive(true);
+        var overlayImage = overlay.GetComponent<Image>();
+        if (overlayImage != null)
+        {
+            overlayImage.color = Color.clear;
+            overlayImage.raycastTarget = false;
+        }
+
+        if (mainPage != null) mainPage.SetActive(false);
+        optionsPage.SetActive(true);
+        SetTitleSettingsPresentation(firstButton, lastButton);
+        SelectTab(0, playSound: false);
+        RefreshAudioControls();
+        RefreshVideoControls();
+        RefreshVisualControls();
+        Canvas.ForceUpdateCanvases();
+        GameUITheme.ApplyTo(optionsPage.transform);
+        Sfx.Play(SfxId.UiOpen);
+    }
+
+    public void CloseTitleSettings() => CloseTitleSettings(invokeCallback: true);
+
+    void CloseTitleSettings(bool invokeCallback)
+    {
+        if (!titleSettingsMode) return;
+
+        titleSettingsMode = false;
+        showingOptions = false;
+        RestorePauseSettingsPresentation();
+        if (optionsPage != null) optionsPage.SetActive(false);
+        if (overlay != null) overlay.SetActive(false);
+
+        var callback = titleSettingsClosed;
+        titleSettingsClosed = null;
+        if (invokeCallback)
+        {
+            Sfx.Play(SfxId.UiClose);
+            callback?.Invoke();
+        }
+    }
+
+    void SetTitleSettingsPresentation(RectTransform firstButton, RectTransform lastButton)
+    {
+        var rect = optionsPage.transform as RectTransform;
+        if (rect == null) return;
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.sizeDelta = new Vector2(620f, 440f);
+
+        Vector2 screenTop = new Vector2(Screen.width * 0.5f, Screen.height * 0.56f);
+        if (firstButton != null)
+        {
+            Vector3[] corners = new Vector3[4];
+            firstButton.GetWorldCorners(corners);
+            Vector2 topLeft = RectTransformUtility.WorldToScreenPoint(null, corners[1]);
+            Vector2 topRight = RectTransformUtility.WorldToScreenPoint(null, corners[2]);
+            screenTop = new Vector2((topLeft.x + topRight.x) * 0.5f,
+                Mathf.Max(topLeft.y, topRight.y));
+        }
+
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            overlay.transform as RectTransform, screenTop, null, out Vector2 localTop))
+            rect.anchoredPosition = localTop;
+
+        var image = optionsPage.GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = PanelColor;
+            image.raycastTarget = true;
+        }
+        SetPanelChromeEnabled(optionsPage, true);
+
+        Transform heading = optionsPage.transform.Find("OptionsTitle");
+        if (heading != null) heading.gameObject.SetActive(false);
+    }
+
+    void RestorePauseSettingsPresentation()
+    {
+        if (overlay != null && overlay.TryGetComponent(out Image overlayImage))
+        {
+            overlayImage.color = new Color(0f, 0f, 0f, 0.35f);
+            overlayImage.raycastTarget = true;
+        }
+
+        if (optionsPage == null) return;
+        var rect = optionsPage.transform as RectTransform;
+        if (rect != null)
+        {
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(640f, 500f);
+        }
+
+        var image = optionsPage.GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = PanelColor;
+            image.raycastTarget = true;
+        }
+        SetPanelChromeEnabled(optionsPage, true);
+
+        Transform heading = optionsPage.transform.Find("OptionsTitle");
+        if (heading != null) heading.gameObject.SetActive(true);
+    }
+
     static bool IsTitleVisible()
     {
         var title = FindFirstObjectByType<TitleScreenController>();
@@ -222,6 +365,11 @@ public class PauseMenuUI : MonoBehaviour
         optionsPage = BuildOptionsPage(overlay.transform);
         optionsPage.SetActive(false);
         guidebook = GuidebookUI.Create(overlay.transform);
+
+        // This menu is created after the global theme's scene pass. Finalize it now so
+        // it never renders one frame with the old gray controls or competing tints.
+        Canvas.ForceUpdateCanvases();
+        GameUITheme.ApplyTo(canvasGo.transform);
     }
 
     GameObject BuildMainPage(Transform parent)
@@ -232,12 +380,13 @@ public class PauseMenuUI : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 0.5f);
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(360f, 280f);
+        rt.sizeDelta = new Vector2(420f, 360f);
         page.GetComponent<Image>().color = MainBoxColor;
+        AddPanelChrome(page);
 
         var vlg = page.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(22, 22, 22, 22);
-        vlg.spacing = 16f;
+        vlg.padding = new RectOffset(28, 28, 24, 26);
+        vlg.spacing = 12f;
         vlg.childAlignment = TextAnchor.MiddleCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -248,29 +397,34 @@ public class PauseMenuUI : MonoBehaviour
         fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        var resume = CreateMenuButton(page.transform, "ResumeButton", "Resume", 64f, 320f, 26f, MainButtonColor);
+        var title = CreateLabel(page.transform, "PauseTitle", "Paused", 28f, TextAlignmentOptions.Center);
+        title.fontStyle = FontStyles.Bold;
+        title.characterSpacing = 1.2f;
+        title.GetComponent<LayoutElement>().preferredHeight = 40f;
+
+        var resume = CreateMenuButton(page.transform, "ResumeButton", "Resume", 54f, 360f, 22f, GameUITheme.Positive);
         resume.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
             Hide(playSound: false);
         });
 
-        var options = CreateMenuButton(page.transform, "OptionsButton", "Options", 64f, 320f, 26f, MainButtonColor);
+        var options = CreateMenuButton(page.transform, "OptionsButton", "Options", 54f, 360f, 22f, MainButtonColor);
         options.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
             ShowOptions();
         });
 
-        var guidebookBtn = CreateMenuButton(page.transform, "GuidebookButton", "Guidebook", 64f, 320f, 26f, MainButtonColor);
+        var guidebookBtn = CreateMenuButton(page.transform, "GuidebookButton", "Guidebook", 54f, 360f, 22f, MainButtonColor);
         guidebookBtn.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
             ShowGuidebook();
         });
 
-        var quit = CreateMenuButton(page.transform, "QuitButton", "Quit", 64f, 320f, 26f, MainButtonColor);
-        quit.onClick.AddListener(OnQuit);
+        var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
+        quit.onClick.AddListener(OnQuitToMenu);
         return page;
     }
 
@@ -282,27 +436,29 @@ public class PauseMenuUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(520f, 430f);
+        cardRt.sizeDelta = new Vector2(640f, 500f);
         card.GetComponent<Image>().color = PanelColor;
+        AddPanelChrome(card);
 
         var vlg = card.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(24, 24, 14, 14);
-        vlg.spacing = 8f;
+        vlg.padding = new RectOffset(28, 28, 18, 18);
+        vlg.spacing = 10f;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
-        var title = CreateLabel(card.transform, "OptionsTitle", "Options", 24, TextAlignmentOptions.Center);
+        var title = CreateLabel(card.transform, "OptionsTitle", "Options", 28, TextAlignmentOptions.Center);
         title.fontStyle = FontStyles.Bold;
-        title.GetComponent<LayoutElement>().preferredHeight = 30f;
+        title.characterSpacing = 1.2f;
+        title.GetComponent<LayoutElement>().preferredHeight = 36f;
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         tabs.transform.SetParent(card.transform, false);
         var tabsLayout = tabs.GetComponent<LayoutElement>();
-        tabsLayout.minHeight = 38f;
-        tabsLayout.preferredHeight = 38f;
+        tabsLayout.minHeight = 44f;
+        tabsLayout.preferredHeight = 44f;
         tabsLayout.flexibleHeight = 0f;
         var tabsH = tabs.GetComponent<HorizontalLayoutGroup>();
         tabsH.spacing = 8f;
@@ -319,8 +475,8 @@ public class PauseMenuUI : MonoBehaviour
         var pages = new GameObject("Pages", typeof(RectTransform), typeof(LayoutElement));
         pages.transform.SetParent(card.transform, false);
         var pagesLayout = pages.GetComponent<LayoutElement>();
-        pagesLayout.minHeight = 244f;
-        pagesLayout.preferredHeight = 244f;
+        pagesLayout.minHeight = 292f;
+        pagesLayout.preferredHeight = 292f;
         pagesLayout.flexibleHeight = 0f;
 
         audioPage = BuildAudioPage(pages.transform);
@@ -328,7 +484,7 @@ public class PauseMenuUI : MonoBehaviour
         visualPage = BuildVisualPage(pages.transform);
         keybindsPage = BuildKeybindsPage(pages.transform);
 
-        var back = CreateMenuButton(card.transform, "BackButton", "Back", 42f, 300f, 18f, OptionsButtonColor);
+        var back = CreateMenuButton(card.transform, "BackButton", "Back", 46f, 340f, 18f, OptionsButtonColor);
         back.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
@@ -472,7 +628,7 @@ public class PauseMenuUI : MonoBehaviour
         viewportRt.offsetMin = new Vector2(4f, 4f);
         viewportRt.offsetMax = new Vector2(-18f, -4f);
         var viewportImage = viewport.GetComponent<Image>();
-        viewportImage.color = new Color(0.09f, 0.1f, 0.14f, 0.45f);
+        viewportImage.color = new Color(GameUITheme.Panel.r, GameUITheme.Panel.g, GameUITheme.Panel.b, 0.72f);
         viewportImage.raycastTarget = true;
 
         var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
@@ -499,8 +655,9 @@ public class PauseMenuUI : MonoBehaviour
         CreateKeybindRow(content.transform, "Zoom camera", "Mouse Wheel");
 
         CreateKeybindSection(content.transform, "Menus");
-        CreateKeybindRow(content.transform, "Inventory", "1 / Numpad 1");
-        CreateKeybindRow(content.transform, "Management", "2 / Numpad 2 / M");
+        CreateKeybindRow(content.transform, "Inventory", "Q");
+        CreateKeybindRow(content.transform, "Management", "E");
+        CreateKeybindRow(content.transform, "Select open menu tab", "1 / 2 / 3 / 4");
         CreateKeybindRow(content.transform, "Progression", "J");
         CreateKeybindRow(content.transform, "Pause / back / cancel", "Esc");
 
@@ -525,7 +682,7 @@ public class PauseMenuUI : MonoBehaviour
         scrollbarRt.pivot = new Vector2(1f, 0.5f);
         scrollbarRt.offsetMin = new Vector2(-12f, 4f);
         scrollbarRt.offsetMax = new Vector2(-4f, -4f);
-        scrollbarGo.GetComponent<Image>().color = new Color(0.11f, 0.12f, 0.16f, 0.9f);
+        scrollbarGo.GetComponent<Image>().color = GameUITheme.Charcoal;
 
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(scrollbarGo.transform, false);
@@ -534,7 +691,7 @@ public class PauseMenuUI : MonoBehaviour
         handleRt.anchorMax = Vector2.one;
         handleRt.offsetMin = new Vector2(2f, 2f);
         handleRt.offsetMax = new Vector2(-2f, -2f);
-        handle.GetComponent<Image>().color = new Color(0.55f, 0.62f, 0.78f, 1f);
+        handle.GetComponent<Image>().color = GameUITheme.SurfaceHover;
 
         var scrollbar = scrollbarGo.GetComponent<Scrollbar>();
         scrollbar.handleRect = handleRt;
@@ -557,7 +714,7 @@ public class PauseMenuUI : MonoBehaviour
     {
         var text = CreateLabel(parent, label.Replace(" ", string.Empty) + "Header", label.ToUpperInvariant(), 11f, TextAlignmentOptions.MidlineLeft);
         text.fontStyle = FontStyles.Bold;
-        text.color = new Color(0.72f, 0.78f, 0.92f, 1f);
+        text.color = GameUITheme.Accent;
         var layout = text.GetComponent<LayoutElement>();
         layout.minHeight = 22f;
         layout.preferredHeight = 22f;
@@ -567,7 +724,7 @@ public class PauseMenuUI : MonoBehaviour
     {
         var row = new GameObject(action.Replace(" ", string.Empty) + "Row", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.92f);
+        row.GetComponent<Image>().color = GameUITheme.Surface;
         row.GetComponent<Image>().raycastTarget = false;
         var rowLayout = row.GetComponent<LayoutElement>();
         rowLayout.minHeight = 30f;
@@ -592,7 +749,7 @@ public class PauseMenuUI : MonoBehaviour
 
         var bindingText = CreateLabel(row.transform, "Binding", binding, 13f, TextAlignmentOptions.MidlineRight);
         bindingText.fontStyle = FontStyles.Bold;
-        bindingText.color = new Color(0.92f, 0.82f, 0.42f, 1f);
+        bindingText.color = GameUITheme.Accent;
         var bindingLayout = bindingText.GetComponent<LayoutElement>();
         bindingLayout.minWidth = 190f;
         bindingLayout.preferredWidth = 190f;
@@ -631,7 +788,7 @@ public class PauseMenuUI : MonoBehaviour
     {
         var row = new GameObject(id + "Row", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         row.transform.SetParent(parent, false);
-        row.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.8f);
+        row.GetComponent<Image>().color = GameUITheme.Panel;
         row.GetComponent<Image>().raycastTarget = false;
         var rowLe = row.GetComponent<LayoutElement>();
         rowLe.minHeight = 52f;
@@ -729,14 +886,19 @@ public class PauseMenuUI : MonoBehaviour
         Sfx.Play(SfxId.UiClick);
     }
 
-    void OnQuit()
+    void OnQuitToMenu()
     {
         Sfx.Play(SfxId.UiClick);
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
+        GameSaveSlots.SaveActiveSlot();
+
+        // Reloading the gameplay scene rebuilds its original title-screen state and
+        // clears all runtime-only objects without closing the application.
+        Time.timeScale = 1f;
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (activeScene.buildIndex >= 0)
+            SceneManager.LoadScene(activeScene.buildIndex);
+        else
+            SceneManager.LoadScene(activeScene.name);
     }
 
     void RefreshAudioControls()
@@ -888,6 +1050,28 @@ public class PauseMenuUI : MonoBehaviour
         rt.offsetMax = Vector2.zero;
     }
 
+    static void AddPanelChrome(GameObject panel)
+    {
+        if (panel == null) return;
+        var outline = panel.GetComponent<Outline>();
+        if (outline == null) outline = panel.AddComponent<Outline>();
+        outline.effectColor = GameUITheme.Edge;
+        outline.effectDistance = new Vector2(2f, -2f);
+        outline.useGraphicAlpha = true;
+
+        var shadow = panel.AddComponent<Shadow>();
+        shadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
+        shadow.effectDistance = new Vector2(0f, -6f);
+        shadow.useGraphicAlpha = true;
+    }
+
+    static void SetPanelChromeEnabled(GameObject panel, bool enabled)
+    {
+        if (panel == null) return;
+        foreach (var effect in panel.GetComponents<Shadow>())
+            if (effect != null) effect.enabled = enabled;
+    }
+
     static TextMeshProUGUI CreateLabel(Transform parent, string name, string text, float size, TextAlignmentOptions align)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(LayoutElement));
@@ -902,7 +1086,7 @@ public class PauseMenuUI : MonoBehaviour
         tmp.enableAutoSizing = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
         tmp.overflowMode = TextOverflowModes.Ellipsis;
-        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        GameUITheme.ApplyTitleScreenFont(tmp);
         return tmp;
     }
 
@@ -919,9 +1103,11 @@ public class PauseMenuUI : MonoBehaviour
         img.color = color;
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = img;
+        btn.transition = Selectable.Transition.None;
         var colors = btn.colors;
-        colors.highlightedColor = color * 1.12f;
-        colors.pressedColor = color * 0.85f;
+        colors.normalColor = color;
+        colors.highlightedColor = Color.Lerp(color, Color.white, 0.12f);
+        colors.pressedColor = Color.Lerp(color, Color.black, 0.18f);
         colors.selectedColor = color;
         btn.colors = colors;
 
@@ -936,15 +1122,18 @@ public class PauseMenuUI : MonoBehaviour
         tmp.color = ButtonTextColor;
         tmp.raycastTarget = false;
         tmp.enableAutoSizing = false;
-        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        GameUITheme.ApplyTitleScreenFont(tmp);
         return btn;
     }
 
     static Button CreateTabButton(Transform parent, string name, string label, UnityEngine.Events.UnityAction onClick)
     {
         var btn = CreateSmallButton(parent, name, label);
-        btn.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        btn.GetComponent<LayoutElement>().preferredWidth = 120f;
+        var layout = btn.GetComponent<LayoutElement>();
+        layout.flexibleWidth = 1f;
+        layout.preferredWidth = 120f;
+        layout.preferredHeight = 44f;
+        layout.minHeight = 44f;
         btn.onClick.AddListener(onClick);
         return btn;
     }
@@ -963,6 +1152,7 @@ public class PauseMenuUI : MonoBehaviour
         img.color = ButtonColor;
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = img;
+        btn.transition = Selectable.Transition.None;
 
         var textGo = new GameObject("Label", typeof(RectTransform));
         textGo.transform.SetParent(go.transform, false);
@@ -975,7 +1165,7 @@ public class PauseMenuUI : MonoBehaviour
         tmp.color = ButtonTextColor;
         tmp.raycastTarget = false;
         tmp.enableAutoSizing = false;
-        if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        GameUITheme.ApplyTitleScreenFont(tmp);
         return btn;
     }
 
@@ -995,7 +1185,7 @@ public class PauseMenuUI : MonoBehaviour
         bgRt.anchorMax = new Vector2(1f, 0.5f);
         bgRt.offsetMin = new Vector2(0f, -3f);
         bgRt.offsetMax = new Vector2(0f, 3f);
-        bg.GetComponent<Image>().color = new Color(0.25f, 0.28f, 0.35f, 1f);
+        bg.GetComponent<Image>().color = GameUITheme.Charcoal;
 
         var fillArea = new GameObject("Fill Area", typeof(RectTransform));
         fillArea.transform.SetParent(go.transform, false);
@@ -1008,7 +1198,7 @@ public class PauseMenuUI : MonoBehaviour
         var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
         Stretch((RectTransform)fill.transform);
-        fill.GetComponent<Image>().color = new Color(0.55f, 0.62f, 0.78f, 1f);
+        fill.GetComponent<Image>().color = GameUITheme.Accent;
 
         var handleArea = new GameObject("Handle Slide Area", typeof(RectTransform));
         handleArea.transform.SetParent(go.transform, false);
@@ -1023,7 +1213,7 @@ public class PauseMenuUI : MonoBehaviour
         handleRt.anchorMin = new Vector2(0.5f, 0.5f);
         handleRt.anchorMax = new Vector2(0.5f, 0.5f);
         handleRt.sizeDelta = new Vector2(16f, 20f);
-        handle.GetComponent<Image>().color = new Color(0.92f, 0.94f, 1f, 1f);
+        handle.GetComponent<Image>().color = GameUITheme.TextPrimary;
 
         var slider = go.GetComponent<Slider>();
         slider.fillRect = (RectTransform)fill.transform;
@@ -1047,7 +1237,7 @@ public class PauseMenuUI : MonoBehaviour
         le.minWidth = 22f;
         le.minHeight = 22f;
         le.flexibleHeight = 0f;
-        go.GetComponent<Image>().color = new Color(0.3f, 0.33f, 0.4f, 1f);
+        go.GetComponent<Image>().color = GameUITheme.Surface;
 
         var check = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
         check.transform.SetParent(go.transform, false);
@@ -1055,7 +1245,7 @@ public class PauseMenuUI : MonoBehaviour
         var inset = (RectTransform)check.transform;
         inset.offsetMin = new Vector2(4f, 4f);
         inset.offsetMax = new Vector2(-4f, -4f);
-        check.GetComponent<Image>().color = ButtonTextColor;
+        check.GetComponent<Image>().color = GameUITheme.PositiveAccent;
 
         var toggle = go.GetComponent<Toggle>();
         toggle.targetGraphic = go.GetComponent<Image>();

@@ -87,6 +87,14 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
+        // Inventory can change through undo/debug actions while a placement ghost is
+        // active. Never leave a zero-stock placement mode running.
+        if (IsPlacing && inventory.GetCount(placingItem) <= 0)
+        {
+            CancelPlacement();
+            return;
+        }
+
         // Cancel (placement or drag). Only consume Escape when there is something to cancel
         // so the pause menu can still open in Build mode.
         if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && (IsDragging || IsPlacing))
@@ -229,6 +237,15 @@ public class BuildPlacer : MonoBehaviour
     {
         if (item == null || item.prefab == null) return;
         if (OnboardingTutorial.IsStationLocked(item)) return;
+        if (inventory == null)
+            inventory = FindFirstObjectByType<InventoryManager>();
+        if (inventory == null || inventory.GetCount(item) <= 0)
+        {
+            if (placingItem == item)
+                CancelPlacement();
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
 
         placingItem = item;
         placementRotation = GetInitialPlacementRotation(item);
@@ -779,8 +796,12 @@ public class BuildPlacer : MonoBehaviour
     {
         if (placingItem == null) return;
 
-        // Must own one to place
-        if (inventory.GetCount(placingItem) <= 0) return;
+        // Must own one to place. A stale ghost is cancelled immediately.
+        if (inventory.GetCount(placingItem) <= 0)
+        {
+            CancelPlacement();
+            return;
+        }
 
         GetEffectivePlacementSize(out int sizeX, out int sizeY);
 
@@ -823,9 +844,7 @@ public class BuildPlacer : MonoBehaviour
         if (undo != null)
             undo.NotifyStationPlaced(placingItem, placed);
 
-        // Keep placing until user cancels (or you can auto-cancel if you want)
-        // If you want auto-cancel after 1 placement, uncomment:
-        // CancelPlacement();
+        CancelPlacementIfOutOfStock();
     }
 
     void TryPlaceCustomerDoor(Vector3 position, Quaternion rotation, CustomerWallDoor.WallSide side)
@@ -833,7 +852,12 @@ public class BuildPlacer : MonoBehaviour
         if (placingItem == null || placingItem.placementSurface != ItemDefinition.PlacementSurface.CustomerWall)
             return;
         CustomerWallDoor previewDoor = ghost != null ? ghost.GetComponent<CustomerWallDoor>() : null;
-        if (inventory.GetCount(placingItem) <= 0 || !IsDoorLocationAvailable(side, position, previewDoor))
+        if (inventory.GetCount(placingItem) <= 0)
+        {
+            CancelPlacement();
+            return;
+        }
+        if (!IsDoorLocationAvailable(side, position, previewDoor))
         {
             Sfx.Play(SfxId.BuildPlaceFail);
             return;
@@ -863,6 +887,7 @@ public class BuildPlacer : MonoBehaviour
 
         PurchaseUndoManager undo = PurchaseUndoManager.Ensure();
         if (undo != null) undo.NotifyStationPlaced(placingItem, placed);
+        CancelPlacementIfOutOfStock();
     }
 
     void TryPlaceDraggedDoor(Vector3 position, Quaternion rotation, CustomerWallDoor.WallSide side)
@@ -1285,7 +1310,11 @@ public class BuildPlacer : MonoBehaviour
     void TryPlaceOnCounter(CounterSurface surface, int slot)
     {
         if (placingItem == null || surface == null || !surface.IsAvailable) return;
-        if (inventory.GetCount(placingItem) <= 0) return;
+        if (inventory.GetCount(placingItem) <= 0)
+        {
+            CancelPlacement();
+            return;
+        }
         if (!inventory.TryConsumeOne(placingItem))
         {
             Sfx.Play(SfxId.UiError);
@@ -1312,6 +1341,13 @@ public class BuildPlacer : MonoBehaviour
 
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null) undo.NotifyStationPlaced(placingItem, placed);
+        CancelPlacementIfOutOfStock();
+    }
+
+    void CancelPlacementIfOutOfStock()
+    {
+        if (placingItem != null && (inventory == null || inventory.GetCount(placingItem) <= 0))
+            CancelPlacement();
     }
 
     /// <summary>

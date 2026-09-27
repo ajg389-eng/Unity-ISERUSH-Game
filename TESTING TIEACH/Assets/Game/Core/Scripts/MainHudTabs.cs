@@ -291,10 +291,8 @@ public class MainHudTabs : MonoBehaviour
         bool inventoryOpen = inv != null && inv.IsPanelOpen;
         bool managementOpen = mgmt != null && mgmt.IsOpen;
 
-        if (inventoryBg != null)
-            inventoryBg.color = inventoryOpen ? ActiveColor : IdleColor;
-        if (managementBg != null)
-            managementBg.color = managementOpen ? ActiveColor : IdleColor;
+        HudTabColors.Apply(inventoryTabButton, inventoryOpen);
+        HudTabColors.Apply(managementTabButton, managementOpen);
     }
 
     static Button FindInventoryButton()

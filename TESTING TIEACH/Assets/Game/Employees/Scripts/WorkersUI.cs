@@ -754,9 +754,9 @@ public class WorkersUI : MonoBehaviour
             bool selected = index == production.selectedFlowIndex;
             string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
             Button chip = MakeChip(flowListRow, label, Mathf.Clamp(18f + label.Length * 7f, 72f, 140f));
+            chip.gameObject.name = "FlowTab_" + (i + 1);
             var img = chip.GetComponent<Image>();
-            if (img != null)
-                img.color = selected ? HudTabColors.Active : HudTabColors.Idle;
+            GameUITheme.ApplyCompactTabButton(chip, selected);
             chip.onClick.AddListener(() =>
             {
                 if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
@@ -866,67 +866,74 @@ public class WorkersUI : MonoBehaviour
 
     void RefreshFlowSection()
     {
-        EnsureFlowSection();
-        if (production == null) return;
-
-        production.EnsureProductionFlows();
-        ProductionFlowPlan flow = production.SelectedFlow;
-        UpdateFlowHeader();
-        if (flow != null
-            && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
+        try
         {
-            WorkerFlowAssigner.SynchronizeFlowRoute(flow);
-        }
+            EnsureFlowSection();
+            if (production == null) return;
 
-        RebuildFlowListRow();
-        RebuildStepRow();
-        RebuildWorkerRow(flow);
-
-        if (flowNameInput != null && !flowNameInput.isFocused)
-            flowNameInput.SetTextWithoutNotify(flow.flowName);
-        WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
-
-        if (flowStatus == null)
-        {
-            LayoutFlowPanel();
-            return;
-        }
-
-        if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
-        {
-            flowStatus.text = "<size=10><b>ECONOMICS</b></size>  Add stations to analyze this flow.\n"
-                + "<b>Resources required:</b> None";
-            LayoutFlowPanel();
-            return;
-        }
-
-        var economics = WorkflowAnalysis.AnalyzeFlow(flow);
-        var sb = new System.Text.StringBuilder();
-        if (!string.IsNullOrEmpty(economics.summary))
-            sb.Append(economics.summary);
-        for (int i = 0; i < economics.lines.Count; i++)
-        {
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append(economics.lines[i]);
-        }
-        if (sb.Length > 0) sb.Append('\n');
-        sb.Append("<b>Resources required:</b> ");
-        if (economics.requiredResources.Count > 0)
-        {
-            for (int i = 0; i < economics.requiredResources.Count; i++)
+            production.EnsureProductionFlows();
+            ProductionFlowPlan flow = production.SelectedFlow;
+            UpdateFlowHeader();
+            if (flow != null
+                && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
             {
-                if (i > 0) sb.Append(", ");
-                ItemDefinition resource = economics.requiredResources[i];
-                string resourceName = GetRawResourceName(resource);
-                sb.Append(resourceName).Append(" ×1");
+                WorkerFlowAssigner.SynchronizeFlowRoute(flow);
             }
+
+            RebuildFlowListRow();
+            RebuildStepRow();
+            RebuildWorkerRow(flow);
+
+            if (flowNameInput != null && !flowNameInput.isFocused)
+                flowNameInput.SetTextWithoutNotify(flow.flowName);
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
+
+            if (flowStatus == null)
+            {
+                LayoutFlowPanel();
+                return;
+            }
+
+            if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
+            {
+                flowStatus.text = "<size=10><b>ECONOMICS</b></size>  Add stations to analyze this flow.\n"
+                    + "<b>Resources required:</b> None";
+                LayoutFlowPanel();
+                return;
+            }
+
+            var economics = WorkflowAnalysis.AnalyzeFlow(flow);
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrEmpty(economics.summary))
+                sb.Append(economics.summary);
+            for (int i = 0; i < economics.lines.Count; i++)
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(economics.lines[i]);
+            }
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append("<b>Resources required:</b> ");
+            if (economics.requiredResources.Count > 0)
+            {
+                for (int i = 0; i < economics.requiredResources.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    ItemDefinition resource = economics.requiredResources[i];
+                    string resourceName = GetRawResourceName(resource);
+                    sb.Append(resourceName).Append(" ×1");
+                }
+            }
+            else
+            {
+                sb.Append("None");
+            }
+            flowStatus.text = "<size=10><b>ECONOMICS</b></size>  " + sb;
+            LayoutFlowPanel();
         }
-        else
+        finally
         {
-            sb.Append("None");
+            GameUITheme.ApplyTo(transform);
         }
-        flowStatus.text = "<size=10><b>ECONOMICS</b></size>  " + sb;
-        LayoutFlowPanel();
     }
 
     string GetRawResourceName(ItemDefinition resource)
@@ -970,66 +977,73 @@ public class WorkersUI : MonoBehaviour
 
     public void Refresh()
     {
-        EnsureRefs();
-        ApplyCleanLayout();
-        EnsureCardContainer();
-        EnsureFlowSection();
-        RefreshFlowSection();
-
-        if (production == null)
+        try
         {
-            if (countText != null) countText.text = "Workers: —";
-            if (costText != null) costText.text = "Hire: —";
-            if (hireButton != null) hireButton.interactable = false;
-            return;
+            EnsureRefs();
+            ApplyCleanLayout();
+            EnsureCardContainer();
+            EnsureFlowSection();
+            RefreshFlowSection();
+
+            if (production == null)
+            {
+                if (countText != null) countText.text = "Workers: —";
+                if (costText != null) costText.text = "Hire: —";
+                if (hireButton != null) hireButton.interactable = false;
+                return;
+            }
+
+            int count = production.employees != null ? production.employees.Count : 0;
+            if (countText != null)
+                countText.text = "Workers: " + count;
+
+            bool canHire = production.employeePrefab != null;
+            var money = FindObjectOfType<MoneyManager>();
+            int hireCostNow = production.GetHireCost();
+            string costLabel = hireCostNow <= 0 ? "FREE" : "$" + hireCostNow;
+            if (production.employeePrefab == null)
+            {
+                canHire = false;
+                costLabel = "N/A";
+            }
+            else if (production.ExtraHireLocked)
+            {
+                canHire = false;
+                costLabel = "Milestone 2";
+            }
+            else if (!production.CanHireWorker())
+            {
+                canHire = false;
+                costLabel = "MAX";
+            }
+            else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
+            {
+                canHire = false;
+                costLabel = "$" + hireCostNow;
+            }
+
+            if (costText != null)
+                costText.text = costLabel;
+
+            if (hireButton != null)
+                hireButton.interactable = canHire;
+
+            if (cardContainer == null) return;
+            for (int i = cardContainer.childCount - 1; i >= 0; i--)
+                Destroy(cardContainer.GetChild(i).gameObject);
+
+            if (production.employees == null) return;
+            foreach (var emp in production.employees)
+            {
+                if (emp == null) continue;
+                var card = CreateCard();
+                if (card != null)
+                    card.Bind(emp);
+            }
         }
-
-        int count = production.employees != null ? production.employees.Count : 0;
-        if (countText != null)
-            countText.text = "Workers: " + count;
-
-        bool canHire = production.employeePrefab != null;
-        var money = FindObjectOfType<MoneyManager>();
-        int hireCostNow = production.GetHireCost();
-        string costLabel = hireCostNow <= 0 ? "FREE" : "$" + hireCostNow;
-        if (production.employeePrefab == null)
+        finally
         {
-            canHire = false;
-            costLabel = "N/A";
-        }
-        else if (production.ExtraHireLocked)
-        {
-            canHire = false;
-            costLabel = "Milestone 2";
-        }
-        else if (!production.CanHireWorker())
-        {
-            canHire = false;
-            costLabel = "MAX";
-        }
-        else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
-        {
-            canHire = false;
-            costLabel = "$" + hireCostNow;
-        }
-
-        if (costText != null)
-            costText.text = costLabel;
-
-        if (hireButton != null)
-            hireButton.interactable = canHire;
-
-        if (cardContainer == null) return;
-        for (int i = cardContainer.childCount - 1; i >= 0; i--)
-            Destroy(cardContainer.GetChild(i).gameObject);
-
-        if (production.employees == null) return;
-        foreach (var emp in production.employees)
-        {
-            if (emp == null) continue;
-            var card = CreateCard();
-            if (card != null)
-                card.Bind(emp);
+            GameUITheme.ApplyTo(transform);
         }
     }
 

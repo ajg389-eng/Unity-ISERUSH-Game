@@ -21,14 +21,6 @@ public static class HudTabColors
 
     public static void Apply(Button button, bool active)
     {
-        if (button == null) return;
-        if (button.targetGraphic is Image img)
-            img.color = active ? Active : Idle;
-        else
-        {
-            var image = button.GetComponent<Image>();
-            if (image != null)
-                image.color = active ? Active : Idle;
-        }
+        GameUITheme.ApplyTabButton(button, active);
     }
 }

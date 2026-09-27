@@ -71,8 +71,7 @@ public class OnboardingTutorial : MonoBehaviour
         Drink,
         Assembly,
         HeatLamp,
-        Pantry,
-        Door
+        Pantry
     }
 
     struct Step
@@ -141,12 +140,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Open <b>Inventory</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
-            "Front door",
-            "Customers and deliveries use the <b>door</b> on the east wall to come in from the parking lot. It is already on the wall — you cannot buy another from Inventory.\n\nDouble-click the door later if you want to slide it along the wall.",
-            "Next", Highlight.Door, requirePlaced: true),
-        new Step(
             "Buy stations",
-            "Open <b>Inventory</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
+            "Open <b>Inventory</b> (top-left, or press Q). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
@@ -187,12 +182,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Buy ingredients",
-            "Stations do nothing without stock. Open <b>Management</b> (top-left, or press 2), then the <b>Ingredients</b> tab.\n\n" +
+            "Stations do nothing without stock. Open <b>Management</b> (top-left, or press E), then the <b>Ingredients</b> tab.\n\n" +
             "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
-            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press 2).\n\n" +
+            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press E).\n\n" +
             "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. A worker can cover up to three stations; extra people you do not assign will stand idle.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
@@ -228,6 +223,62 @@ public class OnboardingTutorial : MonoBehaviour
             "If nobody is cooking, check workers, outputs, and that you bought ingredient packs.\n\n" +
             "Serve that order, then click Finish. Extra customers stay away until the tutorial ends.",
             "Finish", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
+    };
+
+    // Gus speaks the tutorial while the Step data continues to define gameplay gates.
+    static readonly string[] GusDialogue =
+    {
+        "I cleared out the kitchen so we can rebuild the operation properly. First, place a <b>register</b> on the lobby counter.\n\n" +
+        "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
+
+        "Every order begins at the <b>register</b>. Open <b>Inventory</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
+        "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
+
+        "Open <b>Inventory</b> at the top-left, or press <b>Q</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
+        "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
+
+        "Let's start the burger process. Buy and place a <b>freezer</b>. It stores raw patties, so this is the first stop for every burger.\n\n" +
+        "If it is missing or empty, burger production cannot begin.",
+
+        "Next, buy and place a <b>grill</b>. Workers carry raw patties here from the freezer to cook them.\n\n" +
+        "Distance matters because every extra tile adds travel time. Put it somewhere sensible and we will connect its output later.",
+
+        "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
+        "Its output should eventually lead to a Pickup Station so customers can collect the finished fries.",
+
+        "Buy and place a <b>drink fountain</b>. Drinks use another independent path, but they still need a worker and a route to a Pickup Station.\n\n" +
+        "If drinks stall, an otherwise complete order can still keep a customer waiting.",
+
+        "Place an <b>assembly</b> table. Workers combine a cooked patty with the bun and toppings here to finish a burger.\n\n" +
+        "The burger route should move from grill to assembly, then from assembly to a Pickup Station.",
+
+        "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
+        "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
+
+        "Buy and place a <b>pantry</b>. It supplies toppings and other ingredients workers need at assembly.\n\n" +
+        "Try placing it nearby. I do not want workers crossing the entire kitchen every time they need one ingredient.",
+
+        "The equipment is useless without material to process. Open <b>Management</b>, or press <b>E</b>, then open <b>Ingredients</b>.\n\n" +
+        "Order at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. A delivery person will bring the combined order through the front door.",
+
+        "Now we need someone to run the process. Open <b>Management > Workers</b> and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
+        "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
+
+        "Let's define how work should move. In Workers, click <b>Create Flow</b>, then select stations in production order.\n\n" +
+        "Build this burger route: <b>Freezer > Grill > Assembly > Pickup Station</b>. Click Finish when the sequence is correct.",
+
+        "Plans change, so you need to know how to revise one. Select the flow chip, then click <b>Edit Flow</b>.\n\n" +
+        "Selecting an existing stop trims the route back to that point. Selecting a new station extends it. Check the route, then click Finish to save it.",
+
+        "A process plan does nothing until someone owns the work. Select the burger flow, then <b>drag a worker card onto DROP WORKER</b>.\n\n" +
+        "Their name will appear on the flow. Assign at least one worker so production can begin.",
+
+        "Here is the system I need you to observe:\n\n" +
+        "1. A customer orders at the register.\n2. Workers follow the flows you designed.\n3. Finished items wait at a Pickup Station.\n4. The customer collects each item and leaves.\n\n" +
+        "Waiting, walking, and blocked stations are all clues.",
+
+        "I am opening the doors for one test customer. They will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
+        "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then click Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -314,7 +365,9 @@ public class OnboardingTutorial : MonoBehaviour
         PlayerPrefs.Save();
         pendingStart = true;
         running = false;
+        stepIndex = 0;
         furthestStepIndex = -1;
+        flowEditCompleted = false;
         liveCustomerSpawned = false;
         HideUI();
         ClearHighlight();
@@ -334,7 +387,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null)
             nextLabel.text = "Finish";
         if (bodyText != null)
-            bodyText.text = "That is a full loop: order in, food cooked, meal handed off.\n\nClick <b>Finish</b> to unlock milestones and normal customer traffic.";
+            bodyText.text = "That's it. You just watched a full service loop: order in, product made, and meal handed off.\n\n" +
+                "Click <b>Finish</b>. From here on, I am counting on you to use the data and improve the business.";
     }
 
     void OnBack()
@@ -378,7 +432,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (titleText != null)
             titleText.text = step.title;
         if (bodyText != null)
-            bodyText.text = step.body;
+            bodyText.text = stepIndex < GusDialogue.Length ? GusDialogue[stepIndex] : step.body;
         if (stepLabel != null)
             stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
         if (nextLabel != null)
@@ -465,7 +519,6 @@ public class OnboardingTutorial : MonoBehaviour
         switch (step.highlight)
         {
             case Highlight.Register: return "Place register on counter";
-            case Highlight.Door: return "East door is already placed";
             case Highlight.Freezer: return "Place freezer";
             case Highlight.Grill: return "Place grill";
             case Highlight.Fryer: return "Place fryer";
@@ -564,7 +617,6 @@ public class OnboardingTutorial : MonoBehaviour
     bool AllTutorialStationsPlaced()
     {
         return HasPlacedStation(Highlight.Register)
-            && HasPlacedStation(Highlight.Door)
             && HasPlacedStation(Highlight.Freezer)
             && HasPlacedStation(Highlight.Grill)
             && HasPlacedStation(Highlight.Fryer)
@@ -585,16 +637,6 @@ public class OnboardingTutorial : MonoBehaviour
                     if (!starterKitchen.Contains(register.gameObject)
                         && register.GetComponent<PlacedBuildItem>() != null)
                         return true;
-                return false;
-            case Highlight.Door:
-                var doors = FindObjectsByType<CustomerWallDoor>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-                foreach (var door in doors)
-                {
-                    if (door == null || !CustomerWallDoor.IsGameplayDoor(door)) continue;
-                    if (starterKitchen.Contains(door.gameObject)) continue;
-                    if (door.GetComponent<PlacedBuildItem>() == null) continue;
-                    return true;
-                }
                 return false;
             case Highlight.Freezer: return HasActiveStation<FreezerStation>();
             case Highlight.Grill: return HasActiveStation<GrillStation>();
@@ -671,6 +713,15 @@ public class OnboardingTutorial : MonoBehaviour
         var placer = FindFirstObjectByType<BuildPlacer>();
         if (placer != null)
             placer.EnsureCustomerEntrance();
+
+        // The automatic spawner was intentionally suppressed throughout onboarding.
+        // Hand it an explicit restart so normal traffic resumes immediately instead
+        // of waiting on the opening-hour or vehicle-arrival state.
+        var spawners = FindObjectsByType<CustomerSpawner>(FindObjectsInactive.Exclude,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < spawners.Length; i++)
+            if (spawners[i] != null)
+                spawners[i].ResumeAfterTutorial();
     }
 
     void PrepareEmptyKitchen()
@@ -907,7 +958,6 @@ public class OnboardingTutorial : MonoBehaviour
         switch (kind)
         {
             case Highlight.Register: return item.buildFunction == ItemDefinition.BuildFunction.Register;
-            case Highlight.Door: return item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor;
             case Highlight.Freezer: return name.Contains("freezer");
             case Highlight.Grill: return name.Contains("grill");
             case Highlight.Fryer: return name.Contains("fryer");
@@ -931,9 +981,6 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Register:
                 var reg = FindFirstObjectByType<Register>();
                 return reg != null ? reg.transform : null;
-            case Highlight.Door:
-                var door = FindFirstObjectByType<CustomerWallDoor>();
-                return door != null && CustomerWallDoor.IsGameplayDoor(door) ? door.transform : null;
             case Highlight.Inventory:
                 var tabsInv = FindFirstObjectByType<MainHudTabs>();
                 return tabsInv != null ? tabsInv.InventoryTabTransform : null;
@@ -1030,8 +1077,65 @@ public class OnboardingTutorial : MonoBehaviour
         fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        stepLabel = CreateLabel(panel.transform, "", 14, FontStyles.Normal, new Color(0.7f, 0.75f, 0.85f));
-        titleText = CreateLabel(panel.transform, "", 24, FontStyles.Bold, Color.white);
+        var header = new GameObject("GusHeader", typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        header.transform.SetParent(panel.transform, false);
+        var headerLayout = header.GetComponent<HorizontalLayoutGroup>();
+        headerLayout.spacing = 14f;
+        headerLayout.childAlignment = TextAnchor.MiddleLeft;
+        headerLayout.childControlWidth = true;
+        headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandWidth = false;
+        headerLayout.childForceExpandHeight = false;
+        header.GetComponent<LayoutElement>().preferredHeight = 76f;
+
+        var iconFrame = new GameObject("GusIconFrame", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement));
+        iconFrame.transform.SetParent(header.transform, false);
+        iconFrame.GetComponent<Image>().color = GameUITheme.Surface;
+        var iconLayout = iconFrame.GetComponent<LayoutElement>();
+        iconLayout.minWidth = 72f;
+        iconLayout.preferredWidth = 72f;
+        iconLayout.minHeight = 72f;
+        iconLayout.preferredHeight = 72f;
+        var iconOutline = iconFrame.AddComponent<Outline>();
+        iconOutline.effectColor = GameUITheme.Accent;
+        iconOutline.effectDistance = new Vector2(2f, -2f);
+
+        var iconObject = new GameObject("GusFace", typeof(RectTransform), typeof(RawImage),
+            typeof(GusCutscenePreview));
+        iconObject.transform.SetParent(iconFrame.transform, false);
+        var iconRect = (RectTransform)iconObject.transform;
+        iconRect.anchorMin = Vector2.zero;
+        iconRect.anchorMax = Vector2.one;
+        iconRect.offsetMin = new Vector2(3f, 3f);
+        iconRect.offsetMax = new Vector2(-3f, -3f);
+        var iconImage = iconObject.GetComponent<RawImage>();
+        iconImage.color = Color.white;
+        iconImage.raycastTarget = false;
+        var titleController = FindFirstObjectByType<TitleScreenController>();
+        GameObject gusModel = titleController != null && titleController.gusPrefab != null
+            ? titleController.gusPrefab
+            : Resources.Load<GameObject>("Prefabs/character_default");
+        if (gusModel != null)
+            iconObject.GetComponent<GusCutscenePreview>().Configure(gusModel, iconImage, true);
+
+        var headerText = new GameObject("GusHeaderText", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        headerText.transform.SetParent(header.transform, false);
+        var textLayout = headerText.GetComponent<VerticalLayoutGroup>();
+        textLayout.spacing = 1f;
+        textLayout.childAlignment = TextAnchor.MiddleLeft;
+        textLayout.childControlWidth = true;
+        textLayout.childControlHeight = true;
+        textLayout.childForceExpandWidth = true;
+        textLayout.childForceExpandHeight = false;
+        headerText.GetComponent<LayoutElement>().flexibleWidth = 1f;
+
+        stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
+        stepLabel.alignment = TextAlignmentOptions.Left;
+        titleText = CreateLabel(headerText.transform, "", 24, FontStyles.Bold, Color.white);
+        titleText.alignment = TextAlignmentOptions.Left;
         bodyText = CreateLabel(panel.transform, "", 17, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;

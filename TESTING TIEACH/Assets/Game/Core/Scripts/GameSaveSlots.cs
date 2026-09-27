@@ -20,14 +20,19 @@ public static class GameSaveSlots
         public readonly bool exists;
         public readonly int day;
         public readonly int cash;
+        public readonly int milestone;
+        public readonly bool introSeen;
         public readonly DateTime lastPlayedUtc;
 
-        public SlotInfo(int slotIndex, bool exists, int day, int cash, DateTime lastPlayedUtc)
+        public SlotInfo(int slotIndex, bool exists, int day, int cash, int milestone, bool introSeen,
+            DateTime lastPlayedUtc)
         {
             this.slotIndex = slotIndex;
             this.exists = exists;
             this.day = day;
             this.cash = cash;
+            this.milestone = milestone;
+            this.introSeen = introSeen;
             this.lastPlayedUtc = lastPlayedUtc;
         }
     }
@@ -40,9 +45,42 @@ public static class GameSaveSlots
         bool exists = PlayerPrefs.GetInt(Key(slotIndex, "Exists"), 0) == 1;
         int day = Mathf.Max(1, PlayerPrefs.GetInt(Key(slotIndex, "Day"), 1));
         int cash = Mathf.Max(0, PlayerPrefs.GetInt(Key(slotIndex, "Cash"), 1000));
+        int milestone = 0;
+        string kitchenJson = PlayerPrefs.GetString(Key(slotIndex, "Kitchen"), "");
+        if (exists && !string.IsNullOrEmpty(kitchenJson))
+        {
+            try
+            {
+                var snapshot = JsonUtility.FromJson<KitchenSaveSnapshot>(kitchenJson);
+                if (snapshot != null)
+                    milestone = Mathf.Max(0, snapshot.milestone);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("Could not read save-slot milestone: " + ex.Message);
+            }
+        }
         long.TryParse(PlayerPrefs.GetString(Key(slotIndex, "LastPlayedUtc"), "0"), out long ticks);
         DateTime lastPlayed = ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : DateTime.MinValue;
-        return new SlotInfo(slotIndex, exists, day, cash, lastPlayed);
+        // Saves created before the intro system are considered already introduced.
+        bool introSeen = exists && (!PlayerPrefs.HasKey(Key(slotIndex, "IntroSeen"))
+            || PlayerPrefs.GetInt(Key(slotIndex, "IntroSeen"), 0) == 1);
+        return new SlotInfo(slotIndex, exists, day, cash, milestone, introSeen, lastPlayed);
+    }
+
+    public static void WipeSlot(int slotIndex)
+    {
+        slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
+        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "IntroSeen" };
+        foreach (string field in fields)
+            PlayerPrefs.DeleteKey(Key(slotIndex, field));
+
+        if (PlayerPrefs.GetInt(ActiveSlotKey, 0) == slotIndex)
+        {
+            PlayerPrefs.DeleteKey(ActiveSlotKey);
+            slotSelectedThisSession = false;
+        }
+        PlayerPrefs.Save();
     }
 
     public static bool SelectAndLoad(int slotIndex)
@@ -79,12 +117,35 @@ public static class GameSaveSlots
         }
         else
         {
+            PlayerPrefs.SetInt(Key(slotIndex, "IntroSeen"), 0);
             if (time != null) time.RestoreDay(1);
             if (money != null) money.SetMoney(money.startingMoney);
+
+            // Tutorial completion is a global PlayerPrefs value until a slot snapshot
+            // restores it. Reset all campaign state before creating an empty slot's
+            // first checkpoint so progress from another save cannot leak into New Game.
+            PlayerPrefs.DeleteKey(OnboardingTutorial.PrefsCompleteKey);
+            var onboarding = OnboardingTutorial.Instance
+                ?? UnityEngine.Object.FindFirstObjectByType<OnboardingTutorial>();
+            if (onboarding != null)
+                onboarding.Restart();
+
+            if (MissionProgressManager.Instance != null)
+                MissionProgressManager.Instance.ResetProgress();
+            if (MilestoneProgressManager.Instance != null)
+                MilestoneProgressManager.Instance.ResetAllProgress();
         }
 
         SaveActiveSlot();
         return true;
+    }
+
+    public static void MarkActiveSlotIntroSeen()
+    {
+        int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        if (slotIndex < 1 || slotIndex > SlotCount) return;
+        PlayerPrefs.SetInt(Key(slotIndex, "IntroSeen"), 1);
+        PlayerPrefs.Save();
     }
 
     public static void SaveActiveSlot()

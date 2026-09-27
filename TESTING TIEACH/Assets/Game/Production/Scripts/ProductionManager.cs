@@ -537,7 +537,6 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
-            AddWorkerToSelectedFlow(emp);
             RaiseFirstWorkerHiredEvent();
         }
         return emp;
@@ -568,7 +567,6 @@ public class ProductionManager : MonoBehaviour
             emp.AssignRandomName();
             go.name = emp.employeeName;
             RegisterEmployee(emp);
-            AddWorkerToSelectedFlow(emp);
             Sfx.Play(SfxId.HireWorker);
             RaiseFirstWorkerHiredEvent();
             int paid = cost;

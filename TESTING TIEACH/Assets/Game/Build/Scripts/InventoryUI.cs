@@ -4,6 +4,13 @@ using TMPro;
 
 public class InventoryUI : MonoBehaviour
 {
+    static readonly KeyCode[] NumberRowTabKeys =
+    {
+        KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
+        KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6,
+        KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9
+    };
+
     public const string ContentBoxName = "ContentBox";
     public const string TabBarName = "TabBar";
     public const string StationsPanelName = "StationsPanel";
@@ -78,9 +85,14 @@ public class InventoryUI : MonoBehaviour
 
     void Update()
     {
-        if (!UIInputFocusGuard.IsTyping
-            && (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)))
-            TogglePanel();
+        if (!UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen)
+        {
+            if (Input.GetKeyDown(KeyCode.Q))
+                TogglePanel();
+
+            if (panel != null && panel.activeSelf)
+                HandleNumberRowTabShortcut();
+        }
 
         ApplyModeState();
         RefreshExpandButton();
@@ -90,6 +102,36 @@ public class InventoryUI : MonoBehaviour
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
     }
+
+    void HandleNumberRowTabShortcut()
+    {
+        int requestedPosition = -1;
+        for (int i = 0; i < NumberRowTabKeys.Length; i++)
+        {
+            if (!Input.GetKeyDown(NumberRowTabKeys[i])) continue;
+            requestedPosition = i;
+            break;
+        }
+        if (requestedPosition < 0) return;
+
+        int count = tabPanels != null && tabButtons != null
+            ? Mathf.Min(Mathf.Min(tabPanels.Length, tabButtons.Length), NumberRowTabKeys.Length)
+            : 0;
+        if (requestedPosition >= count) return;
+
+        int[] visualOrder = new int[count];
+        for (int i = 0; i < count; i++)
+            visualOrder[i] = i;
+        System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
+            .CompareTo(GetTabSiblingIndex(tabButtons[b])));
+
+        SelectTab(visualOrder[requestedPosition]);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static int GetTabSiblingIndex(Button button) => button != null
+        ? button.transform.GetSiblingIndex()
+        : int.MaxValue;
 
     void ApplyModeState()
     {
@@ -244,6 +286,11 @@ public class InventoryUI : MonoBehaviour
             sr.normalizedPosition = new Vector2(0f, 1f);
 
         displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+
+        // Inventory cards are rebuilt at runtime. Apply their one final appearance now,
+        // after layout has its real dimensions, so there is no unstyled frame or delayed
+        // second theme pass when returning to this tab.
+        GameUITheme.ApplyTo(transform);
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
@@ -424,9 +471,7 @@ public class InventoryUI : MonoBehaviour
             inventory.GetAcquiredCount(captured),
             onSelect: () =>
             {
-                inventory.SelectItem(captured);
-                var placer = FindObjectOfType<BuildPlacer>();
-                if (placer) placer.BeginPlacement(captured);
+                BeginItemPlacement(captured);
             },
             onBuy: () =>
             {
@@ -482,9 +527,7 @@ public class InventoryUI : MonoBehaviour
         ItemDefinition captured = item;
         nameButton.onClick.AddListener(() =>
         {
-            inventory.SelectItem(captured);
-            var placer = FindObjectOfType<BuildPlacer>();
-            if (placer) placer.BeginPlacement(captured);
+            BeginItemPlacement(captured);
         });
 
         buyButton.onClick.AddListener(() =>
@@ -511,6 +554,11 @@ public class InventoryUI : MonoBehaviour
 
     void BeginItemPlacement(ItemDefinition item)
     {
+        if (item == null || inventory == null || inventory.GetCount(item) <= 0)
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
         inventory.SelectItem(item);
         var placer = FindFirstObjectByType<BuildPlacer>();
         if (placer != null) placer.BeginPlacement(item);
