@@ -678,8 +678,10 @@ public class OnboardingTutorial : MonoBehaviour
         CacheStarterKitchen();
         for (int i = 0; i < starterKitchen.Count; i++)
         {
-            if (starterKitchen[i] != null)
-                starterKitchen[i].SetActive(false);
+            if (starterKitchen[i] == null) continue;
+            if (starterKitchen[i].GetComponent<CustomerWallDoor>() != null)
+                continue;
+            starterKitchen[i].SetActive(false);
         }
         starterKitchenHidden = true;
 

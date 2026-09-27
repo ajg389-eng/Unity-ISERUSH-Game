@@ -75,14 +75,14 @@ public class CustomerWallDoor : MonoBehaviour
         DisableImportedDoorClickScripts();
         CacheSwingLeaves();
 
-        var occ = GetComponent<CameraOcclusionWall>();
-        if (occ == null)
-            occ = gameObject.AddComponent<CameraOcclusionWall>();
-        occ.duckByLowering = true;
-        occ.cutawayHeight = 0.8f;
-        occ.SetOutward(OutwardDirection());
-        occ.SetPlacementLock(false);
-        occ.CaptureRestPose();
+        // The brick wall already cuts away. Lowering the door with that cutaway
+        // sinks the mesh into the floor, so the entrance looks missing.
+        CameraOcclusionWall occ = GetComponent<CameraOcclusionWall>();
+        if (occ != null)
+        {
+            occ.SnapUp();
+            Destroy(occ);
+        }
     }
 
     public static bool HasActivePopup => activePopupDoor != null
@@ -246,6 +246,20 @@ public class CustomerWallDoor : MonoBehaviour
             if (customer.IsEntering)
                 nearestEnter = Mathf.Min(nearestEnter, dist);
             else if (customer.IsLeaving)
+                nearestLeave = Mathf.Min(nearestLeave, dist);
+        }
+
+        List<IngredientCourier> couriers = IngredientCourier.ActiveCouriers;
+        for (int i = 0; i < couriers.Count; i++)
+        {
+            IngredientCourier courier = couriers[i];
+            if (courier == null) continue;
+            float dist = HorizontalDistance(doorPos, courier.transform.position);
+            if (dist < passageClearance) customerInSweep = true;
+            if (dist > triggerRadius) continue;
+            if (courier.IsWalkingIn)
+                nearestEnter = Mathf.Min(nearestEnter, dist);
+            else if (courier.IsWalkingOut)
                 nearestLeave = Mathf.Min(nearestLeave, dist);
         }
 
@@ -512,6 +526,25 @@ public class CustomerWallDoor : MonoBehaviour
         float destZ = lobbyTarget.z;
         if (Mathf.Abs(destZ - last.z) < 0.35f) return;
         into.Add(new Vector3(last.x, last.y, destZ));
+    }
+
+    /// <summary>
+    /// True once the leaf has swung far enough for this step to cross the doorway.
+    /// Steps that stay on one side of the door are always clear.
+    /// </summary>
+    public bool IsClearToCross(Vector3 from, Vector3 to)
+    {
+        if (!swingReady) return true;
+        Vector3 center = GetPassageCenter();
+        Vector3 outward = OutwardDirection();
+        float fromSide = Vector3.Dot(from - center, outward);
+        float toSide = Vector3.Dot(to - center, outward);
+        if (fromSide * toSide > 0.04f) return true;
+        if (Mathf.Abs(fromSide) > passageClearance + 0.35f) return true;
+
+        // Either swing clears the walkway. Holding for the opposite direction
+        // left the courier standing in the opening after a delivery.
+        return Mathf.Abs(swingAngle) >= SwingOpenAngle * 0.72f;
     }
 
     public Vector3 GetCustomerWaypoint(bool outside, float distance = 1.5f)

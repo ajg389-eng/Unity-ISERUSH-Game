@@ -26,6 +26,10 @@ public class IngredientCourier : MonoBehaviour
     float handoffTimer;
     Vector3 handoff;
     Vector3 vanDoor;
+    GameObject carriedParcel;
+
+    public bool IsWalkingIn => phase == Phase.ToCounter;
+    public bool IsWalkingOut => phase == Phase.ToVan;
 
     public void Begin(IngredientDeliveryService.Shipment owningShipment, Vector3 counter, Vector3 doorAtVan, DeliveryVan parkedVan)
     {
@@ -43,6 +47,7 @@ public class IngredientCourier : MonoBehaviour
         DisableCollision();
         SnapFeetToFloor();
         transform.position = doorAtVan;
+        AttachCarriedParcel();
     }
 
     public void Depart()
@@ -103,10 +108,18 @@ public class IngredientCourier : MonoBehaviour
         Vector3 target = path[index];
         target.y = transform.position.y;
         FacePoint(target);
+        if (!DoorIsClear(transform.position, target))
+            return;
         transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
         PushOutOfCounters();
         if (HorizontalDist(transform.position, target) <= 0.14f)
             index++;
+    }
+
+    static bool DoorIsClear(Vector3 from, Vector3 to)
+    {
+        CustomerWallDoor door = CustomerWallDoor.FindEntryDoor();
+        return door == null || door.IsClearToCross(from, to);
     }
 
     void FacePoint(Vector3 target)
@@ -174,11 +187,36 @@ public class IngredientCourier : MonoBehaviour
                 counterTop = nearest.GetCounterDropPosition();
         }
 
+        if (carriedParcel != null)
+            Destroy(carriedParcel);
         GameObject box = BuildWoodCrate();
         box.name = "IngredientDrop";
         box.transform.position = new Vector3(counterTop.x, counterTop.y + 0.28f, counterTop.z);
         box.transform.rotation = Quaternion.identity;
         Destroy(box, 5f);
+    }
+
+    void LateUpdate()
+    {
+        SeatCarriedParcel();
+    }
+
+    void AttachCarriedParcel()
+    {
+        carriedParcel = BuildWoodCrate();
+        carriedParcel.name = "CarriedParcel";
+        carriedParcel.transform.localScale = Vector3.one * 0.8f;
+        SeatCarriedParcel();
+    }
+
+    void SeatCarriedParcel()
+    {
+        if (carriedParcel == null) return;
+        float bob = Mathf.Sin(Time.time * 2.4f) * 0.045f;
+        Vector3 above = transform.position + Vector3.up * (2.35f + bob);
+        if (TryGetVisualBounds(out Bounds bounds))
+            above = new Vector3(bounds.center.x, bounds.max.y + 0.55f + bob, bounds.center.z);
+        carriedParcel.transform.SetPositionAndRotation(above, Quaternion.Euler(0f, Time.time * 28f, 0f));
     }
 
     static GameObject BuildWoodCrate()

@@ -380,6 +380,11 @@ public class IngredientDeliveryService : MonoBehaviour
 
     static GameObject LoadVanPrefab()
     {
+        // The vehicle pack has no cargo van. The beige box truck is the
+        // delivery vehicle; the orange pickup was the previous stand-in.
+        GameObject boxTruck = Resources.Load<GameObject>("Delivery/DeliveryVan_color02");
+        if (boxTruck != null) return boxTruck;
+
         GameObject[] loaded = Resources.LoadAll<GameObject>("Traffic");
         GameObject fallback = null;
         for (int i = 0; i < loaded.Length; i++)
@@ -387,9 +392,12 @@ public class IngredientDeliveryService : MonoBehaviour
             if (loaded[i] == null) continue;
             string name = loaded[i].name;
             if (name.IndexOf("Pick", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+            if (name.IndexOf("Truck", System.StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
+            fallback = loaded[i];
+            if (name.IndexOf("color02", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 return loaded[i];
-            if (name.IndexOf("Truck", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                fallback = loaded[i];
         }
         return fallback;
     }
@@ -422,10 +430,153 @@ public class IngredientDeliveryService : MonoBehaviour
                 orderLabel.labelRoot.SetActive(false);
         }
         var look = PartyCharacterRandomizer.EnsureOn(body);
-        look.randomizeOnStart = true;
-        look.hatChance = 1f;
+        if (look != null)
+        {
+            look.randomizeOnStart = false;
+            look.hatChance = 0f;
+            DressAsCourier(look);
+        }
         PartyCharacterAnimator.EnsureOn(body);
         return body;
+    }
+
+    static void DressAsCourier(PartyCharacterRandomizer look)
+    {
+        int body = FindNamedIndex(PartyCharacterRandomizer.BodyCount, PartyCharacterRandomizer.GetBodyName,
+            "Cream 2", "Cream 1", "Brown 2");
+        int face = FindNamedIndex(PartyCharacterRandomizer.FaceCount, PartyCharacterRandomizer.GetFaceName, "face 1");
+        if (body >= 0) look.SetBodyIndex(body);
+        if (face >= 0) look.SetFaceIndex(face);
+        look.SetHatIndex(-1);
+        AttachDeliveryCap(look.gameObject);
+        AttachDeliveryVest(look.gameObject);
+    }
+
+    static int FindNamedIndex(int count, System.Func<int, string> nameOf, params string[] tokens)
+    {
+        for (int t = 0; t < tokens.Length; t++)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                string name = nameOf(i);
+                if (name != null && name.IndexOf(tokens[t], System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return i;
+            }
+        }
+        return count > 0 ? 0 : -1;
+    }
+
+    static void AttachDeliveryCap(GameObject body)
+    {
+        Transform head = null;
+        Transform[] bones = body.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < bones.Length; i++)
+        {
+            if (bones[i] != null && bones[i].name == "Head")
+            {
+                head = bones[i];
+                break;
+            }
+        }
+        if (head == null) return;
+
+        float size = 0.28f;
+        Vector3 top = body.transform.position + Vector3.up * 1.5f;
+        SkinnedMeshRenderer skin = body.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (skin != null)
+        {
+            size = Mathf.Clamp(skin.bounds.size.x * 0.46f, 0.2f, 0.42f);
+            top = skin.bounds.center + Vector3.up * (skin.bounds.extents.y * 0.78f);
+        }
+
+        var cap = new GameObject("DeliveryCap");
+        cap.transform.SetPositionAndRotation(top, body.transform.rotation);
+        Color khaki = new Color(0.74f, 0.58f, 0.34f);
+        Color brim = new Color(0.52f, 0.38f, 0.2f);
+        AddUniformPiece(cap.transform, PrimitiveType.Sphere, "Crown",
+            new Vector3(0f, size * 0.08f, -size * 0.02f),
+            new Vector3(size * 0.92f, size * 0.48f, size * 0.92f), khaki);
+        AddUniformPiece(cap.transform, PrimitiveType.Sphere, "Button",
+            new Vector3(0f, size * 0.3f, 0f),
+            Vector3.one * size * 0.16f, brim);
+        AddUniformPiece(cap.transform, PrimitiveType.Cube, "Brim",
+            new Vector3(0f, size * 0.02f, size * 0.42f),
+            new Vector3(size * 0.92f, size * 0.045f, size * 0.55f), khaki);
+        cap.transform.SetParent(head, true);
+    }
+
+    static void AttachDeliveryVest(GameObject body)
+    {
+        Transform chest = FindNamedBone(body.transform, "Spine2", "Spine1", "Spine");
+        if (chest == null) return;
+
+        float width = 0.42f;
+        float height = 0.38f;
+        float depth = 0.22f;
+        Vector3 center = chest.position;
+        SkinnedMeshRenderer skin = body.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (skin != null)
+        {
+            width = Mathf.Clamp(skin.bounds.size.x * 0.72f, 0.32f, 0.62f);
+            height = Mathf.Clamp(skin.bounds.size.y * 0.22f, 0.28f, 0.5f);
+            depth = Mathf.Clamp(skin.bounds.size.z * 0.55f, 0.16f, 0.34f);
+            center = skin.bounds.center;
+            center.y += skin.bounds.extents.y * 0.12f;
+        }
+
+        var vest = new GameObject("DeliveryVest");
+        vest.transform.SetPositionAndRotation(center, body.transform.rotation);
+        Color vestColor = new Color(0.5f, 0.36f, 0.18f);
+        Color strap = new Color(0.42f, 0.3f, 0.15f);
+        AddUniformPiece(vest.transform, PrimitiveType.Cube, "Front",
+            new Vector3(0f, 0f, depth * 0.42f),
+            new Vector3(width * 0.92f, height, depth * 0.18f), vestColor);
+        AddUniformPiece(vest.transform, PrimitiveType.Cube, "Back",
+            new Vector3(0f, 0f, -depth * 0.42f),
+            new Vector3(width * 0.92f, height, depth * 0.16f), vestColor);
+        AddUniformPiece(vest.transform, PrimitiveType.Cube, "StrapL",
+            new Vector3(-width * 0.28f, height * 0.42f, 0f),
+            new Vector3(width * 0.16f, height * 0.16f, depth * 0.95f), strap);
+        AddUniformPiece(vest.transform, PrimitiveType.Cube, "StrapR",
+            new Vector3(width * 0.28f, height * 0.42f, 0f),
+            new Vector3(width * 0.16f, height * 0.16f, depth * 0.95f), strap);
+        vest.transform.SetParent(chest, true);
+    }
+
+    static Transform FindNamedBone(Transform root, params string[] names)
+    {
+        Transform[] bones = root.GetComponentsInChildren<Transform>(true);
+        for (int n = 0; n < names.Length; n++)
+        {
+            for (int i = 0; i < bones.Length; i++)
+            {
+                if (bones[i] != null && bones[i].name == names[n])
+                    return bones[i];
+            }
+        }
+        return null;
+    }
+
+    static void AddUniformPiece(Transform parent, PrimitiveType shape, string pieceName, Vector3 localPos, Vector3 scale, Color color)
+    {
+        GameObject piece = GameObject.CreatePrimitive(shape);
+        piece.name = pieceName;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPos;
+        piece.transform.localScale = scale;
+        Collider collider = piece.GetComponent<Collider>();
+        if (collider != null)
+            UnityEngine.Object.Destroy(collider);
+        Renderer renderer = piece.GetComponent<Renderer>();
+        if (renderer == null) return;
+        Shader shader = Shader.Find("Universal Render Pipeline/Simple Lit")
+            ?? Shader.Find("Universal Render Pipeline/Lit")
+            ?? Shader.Find("Standard");
+        var material = new Material(shader);
+        material.color = color;
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", color);
+        renderer.material = material;
     }
 
     public static Vector3 GetHandoffPoint()
@@ -458,12 +609,13 @@ public class IngredientDeliveryService : MonoBehaviour
         CustomerWallDoor door = CustomerWallDoor.FindEntryDoor();
         if (door != null)
         {
-            Vector3 outside = door.GetCustomerWaypoint(true, 2.4f);
-            AppendAroundBus(path, from, outside);
-            Add(path, outside);
-            Add(path, door.GetCustomerWaypoint(true, 0.15f));
-            Vector3 inside = door.GetCustomerWaypoint(false, 1.0f);
-            Add(path, inside);
+            var passage = new List<Vector3>();
+            door.AppendPassage(passage, true);
+            if (passage.Count > 0)
+                AppendAroundBus(path, from, passage[0]);
+            for (int i = 0; i < passage.Count; i++)
+                Add(path, passage[i]);
+            Vector3 inside = path[path.Count - 1];
             Add(path, new Vector3(inside.x, inside.y, handoff.z));
         }
         else
@@ -480,10 +632,8 @@ public class IngredientDeliveryService : MonoBehaviour
         Vector3 outside = vanDoor;
         if (door != null)
         {
-            Add(path, door.GetCustomerWaypoint(false, 1.0f));
-            Add(path, door.GetCustomerWaypoint(true, 0.15f));
-            outside = door.GetCustomerWaypoint(true, 2.4f);
-            Add(path, outside);
+            door.AppendPassage(path, false);
+            outside = path[path.Count - 1];
         }
         Vector3 aisle = ParkingLotDressing.PedestrianAislePoint(vanDoor);
         AppendAroundBus(path, path.Count > 0 ? path[path.Count - 1] : from, aisle);

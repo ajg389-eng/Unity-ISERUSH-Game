@@ -268,6 +268,11 @@ public class ParkingLotDressing : MonoBehaviour
         return root.gameObject;
     }
 
+    public static bool TryGetPavementBounds(out Bounds lot)
+    {
+        return TryGetLotBounds(out lot);
+    }
+
     static bool TryGetLotBounds(out Bounds lot)
     {
         lot = default;

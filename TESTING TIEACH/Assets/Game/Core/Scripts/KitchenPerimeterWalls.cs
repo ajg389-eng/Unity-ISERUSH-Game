@@ -513,7 +513,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
         for (int i = 0; i < placedDoors.Length; i++)
         {
             CustomerWallDoor door = placedDoors[i];
-            if (door == null || door.transform == entranceDoor) continue;
+            if (door == null || !door.isActiveAndEnabled) continue;
             if (door.GetComponentInParent<Canvas>() != null) continue;
             TryAddDoorOnWall(door.transform, wallPos, along, length, thick, results);
         }

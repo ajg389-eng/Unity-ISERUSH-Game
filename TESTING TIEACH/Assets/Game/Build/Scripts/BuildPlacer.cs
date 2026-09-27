@@ -70,6 +70,8 @@ public class BuildPlacer : MonoBehaviour
             if (grid != null) grid.ResyncOccupancyFromScene();
         }
         EnsureRequiredCustomerDoors();
+        if (CustomerWallDoor.FindEntryDoor() == null)
+            Invoke(nameof(EnsureRequiredCustomerDoors), 0.35f);
         SetHint(false);
     }
 
@@ -1127,22 +1129,41 @@ public class BuildPlacer : MonoBehaviour
     {
         CustomerWallDoor entrance = null;
         CustomerWallDoor[] existing = FindObjectsByType<CustomerWallDoor>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < existing.Length; i++)
         {
             CustomerWallDoor door = existing[i];
-            if (!CustomerWallDoor.IsGameplayDoor(door)) continue;
-            if (door.role == CustomerWallDoor.DoorRole.Entrance && entrance == null)
+            if (door == null) continue;
+            if (door.name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                continue;
+            if (door.GetComponentInParent<Canvas>() != null) continue;
+            if (door.role != CustomerWallDoor.DoorRole.Entrance) continue;
+            if (!door.gameObject.activeInHierarchy)
+            {
+                if (entrance == null)
+                    door.gameObject.SetActive(true);
+                else
+                    continue;
+            }
+            bool duplicate = door.name.IndexOf("(Clone)", System.StringComparison.Ordinal) >= 0;
+            bool keptDuplicate = entrance != null
+                && entrance.name.IndexOf("(Clone)", System.StringComparison.Ordinal) >= 0;
+            if (entrance == null
+                || (door.permanentFixture && !entrance.permanentFixture)
+                || (!duplicate && keptDuplicate))
                 entrance = door;
         }
 
         ItemDefinition definition = FindCustomerDoorDefinition();
-        if (definition == null || definition.prefab == null) return;
-
         if (entrance == null)
+        {
+            if (definition == null || definition.prefab == null) return;
             entrance = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Entrance,
                 CustomerWallDoor.WallSide.East, 0.36f);
-        ConfigureRequiredDoor(entrance, definition, CustomerWallDoor.DoorRole.Entrance);
+            if (entrance == null) return;
+        }
+        if (definition != null)
+            ConfigureRequiredDoor(entrance, definition, CustomerWallDoor.DoorRole.Entrance);
         for (int i = 0; i < existing.Length; i++)
         {
             CustomerWallDoor door = existing[i];
@@ -1150,6 +1171,8 @@ public class BuildPlacer : MonoBehaviour
             Destroy(door.gameObject);
         }
         RefreshPerimeterWalls();
+        CancelInvoke(nameof(RefreshPerimeterWalls));
+        Invoke(nameof(RefreshPerimeterWalls), 0.05f);
     }
 
     ItemDefinition FindCustomerDoorDefinition()
@@ -1554,6 +1577,19 @@ public class BuildPlacer : MonoBehaviour
             footprint.sizeY = Mathf.Max(1, item.footprintY);
         }
 
+        if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall
+            || item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
+        {
+            CustomerWallDoor door = placed.GetComponent<CustomerWallDoor>();
+            if (door == null)
+            {
+                door = placed.AddComponent<CustomerWallDoor>();
+                door.wallSide = InferDoorWall(placed.transform);
+                door.role = CustomerWallDoor.DoorRole.Entrance;
+            }
+            door.EnsureWallCutaway();
+        }
+
         if (item.buildFunction == ItemDefinition.BuildFunction.Counter)
         {
             if (placed.GetComponent<CounterSurface>() == null)
@@ -1570,6 +1606,14 @@ public class BuildPlacer : MonoBehaviour
             if (hover == null) hover = placed.AddComponent<RegisterHover>();
             if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();
         }
+    }
+
+    static CustomerWallDoor.WallSide InferDoorWall(Transform placed)
+    {
+        float yaw = placed != null ? Mathf.Repeat(placed.eulerAngles.y, 360f) : 0f;
+        if (yaw > 45f && yaw <= 135f) return CustomerWallDoor.WallSide.East;
+        if (yaw > 135f && yaw <= 225f) return CustomerWallDoor.WallSide.North;
+        return CustomerWallDoor.WallSide.South;
     }
 
     static Vector3 GetPlacementScale(ItemDefinition item)

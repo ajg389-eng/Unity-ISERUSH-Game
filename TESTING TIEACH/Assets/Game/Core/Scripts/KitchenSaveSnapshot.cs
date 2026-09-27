@@ -87,6 +87,8 @@ public class KitchenSaveSnapshot
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
         pm.employees.Clear(); pm.productionFlows.Clear();
         foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
+            if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
+                continue;
             var placed=candidate.GetComponent<PlacedBuildItem>(); var mounted=candidate.GetComponent<CounterMountedItem>();
             bool match=placed!=null || mounted!=null;
             if (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(candidate.gameObject))) match = true;
@@ -134,6 +136,11 @@ public class KitchenSaveSnapshot
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
         if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         PurchaseUndoManager.Instance?.ClearHistory();
+        var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
+        if (placer != null)
+            placer.EnsureCustomerEntrance();
+        else
+            UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>()?.RequestRefresh();
         return true;
     }
 }
