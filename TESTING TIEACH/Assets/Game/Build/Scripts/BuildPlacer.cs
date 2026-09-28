@@ -346,31 +346,77 @@ public class BuildPlacer : MonoBehaviour
 
     void SetHint(bool show, bool dragging = false)
     {
-        if (!placementHintText) return;
+        string instruction = null;
+        bool rotationLocked = show && (dragging
+            ? IsCurrentDragRotationLocked()
+            : IsRotationLocked(placingItem, ghost));
+        if (dragging)
+            instruction = rotationLocked
+                ? "LMB: Place    RMB: Remove & return to inventory    ESC: Cancel"
+                : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
+        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
+            instruction = rotationLocked
+                ? "LMB: Place on counter    ESC: Cancel"
+                : "LMB: Place on counter    R: Rotate    ESC: Cancel";
+        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            instruction = "Click a lobby wall    LMB: Place    ESC: Cancel";
+        else if (show)
+            instruction = rotationLocked
+                ? "LMB: Place    ESC: Cancel"
+                : "LMB: Place    R: Rotate    ESC: Cancel";
+
+        // The bottom action bar owns placement guidance when available, keeping
+        // selection status, controls, and buttons in one connected component.
+        if (actionBar != null)
+        {
+            if (placementHintText != null)
+            {
+                Transform legacyParent = placementHintText.transform.parent;
+                GameObject legacyRoot = legacyParent != null && legacyParent.name == "KeybindTipPanel"
+                    ? legacyParent.gameObject
+                    : placementHintText.gameObject;
+                legacyRoot.SetActive(false);
+            }
+            actionBar.SetPlacementInstruction(show ? instruction : null);
+            return;
+        }
+
+        if (placementHintText == null) return;
         Transform hintParent = placementHintText.transform.parent;
         GameObject hintRoot = hintParent != null && hintParent.name == "KeybindTipPanel"
             ? hintParent.gameObject
             : placementHintText.gameObject;
-        hintRoot.SetActive(show);
-        if (!show) return;
 
-        bool rotationLocked = dragging
-            ? IsCurrentDragRotationLocked()
-            : IsRotationLocked(placingItem, ghost);
-        if (dragging)
-            placementHintText.text = rotationLocked
-                ? "LMB: Place    RMB: Remove & return to inventory    ESC: Cancel"
-                : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
-        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
-            placementHintText.text = rotationLocked
-                ? "LMB: Place on counter    ESC: Cancel"
-                : "LMB: Place on counter    R: Rotate    ESC: Cancel";
-        else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
-            placementHintText.text = "Click a lobby wall    LMB: Place    ESC: Cancel";
-        else
-            placementHintText.text = rotationLocked
-                ? "LMB: Place    ESC: Cancel"
-                : "LMB: Place    R: Rotate    ESC: Cancel";
+        StyleAndPositionPlacementHint(hintRoot);
+        hintRoot.SetActive(show);
+        if (show) placementHintText.text = instruction;
+    }
+
+    void StyleAndPositionPlacementHint(GameObject hintRoot)
+    {
+        if (hintRoot == null || placementHintText == null) return;
+        RectTransform rootRect = hintRoot.transform as RectTransform;
+        if (rootRect != null)
+        {
+            rootRect.anchorMin = new Vector2(0.5f, 0f);
+            rootRect.anchorMax = new Vector2(0.5f, 0f);
+            rootRect.pivot = new Vector2(0.5f, 0f);
+            rootRect.anchoredPosition = new Vector2(0f, 120f);
+            rootRect.sizeDelta = new Vector2(620f, 42f);
+        }
+        Image background = hintRoot.GetComponent<Image>();
+        if (background != null)
+        {
+            background.color = HudTabColors.Strip;
+            background.raycastTarget = false;
+        }
+        placementHintText.fontSize = 15f;
+        placementHintText.enableAutoSizing = true;
+        placementHintText.fontSizeMin = 12f;
+        placementHintText.fontSizeMax = 15f;
+        placementHintText.color = GameUITheme.TextPrimary;
+        placementHintText.alignment = TextAlignmentOptions.Center;
+        GameUITheme.ApplyTitleScreenFont(placementHintText);
     }
 
     bool IsCurrentDragRotationLocked()
@@ -596,17 +642,27 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
-        if (!additive)
-        {
-            if (selectedObjects.Count == 1 && selectedObjects[0] == target) return;
-            ClearStationSelection();
-        }
+        int targetId = target.GetInstanceID();
+        float clickTime = Time.unscaledTime;
+        bool doubleClick = targetId == lastEditClickId
+            && clickTime - lastEditClickTime <= EditDoubleClickSeconds;
+        lastEditClickId = doubleClick ? 0 : targetId;
+        lastEditClickTime = clickTime;
 
+        // A selected object does not collapse an existing group. This makes a
+        // double-click on any member act as a Move shortcut for the whole group.
         if (selectedObjects.Contains(target))
         {
+            if (doubleClick && !additive)
+            {
+                BeginMoveSelected();
+                return;
+            }
             if (additive) RemoveFromSelection(target);
             return;
         }
+
+        if (!additive) ClearStationSelection();
 
         selectedObjects.Add(target);
         StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
@@ -2027,8 +2083,11 @@ public sealed class BuildStationActionBar : MonoBehaviour
     BuildPlacer placer;
     TextMeshProUGUI selectionLabel;
     TextMeshProUGUI messageLabel;
+    GameObject instructionPanel;
     Button moveButton;
+    Button clearButton;
     float messageUntil;
+    bool placementInstructionActive;
 
     public bool IsPointerOver
     {
@@ -2076,7 +2135,10 @@ public sealed class BuildStationActionBar : MonoBehaviour
         group.blocksRaycasts = buildMode;
         if (!buildMode) return;
         if (messageLabel != null && messageLabel.gameObject.activeSelf && Time.unscaledTime >= messageUntil)
+        {
             messageLabel.gameObject.SetActive(false);
+            if (selectionLabel != null) selectionLabel.gameObject.SetActive(true);
+        }
         Refresh();
     }
 
@@ -2092,14 +2154,14 @@ public sealed class BuildStationActionBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
         rt.anchoredPosition = new Vector2(0f, 18f);
-        rt.sizeDelta = new Vector2(500f, 62f);
+        rt.sizeDelta = new Vector2(440f, 54f);
 
         Image background = GetComponent<Image>();
         background.color = HudTabColors.Strip;
         background.raycastTarget = true;
 
         HorizontalLayoutGroup layout = GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(12, 12, 9, 9);
+        layout.padding = new RectOffset(12, 12, 7, 7);
         layout.spacing = 8f;
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
@@ -2107,30 +2169,67 @@ public sealed class BuildStationActionBar : MonoBehaviour
         layout.childForceExpandWidth = false;
         layout.childForceExpandHeight = true;
 
-        selectionLabel = transform.Find("Selection")?.GetComponent<TextMeshProUGUI>();
+        Transform instruction = transform.Find("InstructionPanel");
+        if (instruction == null)
+        {
+            instructionPanel = new GameObject("InstructionPanel", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            instructionPanel.transform.SetParent(transform, false);
+            instruction = instructionPanel.transform;
+        }
+        else instructionPanel = instruction.gameObject;
+
+        LayoutElement instructionLayout = instructionPanel.GetComponent<LayoutElement>();
+        instructionLayout.ignoreLayout = true;
+        RectTransform instructionRect = (RectTransform)instruction;
+        instructionRect.anchorMin = new Vector2(0.5f, 0f);
+        instructionRect.anchorMax = new Vector2(0.5f, 0f);
+        instructionRect.pivot = new Vector2(0.5f, 0f);
+        instructionRect.anchoredPosition = new Vector2(0f, 54f);
+        instructionRect.sizeDelta = new Vector2(440f, 36f);
+        Image instructionBackground = instructionPanel.GetComponent<Image>();
+        instructionBackground.color = HudTabColors.Strip;
+        instructionBackground.raycastTarget = false;
+
+        selectionLabel = instruction.Find("Selection")?.GetComponent<TextMeshProUGUI>();
         if (selectionLabel == null)
-            selectionLabel = CreateLabel("Selection", 220f);
-        messageLabel = transform.Find("Message")?.GetComponent<TextMeshProUGUI>();
+            selectionLabel = CreateLabel("Selection", 470f, instruction);
+        StretchLabel(selectionLabel.rectTransform, 16f);
+        selectionLabel.alignment = TextAlignmentOptions.Center;
+        selectionLabel.enableAutoSizing = true;
+        selectionLabel.fontSizeMin = 11f;
+        selectionLabel.fontSizeMax = 15f;
+
+        messageLabel = instruction.Find("Message")?.GetComponent<TextMeshProUGUI>();
         if (messageLabel == null)
         {
-            messageLabel = CreateLabel("Message", 220f);
+            messageLabel = CreateLabel("Message", 470f, instruction);
+            StretchLabel(messageLabel.rectTransform, 16f);
+            messageLabel.alignment = TextAlignmentOptions.Center;
             messageLabel.color = GameUITheme.Accent;
             messageLabel.gameObject.SetActive(false);
         }
         moveButton = transform.Find("Move")?.GetComponent<Button>();
         if (moveButton == null)
-            moveButton = CreateButton("Move", "Move", 110f, () => placer?.BeginMoveSelected());
-        Button clear = transform.Find("Clear")?.GetComponent<Button>();
-        if (clear == null)
-            clear = CreateButton("Clear", "Clear", 90f, () => placer?.ClearStationSelection());
+            moveButton = CreateButton("Move", "Move", 202f, () => placer?.BeginMoveSelected());
+        clearButton = transform.Find("Clear")?.GetComponent<Button>();
+        if (clearButton == null)
+            clearButton = CreateButton("Clear", "Clear", 202f, () => placer?.ClearStationSelection());
 
         GameUITheme.ApplyTo(transform);
     }
 
-    TextMeshProUGUI CreateLabel(string objectName, float width)
+    static void StretchLabel(RectTransform rect, float horizontalPadding)
+    {
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(horizontalPadding, 0f);
+        rect.offsetMax = new Vector2(-horizontalPadding, 0f);
+    }
+
+    TextMeshProUGUI CreateLabel(string objectName, float width, Transform parent = null)
     {
         GameObject go = new GameObject(objectName, typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
-        go.transform.SetParent(transform, false);
+        go.transform.SetParent(parent != null ? parent : transform, false);
         LayoutElement element = go.GetComponent<LayoutElement>();
         element.minWidth = width;
         element.preferredWidth = width;
@@ -2176,14 +2275,37 @@ public sealed class BuildStationActionBar : MonoBehaviour
     {
         if (placer == null || selectionLabel == null) return;
         int count = placer.SelectedStationCount;
-        selectionLabel.text = count == 0 ? "Select a station" : count == 1 ? "1 station selected" : count + " stations selected";
+        if (!placementInstructionActive && (messageLabel == null || !messageLabel.gameObject.activeSelf))
+            selectionLabel.text = count == 0
+                ? "Select a station"
+                : count == 1 ? "1 selected  |  Double-click or Move"
+                : count + " selected  |  Double-click or Move";
+        if (instructionPanel != null)
+            instructionPanel.SetActive(count > 0 || placementInstructionActive
+                || (messageLabel != null && messageLabel.gameObject.activeSelf));
         if (moveButton != null) moveButton.interactable = count > 0 && !placer.IsDragging && !placer.IsPlacing;
+        if (clearButton != null) clearButton.interactable = count > 0 && !placer.IsDragging && !placer.IsPlacing;
+    }
+
+    public void SetPlacementInstruction(string instruction)
+    {
+        placementInstructionActive = !string.IsNullOrWhiteSpace(instruction);
+        if (selectionLabel != null)
+        {
+            selectionLabel.gameObject.SetActive(true);
+            if (placementInstructionActive) selectionLabel.text = instruction;
+        }
+        if (messageLabel != null && placementInstructionActive)
+            messageLabel.gameObject.SetActive(false);
+        Refresh();
     }
 
     public void ShowMessage(string message)
     {
         if (messageLabel == null) return;
         messageLabel.text = message;
+        if (selectionLabel != null) selectionLabel.gameObject.SetActive(false);
+        if (instructionPanel != null) instructionPanel.SetActive(true);
         messageLabel.gameObject.SetActive(true);
         messageUntil = Time.unscaledTime + 2.5f;
     }
