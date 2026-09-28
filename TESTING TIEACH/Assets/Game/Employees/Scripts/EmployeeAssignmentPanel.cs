@@ -81,6 +81,7 @@ public class EmployeeAssignmentPanel : MonoBehaviour
             ?? hit.collider.GetComponentInParent<GrillStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<PantryStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<AssemblyStation>()?.gameObject
+            ?? hit.collider.GetComponentInParent<CuttingStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<FryerStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<DrinkStation>()?.gameObject
             ?? hit.collider.GetComponentInParent<Register>()?.gameObject;

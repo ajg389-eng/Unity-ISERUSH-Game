@@ -353,10 +353,12 @@ public class IngredientsOrderUI : MonoBehaviour
 
         if (menu.IsBurger(item))
             return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
-                + "\n" + Step("Assembly", "Cooked patty") + arrow + Step("Pickup Station", "Burger");
+                + "\n" + Step("Cutting Station", "Lettuce + cheese + tomato") + arrow
+                + Step("Assembly", "Cooked patty + sliced toppings") + arrow + Step("Pickup Station", "Burger");
 
         if (menu.IsFries(item))
-            return label + Step("Fryer", "Frozen fries") + arrow + Step("Pickup Station", "Cooked fries");
+            return label + Step("Pantry", "Potatoes") + arrow + Step("Fryer", "Raw potatoes")
+                + arrow + Step("Pickup Station", "Fries");
 
         if (menu.IsDrink(item))
             return label + Step("Drink Fountain", "Drink stock") + arrow + Step("Pickup Station", "Filled drink");

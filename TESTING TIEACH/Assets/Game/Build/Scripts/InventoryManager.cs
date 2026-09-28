@@ -136,6 +136,7 @@ public class InventoryManager : MonoBehaviour
                 || prefab.GetComponentInChildren<FryerStation>(true) != null
                 || prefab.GetComponentInChildren<DrinkStation>(true) != null
                 || prefab.GetComponentInChildren<AssemblyStation>(true) != null
+                || item.itemName == "Cutting Station"
                 || prefab.GetComponentInChildren<HeatLampStation>(true) != null
                 || prefab.GetComponentInChildren<PantryStation>(true) != null;
             if (!equipment) continue;

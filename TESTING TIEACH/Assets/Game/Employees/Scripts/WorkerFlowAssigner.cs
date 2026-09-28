@@ -81,6 +81,7 @@ public static class WorkerFlowAssigner
         new FlowStationDef("Freezer", "Freezer", typeof(FreezerStation)),
         new FlowStationDef("Grill", "Grill", typeof(GrillStation)),
         new FlowStationDef("Assembly", "Assembly", typeof(AssemblyStation)),
+        new FlowStationDef("Cutting", "Cutting Station", typeof(CuttingStation)),
         new FlowStationDef("Fryer", "Fryer", typeof(FryerStation)),
         new FlowStationDef("Drink", "Drink", typeof(DrinkStation)),
         new FlowStationDef("Register", "Register", typeof(Register)),
@@ -837,7 +838,8 @@ public static class WorkflowAnalysis
     {
         StationType? type = node.StationType;
         return type == StationType.Freezer || type == StationType.Grill
-            || type == StationType.Assembly || type == StationType.Fryer;
+            || type == StationType.Assembly || type == StationType.Cutting || type == StationType.Pantry
+            || type == StationType.Fryer;
     }
 
     static float GetDistanceTiles(GridManager grid, GameObject from, GameObject to)
@@ -870,6 +872,8 @@ public static class WorkflowAnalysis
         if (grill != null) return grill.processTimeSeconds;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
         if (assembly != null) return assembly.processTimeSeconds;
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        if (cutting != null) return cutting.processTimeSeconds;
         FryerStation fryer = station.GetComponent<FryerStation>();
         if (fryer != null) return fryer.processTimeSeconds;
         DrinkStation drink = station.GetComponent<DrinkStation>();
@@ -910,7 +914,8 @@ public static class WorkflowAnalysis
         bool canBurger = FlowHas(flow, "Freezer", typeof(FreezerStation))
             || FlowHas(flow, "Grill", typeof(GrillStation))
             || FlowHas(flow, "Assembly", typeof(AssemblyStation));
-        bool canFries = FlowHas(flow, "Fryer", typeof(FryerStation));
+        bool canFries = FlowHas(flow, "Pantry", typeof(PantryStation))
+            && FlowHas(flow, "Fryer", typeof(FryerStation));
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         var inventory = Object.FindFirstObjectByType<KitchenInventory>();
 
@@ -946,8 +951,13 @@ public static class WorkflowAnalysis
         }
 
         foreach (ItemDefinition product in products)
-            if (product != null && !result.requiredResources.Contains(product))
-                result.requiredResources.Add(product);
+        {
+            ItemDefinition resource = config != null && config.IsFries(product)
+                ? (config.friesIngredient != null ? config.friesIngredient : product)
+                : product;
+            if (resource != null && !result.requiredResources.Contains(resource))
+                result.requiredResources.Add(resource);
+        }
 
         result.summary = (layout.hasAssignedWorker ? "Cycle " : "Projected cycle ") + cycleLabel
             + "\nLayout: " + layout.routeTiles.ToString("0") + " route tiles"
@@ -958,7 +968,10 @@ public static class WorkflowAnalysis
         {
             string name = inventory != null ? inventory.GetDisplayName(item)
                 : (!string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name);
-            float unitCost = GetIngredientUnitCost(item, inventory);
+            ItemDefinition resource = config != null && config.IsFries(item)
+                ? (config.friesIngredient != null ? config.friesIngredient : item)
+                : item;
+            float unitCost = GetIngredientUnitCost(resource, inventory);
             int sell = Mathf.Max(0, item.price);
             float profit = sell - unitCost;
             result.lines.Add(

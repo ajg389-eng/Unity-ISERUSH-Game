@@ -13,6 +13,12 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition burgerBase;
     [Tooltip("Fries side")]
     public ItemDefinition friesItem;
+    [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
+    public ItemDefinition friesIngredient;
+    [Header("Burger toppings")]
+    public ItemDefinition lettuceIngredient;
+    public ItemDefinition cheeseIngredient;
+    public ItemDefinition tomatoIngredient;
     [Tooltip("Drink")]
     public ItemDefinition drinkItem;
 
@@ -108,9 +114,9 @@ public class CustomerOrderConfig : ScriptableObject
         switch (GetProductKind(item))
         {
             case ProductKind.Burger:
-                return new[] { StationType.Freezer, StationType.Grill, StationType.Assembly };
+                return new[] { StationType.Freezer, StationType.Grill, StationType.Cutting, StationType.Assembly };
             case ProductKind.Fries:
-                return new[] { StationType.Fryer };
+                return new[] { StationType.Pantry, StationType.Fryer };
             case ProductKind.Drink:
                 return new[] { StationType.Drink };
             default:
@@ -134,7 +140,9 @@ public class CustomerOrderConfig : ScriptableObject
     {
         var order = new CustomerOrder();
 
-        bool wantBurger = burgerBase != null && burgerEnabled && Random.value < burgerChance;
+        // Burgers are the restaurant's central product: when enabled, every
+        // customer order includes one. Fries and drinks remain optional sides.
+        bool wantBurger = burgerBase != null && burgerEnabled;
         bool wantFries = friesItem != null && friesEnabled && Random.value < friesChance;
         bool wantDrink = drinkItem != null && drinkEnabled && Random.value < drinkChance;
 
@@ -193,5 +201,16 @@ public class CustomerOrderConfig : ScriptableObject
         foreach (ItemDefinition item in GetMenuItems())
             if (IsItemEnabled(item))
                 yield return item;
+    }
+
+    public IEnumerable<ItemDefinition> GetIngredientItems()
+    {
+        if (burgerBase != null) yield return burgerBase;
+        if (lettuceIngredient != null) yield return lettuceIngredient;
+        if (cheeseIngredient != null) yield return cheeseIngredient;
+        if (tomatoIngredient != null) yield return tomatoIngredient;
+        if (friesIngredient != null) yield return friesIngredient;
+        else if (friesItem != null) yield return friesItem;
+        if (drinkItem != null) yield return drinkItem;
     }
 }

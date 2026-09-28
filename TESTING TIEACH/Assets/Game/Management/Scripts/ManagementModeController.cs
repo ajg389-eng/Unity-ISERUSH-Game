@@ -816,6 +816,7 @@ public class ManagementModeController : MonoBehaviour
         var freezer = node.GetComponent<FreezerStation>();
         var grill = node.GetComponent<GrillStation>();
         var assembly = node.GetComponent<AssemblyStation>();
+        var cutting = node.GetComponent<CuttingStation>();
         var fryer = node.GetComponent<FryerStation>();
         var drink = node.GetComponent<DrinkStation>();
         var pantry = node.GetComponent<PantryStation>();
@@ -845,12 +846,20 @@ public class ManagementModeController : MonoBehaviour
                 ? DisplayItemName(assembly.selectedProduct) : "Burger";
             cycleSeconds = assembly.processTimeSeconds;
         }
+        else if (cutting != null)
+        {
+            inputPrefab = burgerPreviewPrefab;
+            outputPrefab = burgerPreviewPrefab;
+            inputName = "Raw lettuce, cheese, tomato";
+            outputName = "Sliced burger toppings";
+            cycleSeconds = cutting.processTimeSeconds;
+        }
         else if (fryer != null)
         {
             inputPrefab = rawFriesPreviewPrefab;
             outputPrefab = cookedFriesPreviewPrefab;
-            inputName = "Raw fries";
-            outputName = "Cooked fries";
+            inputName = "Potatoes";
+            outputName = "Fries";
             cycleSeconds = fryer.processTimeSeconds;
         }
         else if (drink != null)

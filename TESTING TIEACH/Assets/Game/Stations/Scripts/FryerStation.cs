@@ -28,12 +28,9 @@ public class FryerStation : MonoBehaviour
     public bool IsCooked() => hasBasket && cookTimer >= processTimeSeconds;
 
     /// <summary>Consume one fries unit from kitchen stock and start cooking.</summary>
-    public bool TryLoad(ItemDefinition friesItem)
+    public bool TryLoad(ItemDefinition potatoItem)
     {
-        if (hasBasket || friesItem == null) return false;
-        var inv = KitchenInventory.Instance;
-        if (inv != null && !inv.TryConsume(friesItem, 1))
-            return false;
+        if (hasBasket || potatoItem == null) return false;
         hasBasket = true;
         cookTimer = 0f;
         return true;

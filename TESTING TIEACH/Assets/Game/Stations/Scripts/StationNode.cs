@@ -49,6 +49,7 @@ public class StationNode : MonoBehaviour
         int batchSize = GetActiveBatchSize();
         GrillStation grill = GetComponent<GrillStation>();
         AssemblyStation assembly = GetComponent<AssemblyStation>();
+        CuttingStation cutting = GetComponent<CuttingStation>();
         FreezerStation freezer = GetComponent<FreezerStation>();
         FryerStation fryer = GetComponent<FryerStation>();
         DrinkStation drink = GetComponent<DrinkStation>();
@@ -57,14 +58,16 @@ public class StationNode : MonoBehaviour
             SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
         else if (assembly != null)
             SetIo(RateForCycle(assembly.processTimeSeconds, batchSize), RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties", "burgers");
+        else if (cutting != null)
+            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw toppings", "sliced toppings");
         else if (freezer != null)
             SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-", "patties");
         else if (fryer != null)
-            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "raw fries", "cooked fries");
+            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potatoes", "fries");
         else if (drink != null)
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
         else if (pantry != null)
-            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "-", "ingredients");
+            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "stock", "potatoes / ingredients");
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
         else
@@ -254,6 +257,7 @@ public class StationNode : MonoBehaviour
             ?? col.GetComponentInParent<GrillStation>()?.gameObject
             ?? col.GetComponentInParent<PantryStation>()?.gameObject
             ?? col.GetComponentInParent<AssemblyStation>()?.gameObject
+            ?? col.GetComponentInParent<CuttingStation>()?.gameObject
             ?? col.GetComponentInParent<FryerStation>()?.gameObject
             ?? col.GetComponentInParent<DrinkStation>()?.gameObject
             ?? col.GetComponentInParent<HeatLampStation>()?.gameObject

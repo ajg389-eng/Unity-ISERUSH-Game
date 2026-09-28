@@ -73,12 +73,12 @@ public static class GuidebookPages
             "<b>Register</b> — customers line up and order here.\n" +
             "<b>Freezer</b> — raw burger patties pulled from kitchen stock.\n" +
             "<b>Grill</b> — cooks those patties.\n" +
-            "<b>Fryer</b> — fries; its own short path, not through the freezer.\n" +
-            "<b>Drink fountain</b> — fills drinks from stock.\n" +
+            "<b>Cutting Station</b> — slices lettuce, cheese, and tomatoes for burgers.\n" +
+            "<b>Fryer</b> — cooks potatoes collected from the pantry into fries.\n" +
             "<b>Assembly</b> — finishes burgers (bun, patty, toppings).\n" +
             "<b>Pickup Station</b> — holds any finished product until pickup, including food, drinks, and future menu items. Products can expire if they sit too long.\n" +
-            "<b>Pantry</b> — extra ingredients workers pull during assembly.\n\n" +
-            "Burgers typically run freezer → grill → assembly → Pickup Station. Fries run fryer → Pickup Station."),
+            "<b>Pantry</b> — supplies burger ingredients and raw potatoes for fries.\n\n" +
+            "Burgers run freezer → grill → cutting station → assembly → Pickup Station. Fries run pantry → fryer → Pickup Station."),
         new Page(
             "Management",
             "Management",

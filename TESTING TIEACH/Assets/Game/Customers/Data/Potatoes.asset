@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Cutting Station
+  m_Name: Potatoes
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Cutting Station
-  prefab: {fileID: 4852931242462775543, guid: c12c0acb6b432f9458c47c08761ad28e, type: 3}
-  price: 100
-  startingQuantity: 0
+  itemName: Potatoes
+  prefab: {fileID: 8041849481946025025, guid: c68bd0879681d2241845579839f5c99d, type: 3}
+  price: 0
+  startingQuantity: 10
   orderPackSize: 10
-  orderPackPrice: 15
+  orderPackPrice: 12

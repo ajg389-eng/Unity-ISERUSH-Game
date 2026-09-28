@@ -13,6 +13,7 @@ public class SfxManager : MonoBehaviour
 
     public SfxLibrary library;
     [Range(0f, 1f)] public float masterVolume = 1f;
+    [Range(0f, 1f)] public float uiVolume = 1f;
     [Tooltip("How many sounds can overlap at once.")]
     public int poolSize = 8;
 
@@ -42,6 +43,9 @@ public class SfxManager : MonoBehaviour
 
         if (library != null)
             library.RebuildLookup();
+
+        masterVolume = PlayerPrefs.GetFloat("PauseMenu.SoundEffectsVolume", masterVolume);
+        uiVolume = PlayerPrefs.GetFloat("PauseMenu.UiSoundsVolume", uiVolume);
 
         EnsurePool();
     }
@@ -81,7 +85,20 @@ public class SfxManager : MonoBehaviour
         poolIndex = (poolIndex + 1) % pool.Count;
 
         source.pitch = 1f + Random.Range(-pitchVariance, pitchVariance);
-        source.PlayOneShot(clip, volume * masterVolume);
+        float categoryVolume = IsUiSound(id) ? uiVolume : masterVolume;
+        source.PlayOneShot(clip, volume * categoryVolume);
+    }
+
+    public void SetSoundEffectsVolume(float value) => masterVolume = Mathf.Clamp01(value);
+
+    public void SetUiVolume(float value) => uiVolume = Mathf.Clamp01(value);
+
+    static bool IsUiSound(SfxId id)
+    {
+        return id == SfxId.UiClick
+            || id == SfxId.UiOpen
+            || id == SfxId.UiClose
+            || id == SfxId.UiError;
     }
 
     bool TryResolveClip(SfxId id, out AudioClip clip, out float volume, out float pitchVariance)

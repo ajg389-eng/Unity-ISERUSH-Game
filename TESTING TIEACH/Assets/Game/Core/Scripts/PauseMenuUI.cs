@@ -16,6 +16,8 @@ public class PauseMenuUI : MonoBehaviour
     const string PrefMaster = "PauseMenu.MasterVolume";
     const string PrefVoice = "PauseMenu.VoiceVolume";
     const string PrefMusic = "PauseMenu.MusicVolume";
+    const string PrefSoundEffects = "PauseMenu.SoundEffectsVolume";
+    const string PrefUiSounds = "PauseMenu.UiSoundsVolume";
     const string PrefVolumeLegacy = "PauseMenu.Volume";
     const string PrefWidth = "PauseMenu.Width";
     const string PrefHeight = "PauseMenu.Height";
@@ -25,6 +27,7 @@ public class PauseMenuUI : MonoBehaviour
     const string PrefAntiAliasing = "PauseMenu.Graphics.AntiAliasing";
     const string PrefTextureQuality = "PauseMenu.Graphics.TextureQuality";
     const string PrefVSync = "PauseMenu.Graphics.VSync";
+    const string PrefGraphicsPreset = "PauseMenu.Graphics.Preset";
     const float MusicFullVolume = 0.35f;
 
     static readonly Color ButtonColor = GameUITheme.Surface;
@@ -62,9 +65,13 @@ public class PauseMenuUI : MonoBehaviour
     Slider masterSlider;
     Slider voiceSlider;
     Slider musicSlider;
+    Slider soundEffectsSlider;
+    Slider uiSoundsSlider;
     TextMeshProUGUI masterValueText;
     TextMeshProUGUI voiceValueText;
     TextMeshProUGUI musicValueText;
+    TextMeshProUGUI soundEffectsValueText;
+    TextMeshProUGUI uiSoundsValueText;
     TextMeshProUGUI resolutionLabel;
     Toggle fullscreenToggle;
     Toggle shadowsToggle;
@@ -72,6 +79,7 @@ public class PauseMenuUI : MonoBehaviour
     TextMeshProUGUI shadowQualityValue;
     TextMeshProUGUI antiAliasingValue;
     TextMeshProUGUI textureQualityValue;
+    TextMeshProUGUI graphicsPresetValue;
     int shadowQualityIndex;
     int antiAliasingIndex;
     int textureQualityIndex;
@@ -531,6 +539,12 @@ public class PauseMenuUI : MonoBehaviour
 
         musicSlider = CreateVolumeRow(page.transform, "Music", "Music", out musicValueText);
         musicSlider.onValueChanged.AddListener(v0 => OnChannelVolumeChanged(PrefMusic, v0, ApplyMusicVolume, musicValueText));
+
+        soundEffectsSlider = CreateVolumeRow(page.transform, "SoundEffects", "Sound Effects", out soundEffectsValueText);
+        soundEffectsSlider.onValueChanged.AddListener(v0 => OnChannelVolumeChanged(PrefSoundEffects, v0, ApplySoundEffectsVolume, soundEffectsValueText));
+
+        uiSoundsSlider = CreateVolumeRow(page.transform, "UiSounds", "UI Sounds", out uiSoundsValueText);
+        uiSoundsSlider.onValueChanged.AddListener(v0 => OnChannelVolumeChanged(PrefUiSounds, v0, ApplyUiSoundsVolume, uiSoundsValueText));
         return page;
     }
 
@@ -618,6 +632,8 @@ public class PauseMenuUI : MonoBehaviour
         header.fontStyle = FontStyles.Bold;
         header.GetComponent<LayoutElement>().preferredHeight = 22f;
 
+        graphicsPresetValue = CreateChoiceRow(page.transform, "GraphicsPreset", "Preset",
+            () => CycleGraphicsPreset(-1), () => CycleGraphicsPreset(1));
         shadowsToggle = CreateSettingsToggleRow(page.transform, "Shadows", "Realtime shadows", OnShadowsChanged);
         shadowQualityValue = CreateChoiceRow(page.transform, "ShadowQuality", "Shadow quality",
             () => CycleShadowQuality(-1), () => CycleShadowQuality(1));
@@ -1023,14 +1039,20 @@ public class PauseMenuUI : MonoBehaviour
         float master = ReadVolume(PrefMaster, PrefVolumeLegacy, 1f);
         float voice = ReadVolume(PrefVoice, null, 1f);
         float music = ReadVolume(PrefMusic, null, 1f);
+        float soundEffects = ReadVolume(PrefSoundEffects, null, 1f);
+        float uiSounds = ReadVolume(PrefUiSounds, null, 1f);
 
         SetSlider(masterSlider, masterValueText, master);
         SetSlider(voiceSlider, voiceValueText, voice);
         SetSlider(musicSlider, musicValueText, music);
+        SetSlider(soundEffectsSlider, soundEffectsValueText, soundEffects);
+        SetSlider(uiSoundsSlider, uiSoundsValueText, uiSounds);
 
         ApplyMasterVolume(master);
         ApplyVoiceVolume(voice);
         ApplyMusicVolume(music);
+        ApplySoundEffectsVolume(soundEffects);
+        ApplyUiSoundsVolume(uiSounds);
     }
 
     void RefreshVideoControls()
@@ -1049,7 +1071,10 @@ public class PauseMenuUI : MonoBehaviour
         antiAliasingIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, 2), 0, 3);
         textureQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, 0), 0, 2);
         bool vSync = PlayerPrefs.GetInt(PrefVSync, 1) == 1;
+        int preset = Mathf.Clamp(PlayerPrefs.GetInt(PrefGraphicsPreset, 2), -1, 3);
 
+        if (graphicsPresetValue != null)
+            graphicsPresetValue.text = GraphicsPresetName(preset);
         if (shadowsToggle != null)
             shadowsToggle.SetIsOnWithoutNotify(shadows);
         if (vSyncToggle != null)
@@ -1067,6 +1092,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void OnShadowsChanged(bool enabled)
     {
+        MarkGraphicsPresetCustom();
         PlayerPrefs.SetInt(PrefShadows, enabled ? 1 : 0);
         PlayerPrefs.Save();
         SetShadowQualityInteractable(enabled);
@@ -1076,6 +1102,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void OnVSyncChanged(bool enabled)
     {
+        MarkGraphicsPresetCustom();
         PlayerPrefs.SetInt(PrefVSync, enabled ? 1 : 0);
         PlayerPrefs.Save();
         ApplySavedGraphics();
@@ -1085,6 +1112,7 @@ public class PauseMenuUI : MonoBehaviour
     void CycleShadowQuality(int delta)
     {
         if (shadowsToggle != null && !shadowsToggle.isOn) return;
+        MarkGraphicsPresetCustom();
         shadowQualityIndex = WrapIndex(shadowQualityIndex + delta, 3);
         PlayerPrefs.SetInt(PrefShadowQuality, shadowQualityIndex);
         PlayerPrefs.Save();
@@ -1096,6 +1124,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void CycleAntiAliasing(int delta)
     {
+        MarkGraphicsPresetCustom();
         antiAliasingIndex = WrapIndex(antiAliasingIndex + delta, 4);
         PlayerPrefs.SetInt(PrefAntiAliasing, antiAliasingIndex);
         PlayerPrefs.Save();
@@ -1107,6 +1136,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void CycleTextureQuality(int delta)
     {
+        MarkGraphicsPresetCustom();
         textureQualityIndex = WrapIndex(textureQualityIndex + delta, 3);
         PlayerPrefs.SetInt(PrefTextureQuality, textureQualityIndex);
         PlayerPrefs.Save();
@@ -1114,6 +1144,44 @@ public class PauseMenuUI : MonoBehaviour
             textureQualityValue.text = TextureQualityName(textureQualityIndex);
         ApplySavedGraphics();
         Sfx.Play(SfxId.UiClick);
+    }
+
+    void CycleGraphicsPreset(int delta)
+    {
+        int current = PlayerPrefs.GetInt(PrefGraphicsPreset, 2);
+        if (current < 0 || current > 3)
+            current = delta >= 0 ? -1 : 0;
+        ApplyGraphicsPreset(WrapIndex(current + delta, 4));
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void ApplyGraphicsPreset(int preset)
+    {
+        preset = Mathf.Clamp(preset, 0, 3);
+
+        // Low, Medium, High, Ultra. Texture quality uses Unity's mip limit,
+        // where zero is full resolution and larger values reduce memory use.
+        bool shadows = preset > 0;
+        int shadowQuality = preset <= 1 ? 0 : preset - 1;
+        int antiAliasing = preset;
+        int textureQuality = preset == 0 ? 2 : preset == 1 ? 1 : 0;
+        bool vSync = preset > 0;
+
+        PlayerPrefs.SetInt(PrefGraphicsPreset, preset);
+        PlayerPrefs.SetInt(PrefShadows, shadows ? 1 : 0);
+        PlayerPrefs.SetInt(PrefShadowQuality, shadowQuality);
+        PlayerPrefs.SetInt(PrefAntiAliasing, antiAliasing);
+        PlayerPrefs.SetInt(PrefTextureQuality, textureQuality);
+        PlayerPrefs.SetInt(PrefVSync, vSync ? 1 : 0);
+        PlayerPrefs.Save();
+        RefreshGraphicsControls();
+    }
+
+    void MarkGraphicsPresetCustom()
+    {
+        PlayerPrefs.SetInt(PrefGraphicsPreset, -1);
+        if (graphicsPresetValue != null)
+            graphicsPresetValue.text = GraphicsPresetName(-1);
     }
 
     void SetShadowQualityInteractable(bool enabled)
@@ -1152,6 +1220,15 @@ public class PauseMenuUI : MonoBehaviour
         1 => "Half",
         2 => "Quarter",
         _ => "Full"
+    };
+
+    static string GraphicsPresetName(int index) => index switch
+    {
+        0 => "Low",
+        1 => "Medium",
+        2 => "High",
+        3 => "Ultra",
+        _ => "Custom"
     };
 
     void RefreshVisualControls()
@@ -1255,11 +1332,27 @@ public class PauseMenuUI : MonoBehaviour
             MusicManager.Instance.SetVolume(Mathf.Clamp01(value) * MusicFullVolume);
     }
 
+    static void ApplySoundEffectsVolume(float value)
+    {
+        var effects = SfxManager.Instance ?? FindFirstObjectByType<SfxManager>();
+        if (effects != null)
+            effects.SetSoundEffectsVolume(value);
+    }
+
+    static void ApplyUiSoundsVolume(float value)
+    {
+        var effects = SfxManager.Instance ?? FindFirstObjectByType<SfxManager>();
+        if (effects != null)
+            effects.SetUiVolume(value);
+    }
+
     static void ApplySavedAudio()
     {
         ApplyMasterVolume(ReadVolume(PrefMaster, PrefVolumeLegacy, 1f));
         ApplyVoiceVolume(ReadVolume(PrefVoice, null, 1f));
         ApplyMusicVolume(ReadVolume(PrefMusic, null, 1f));
+        ApplySoundEffectsVolume(ReadVolume(PrefSoundEffects, null, 1f));
+        ApplyUiSoundsVolume(ReadVolume(PrefUiSounds, null, 1f));
     }
 
     static void ApplySavedVideo(bool force)

@@ -1804,6 +1804,7 @@ public class BuildPlacer : MonoBehaviour
             || prefab.GetComponentInChildren<FryerStation>(true) != null
             || prefab.GetComponentInChildren<DrinkStation>(true) != null
             || prefab.GetComponentInChildren<AssemblyStation>(true) != null
+            || item.itemName == "Cutting Station"
             || prefab.GetComponentInChildren<HeatLampStation>(true) != null
             || prefab.GetComponentInChildren<PantryStation>(true) != null;
     }
@@ -2005,6 +2006,14 @@ public class BuildPlacer : MonoBehaviour
             if (footprint == null) footprint = placed.AddComponent<BuildFootprint>();
             footprint.sizeX = Mathf.Max(1, item.footprintX);
             footprint.sizeY = Mathf.Max(1, item.footprintY);
+            if (item.itemName == "Cutting Station")
+            {
+                if (placed.GetComponent<CuttingStation>() == null)
+                    placed.AddComponent<CuttingStation>();
+                if (placed.GetComponent<StationInteractionTiles>() == null)
+                    placed.AddComponent<StationInteractionTiles>();
+                StationNode.EnsureOn(placed);
+            }
         }
 
         if (item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall

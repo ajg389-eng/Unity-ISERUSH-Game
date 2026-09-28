@@ -14,7 +14,8 @@ public enum StationType
     Assembly = 3,
     Register = 4,
     Fryer = 5,
-    Drink = 6
+    Drink = 6,
+    Cutting = 7
 }
 
 public class ProductionJob
@@ -80,7 +81,7 @@ public class ProductionJob
 
 /// <summary>
 /// Fast-food production: one job per menu item (burger / fries / drink).
-/// Work order: Burger = Freezer → Grill → Assembly; Fries = Fryer.
+/// Work order: Burger = Freezer → Grill → Assembly; Fries = Pantry → Fryer.
 /// After each station, the worker delivers only to that station's Assign Output
 /// (e.g. Assembly/Fryer → Heat Lamp). Drinks are cashier-served.
 /// </summary>
@@ -134,6 +135,9 @@ public class ProductionManager : MonoBehaviour
 
     public ItemDefinition PattyItem => orderConfig != null ? orderConfig.burgerBase : null;
     public ItemDefinition FriesItem => orderConfig != null ? orderConfig.friesItem : null;
+    public ItemDefinition PotatoItem => orderConfig != null
+        ? (orderConfig.friesIngredient != null ? orderConfig.friesIngredient : orderConfig.friesItem)
+        : null;
     public ItemDefinition DrinkItem => orderConfig != null ? orderConfig.drinkItem : null;
     public HeatLampStation HeatLamp => heatLamp;
     public int PendingJobCount => pendingJobs.Count;
@@ -818,14 +822,16 @@ public class ProductionManager : MonoBehaviour
         {
             foreach (ProductionFlowPlan flow in productionFlows)
             {
+                bool flowHasPantry = false;
+                bool flowHasFryer = false;
                 if (flow?.stepIds == null) continue;
                 for (int i = 0; i < flow.stepIds.Count; i++)
                 {
                     string id = flow.stepIds[i];
                     if (id == "Freezer" || id == "Grill" || id == "Assembly")
                         canBurger = true;
-                    if (id == "Fryer")
-                        canFries = true;
+                    if (id == "Pantry") flowHasPantry = true;
+                    if (id == "Fryer") flowHasFryer = true;
                     if (id == "Drink")
                         canDrink = true;
                 }
@@ -837,11 +843,15 @@ public class ProductionManager : MonoBehaviour
                         || station.GetComponent<GrillStation>() != null
                         || station.GetComponent<AssemblyStation>() != null)
                         canBurger = true;
+                    if (station.GetComponent<PantryStation>() != null)
+                        flowHasPantry = true;
                     if (station.GetComponent<FryerStation>() != null)
-                        canFries = true;
+                        flowHasFryer = true;
                     if (station.GetComponent<DrinkStation>() != null)
                         canDrink = true;
                 }
+                if (flowHasPantry && flowHasFryer)
+                    canFries = true;
             }
         }
 
@@ -851,7 +861,8 @@ public class ProductionManager : MonoBehaviour
             canBurger = freezer != null || grill != null || assembly != null
                 || FindObjectOfType<FreezerStation>() != null
                 || FindObjectOfType<GrillStation>() != null;
-            canFries = fryer != null || FindObjectOfType<FryerStation>() != null;
+            canFries = (fryer != null || FindObjectOfType<FryerStation>() != null)
+                && FindObjectOfType<PantryStation>() != null;
             canDrink = drinkStation != null || FindObjectOfType<DrinkStation>() != null;
         }
 
@@ -1295,8 +1306,8 @@ public class ProductionManager : MonoBehaviour
     public bool TryLoadFryer(KitchenEmployee forEmployee = null)
     {
         var f = GetFryerFor(forEmployee);
-        if (f == null || FriesItem == null) return false;
-        return f.TryLoad(FriesItem);
+        if (f == null || PotatoItem == null) return false;
+        return f.TryLoad(PotatoItem);
     }
 
     public bool TakeFromFryer(KitchenEmployee forEmployee = null)
@@ -1328,9 +1339,9 @@ public class ProductionManager : MonoBehaviour
 
     public bool HasFriesInStock()
     {
-        if (FriesItem == null) return false;
+        if (PotatoItem == null) return false;
         var inv = KitchenInventory.Instance;
         if (inv == null) return true;
-        return inv.Has(FriesItem);
+        return inv.Has(PotatoItem);
     }
 }

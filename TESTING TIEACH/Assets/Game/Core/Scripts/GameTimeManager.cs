@@ -89,7 +89,10 @@ public class GameTimeManager : MonoBehaviour
     {
         ApplyTimeScale();
 
-        if (Time.timeScale <= 0f || IsShiftOver)
+        // The tutorial is an isolated practice shift. Keep the simulation live so
+        // workers, customers, stations, and player controls behave normally, but
+        // do not advance the campaign clock or trigger the end of a day.
+        if (Time.timeScale <= 0f || IsShiftOver || OnboardingTutorial.BlocksProgression)
             return;
 
         CurrentMinutes += GameMinutesPerRealSecond * Time.deltaTime;
@@ -216,7 +219,9 @@ public class GameTimeManager : MonoBehaviour
         return $"{hour12}:{minute:00} {(pm ? "PM" : "AM")}";
     }
 
-    public string GetDayText() => "Day " + CurrentDay;
+    public string GetDayText() => OnboardingTutorial.BlocksProgression
+        ? "Tutorial"
+        : "Day " + CurrentDay;
 
     void ApplyTimeScale()
     {

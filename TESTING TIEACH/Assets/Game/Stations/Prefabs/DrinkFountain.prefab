@@ -117,7 +117,7 @@ GameObject:
   - component: {fileID: -7273179158514941842}
   - component: {fileID: 3487152934761447334}
   m_Layer: 0
-  m_Name: DrinkFountain
+  m_Name: CuttingStation
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -260,10 +260,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 4852931242462775543}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 81fb9bd2e76693c4ead66d5ebc927cdd, type: 3}
+  m_Script: {fileID: 11500000, guid: ac35c4bfa8344fb38d4dd9a702fa4321, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DrinkStation
-  processTimeSeconds: 12
+  m_EditorClassIdentifier: Assembly-CSharp::CuttingStation
+  processTimeSeconds: 4
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!1 &8939223708076402897
 GameObject:

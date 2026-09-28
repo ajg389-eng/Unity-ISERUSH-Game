@@ -63,7 +63,7 @@ public class KitchenInventory : MonoBehaviour
 
         if (orderConfig != null)
         {
-            foreach (var item in orderConfig.GetMenuItems())
+            foreach (var item in orderConfig.GetIngredientItems())
                 Add(item);
         }
 

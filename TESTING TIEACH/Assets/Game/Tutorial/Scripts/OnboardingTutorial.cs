@@ -158,12 +158,12 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Fryer",
             "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "Point fryer output toward the Pickup Station so fries leave with the rest of the order.\n\nPlace one to continue.",
+            "The fries flow is Pantry > Fryer > Pickup Station, starting with potatoes from the pantry.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
-            "Drinks",
-            "Buy and place a <b>drink fountain</b>. Like fries, drinks are a simple path of their own.\n\n" +
-            "Keep it staffed and point its output toward the Pickup Station, or the drink portion of an order will stall.\n\nPlace one to continue.",
+            "Cutting Station",
+            "Buy and place a <b>Cutting Station</b>. It uses the former drink-station model and slices lettuce, cheese, and tomatoes for burgers.\n\n" +
+            "Route burgers through it after the grill and before assembly.\n\nPlace one to continue.",
             "Next", Highlight.Drink, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly",
@@ -177,13 +177,13 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
-            "Buy and place a <b>pantry</b> for toppings and extra ingredients workers pull during assembly.\n\n" +
-            "Put it near assembly so cooks are not walking across the whole kitchen for a slice of cheese.\n\nPlace one to continue.",
+            "Buy and place a <b>pantry</b> for burger ingredients and the potatoes used to make fries.\n\n" +
+            "A fries worker starts here, then carries potatoes to the fryer.\n\nPlace one to continue.",
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press Q then 3), then <b>Menu & Supply</b>.\n\n" +
-            "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
+            "Buy Burger, Lettuce, Cheese, Tomatoes, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
@@ -195,7 +195,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Create a flow",
             "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
             "Click stations <b>in production order</b>. Example burger line: freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
-            "For this tutorial, build Freezer > Grill > Assembly > Pickup Station, then click Finish to save the flow. Next stays locked until this burger route is complete.",
+            "For this tutorial, also buy a Cutting Station, then build Freezer > Grill > Cutting Station > Assembly > Pickup Station. Next stays locked until this burger route is complete.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true),
         new Step(
             "Edit a flow",
@@ -246,8 +246,8 @@ public class OnboardingTutorial : MonoBehaviour
         "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
         "Its output should eventually lead to a Pickup Station so customers can collect the finished fries.",
 
-        "Buy and place a <b>drink fountain</b>. Drinks use another independent path, but they still need a worker and a route to a Pickup Station.\n\n" +
-        "If drinks stall, an otherwise complete order can still keep a customer waiting.",
+        "Buy and place a <b>Cutting Station</b>. This is the former drink-station model, now used to slice burger toppings.\n\n" +
+        "Route burgers from the grill to cutting, then assembly.",
 
         "Place an <b>assembly</b> table. Workers combine a cooked patty with the bun and toppings here to finish a burger.\n\n" +
         "The burger route should move from grill to assembly, then from assembly to a Pickup Station.",
@@ -534,7 +534,7 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Freezer: return "Place freezer";
             case Highlight.Grill: return "Place grill";
             case Highlight.Fryer: return "Place fryer";
-            case Highlight.Drink: return "Place drinks";
+            case Highlight.Drink: return "Place cutting station";
             case Highlight.Assembly: return "Place assembly";
             case Highlight.HeatLamp: return "Place Pickup Station";
             case Highlight.Pantry: return "Place pantry";
@@ -610,14 +610,15 @@ public class OnboardingTutorial : MonoBehaviour
 
     static bool IsBurgerTutorialFlow(ProductionFlowPlan flow)
     {
-        if (flow == null || flow.stations == null || flow.stations.Count != 4) return false;
+        if (flow == null || flow.stations == null || flow.stations.Count != 5) return false;
         foreach (var station in flow.stations)
             if (station == null || !station.activeInHierarchy || station.GetComponent<PlacedBuildItem>() == null)
                 return false;
         return flow.stations[0].GetComponent<FreezerStation>() != null
             && flow.stations[1].GetComponent<GrillStation>() != null
-            && flow.stations[2].GetComponent<AssemblyStation>() != null
-            && flow.stations[3].GetComponent<HeatLampStation>() != null;
+            && flow.stations[2].GetComponent<CuttingStation>() != null
+            && flow.stations[3].GetComponent<AssemblyStation>() != null
+            && flow.stations[4].GetComponent<HeatLampStation>() != null;
     }
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
@@ -653,7 +654,7 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Freezer: return HasActiveStation<FreezerStation>();
             case Highlight.Grill: return HasActiveStation<GrillStation>();
             case Highlight.Fryer: return HasActiveStation<FryerStation>();
-            case Highlight.Drink: return HasActiveStation<DrinkStation>();
+            case Highlight.Drink: return HasActiveStation<CuttingStation>();
             case Highlight.Assembly: return HasActiveStation<AssemblyStation>();
             case Highlight.HeatLamp: return HasActiveStation<HeatLampStation>();
             case Highlight.Pantry: return HasActiveStation<PantryStation>();
@@ -783,7 +784,7 @@ public class OnboardingTutorial : MonoBehaviour
         CollectStarter<FreezerStation>();
         CollectStarter<GrillStation>();
         CollectStarter<FryerStation>();
-        CollectStarter<DrinkStation>();
+        CollectStarter<CuttingStation>();
         CollectStarter<AssemblyStation>();
         CollectStarter<HeatLampStation>();
         CollectStarter<PantryStation>();
@@ -973,7 +974,7 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Freezer: return name.Contains("freezer");
             case Highlight.Grill: return name.Contains("grill");
             case Highlight.Fryer: return name.Contains("fryer");
-            case Highlight.Drink: return name.Contains("drink");
+            case Highlight.Drink: return name.Contains("cutting");
             case Highlight.Assembly: return name.Contains("assembly");
             case Highlight.HeatLamp: return name.Contains("heat") || name.Contains("pickup");
             case Highlight.Pantry: return name.Contains("pantry");
@@ -1006,7 +1007,7 @@ public class OnboardingTutorial : MonoBehaviour
             case Highlight.Fryer:
                 return StationOrNull(FindFirstObjectByType<FryerStation>());
             case Highlight.Drink:
-                return StationOrNull(FindFirstObjectByType<DrinkStation>());
+                return StationOrNull(FindFirstObjectByType<CuttingStation>());
             case Highlight.Assembly:
                 return StationOrNull(FindFirstObjectByType<AssemblyStation>());
             case Highlight.HeatLamp:
