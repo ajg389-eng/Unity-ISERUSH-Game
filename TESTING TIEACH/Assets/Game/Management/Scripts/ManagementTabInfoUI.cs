@@ -289,6 +289,16 @@ public class ManagementTabInfoUI : MonoBehaviour
             return;
         }
 
+        if (panel != null && panel.name == InventoryUI.CustomizePanelName)
+        {
+            title = "Customize help";
+            body =
+                "<b>Surface customization</b>\nWalls, floors, and the roof each have their own texture and color controls. Color is applied as a tint over the selected texture.\n\n" +
+                "<b>Live preview</b>\nChanges apply immediately and are stored in the current save slot. Additional texture assets appear automatically when added to the customization Resources folders.\n\n" +
+                "<color=#73BFF2><b>Design note:</b></color> Appearance is cosmetic and does not alter station capacity or customer demand.";
+            return;
+        }
+
         if (panel != null && panel.name == "TasksPage")
         {
             title = "Tasks tab help";

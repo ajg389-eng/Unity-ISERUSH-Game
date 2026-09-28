@@ -1,12 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
 /// Escape pause overlay. Main screen matches a simple Resume / Options / Quit to Menu list.
-/// Options holds Audio, Video, Visual (per-wall cutaway locks), and Keybinds.
+/// Options holds Audio, Video, Graphics, and Keybinds.
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
 {
@@ -18,6 +20,11 @@ public class PauseMenuUI : MonoBehaviour
     const string PrefWidth = "PauseMenu.Width";
     const string PrefHeight = "PauseMenu.Height";
     const string PrefFullscreen = "PauseMenu.Fullscreen";
+    const string PrefShadows = "PauseMenu.Graphics.Shadows";
+    const string PrefShadowQuality = "PauseMenu.Graphics.ShadowQuality";
+    const string PrefAntiAliasing = "PauseMenu.Graphics.AntiAliasing";
+    const string PrefTextureQuality = "PauseMenu.Graphics.TextureQuality";
+    const string PrefVSync = "PauseMenu.Graphics.VSync";
     const float MusicFullVolume = 0.35f;
 
     static readonly Color ButtonColor = GameUITheme.Surface;
@@ -42,11 +49,11 @@ public class PauseMenuUI : MonoBehaviour
     GuidebookUI guidebook;
     GameObject audioPage;
     GameObject videoPage;
-    GameObject visualPage;
+    GameObject graphicsPage;
     GameObject keybindsPage;
     Button audioTab;
     Button videoTab;
-    Button visualTab;
+    Button graphicsTab;
     Button keybindsTab;
     Toggle lockNorthToggle;
     Toggle lockEastToggle;
@@ -60,6 +67,14 @@ public class PauseMenuUI : MonoBehaviour
     TextMeshProUGUI musicValueText;
     TextMeshProUGUI resolutionLabel;
     Toggle fullscreenToggle;
+    Toggle shadowsToggle;
+    Toggle vSyncToggle;
+    TextMeshProUGUI shadowQualityValue;
+    TextMeshProUGUI antiAliasingValue;
+    TextMeshProUGUI textureQualityValue;
+    int shadowQualityIndex;
+    int antiAliasingIndex;
+    int textureQualityIndex;
     readonly List<Resolution> uniqueResolutions = new List<Resolution>();
     int resolutionIndex;
     bool visible;
@@ -87,6 +102,7 @@ public class PauseMenuUI : MonoBehaviour
         Instance = this;
         ApplySavedAudio();
         ApplySavedVideo(false);
+        ApplySavedGraphics();
     }
 
     void OnDestroy()
@@ -138,7 +154,7 @@ public class PauseMenuUI : MonoBehaviour
         ShowMain();
         RefreshAudioControls();
         RefreshVideoControls();
-        RefreshVisualControls();
+        RefreshGraphicsControls();
         Sfx.Play(SfxId.UiOpen);
 
         if (GameTimeManager.Instance != null)
@@ -205,7 +221,7 @@ public class PauseMenuUI : MonoBehaviour
         SelectTab(0, playSound: false);
         RefreshAudioControls();
         RefreshVideoControls();
-        RefreshVisualControls();
+        RefreshGraphicsControls();
     }
 
     /// <summary>
@@ -239,7 +255,7 @@ public class PauseMenuUI : MonoBehaviour
         SelectTab(0, playSound: false);
         RefreshAudioControls();
         RefreshVideoControls();
-        RefreshVisualControls();
+        RefreshGraphicsControls();
         Canvas.ForceUpdateCanvases();
         GameUITheme.ApplyTo(optionsPage.transform);
         Sfx.Play(SfxId.UiOpen);
@@ -469,7 +485,7 @@ public class PauseMenuUI : MonoBehaviour
         tabsH.childForceExpandHeight = false;
         audioTab = CreateTabButton(tabs.transform, "AudioTab", "Audio", () => SelectTab(0));
         videoTab = CreateTabButton(tabs.transform, "VideoTab", "Video", () => SelectTab(1));
-        visualTab = CreateTabButton(tabs.transform, "VisualTab", "Visual", () => SelectTab(2));
+        graphicsTab = CreateTabButton(tabs.transform, "GraphicsTab", "Graphics", () => SelectTab(2));
         keybindsTab = CreateTabButton(tabs.transform, "KeybindsTab", "Keybinds", () => SelectTab(3));
 
         var pages = new GameObject("Pages", typeof(RectTransform), typeof(LayoutElement));
@@ -481,7 +497,7 @@ public class PauseMenuUI : MonoBehaviour
 
         audioPage = BuildAudioPage(pages.transform);
         videoPage = BuildVideoPage(pages.transform);
-        visualPage = BuildVisualPage(pages.transform);
+        graphicsPage = BuildGraphicsPage(pages.transform);
         keybindsPage = BuildKeybindsPage(pages.transform);
 
         var back = CreateMenuButton(card.transform, "BackButton", "Back", 46f, 340f, 18f, OptionsButtonColor);
@@ -584,6 +600,35 @@ public class PauseMenuUI : MonoBehaviour
         return page;
     }
 
+    GameObject BuildGraphicsPage(Transform parent)
+    {
+        var page = new GameObject("GraphicsPage", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        page.transform.SetParent(parent, false);
+        Stretch((RectTransform)page.transform);
+        var v = page.GetComponent<VerticalLayoutGroup>();
+        v.spacing = 6f;
+        v.padding = new RectOffset(4, 4, 8, 4);
+        v.childAlignment = TextAnchor.UpperCenter;
+        v.childControlWidth = true;
+        v.childControlHeight = true;
+        v.childForceExpandWidth = true;
+        v.childForceExpandHeight = false;
+
+        var header = CreateLabel(page.transform, "GraphicsHeader", "Graphics quality", 16, TextAlignmentOptions.Left);
+        header.fontStyle = FontStyles.Bold;
+        header.GetComponent<LayoutElement>().preferredHeight = 22f;
+
+        shadowsToggle = CreateSettingsToggleRow(page.transform, "Shadows", "Realtime shadows", OnShadowsChanged);
+        shadowQualityValue = CreateChoiceRow(page.transform, "ShadowQuality", "Shadow quality",
+            () => CycleShadowQuality(-1), () => CycleShadowQuality(1));
+        antiAliasingValue = CreateChoiceRow(page.transform, "AntiAliasing", "Anti-aliasing",
+            () => CycleAntiAliasing(-1), () => CycleAntiAliasing(1));
+        textureQualityValue = CreateChoiceRow(page.transform, "TextureQuality", "Texture quality",
+            () => CycleTextureQuality(-1), () => CycleTextureQuality(1));
+        vSyncToggle = CreateSettingsToggleRow(page.transform, "VSync", "Vertical sync", OnVSyncChanged);
+        return page;
+    }
+
     GameObject BuildVisualPage(Transform parent)
     {
         var page = new GameObject("VisualPage", typeof(RectTransform), typeof(VerticalLayoutGroup));
@@ -655,9 +700,8 @@ public class PauseMenuUI : MonoBehaviour
         CreateKeybindRow(content.transform, "Zoom camera", "Mouse Wheel");
 
         CreateKeybindSection(content.transform, "Menus");
-        CreateKeybindRow(content.transform, "Inventory", "Q");
-        CreateKeybindRow(content.transform, "Management", "E");
-        CreateKeybindRow(content.transform, "Select open menu tab", "1 / 2 / 3 / 4");
+        CreateKeybindRow(content.transform, "Open / close restaurant panel", "Q");
+        CreateKeybindRow(content.transform, "Build / Staff / Business", "1 / 2 / 3");
         CreateKeybindRow(content.transform, "Progression", "J");
         CreateKeybindRow(content.transform, "Pause / back / cancel", "Esc");
 
@@ -784,6 +828,79 @@ public class PauseMenuUI : MonoBehaviour
         return toggle;
     }
 
+    Toggle CreateSettingsToggleRow(Transform parent, string id, string label,
+        UnityEngine.Events.UnityAction<bool> onChanged)
+    {
+        var row = new GameObject(id + "Row", typeof(RectTransform), typeof(Image),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = GameUITheme.Panel;
+        row.GetComponent<Image>().raycastTarget = false;
+        var rowLe = row.GetComponent<LayoutElement>();
+        rowLe.minHeight = 38f;
+        rowLe.preferredHeight = 38f;
+        rowLe.flexibleHeight = 0f;
+
+        var h = row.GetComponent<HorizontalLayoutGroup>();
+        h.spacing = 10f;
+        h.padding = new RectOffset(12, 12, 7, 7);
+        h.childAlignment = TextAnchor.MiddleLeft;
+        h.childControlWidth = true;
+        h.childControlHeight = true;
+        h.childForceExpandWidth = false;
+        h.childForceExpandHeight = false;
+
+        var toggle = CreateToggle(row.transform, id + "Toggle");
+        toggle.onValueChanged.AddListener(onChanged);
+        var text = CreateLabel(row.transform, id + "Label", label, 14, TextAlignmentOptions.MidlineLeft);
+        text.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        return toggle;
+    }
+
+    TextMeshProUGUI CreateChoiceRow(Transform parent, string id, string label,
+        UnityEngine.Events.UnityAction previous, UnityEngine.Events.UnityAction next)
+    {
+        var row = new GameObject(id + "Row", typeof(RectTransform), typeof(Image),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = GameUITheme.Panel;
+        row.GetComponent<Image>().raycastTarget = false;
+        var rowLe = row.GetComponent<LayoutElement>();
+        rowLe.minHeight = 42f;
+        rowLe.preferredHeight = 42f;
+        rowLe.flexibleHeight = 0f;
+
+        var h = row.GetComponent<HorizontalLayoutGroup>();
+        h.spacing = 8f;
+        h.padding = new RectOffset(12, 12, 4, 4);
+        h.childAlignment = TextAnchor.MiddleLeft;
+        h.childControlWidth = true;
+        h.childControlHeight = true;
+        h.childForceExpandWidth = false;
+        h.childForceExpandHeight = false;
+
+        var title = CreateLabel(row.transform, id + "Label", label, 14, TextAlignmentOptions.MidlineLeft);
+        var titleLe = title.GetComponent<LayoutElement>();
+        titleLe.minWidth = 170f;
+        titleLe.preferredWidth = 170f;
+        titleLe.flexibleWidth = 1f;
+
+        var prev = CreateSmallButton(row.transform, id + "Previous", "<");
+        prev.onClick.AddListener(previous);
+
+        var value = CreateLabel(row.transform, id + "Value", string.Empty, 14, TextAlignmentOptions.Center);
+        value.fontStyle = FontStyles.Bold;
+        value.color = GameUITheme.Accent;
+        var valueLe = value.GetComponent<LayoutElement>();
+        valueLe.minWidth = 110f;
+        valueLe.preferredWidth = 110f;
+        valueLe.flexibleWidth = 0f;
+
+        var nextButton = CreateSmallButton(row.transform, id + "Next", ">");
+        nextButton.onClick.AddListener(next);
+        return value;
+    }
+
     Slider CreateVolumeRow(Transform parent, string id, string label, out TextMeshProUGUI valueLabel)
     {
         var row = new GameObject(id + "Row", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
@@ -833,11 +950,11 @@ public class PauseMenuUI : MonoBehaviour
     {
         if (audioPage != null) audioPage.SetActive(index == 0);
         if (videoPage != null) videoPage.SetActive(index == 1);
-        if (visualPage != null) visualPage.SetActive(index == 2);
+        if (graphicsPage != null) graphicsPage.SetActive(index == 2);
         if (keybindsPage != null) keybindsPage.SetActive(index == 3);
         HudTabColors.Apply(audioTab, index == 0);
         HudTabColors.Apply(videoTab, index == 1);
-        HudTabColors.Apply(visualTab, index == 2);
+        HudTabColors.Apply(graphicsTab, index == 2);
         HudTabColors.Apply(keybindsTab, index == 3);
         if (playSound)
             Sfx.Play(SfxId.UiClick);
@@ -924,6 +1041,118 @@ public class PauseMenuUI : MonoBehaviour
         if (fullscreenToggle != null)
             fullscreenToggle.SetIsOnWithoutNotify(Screen.fullScreen);
     }
+
+    void RefreshGraphicsControls()
+    {
+        bool shadows = PlayerPrefs.GetInt(PrefShadows, 1) == 1;
+        shadowQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, 1), 0, 2);
+        antiAliasingIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, 2), 0, 3);
+        textureQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, 0), 0, 2);
+        bool vSync = PlayerPrefs.GetInt(PrefVSync, 1) == 1;
+
+        if (shadowsToggle != null)
+            shadowsToggle.SetIsOnWithoutNotify(shadows);
+        if (vSyncToggle != null)
+            vSyncToggle.SetIsOnWithoutNotify(vSync);
+        if (shadowQualityValue != null)
+            shadowQualityValue.text = ShadowQualityName(shadowQualityIndex);
+        if (antiAliasingValue != null)
+            antiAliasingValue.text = AntiAliasingName(antiAliasingIndex);
+        if (textureQualityValue != null)
+            textureQualityValue.text = TextureQualityName(textureQualityIndex);
+
+        SetShadowQualityInteractable(shadows);
+        ApplyGraphicsSettings(shadows, shadowQualityIndex, antiAliasingIndex, textureQualityIndex, vSync);
+    }
+
+    void OnShadowsChanged(bool enabled)
+    {
+        PlayerPrefs.SetInt(PrefShadows, enabled ? 1 : 0);
+        PlayerPrefs.Save();
+        SetShadowQualityInteractable(enabled);
+        ApplySavedGraphics();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void OnVSyncChanged(bool enabled)
+    {
+        PlayerPrefs.SetInt(PrefVSync, enabled ? 1 : 0);
+        PlayerPrefs.Save();
+        ApplySavedGraphics();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void CycleShadowQuality(int delta)
+    {
+        if (shadowsToggle != null && !shadowsToggle.isOn) return;
+        shadowQualityIndex = WrapIndex(shadowQualityIndex + delta, 3);
+        PlayerPrefs.SetInt(PrefShadowQuality, shadowQualityIndex);
+        PlayerPrefs.Save();
+        if (shadowQualityValue != null)
+            shadowQualityValue.text = ShadowQualityName(shadowQualityIndex);
+        ApplySavedGraphics();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void CycleAntiAliasing(int delta)
+    {
+        antiAliasingIndex = WrapIndex(antiAliasingIndex + delta, 4);
+        PlayerPrefs.SetInt(PrefAntiAliasing, antiAliasingIndex);
+        PlayerPrefs.Save();
+        if (antiAliasingValue != null)
+            antiAliasingValue.text = AntiAliasingName(antiAliasingIndex);
+        ApplySavedGraphics();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void CycleTextureQuality(int delta)
+    {
+        textureQualityIndex = WrapIndex(textureQualityIndex + delta, 3);
+        PlayerPrefs.SetInt(PrefTextureQuality, textureQualityIndex);
+        PlayerPrefs.Save();
+        if (textureQualityValue != null)
+            textureQualityValue.text = TextureQualityName(textureQualityIndex);
+        ApplySavedGraphics();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void SetShadowQualityInteractable(bool enabled)
+    {
+        if (shadowQualityValue == null) return;
+        Transform row = shadowQualityValue.transform.parent;
+        if (row == null) return;
+        foreach (var button in row.GetComponentsInChildren<Button>(true))
+            button.interactable = enabled;
+        shadowQualityValue.color = enabled ? GameUITheme.Accent : GameUITheme.TextSecondary;
+    }
+
+    static int WrapIndex(int value, int count)
+    {
+        if (count <= 0) return 0;
+        return (value % count + count) % count;
+    }
+
+    static string ShadowQualityName(int index) => index switch
+    {
+        0 => "Low",
+        2 => "High",
+        _ => "Medium"
+    };
+
+    static string AntiAliasingName(int index) => index switch
+    {
+        0 => "Off",
+        1 => "2x MSAA",
+        3 => "8x MSAA",
+        _ => "4x MSAA"
+    };
+
+    static string TextureQualityName(int index) => index switch
+    {
+        1 => "Half",
+        2 => "Quarter",
+        _ => "Full"
+    };
 
     void RefreshVisualControls()
     {
@@ -1040,6 +1269,59 @@ public class PauseMenuUI : MonoBehaviour
         int h = PlayerPrefs.GetInt(PrefHeight, Screen.height);
         bool full = PlayerPrefs.GetInt(PrefFullscreen, Screen.fullScreen ? 1 : 0) == 1;
         Screen.SetResolution(w, h, full);
+    }
+
+    static void ApplySavedGraphics()
+    {
+        bool shadows = PlayerPrefs.GetInt(PrefShadows, 1) == 1;
+        int shadowQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, 1), 0, 2);
+        int antiAliasing = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, 2), 0, 3);
+        int textureQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, 0), 0, 2);
+        bool vSync = PlayerPrefs.GetInt(PrefVSync, 1) == 1;
+        ApplyGraphicsSettings(shadows, shadowQuality, antiAliasing, textureQuality, vSync);
+    }
+
+    static void ApplyGraphicsSettings(bool shadows, int shadowQuality, int antiAliasing,
+        int textureQuality, bool vSync)
+    {
+        int[] shadowResolutions = { 1024, 2048, 4096 };
+        float[] shadowDistances = { 40f, 70f, 100f };
+        int[] msaaSamples = { 1, 2, 4, 8 };
+
+        shadowQuality = Mathf.Clamp(shadowQuality, 0, shadowResolutions.Length - 1);
+        antiAliasing = Mathf.Clamp(antiAliasing, 0, msaaSamples.Length - 1);
+        textureQuality = Mathf.Clamp(textureQuality, 0, 2);
+
+        QualitySettings.shadows = shadows
+            ? (shadowQuality == 0 ? UnityEngine.ShadowQuality.HardOnly : UnityEngine.ShadowQuality.All)
+            : UnityEngine.ShadowQuality.Disable;
+        QualitySettings.shadowResolution = shadowQuality switch
+        {
+            0 => UnityEngine.ShadowResolution.Low,
+            2 => UnityEngine.ShadowResolution.VeryHigh,
+            _ => UnityEngine.ShadowResolution.High
+        };
+        QualitySettings.shadowDistance = shadows ? shadowDistances[shadowQuality] : 0f;
+        QualitySettings.globalTextureMipmapLimit = textureQuality;
+        QualitySettings.antiAliasing = antiAliasing == 0 ? 0 : msaaSamples[antiAliasing];
+        QualitySettings.vSyncCount = vSync ? 1 : 0;
+
+        var pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        if (pipeline == null)
+            pipeline = QualitySettings.renderPipeline as UniversalRenderPipelineAsset;
+        if (pipeline == null) return;
+
+        pipeline.shadowDistance = shadows ? shadowDistances[shadowQuality] : 0f;
+        pipeline.mainLightShadowmapResolution = shadowResolutions[shadowQuality];
+        pipeline.msaaSampleCount = msaaSamples[antiAliasing];
+
+        foreach (var light in FindObjectsByType<Light>(FindObjectsSortMode.None))
+        {
+            if (light == null || light.type != LightType.Directional) continue;
+            light.shadows = !shadows
+                ? LightShadows.None
+                : shadowQuality == 0 ? LightShadows.Hard : LightShadows.Soft;
+        }
     }
 
     static void Stretch(RectTransform rt)

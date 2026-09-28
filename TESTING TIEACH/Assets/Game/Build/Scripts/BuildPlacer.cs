@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using TMPro;
 
 public class BuildPlacer : MonoBehaviour
@@ -37,12 +40,38 @@ public class BuildPlacer : MonoBehaviour
     bool hasDoorPreviewWallLocation;
     Vector3 lastDoorPreviewWallPosition;
     CustomerWallDoor.WallSide lastDoorPreviewWallSide;
+    readonly List<GameObject> selectedObjects = new List<GameObject>();
+    readonly List<GroupMoveMember> groupMoveMembers = new List<GroupMoveMember>();
+    BuildStationActionBar actionBar;
+    // Retained only for the legacy private drag helper. Selection no longer calls it.
     const float EditDoubleClickSeconds = 0.4f;
     float lastEditClickTime = -999f;
     int lastEditClickId;
 
+    sealed class GroupMoveMember
+    {
+        public GameObject root;
+        public BuildFootprint footprint;
+        public int originalX;
+        public int originalY;
+        public int offsetX;
+        public int offsetY;
+        public int sizeX;
+        public int sizeY;
+        public Vector3 originalPosition;
+        public Quaternion originalRotation;
+    }
+
     public bool IsPlacing => placingItem != null;
-    public bool IsDragging => draggingObject != null;
+    public bool IsDragging => draggingObject != null || groupMoveMembers.Count > 0;
+    public int SelectedStationCount
+    {
+        get
+        {
+            CleanupSelection();
+            return selectedObjects.Count;
+        }
+    }
     public bool IsCounterPlacementActive =>
         (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
         || draggingMountedItem != null;
@@ -73,6 +102,7 @@ public class BuildPlacer : MonoBehaviour
         if (CustomerWallDoor.FindEntryDoor() == null)
             Invoke(nameof(EnsureRequiredCustomerDoors), 0.35f);
         SetHint(false);
+        actionBar = BuildStationActionBar.EnsureFor(this);
     }
 
     void Update()
@@ -84,8 +114,12 @@ public class BuildPlacer : MonoBehaviour
         {
             CancelPlacement();
             CancelDrag();
+            ClearStationSelection();
             return;
         }
+
+        if (actionBar == null)
+            actionBar = BuildStationActionBar.EnsureFor(this);
 
         // Inventory can change through undo/debug actions while a placement ghost is
         // active. Never leave a zero-stock placement mode running.
@@ -112,11 +146,18 @@ public class BuildPlacer : MonoBehaviour
 
         // Block only the visible Inventory / Management rectangles. Transparent
         // full-screen canvas roots must not prevent interaction with the world.
-        if (UIInputFocusGuard.IsPointerOverBlockingPanel) return;
+        if (UIInputFocusGuard.IsPointerOverBlockingPanel
+            || (actionBar != null && actionBar.IsPointerOver)) return;
 
         // ---- Dragging a placed object ----
         if (IsDragging)
         {
+            if (groupMoveMembers.Count > 0)
+            {
+                UpdateGroupMove();
+                return;
+            }
+
             if (Input.GetMouseButtonDown(1))
             {
                 if (draggingWallDoor != null && draggingWallDoor.permanentFixture)
@@ -175,7 +216,7 @@ public class BuildPlacer : MonoBehaviour
         if (!IsPlacing)
         {
             if (Input.GetMouseButtonDown(0))
-                TryStartDrag();
+                TrySelectStation();
             return;
         }
 
@@ -543,6 +584,296 @@ public class BuildPlacer : MonoBehaviour
         return originX >= 0 && originX + sizeX <= grid.Width && originY >= 0 && originY + sizeY <= grid.Height;
     }
 
+    void TrySelectStation()
+    {
+        GameObject target = GetStationUnderPointer();
+        bool additive = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+            || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+
+        if (target == null)
+        {
+            if (!additive) ClearStationSelection();
+            return;
+        }
+
+        if (!additive)
+        {
+            if (selectedObjects.Count == 1 && selectedObjects[0] == target) return;
+            ClearStationSelection();
+        }
+
+        if (selectedObjects.Contains(target))
+        {
+            if (additive) RemoveFromSelection(target);
+            return;
+        }
+
+        selectedObjects.Add(target);
+        StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
+        actionBar?.Refresh();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    GameObject GetStationUnderPointer()
+    {
+        if (Camera.main == null) return null;
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        int layerMask = placeableLayer.value != 0 ? placeableLayer.value : -1;
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, layerMask);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
+        {
+            CustomerWallDoor door = hit.collider.GetComponentInParent<CustomerWallDoor>();
+            if (door != null) return door.gameObject;
+            CounterMountedItem mounted = hit.collider.GetComponentInParent<CounterMountedItem>();
+            if (mounted != null) return mounted.gameObject;
+            BuildFootprint footprint = hit.collider.GetComponentInParent<BuildFootprint>();
+            if (footprint != null && footprint.gameObject != ghost) return footprint.gameObject;
+        }
+        return null;
+    }
+
+    public void BeginMoveSelected()
+    {
+        CleanupSelection();
+        if (selectedObjects.Count == 0 || IsDragging || IsPlacing) return;
+        if (selectedObjects.Count == 1) BeginSingleDrag(selectedObjects[0]);
+        else BeginGroupMove();
+    }
+
+    void BeginSingleDrag(GameObject target)
+    {
+        if (target == null) return;
+        CustomerWallDoor wallDoor = target.GetComponent<CustomerWallDoor>();
+        if (wallDoor != null)
+        {
+            draggingObject = target;
+            draggingWallDoor = wallDoor;
+            dragOriginalPosition = target.transform.position;
+            dragOriginalWorldRotation = target.transform.rotation;
+            dragOriginalWallSide = wallDoor.wallSide;
+            wallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(true);
+            SetDraggedObjectHighlighted(target);
+            SetHint(true, true);
+            Sfx.Play(SfxId.BuildPickup);
+            return;
+        }
+
+        CounterMountedItem mounted = target.GetComponent<CounterMountedItem>();
+        if (mounted != null)
+        {
+            Register activeRegister = mounted.GetComponent<Register>();
+            HeatLampStation stockedLamp = mounted.GetComponent<HeatLampStation>();
+            if ((activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
+                || (stockedLamp != null && stockedLamp.Count > 0))
+            {
+                Sfx.Play(SfxId.UiError);
+                return;
+            }
+            draggingObject = target;
+            draggingMountedItem = mounted;
+            dragOriginalSurface = mounted.surface;
+            dragOriginalSlot = mounted.slotIndex;
+            dragOriginalPosition = target.transform.position;
+            dragOriginalWorldRotation = target.transform.rotation;
+            float authoredY = mounted.itemDefinition != null ? mounted.itemDefinition.placementEuler.y : 0f;
+            float surfaceY = dragOriginalSurface != null ? dragOriginalSurface.transform.eulerAngles.y : 0f;
+            float relativeY = Mathf.DeltaAngle(surfaceY + authoredY, target.transform.eulerAngles.y);
+            dragRotation = (Mathf.RoundToInt(relativeY / 90f) % 4 + 4) % 4;
+            if (IsRotationLocked(mounted.itemDefinition, target)) dragRotation = 0;
+            if (dragOriginalSurface != null) dragOriginalSurface.Release(mounted);
+            target.transform.SetParent(null, true);
+            SetDraggedObjectHighlighted(target);
+            SetHint(true, true);
+            Sfx.Play(SfxId.BuildPickup);
+            return;
+        }
+
+        BuildFootprint fp = target.GetComponent<BuildFootprint>();
+        if (fp == null) return;
+        CounterSurface counter = target.GetComponent<CounterSurface>();
+        if (counter != null && !counter.IsAvailable)
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+        GetPlacedFootprint(target, fp, out int ox, out int oy, out int sx, out int sy, out int rot);
+        if (ox < 0) return;
+        grid.SetOccupied(ox, oy, sx, sy, false);
+        draggingObject = target;
+        dragFootprint = fp;
+        dragOrigX = ox;
+        dragOrigY = oy;
+        dragRotation = dragOrigRotation = rot;
+        SetDraggedObjectHighlighted(target);
+        SetHint(true, true);
+        Sfx.Play(SfxId.BuildPickup);
+    }
+
+    void GetPlacedFootprint(GameObject root, BuildFootprint fp, out int x, out int y,
+        out int sizeX, out int sizeY, out int rotation)
+    {
+        rotation = (Mathf.RoundToInt(root.transform.eulerAngles.y / 90f) % 4 + 4) % 4;
+        sizeX = Mathf.Max(1, fp.sizeX);
+        sizeY = Mathf.Max(1, fp.sizeY);
+        if (rotation == 1 || rotation == 3) { int t = sizeX; sizeX = sizeY; sizeY = t; }
+        if (!GetFootprintOriginFromCenter(root.transform.position, sizeX, sizeY, out x, out y))
+            x = y = -1;
+    }
+
+    void BeginGroupMove()
+    {
+        groupMoveMembers.Clear();
+        int anchorX = int.MaxValue;
+        int anchorY = int.MaxValue;
+
+        foreach (GameObject root in selectedObjects)
+        {
+            BuildFootprint fp = root != null ? root.GetComponent<BuildFootprint>() : null;
+            CounterSurface counter = root != null ? root.GetComponent<CounterSurface>() : null;
+            if (fp == null || root.GetComponent<CounterMountedItem>() != null
+                || root.GetComponent<CustomerWallDoor>() != null
+                || (counter != null && !counter.IsAvailable))
+            {
+                groupMoveMembers.Clear();
+                Sfx.Play(SfxId.UiError);
+                actionBar?.ShowMessage("Group Move supports available floor stations");
+                return;
+            }
+
+            GetPlacedFootprint(root, fp, out int x, out int y, out int sx, out int sy, out _);
+            if (x < 0)
+            {
+                groupMoveMembers.Clear();
+                Sfx.Play(SfxId.UiError);
+                return;
+            }
+            anchorX = Mathf.Min(anchorX, x);
+            anchorY = Mathf.Min(anchorY, y);
+            groupMoveMembers.Add(new GroupMoveMember
+            {
+                root = root,
+                footprint = fp,
+                originalX = x,
+                originalY = y,
+                sizeX = sx,
+                sizeY = sy,
+                originalPosition = root.transform.position,
+                originalRotation = root.transform.rotation
+            });
+        }
+
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            member.offsetX = member.originalX - anchorX;
+            member.offsetY = member.originalY - anchorY;
+            grid.SetOccupied(member.originalX, member.originalY, member.sizeX, member.sizeY, false);
+        }
+        SetHint(true, true);
+        actionBar?.Refresh();
+        Sfx.Play(SfxId.BuildPickup);
+    }
+
+    void UpdateGroupMove()
+    {
+        if (Input.GetMouseButtonDown(1))
+        {
+            CancelGroupMove();
+            return;
+        }
+        if (!TryGetFloorAimPoint(out Vector3 aim)) return;
+
+        int groupWidth = 1;
+        int groupHeight = 1;
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            groupWidth = Mathf.Max(groupWidth, member.offsetX + member.sizeX);
+            groupHeight = Mathf.Max(groupHeight, member.offsetY + member.sizeY);
+        }
+
+        int anchorX = Mathf.RoundToInt((aim.x - grid.Origin.x) / grid.cellSize - groupWidth * 0.5f);
+        int anchorY = Mathf.RoundToInt((aim.z - grid.Origin.z) / grid.cellSize - groupHeight * 0.5f);
+        anchorX = Mathf.Clamp(anchorX, 0, Mathf.Max(0, grid.Width - groupWidth));
+        anchorY = Mathf.Clamp(anchorY, 0, Mathf.Max(0, grid.Height - groupHeight));
+
+        bool valid = true;
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            int x = anchorX + member.offsetX;
+            int y = anchorY + member.offsetY;
+            if (!grid.CanPlace(x, y, member.sizeX, member.sizeY))
+            {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid)
+        {
+            if (Input.GetMouseButtonDown(0)) Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            int x = anchorX + member.offsetX;
+            int y = anchorY + member.offsetY;
+            Vector3 pos = grid.GetFootprintCenter(x, y, member.sizeX, member.sizeY);
+            pos.y = GetYOnFloor(member.root, grid.Origin.y);
+            member.root.transform.position = pos;
+        }
+
+        if (!Input.GetMouseButtonDown(0)) return;
+        foreach (GroupMoveMember member in groupMoveMembers)
+            grid.SetOccupied(anchorX + member.offsetX, anchorY + member.offsetY,
+                member.sizeX, member.sizeY, true);
+        groupMoveMembers.Clear();
+        SetHint(IsPlacing);
+        actionBar?.Refresh();
+        Sfx.Play(SfxId.BuildPlace);
+    }
+
+    void CancelGroupMove()
+    {
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            if (member.root == null) continue;
+            member.root.transform.SetPositionAndRotation(member.originalPosition, member.originalRotation);
+            grid.SetOccupied(member.originalX, member.originalY, member.sizeX, member.sizeY, true);
+        }
+        groupMoveMembers.Clear();
+        SetHint(IsPlacing);
+        actionBar?.Refresh();
+    }
+
+    public void ClearStationSelection()
+    {
+        foreach (GameObject root in selectedObjects)
+            if (root != null) root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
+        selectedObjects.Clear();
+        actionBar?.Refresh();
+    }
+
+    void RemoveFromSelection(GameObject root)
+    {
+        if (root == null) return;
+        selectedObjects.Remove(root);
+        root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
+        actionBar?.Refresh();
+    }
+
+    void CleanupSelection()
+    {
+        selectedObjects.RemoveAll(root => root == null);
+    }
+
+    void RefreshSelectionHighlights()
+    {
+        CleanupSelection();
+        foreach (GameObject root in selectedObjects)
+            StationSelectionHighlight.EnsureOn(root)?.SetSelected(true);
+        actionBar?.Refresh();
+    }
+
     void TryStartDrag()
     {
         if (Camera.main == null) return;
@@ -687,6 +1018,11 @@ public class BuildPlacer : MonoBehaviour
 
     public void CancelDrag()
     {
+        if (groupMoveMembers.Count > 0)
+        {
+            CancelGroupMove();
+            return;
+        }
         if (draggingObject == null) return;
 
         if (draggingWallDoor != null)
@@ -733,6 +1069,7 @@ public class BuildPlacer : MonoBehaviour
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
         SetHint(IsPlacing);
+        RefreshSelectionHighlights();
     }
 
     void ApplyDraggedRotation()
@@ -751,7 +1088,6 @@ public class BuildPlacer : MonoBehaviour
 
     void SetDraggedObjectHighlighted(GameObject selectedObject)
     {
-        ClearDraggedObjectHighlight();
         dragSelectionHighlight = StationSelectionHighlight.EnsureOn(selectedObject);
         if (dragSelectionHighlight != null)
             dragSelectionHighlight.SetSelected(true);
@@ -759,7 +1095,7 @@ public class BuildPlacer : MonoBehaviour
 
     void ClearDraggedObjectHighlight()
     {
-        if (dragSelectionHighlight != null)
+        if (dragSelectionHighlight != null && !selectedObjects.Contains(dragSelectionHighlight.gameObject))
             dragSelectionHighlight.SetSelected(false);
         dragSelectionHighlight = null;
     }
@@ -777,6 +1113,7 @@ public class BuildPlacer : MonoBehaviour
         if (draggingMountedItem != null && draggingMountedItem.surface != null)
             draggingMountedItem.surface.Release(draggingMountedItem);
 
+        selectedObjects.Remove(draggingObject);
         ClearDraggedObjectHighlight();
         Object.Destroy(draggingObject);
         draggingObject = null;
@@ -786,6 +1123,7 @@ public class BuildPlacer : MonoBehaviour
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
         SetHint(IsPlacing);
+        actionBar?.Refresh();
         Sfx.Play(SfxId.BuildRemove);
 
         var invUI = FindObjectOfType<InventoryUI>();
@@ -1679,5 +2017,174 @@ public class BuildPlacer : MonoBehaviour
 
         StationInteractionTiles tiles = placed.GetComponent<StationInteractionTiles>();
         if (tiles != null) tiles.RebuildGeneratedHighlight();
+    }
+}
+
+/// <summary>Bottom build-mode actions for the current station selection.</summary>
+public sealed class BuildStationActionBar : MonoBehaviour
+{
+    const string ObjectName = "BuildStationActionBar";
+    BuildPlacer placer;
+    TextMeshProUGUI selectionLabel;
+    TextMeshProUGUI messageLabel;
+    Button moveButton;
+    float messageUntil;
+
+    public bool IsPointerOver
+    {
+        get
+        {
+            RectTransform rect = transform as RectTransform;
+            CanvasGroup group = GetComponent<CanvasGroup>();
+            return gameObject.activeInHierarchy && (group == null || group.blocksRaycasts) && rect != null
+                && RectTransformUtility.RectangleContainsScreenPoint(rect, Input.mousePosition, null);
+        }
+    }
+
+    public static BuildStationActionBar EnsureFor(BuildPlacer owner)
+    {
+        if (owner == null) return null;
+        BuildStationActionBar existing = FindFirstObjectByType<BuildStationActionBar>(FindObjectsInactive.Include);
+        if (existing != null)
+        {
+            existing.placer = owner;
+            existing.EnsureBuilt();
+            existing.Refresh();
+            return existing;
+        }
+
+        Canvas canvas = GameObject.Find("PlayerUI")?.GetComponent<Canvas>();
+        if (canvas == null) return null;
+        GameObject root = new GameObject(ObjectName, typeof(RectTransform), typeof(Image),
+            typeof(CanvasGroup), typeof(HorizontalLayoutGroup), typeof(BuildStationActionBar));
+        root.transform.SetParent(canvas.transform, false);
+        BuildStationActionBar bar = root.GetComponent<BuildStationActionBar>();
+        bar.placer = owner;
+        bar.EnsureBuilt();
+        bar.Refresh();
+        return bar;
+    }
+
+    void Update()
+    {
+        bool buildMode = placer != null && placer.modeManager != null
+            && placer.modeManager.CurrentMode == GameModeManager.Mode.Build;
+        CanvasGroup group = GetComponent<CanvasGroup>();
+        if (group == null) group = gameObject.AddComponent<CanvasGroup>();
+        group.alpha = buildMode ? 1f : 0f;
+        group.interactable = buildMode;
+        group.blocksRaycasts = buildMode;
+        if (!buildMode) return;
+        if (messageLabel != null && messageLabel.gameObject.activeSelf && Time.unscaledTime >= messageUntil)
+            messageLabel.gameObject.SetActive(false);
+        Refresh();
+    }
+
+    void LateUpdate()
+    {
+        if (gameObject.activeInHierarchy) transform.SetAsLastSibling();
+    }
+
+    void EnsureBuilt()
+    {
+        RectTransform rt = (RectTransform)transform;
+        rt.anchorMin = new Vector2(0.5f, 0f);
+        rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = new Vector2(0f, 18f);
+        rt.sizeDelta = new Vector2(500f, 62f);
+
+        Image background = GetComponent<Image>();
+        background.color = HudTabColors.Strip;
+        background.raycastTarget = true;
+
+        HorizontalLayoutGroup layout = GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(12, 12, 9, 9);
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        selectionLabel = transform.Find("Selection")?.GetComponent<TextMeshProUGUI>();
+        if (selectionLabel == null)
+            selectionLabel = CreateLabel("Selection", 220f);
+        messageLabel = transform.Find("Message")?.GetComponent<TextMeshProUGUI>();
+        if (messageLabel == null)
+        {
+            messageLabel = CreateLabel("Message", 220f);
+            messageLabel.color = GameUITheme.Accent;
+            messageLabel.gameObject.SetActive(false);
+        }
+        moveButton = transform.Find("Move")?.GetComponent<Button>();
+        if (moveButton == null)
+            moveButton = CreateButton("Move", "Move", 110f, () => placer?.BeginMoveSelected());
+        Button clear = transform.Find("Clear")?.GetComponent<Button>();
+        if (clear == null)
+            clear = CreateButton("Clear", "Clear", 90f, () => placer?.ClearStationSelection());
+
+        GameUITheme.ApplyTo(transform);
+    }
+
+    TextMeshProUGUI CreateLabel(string objectName, float width)
+    {
+        GameObject go = new GameObject(objectName, typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
+        go.transform.SetParent(transform, false);
+        LayoutElement element = go.GetComponent<LayoutElement>();
+        element.minWidth = width;
+        element.preferredWidth = width;
+        TextMeshProUGUI label = go.GetComponent<TextMeshProUGUI>();
+        label.fontSize = 15f;
+        label.fontStyle = FontStyles.Bold;
+        label.color = GameUITheme.TextPrimary;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.raycastTarget = false;
+        return label;
+    }
+
+    Button CreateButton(string objectName, string text, float width, UnityEngine.Events.UnityAction action)
+    {
+        GameObject go = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        go.transform.SetParent(transform, false);
+        LayoutElement element = go.GetComponent<LayoutElement>();
+        element.minWidth = width;
+        element.preferredWidth = width;
+        Button button = go.GetComponent<Button>();
+        button.targetGraphic = go.GetComponent<Image>();
+        button.onClick.AddListener(action);
+
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelObject.transform.SetParent(go.transform, false);
+        RectTransform labelRect = (RectTransform)labelObject.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
+        label.text = text;
+        label.fontSize = 16f;
+        label.fontStyle = FontStyles.Bold;
+        label.color = GameUITheme.TextPrimary;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+        return button;
+    }
+
+    public void Refresh()
+    {
+        if (placer == null || selectionLabel == null) return;
+        int count = placer.SelectedStationCount;
+        selectionLabel.text = count == 0 ? "Select a station" : count == 1 ? "1 station selected" : count + " stations selected";
+        if (moveButton != null) moveButton.interactable = count > 0 && !placer.IsDragging && !placer.IsPlacing;
+    }
+
+    public void ShowMessage(string message)
+    {
+        if (messageLabel == null) return;
+        messageLabel.text = message;
+        messageLabel.gameObject.SetActive(true);
+        messageUntil = Time.unscaledTime + 2.5f;
     }
 }

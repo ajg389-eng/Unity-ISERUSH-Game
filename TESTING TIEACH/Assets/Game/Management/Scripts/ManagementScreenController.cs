@@ -214,13 +214,14 @@ public class ManagementScreenController : MonoBehaviour
     void Update()
     {
         if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
-        if (Input.GetKeyDown(toggleKey))
+        bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+        if (!unifiedNavigation && Input.GetKeyDown(toggleKey))
         {
             Toggle();
             return;
         }
 
-        if (isOpen)
+        if (!unifiedNavigation && isOpen)
             HandleNumberRowTabShortcut();
     }
 
@@ -290,7 +291,12 @@ public class ManagementScreenController : MonoBehaviour
 
         var rootImage = managementPanel.GetComponent<Image>();
         if (rootImage != null)
-            rootImage.color = HudTabColors.Strip;
+        {
+            // ContentBox supplies the visible surface. Leaving the root clear
+            // avoids doubling the translucent HUD color where both overlap.
+            rootImage.color = Color.clear;
+            rootImage.raycastTarget = true;
+        }
 
         // ContentBox is the visible fill in the scene-authored hierarchy. Match
         // it to the connected top HUD instead of leaving a lighter slate block.
@@ -343,6 +349,47 @@ public class ManagementScreenController : MonoBehaviour
                 return;
             }
         }
+    }
+
+    public void OpenCustomersTab()
+    {
+        if (!isOpen)
+            Open();
+        if (tabPanels == null) return;
+        for (int i = 0; i < tabPanels.Length; i++)
+        {
+            if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null)
+            {
+                SelectTab(i);
+                return;
+            }
+        }
+    }
+
+    public void SetUnifiedPrimaryPage(bool business)
+    {
+        if (tabButtons == null || tabButtons.Length == 0) return;
+
+        Transform tabBar = null;
+        for (int i = 0; i < tabButtons.Length; i++)
+        {
+            if (tabButtons[i] == null) continue;
+            if (tabBar == null) tabBar = tabButtons[i].transform.parent;
+
+            bool workers = i < tabPanels.Length && tabPanels[i] != null
+                && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null;
+            tabButtons[i].gameObject.SetActive(business ? !workers : false);
+
+            if (!business || workers) continue;
+            var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
+            bool customers = i < tabPanels.Length && tabPanels[i] != null
+                && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null;
+            if (label != null)
+                label.text = customers ? "Demand" : "Menu & Supply";
+        }
+
+        if (tabBar != null)
+            tabBar.gameObject.SetActive(business);
     }
 
     public void OpenIngredientsTab()

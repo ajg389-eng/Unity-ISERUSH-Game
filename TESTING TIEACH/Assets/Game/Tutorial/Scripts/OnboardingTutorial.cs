@@ -137,11 +137,11 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Register",
             "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
-            "Open <b>Inventory</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
+            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
             "Buy stations",
-            "Open <b>Inventory</b> (top-left, or press Q). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
+            "Open <b>Build</b> (top-left, or press Q then 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
@@ -153,7 +153,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Grill",
             "Buy and place a <b>grill</b> next in the burger line. After the freezer, this cooks the patty.\n\n" +
-            "Later, in Management, point the grill's output toward assembly so cooked patties keep moving.\n\nPlace one to continue.",
+            "Later, in Staff, point the grill's output toward assembly so cooked patties keep moving.\n\nPlace one to continue.",
             "Next", Highlight.Grill, openInventory: true, requirePlaced: true),
         new Step(
             "Fryer",
@@ -182,12 +182,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Buy ingredients",
-            "Stations do nothing without stock. Open <b>Management</b> (top-left, or press E), then the <b>Ingredients</b> tab.\n\n" +
+            "Stations do nothing without stock. Open <b>Business</b> (top-left, or press Q then 3), then <b>Menu & Supply</b>.\n\n" +
             "Buy at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
-            "Stations only cook if people work a <b>flow</b>. Open <b>Management → Workers</b> (top-left, or press E).\n\n" +
+            "Stations only cook if people work a <b>flow</b>. Open <b>Staff</b> (top-left, or press Q then 2).\n\n" +
             "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. A worker can cover up to three stations; extra people you do not assign will stand idle.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
@@ -231,10 +231,10 @@ public class OnboardingTutorial : MonoBehaviour
         "I cleared out the kitchen so we can rebuild the operation properly. First, place a <b>register</b> on the lobby counter.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
 
-        "Every order begins at the <b>register</b>. Open <b>Inventory</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
+        "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
         "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
 
-        "Open <b>Inventory</b> at the top-left, or press <b>Q</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
+        "Open <b>Build</b> at the top-left, or press <b>Q</b> then <b>1</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
         "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
 
         "Let's start the burger process. Buy and place a <b>freezer</b>. It stores raw patties, so this is the first stop for every burger.\n\n" +
@@ -258,10 +258,10 @@ public class OnboardingTutorial : MonoBehaviour
         "Buy and place a <b>pantry</b>. It supplies toppings and other ingredients workers need at assembly.\n\n" +
         "Try placing it nearby. I do not want workers crossing the entire kitchen every time they need one ingredient.",
 
-        "The equipment is useless without material to process. Open <b>Management</b>, or press <b>E</b>, then open <b>Ingredients</b>.\n\n" +
+        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>Q</b> then <b>3</b>, and choose <b>Menu & Supply</b>.\n\n" +
         "Order at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. A delivery person will bring the combined order through the front door.",
 
-        "Now we need someone to run the process. Open <b>Management > Workers</b> and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
+        "Now we need someone to run the process. Open <b>Staff</b>, or press <b>Q</b> then <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
 
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then select stations in production order.\n\n" +
@@ -447,25 +447,37 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.openInventory)
         {
             var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            var tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            if (tabs != null)
+                tabs.OpenBuildPage();
             if (inv != null)
             {
-                inv.OpenPanel();
-                inv.SelectTab(0);
+                if (tabs == null)
+                    inv.OpenBuildPage();
                 inv.RefreshAll();
             }
         }
 
         if (step.openIngredients)
         {
+            var tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
             var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-            if (mgmt != null)
+            if (tabs != null)
+            {
+                tabs.OpenBusinessPage();
+                if (mgmt != null) mgmt.OpenIngredientsTab();
+            }
+            else if (mgmt != null)
                 mgmt.OpenIngredientsTab();
         }
 
         if (step.openWorkers)
         {
+            var tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
             var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-            if (mgmt != null)
+            if (tabs != null)
+                tabs.OpenStaffPage();
+            else if (mgmt != null)
                 mgmt.OpenWorkersTab();
         }
 

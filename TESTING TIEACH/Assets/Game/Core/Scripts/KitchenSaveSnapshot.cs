@@ -6,7 +6,9 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 2, day, cash, width, height, milestone, tutorialStep;
+    public int version = 4, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int wallTexture, floorTexture, roofTexture;
+    public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
     public bool tutorialComplete;
     public List<Equipment> equipment = new List<Equipment>();
@@ -28,6 +30,16 @@ public class KitchenSaveSnapshot
         s.tutorialComplete = OnboardingTutorial.IsComplete;
         s.tutorialStep = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.SaveStepIndex : 0;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
+        var appearance = StoreAppearanceController.Instance;
+        if (appearance != null)
+        {
+            s.wallTexture = appearance.WallTextureIndex;
+            s.floorTexture = appearance.FloorTextureIndex;
+            s.roofTexture = appearance.RoofTextureIndex;
+            s.wallTint = appearance.WallTint;
+            s.floorTint = appearance.FloorTint;
+            s.roofTint = appearance.RoofTint;
+        }
         var inv = UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var objects = new List<GameObject>();
         if (inv != null)
@@ -78,7 +90,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>2 || inv==null || pm==null) return false;
+        if(version<1 || version>4 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
@@ -137,6 +149,11 @@ public class KitchenSaveSnapshot
         if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
         if(milestone>0 && MilestoneProgressManager.Instance!=null) MilestoneProgressManager.Instance.DebugJumpToNumberedMilestone(milestone,out _);
         if(grid!=null) grid.ResyncOccupancyFromScene();
+        var appearance = StoreAppearanceController.Ensure();
+        if (version >= 4)
+            appearance.RestoreState(wallTexture, floorTexture, roofTexture, wallTint, floorTint, roofTint);
+        else
+            appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
         if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         PurchaseUndoManager.Instance?.ClearHistory();

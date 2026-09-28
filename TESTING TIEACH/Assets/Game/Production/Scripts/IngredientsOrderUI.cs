@@ -29,6 +29,10 @@ public class IngredientsOrderUI : MonoBehaviour
     Button clearCartButton;
     Button placeOrderButton;
     TextMeshProUGUI placeOrderLabel;
+    GameObject expandedMenuRow;
+    GameObject expandedWorkflow;
+    LayoutElement expandedMenuLayout;
+    TextMeshProUGUI expandedChevron;
 
     void OnEnable()
     {
@@ -138,6 +142,10 @@ public class IngredientsOrderUI : MonoBehaviour
         clearCartButton = null;
         placeOrderButton = null;
         placeOrderLabel = null;
+        expandedMenuRow = null;
+        expandedWorkflow = null;
+        expandedMenuLayout = null;
+        expandedChevron = null;
 
         if (inventory == null)
         {
@@ -183,16 +191,36 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item)
     {
-        var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+        const float collapsedHeight = 62f;
+        const float expandedHeight = 132f;
+
+        var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
         row.transform.SetParent(listContainer, false);
         var le = row.AddComponent<LayoutElement>();
-        le.minHeight = 104;
-        le.preferredHeight = 104;
+        le.minHeight = collapsedHeight;
+        le.preferredHeight = collapsedHeight;
         row.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
 
-        var layout = row.GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(10, 12, 6, 6);
-        layout.spacing = 10;
+        var rowLayout = row.GetComponent<VerticalLayoutGroup>();
+        rowLayout.padding = new RectOffset(8, 8, 5, 5);
+        rowLayout.spacing = 4f;
+        rowLayout.childAlignment = TextAnchor.UpperCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = false;
+
+        var header = new GameObject("Header", typeof(RectTransform), typeof(Image), typeof(Button),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.transform.SetParent(row.transform, false);
+        var headerImage = header.GetComponent<Image>();
+        headerImage.color = Color.clear;
+        var headerLe = header.GetComponent<LayoutElement>();
+        headerLe.minHeight = 52f;
+        headerLe.preferredHeight = 52f;
+        var layout = header.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(2, 4, 1, 1);
+        layout.spacing = 10f;
         layout.childAlignment = TextAnchor.MiddleLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -200,63 +228,118 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
-        previewGo.transform.SetParent(row.transform, false);
+        previewGo.transform.SetParent(header.transform, false);
         var previewLe = previewGo.GetComponent<LayoutElement>();
-        previewLe.minWidth = 56;
-        previewLe.preferredWidth = 56;
-        previewLe.minHeight = 56;
-        previewLe.preferredHeight = 56;
+        previewLe.minWidth = 44;
+        previewLe.preferredWidth = 44;
+        previewLe.minHeight = 44;
+        previewLe.preferredHeight = 44;
         var preview = previewGo.GetComponent<RawImage>();
         preview.texture = ItemPreviewThumbnails.GetPrefab(GetPreviewPrefab(menu, item), item.itemName);
         preview.color = Color.white;
         preview.raycastTarget = false;
 
-        var detailsGo = new GameObject("Details", typeof(RectTransform), typeof(LayoutElement), typeof(VerticalLayoutGroup));
-        detailsGo.transform.SetParent(row.transform, false);
-        var detailsLe = detailsGo.GetComponent<LayoutElement>();
-        detailsLe.flexibleWidth = 1f;
-        detailsLe.minHeight = 88f;
-        detailsLe.preferredHeight = 88f;
-        var detailsLayout = detailsGo.GetComponent<VerticalLayoutGroup>();
-        detailsLayout.spacing = 3f;
-        detailsLayout.childAlignment = TextAnchor.MiddleLeft;
-        detailsLayout.childControlWidth = true;
-        detailsLayout.childControlHeight = true;
-        detailsLayout.childForceExpandWidth = true;
-        detailsLayout.childForceExpandHeight = false;
-
         var nameGo = new GameObject("Name", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
-        nameGo.transform.SetParent(detailsGo.transform, false);
+        nameGo.transform.SetParent(header.transform, false);
         var nameLe = nameGo.GetComponent<LayoutElement>();
-        nameLe.minHeight = 23f;
-        nameLe.preferredHeight = 23f;
+        nameLe.flexibleWidth = 1f;
+        nameLe.minHeight = 44f;
+        nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
         nameText.text = inventory.GetDisplayName(item);
         nameText.fontSize = 16;
         nameText.fontStyle = FontStyles.Bold;
         nameText.color = Color.white;
-        nameText.alignment = TextAlignmentOptions.Left;
+        nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
-        var workflowGo = new GameObject("Workflow", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
-        workflowGo.transform.SetParent(detailsGo.transform, false);
-        var workflowLe = workflowGo.GetComponent<LayoutElement>();
-        workflowLe.minHeight = 58f;
-        workflowLe.preferredHeight = 58f;
-        var workflowText = workflowGo.GetComponent<TextMeshProUGUI>();
-        workflowText.text = GetWorkflowDescription(menu, item);
-        workflowText.fontSize = 11.5f;
-        workflowText.color = new Color(0.78f, 0.84f, 0.94f, 1f);
-        workflowText.alignment = TextAlignmentOptions.TopLeft;
-        workflowText.enableWordWrapping = true;
-        workflowText.overflowMode = TextOverflowModes.Ellipsis;
-        workflowText.raycastTarget = false;
-        if (TMP_Settings.defaultFontAsset != null) workflowText.font = TMP_Settings.defaultFontAsset;
+        var chevronGo = new GameObject("Chevron", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        chevronGo.transform.SetParent(header.transform, false);
+        var chevronLe = chevronGo.GetComponent<LayoutElement>();
+        chevronLe.minWidth = 24f;
+        chevronLe.preferredWidth = 24f;
+        var chevron = chevronGo.GetComponent<TextMeshProUGUI>();
+        chevron.text = ">";
+        chevron.fontSize = 18f;
+        chevron.fontStyle = FontStyles.Bold;
+        chevron.color = GameUITheme.Accent;
+        chevron.alignment = TextAlignmentOptions.Center;
+        chevron.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) chevron.font = TMP_Settings.defaultFontAsset;
 
-        Toggle toggle = CreateCheckbox(row.transform);
+        Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
         ItemDefinition captured = item;
         toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
+
+        var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        workflowGo.transform.SetParent(row.transform, false);
+        workflowGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 0.96f);
+        workflowGo.GetComponent<Image>().raycastTarget = false;
+        var workflowLe = workflowGo.GetComponent<LayoutElement>();
+        workflowLe.minHeight = 61f;
+        workflowLe.preferredHeight = 61f;
+
+        var workflowTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        workflowTextGo.transform.SetParent(workflowGo.transform, false);
+        var workflowRt = (RectTransform)workflowTextGo.transform;
+        workflowRt.anchorMin = Vector2.zero;
+        workflowRt.anchorMax = Vector2.one;
+        workflowRt.offsetMin = new Vector2(10f, 6f);
+        workflowRt.offsetMax = new Vector2(-10f, -6f);
+        var workflowText = workflowTextGo.GetComponent<TextMeshProUGUI>();
+        workflowText.text = GetWorkflowDescription(menu, item);
+        workflowText.fontSize = 11.5f;
+        workflowText.color = new Color(0.78f, 0.84f, 0.94f, 1f);
+        workflowText.alignment = TextAlignmentOptions.MidlineLeft;
+        workflowText.textWrappingMode = TextWrappingModes.Normal;
+        workflowText.overflowMode = TextOverflowModes.Ellipsis;
+        workflowText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) workflowText.font = TMP_Settings.defaultFontAsset;
+        workflowGo.SetActive(false);
+
+        var headerButton = header.GetComponent<Button>();
+        headerButton.targetGraphic = headerImage;
+        headerButton.transition = Selectable.Transition.None;
+        headerButton.onClick.AddListener(() => ToggleMenuWorkflow(row, workflowGo, le, chevron,
+            collapsedHeight, expandedHeight));
+    }
+
+    void ToggleMenuWorkflow(GameObject row, GameObject workflow, LayoutElement rowLayout,
+        TextMeshProUGUI chevron, float collapsedHeight, float expandedHeight)
+    {
+        bool opening = workflow != null && !workflow.activeSelf;
+
+        if (expandedWorkflow != null)
+            expandedWorkflow.SetActive(false);
+        if (expandedMenuLayout != null)
+        {
+            expandedMenuLayout.minHeight = collapsedHeight;
+            expandedMenuLayout.preferredHeight = collapsedHeight;
+        }
+        if (expandedChevron != null)
+            expandedChevron.text = ">";
+
+        expandedMenuRow = null;
+        expandedWorkflow = null;
+        expandedMenuLayout = null;
+        expandedChevron = null;
+
+        if (opening)
+        {
+            workflow.SetActive(true);
+            rowLayout.minHeight = expandedHeight;
+            rowLayout.preferredHeight = expandedHeight;
+            chevron.text = "v";
+            expandedMenuRow = row;
+            expandedWorkflow = workflow;
+            expandedMenuLayout = rowLayout;
+            expandedChevron = chevron;
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)listContainer);
+        Sfx.Play(SfxId.UiClick);
     }
 
     static string GetWorkflowDescription(CustomerOrderConfig menu, ItemDefinition item)
