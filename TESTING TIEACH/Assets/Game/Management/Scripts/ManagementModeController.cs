@@ -927,17 +927,25 @@ public class ManagementModeController : MonoBehaviour
         var pantry = node.GetComponent<PantryStation>();
 
         bool outputOnly = false;
+        CustomerOrderConfig modelConfig = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        GameObject rawPattyModel = modelConfig != null && modelConfig.rawPattyIngredient != null
+            && modelConfig.rawPattyIngredient.prefab != null
+            ? modelConfig.rawPattyIngredient.prefab : rawPattyPreviewPrefab;
+        GameObject cookedPattyModel = modelConfig != null && modelConfig.cookedPattyIngredient != null
+            && modelConfig.cookedPattyIngredient.prefab != null
+            ? modelConfig.cookedPattyIngredient.prefab : cookedPattyPreviewPrefab;
         if (freezer != null)
         {
-            outputPrefab = rawPattyPreviewPrefab;
+            outputPrefab = rawPattyModel;
             outputName = "Raw patties";
             cycleSeconds = freezer.processTimeSeconds;
             outputOnly = true;
         }
         else if (grill != null)
         {
-            inputPrefab = rawPattyPreviewPrefab;
-            outputPrefab = cookedPattyPreviewPrefab;
+            inputPrefab = rawPattyModel;
+            outputPrefab = cookedPattyModel;
             inputName = "Raw patties";
             outputName = "Cooked patties";
             cycleSeconds = grill.processTimeSeconds;
@@ -946,7 +954,7 @@ public class ManagementModeController : MonoBehaviour
         {
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
             inputPrefab = recipe != null && recipe.processedInput != null
-                ? recipe.processedInput.prefab : cookedPattyPreviewPrefab;
+                ? recipe.processedInput.prefab : cookedPattyModel;
             outputPrefab = recipe != null && recipe.output != null
                 ? (GetPickupPreviewPrefab(recipe.output) ?? recipe.output.prefab)
                 : burgerPreviewPrefab;
@@ -962,10 +970,14 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (cutting != null)
         {
-            inputPrefab = burgerPreviewPrefab;
-            outputPrefab = burgerPreviewPrefab;
-            inputName = "Raw lettuce, cheese, tomato";
-            outputName = "Sliced burger toppings";
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            inputPrefab = config != null && config.cheeseIngredient != null
+                ? config.cheeseIngredient.prefab : null;
+            outputPrefab = config != null && config.slicedCheeseIngredient != null
+                ? config.slicedCheeseIngredient.prefab : null;
+            inputName = "Raw cheese";
+            outputName = "Sliced cheese";
             cycleSeconds = cutting.processTimeSeconds;
         }
         else if (fryer != null)
@@ -1355,6 +1367,7 @@ public class ManagementModeController : MonoBehaviour
     GameObject GetPickupPreviewPrefab(ItemDefinition item)
     {
         if (item == null) return null;
+        if (item.prefab != null) return item.prefab;
         CustomerOrderConfig menu = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
         if (menu != null)

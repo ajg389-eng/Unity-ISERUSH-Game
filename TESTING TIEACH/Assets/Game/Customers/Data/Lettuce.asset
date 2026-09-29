@@ -7,7 +7,7 @@ MonoBehaviour:
   m_Name: Lettuce
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Lettuce
-  prefab: {fileID: 4492821927860754639, guid: e65e0f5a23047e147be6dc32db77c4f1, type: 3}
+  prefab: {fileID: 4492821927860754639, guid: 9a41000000000000000000000000000c, type: 3}
   price: 0
   startingQuantity: 10
   orderPackSize: 10

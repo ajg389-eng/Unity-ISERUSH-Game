@@ -1020,9 +1020,8 @@ MonoBehaviour:
   bufferedProcessedInputs: 0
   bufferedPantryInputs: 0
   bufferedOutputs: 0
-  defaultProcessedInputDisplayPrefab: {fileID: 5182101408359990397, guid: 1cadb7e9b63d1484db6a657066fdcd48, type: 3}
-  defaultOutputDisplayPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
-  ingredientDisplayWorldSize: 0.22
+  defaultProcessedInputDisplayPrefab: {fileID: 5182101408359990397, guid: 9a410000000000000000000000000006, type: 3}
+  defaultOutputDisplayPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   processedInputDisplaySlots:
   - {fileID: 4402755077987473970}
   - {fileID: 3142496457066534431}

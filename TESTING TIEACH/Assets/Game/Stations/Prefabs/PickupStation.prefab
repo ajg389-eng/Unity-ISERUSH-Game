@@ -272,12 +272,10 @@ MonoBehaviour:
   statusLabel: {fileID: 0}
   cautionIndicatorOffset: {x: 0, y: 2.5, z: 0}
   cautionIndicatorSize: 0.85
-  burgerDisplayPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
-  friesDisplayPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
-  drinkDisplayPrefab: {fileID: 2138174889334687165, guid: 078cc9dffd7cf1b498ca9ec56c9787af, type: 3}
+  burgerDisplayPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
+  friesDisplayPrefab: {fileID: 5513790519829109655, guid: 9a410000000000000000000000000002, type: 3}
+  drinkDisplayPrefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
   foodDisplayHeight: 0.55
-  foodDisplayScale: 2
-  drinkDisplaySize: 0.42
   foodDisplayCenter: {x: -0.004, y: 0.032}
   foodDisplaySpacing: {x: 0.5, y: 0.5}
 --- !u!1 &8939223708076402897

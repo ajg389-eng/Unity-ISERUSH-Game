@@ -7,7 +7,7 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 6;
+    const int CacheVersion = 7;
     const string RootName = "__ItemPreviewThumbnails";
 
     // Shared with the inventory preview frame so fitted square thumbnails do not
@@ -30,7 +30,7 @@ public static class ItemPreviewThumbnails
         if (prefab == null)
             return null;
 
-        Vector3 scale = previewScale ?? Vector3.one;
+        Vector3 scale = previewScale ?? prefab.transform.localScale;
         int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode();
         if (cache.TryGetValue(key, out var existing))
         {

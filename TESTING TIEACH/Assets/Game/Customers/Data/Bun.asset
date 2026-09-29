@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Bun
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Bun
-  prefab: {fileID: 5569612086867529233, guid: 68aca23de7f87be429d806227bcec685, type: 3}
+  prefab: {fileID: 6530758574615387552, guid: 7ec706f864be7fe41992ef4ac6d702a2, type: 3}
   price: 0
   startingQuantity: 12
   orderPackSize: 10

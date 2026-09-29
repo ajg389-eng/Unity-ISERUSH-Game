@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Drink
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Drink
-  prefab: {fileID: 0}
+  prefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
   price: 4
   startingQuantity: 15
   orderPackSize: 12

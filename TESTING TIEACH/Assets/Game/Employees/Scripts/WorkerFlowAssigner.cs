@@ -972,9 +972,9 @@ public static class WorkflowAnalysis
                 foreach (ItemDefinition stageOutput in config.GetAssemblyChain(product))
                 {
                     AssemblyRecipeDefinition recipe = config.GetAssemblyRecipe(stageOutput);
-                    if (recipe != null && recipe.pantryInput != null
-                        && !result.requiredResources.Contains(recipe.pantryInput))
-                        result.requiredResources.Add(recipe.pantryInput);
+                    ItemDefinition source = config.GetAssemblySupplySource(recipe);
+                    if (source != null && !result.requiredResources.Contains(source))
+                        result.requiredResources.Add(source);
                 }
             }
         }
@@ -1004,8 +1004,9 @@ public static class WorkflowAnalysis
                 foreach (ItemDefinition stageOutput in config.GetAssemblyChain(item))
                 {
                     AssemblyRecipeDefinition recipe = config.GetAssemblyRecipe(stageOutput);
-                    if (recipe != null && recipe.pantryInput != null)
-                        unitCost += GetIngredientUnitCost(recipe.pantryInput, inventory)
+                    ItemDefinition source = config.GetAssemblySupplySource(recipe);
+                    if (source != null)
+                        unitCost += GetIngredientUnitCost(source, inventory)
                             * Mathf.Max(1, recipe.pantryInputAmount);
                 }
             }

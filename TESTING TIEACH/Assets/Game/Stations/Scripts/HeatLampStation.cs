@@ -68,10 +68,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public GameObject drinkDisplayPrefab;
     [Tooltip("Height of product models above the Pickup Station root.")]
     public float foodDisplayHeight = 0.55f;
-    [Tooltip("Uniform world-space scale used by displayed food models.")]
-    public float foodDisplayScale = 0.42f;
-    [Tooltip("Maximum world-space size of the drink model. Drink prefabs use different native dimensions than food prefabs.")]
-    public float drinkDisplaySize = 0.42f;
     [Tooltip("Local X/Z center of the four display pans on the current 1x1 model.")]
     public Vector2 foodDisplayCenter = new Vector2(-0.004f, 0.032f);
     [Tooltip("Local X/Z spacing between the four display positions.")]
@@ -182,11 +178,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             GameObject display = Instantiate(prefab, foodDisplayRoot);
             display.name = "HeldFood_" + i + "_" + prefab.name;
             display.transform.localPosition = GetFoodDisplaySlot(i);
-            display.transform.localRotation = Quaternion.identity;
-            if (prefab == drinkDisplayPrefab)
-                NormalizeDisplaySize(display, drinkDisplaySize);
-            else
-                SetUniformWorldScale(display.transform, foodDisplayScale);
+            display.transform.localRotation = prefab.transform.localRotation;
+            SetNativeWorldScale(display.transform, prefab.transform.localScale);
             DisableDisplayColliders(display);
             foodDisplayObjects.Add(display);
         }
@@ -233,6 +226,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     GameObject GetFoodDisplayPrefab(ItemDefinition item)
     {
         if (item == null) return null;
+        if (item.prefab != null) return item.prefab;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig
             : null;
@@ -254,32 +248,13 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         return null;
     }
 
-    static void SetUniformWorldScale(Transform target, float scale)
+    static void SetNativeWorldScale(Transform target, Vector3 sourceScale)
     {
         Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
         target.localScale = new Vector3(
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
-    }
-
-    static void NormalizeDisplaySize(GameObject display, float targetSize)
-    {
-        display.transform.localScale = Vector3.one;
-
-        Renderer[] renderers = display.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
-
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        float largestDimension = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
-        if (largestDimension > 0.0001f)
-        {
-            float uniformScale = Mathf.Max(0.01f, targetSize) / largestDimension;
-            display.transform.localScale = Vector3.one * uniformScale;
-        }
+            sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
     }
 
     static void DisableDisplayColliders(GameObject display)

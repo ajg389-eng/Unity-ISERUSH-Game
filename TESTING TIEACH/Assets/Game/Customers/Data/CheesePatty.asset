@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: CheesePatty
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Cheese Patty
-  prefab: {fileID: 5182101408359990397, guid: 1cadb7e9b63d1484db6a657066fdcd48, type: 3}
+  prefab: {fileID: 3788165045944647515, guid: 727c6b37417208944adbdebc39285f44, type: 3}
   price: 0
   startingQuantity: 0
   orderPackSize: 10

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Potatoes
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Potatoes
-  prefab: {fileID: 8041849481946025025, guid: c68bd0879681d2241845579839f5c99d, type: 3}
+  prefab: {fileID: 8540346786976737586, guid: 26bb89b41873bd540be20d3295040ac5, type: 3}
   price: 0
   startingQuantity: 10
   orderPackSize: 10

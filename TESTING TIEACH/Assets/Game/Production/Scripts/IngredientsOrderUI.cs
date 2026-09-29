@@ -353,9 +353,10 @@ public class IngredientsOrderUI : MonoBehaviour
 
         if (menu.IsCheeseburger(item))
             return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
-                + arrow + Step("Assembly 1", "Cooked patty + cheese") + arrow + Step("Cheese patty", "Intermediate")
+                + arrow + Step("Assembly 1", "Cooked patty + sliced cheese") + arrow + Step("Cheese patty", "Intermediate")
                 + arrow + Step("Assembly 2", "Cheese patty + bun") + arrow + Step("Pickup Station", "Cheeseburger")
-                + "\n" + Step("Pantry feeders", "Cheese + bun") + arrow + Step("Assembly buffers", "Inputs 2");
+                + "\n" + Step("Pantry", "Raw cheese") + arrow + Step("Cutting", "Sliced cheese")
+                + arrow + Step("Assembly 1", "Input 2") + "   " + Step("Pantry feeder", "Bun");
 
         if (menu.IsBurger(item))
             return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")

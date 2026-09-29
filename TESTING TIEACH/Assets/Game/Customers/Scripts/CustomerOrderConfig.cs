@@ -16,6 +16,8 @@ public class AssemblyRecipeDefinition
     [Header("Input 2: pantry material")]
     public ItemDefinition pantryInput;
     [Min(1)] public int pantryInputAmount = 1;
+    [Tooltip("Optional raw material that must be processed at a Cutting Station before becoming the pantry input.")]
+    public ItemDefinition rawPantryInput;
 
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
         ? recipeName
@@ -40,12 +42,19 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition friesItem;
     [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
     public ItemDefinition friesIngredient;
+    [Header("Production stage items")]
+    [Tooltip("Raw patty produced by the Freezer and carried to the Grill.")]
+    public ItemDefinition rawPattyIngredient;
+    [Tooltip("Cooked patty produced by the Grill and carried to Assembly.")]
+    public ItemDefinition cookedPattyIngredient;
     [Header("Assembly recipes")]
     [Tooltip("Recipes players can choose on an Assembly Station.")]
     public List<AssemblyRecipeDefinition> assemblyRecipes = new List<AssemblyRecipeDefinition>();
     [Header("Burger toppings")]
     public ItemDefinition lettuceIngredient;
     public ItemDefinition cheeseIngredient;
+    [Tooltip("Processed cheese produced by the Cutting Station and consumed by Assembly recipes.")]
+    public ItemDefinition slicedCheeseIngredient;
     public ItemDefinition tomatoIngredient;
     [Tooltip("Drink")]
     public ItemDefinition drinkItem;
@@ -206,6 +215,16 @@ public class CustomerOrderConfig : ScriptableObject
         return null;
     }
 
+    public ItemDefinition GetAssemblySupplySource(AssemblyRecipeDefinition recipe)
+    {
+        if (recipe == null) return null;
+        return recipe.rawPantryInput != null ? recipe.rawPantryInput : recipe.pantryInput;
+    }
+
+    public bool AssemblySupplyRequiresCutting(AssemblyRecipeDefinition recipe) =>
+        recipe != null && recipe.rawPantryInput != null && recipe.pantryInput != null
+        && recipe.rawPantryInput != recipe.pantryInput;
+
     /// <summary>Assembly outputs in production order, including intermediate recipes.</summary>
     public List<ItemDefinition> GetAssemblyChain(ItemDefinition finalProduct)
     {
@@ -312,8 +331,9 @@ public class CustomerOrderConfig : ScriptableObject
             var yieldedRecipeInputs = new HashSet<ItemDefinition>();
             foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             {
-                if (recipe != null && recipe.pantryInput != null && yieldedRecipeInputs.Add(recipe.pantryInput))
-                    yield return recipe.pantryInput;
+                ItemDefinition source = GetAssemblySupplySource(recipe);
+                if (source != null && yieldedRecipeInputs.Add(source))
+                    yield return source;
             }
         }
         if (friesIngredient != null) yield return friesIngredient;

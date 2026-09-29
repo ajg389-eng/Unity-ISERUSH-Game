@@ -8,8 +8,6 @@ using UnityEngine.Rendering;
 public class EmployeeInventoryLabel : MonoBehaviour
 {
     public Vector3 offset = new Vector3(0f, 2.5f, 0f);
-    [Min(0.1f)] public float singleItemSize = 0.58f;
-    [Min(0.1f)] public float groupedItemSize = 0.36f;
     [Min(0f)] public float groupedSpacing = 0.28f;
     public float rotationSpeed = 28f;
     public float bobHeight = 0.045f;
@@ -98,7 +96,6 @@ public class EmployeeInventoryLabel : MonoBehaviour
             return;
         }
 
-        float size = count == 1 ? singleItemSize : groupedItemSize;
         for (int i = 0; i < count; i++)
         {
             var slot = new GameObject("HeldItem_" + (i + 1));
@@ -108,10 +105,10 @@ public class EmployeeInventoryLabel : MonoBehaviour
             GameObject model = Instantiate(prefab, slot.transform);
             model.name = prefab.name + "_Preview";
             model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.identity;
-            model.transform.localScale = Vector3.one;
+            model.transform.localRotation = prefab.transform.localRotation;
+            SetNativeWorldScale(model.transform, prefab.transform.localScale);
             PreparePreviewModel(model);
-            NormalizeModel(model, slot.transform, size);
+            CenterModel(model, slot.transform);
         }
 
         previewRoot.gameObject.SetActive(true);
@@ -134,6 +131,22 @@ public class EmployeeInventoryLabel : MonoBehaviour
 
     GameObject ResolvePrefab(KitchenEmployee.HeldPreviewKind kind, ItemDefinition item)
     {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (kind == KitchenEmployee.HeldPreviewKind.RawPatty
+            && config != null && config.rawPattyIngredient != null
+            && config.rawPattyIngredient.prefab != null)
+            return config.rawPattyIngredient.prefab;
+        if (kind == KitchenEmployee.HeldPreviewKind.CookedPatty
+            && config != null && config.cookedPattyIngredient != null
+            && config.cookedPattyIngredient.prefab != null)
+            return config.cookedPattyIngredient.prefab;
+        if ((kind == KitchenEmployee.HeldPreviewKind.Burger
+                || kind == KitchenEmployee.HeldPreviewKind.CookedFries
+                || kind == KitchenEmployee.HeldPreviewKind.Drink)
+            && item != null && item.prefab != null)
+            return item.prefab;
+
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller != null)
         {
@@ -206,20 +219,21 @@ public class EmployeeInventoryLabel : MonoBehaviour
         }
     }
 
-    static void NormalizeModel(GameObject model, Transform slot, float targetSize)
+    static void SetNativeWorldScale(Transform target, Vector3 sourceScale)
+    {
+        Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
+        target.localScale = new Vector3(
+            sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
+    static void CenterModel(GameObject model, Transform slot)
     {
         Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
         if (renderers.Length == 0) return;
 
         Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-        float largest = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
-        if (largest > 0.0001f)
-            model.transform.localScale *= targetSize / largest;
-
-        bounds = model.GetComponentsInChildren<Renderer>(true)[0].bounds;
-        renderers = model.GetComponentsInChildren<Renderer>(true);
         for (int i = 1; i < renderers.Length; i++)
             bounds.Encapsulate(renderers[i].bounds);
         model.transform.position += slot.position - bounds.center;

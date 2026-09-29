@@ -196,6 +196,16 @@ public class ProductionManager : MonoBehaviour
         if (recipe != null && recipe.pantryInput != null) return recipe.pantryInput;
         return orderConfig != null && orderConfig.IsFries(product) ? PotatoItem : null;
     }
+    public ItemDefinition GetAssemblySupplySource(AssemblyStation target)
+    {
+        AssemblyRecipeDefinition recipe = target != null ? target.GetSelectedRecipe() : null;
+        return orderConfig != null ? orderConfig.GetAssemblySupplySource(recipe) : null;
+    }
+    public ItemDefinition GetAssemblySupplyOutput(AssemblyStation target)
+    {
+        AssemblyRecipeDefinition recipe = target != null ? target.GetSelectedRecipe() : null;
+        return recipe != null ? recipe.pantryInput : null;
+    }
     public ItemDefinition DrinkItem => orderConfig != null ? orderConfig.drinkItem : null;
     public HeatLampStation HeatLamp => heatLamp;
     public int PendingJobCount => pendingJobs.Count;
@@ -785,8 +795,11 @@ public class ProductionManager : MonoBehaviour
             }
             if (reserved >= target || alreadyQueued) continue;
 
+            bool requiresCutting = orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe);
             var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1),
-                new[] { StationType.Pantry })
+                requiresCutting
+                    ? new[] { StationType.Pantry, StationType.Cutting }
+                    : new[] { StationType.Pantry })
             {
                 isAssemblySupply = true,
                 assemblySupplyTarget = station,
@@ -821,8 +834,9 @@ public class ProductionManager : MonoBehaviour
             if (owner != null && !owner.IsWorkingOn(job))
                 job.assignedTo = null;
 
-            // A queued job can become impossible after a flow is edited or a worker is
-            // reassigned. Do not let that stale job reserve a pickup slot forever.
+            // Only remove jobs that no worker is structurally capable of continuing.
+            // Missing ingredients and full downstream buffers are temporary
+            // backpressure, not evidence that the job is obsolete.
             if (job.assignedTo == null && !CanAnyWorkerContinue(job))
                 pendingJobs.RemoveAt(i);
         }
@@ -834,7 +848,7 @@ public class ProductionManager : MonoBehaviour
 
         foreach (KitchenEmployee employee in employees)
         {
-            if (employee != null && employee.CanTakeJobs && employee.CanTakeJobStep(job))
+            if (employee != null && employee.CanTakeJobs && employee.CanOperateJobStep(job))
                 return true;
         }
 
@@ -1032,6 +1046,7 @@ public class ProductionManager : MonoBehaviour
             list.Add(orderConfig.burgerBase);
         if (canBurger && orderConfig.cheeseburgerItem != null
             && HasAssemblyChainAvailable(orderConfig.cheeseburgerItem, hasConfiguredFlow)
+            && HasRequiredCuttingSupplyAvailable(orderConfig.cheeseburgerItem, hasConfiguredFlow)
             && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem))
             list.Add(orderConfig.cheeseburgerItem);
         if (canFries && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
@@ -1075,6 +1090,41 @@ public class ProductionManager : MonoBehaviour
                 if (station.CanProcess(stageProduct)) remaining.Remove(stageProduct);
         }
         return remaining.Count == 0;
+    }
+
+    bool HasRequiredCuttingSupplyAvailable(ItemDefinition product, bool useFlows)
+    {
+        List<ItemDefinition> chain = orderConfig != null ? orderConfig.GetAssemblyChain(product) : null;
+        bool requiresCutting = false;
+        if (chain != null)
+        {
+            foreach (ItemDefinition stage in chain)
+            {
+                AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(stage);
+                if (orderConfig.AssemblySupplyRequiresCutting(recipe))
+                {
+                    requiresCutting = true;
+                    break;
+                }
+            }
+        }
+        if (!requiresCutting) return true;
+
+        if (!useFlows)
+            return FindObjectOfType<PantryStation>() != null && FindObjectOfType<CuttingStation>() != null;
+
+        foreach (ProductionFlowPlan flow in productionFlows)
+        {
+            if (flow?.stations == null) continue;
+            bool foundPantry = false;
+            foreach (GameObject station in flow.stations)
+            {
+                if (station == null) continue;
+                if (station.GetComponent<PantryStation>() != null) foundPantry = true;
+                else if (foundPantry && station.GetComponent<CuttingStation>() != null) return true;
+            }
+        }
+        return false;
     }
 
     int CountIdleCookSlots(List<ItemDefinition> cookable)
@@ -1303,6 +1353,17 @@ public class ProductionManager : MonoBehaviour
         job.assignedTo = null;
     }
 
+    /// <summary>
+    /// Registers a recovery job created from real station inventory. This lets an
+    /// orphaned intermediate continue through later recipe stages instead of
+    /// leaving workers to repeatedly inspect the same full station.
+    /// </summary>
+    public void QueueRecoveryJob(ProductionJob job)
+    {
+        if (job != null && !pendingJobs.Contains(job))
+            pendingJobs.Add(job);
+    }
+
     /// <summary>Discard runtime-only production work before rebuilding a saved kitchen.</summary>
     public void ResetTransientProductionState()
     {
@@ -1327,7 +1388,9 @@ public class ProductionManager : MonoBehaviour
     public bool TryReserveCurrentStation(ProductionJob job, KitchenEmployee employee)
     {
         if (job == null || employee == null || !job.CurrentStationType.HasValue) return false;
-        GameObject station = employee.GetOperatedStationObject(job.CurrentStationType.Value);
+        GameObject station = job.CurrentStationType.Value == StationType.Assembly
+            ? employee.GetAssemblyStation(job.CurrentWorkProduct)?.gameObject
+            : employee.GetOperatedStationObject(job.CurrentStationType.Value);
         if (station == null) return false;
         if (stationWorkReservations.TryGetValue(station, out ProductionJob owner)
             && owner != null && owner != job)
@@ -1388,6 +1451,24 @@ public class ProductionManager : MonoBehaviour
         job.reservedInputUnits = units;
         jobsWithReservations.Add(job);
         return true;
+    }
+
+    public bool CanTransferAvailable(ProductionJob job, GameObject source, GameObject destination,
+        ItemDefinition item, int requestedUnits = 1)
+    {
+        if (source == null || destination == null || item == null || requestedUnits <= 0)
+            return false;
+
+        IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
+        IStationBuffer destinationBuffer = destination.GetComponent<IStationBuffer>();
+        if (sourceBuffer == null || destinationBuffer == null) return false;
+
+        int outputAvailable = sourceBuffer.GetOutputCount(item)
+            - ReservedOutputCount(source, item, job);
+        int destinationAvailable = GetAvailableInputCapacity(
+            destinationBuffer, destination, item, job);
+        int units = Mathf.Min(requestedUnits, outputAvailable, destinationAvailable);
+        return units > 0 && destinationBuffer.CanAcceptInput(item, units);
     }
 
     public bool TryReserveDestination(ProductionJob job, GameObject destination,

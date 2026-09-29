@@ -29,8 +29,6 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public GameObject defaultProcessedInputDisplayPrefab;
     [Tooltip("Fallback model for an output whose ItemDefinition has no prefab.")]
     public GameObject defaultOutputDisplayPrefab;
-    [Tooltip("Maximum world-space dimension for displayed ingredients. Finished outputs retain their prefab scale.")]
-    [Min(0.02f)] public float ingredientDisplayWorldSize = 0.22f;
     [Tooltip("Two tabletop markers for the processed ingredient.")]
     public Transform[] processedInputDisplaySlots = new Transform[2];
     [Tooltip("Two tabletop markers for the pantry ingredient.")]
@@ -254,11 +252,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             ? recipe.output.prefab : defaultOutputDisplayPrefab;
 
         SpawnDisplayedItems(processedPrefab, Mathf.Min(bufferedProcessedInputs, IngredientCapacity),
-            processedInputDisplaySlots, "ProcessedInput", true);
+            processedInputDisplaySlots, "ProcessedInput");
         SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, IngredientCapacity),
-            pantryInputDisplaySlots, "PantryInput", true);
+            pantryInputDisplaySlots, "PantryInput");
         SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputCapacity),
-            outputDisplaySlots, "Output", false);
+            outputDisplaySlots, "Output");
     }
 
     void EnsureTableDisplayRoot()
@@ -282,7 +280,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             Destroy(tableDisplayRoot.GetChild(i).gameObject);
     }
 
-    void SpawnDisplayedItems(GameObject prefab, int count, Transform[] slots, string label, bool normalizeIngredientSize)
+    void SpawnDisplayedItems(GameObject prefab, int count, Transform[] slots, string label)
     {
         if (prefab == null || count <= 0 || slots == null) return;
 
@@ -298,8 +296,6 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             display.transform.localPosition = transform.InverseTransformPoint(slot.position);
             display.transform.localRotation = prefab.transform.localRotation;
             SetNativeWorldScale(display.transform, sourceScale);
-            if (normalizeIngredientSize)
-                NormalizeWorldSize(display, ingredientDisplayWorldSize);
             DisableDisplayColliders(display);
         }
     }
@@ -331,22 +327,6 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
             sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
             sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
-    }
-
-    static void NormalizeWorldSize(GameObject display, float targetSize)
-    {
-        Renderer[] renderers = display.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
-
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        float largest = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
-        if (largest <= 0.0001f) return;
-
-        float uniformFactor = Mathf.Max(0.01f, targetSize) / largest;
-        display.transform.localScale *= uniformFactor;
     }
 
     static void DisableDisplayColliders(GameObject display)

@@ -7564,12 +7564,12 @@ MonoBehaviour:
   clearOutputButton: {fileID: 629388825}
   workerListContainer: {fileID: 1423009656}
   productListContainer: {fileID: 1546889521}
-  rawPattyPreviewPrefab: {fileID: 6808599801469802662, guid: 714cbdecdcb0a4645891357863b99738, type: 3}
-  cookedPattyPreviewPrefab: {fileID: 5182101408359990397, guid: 1cadb7e9b63d1484db6a657066fdcd48, type: 3}
-  rawFriesPreviewPrefab: {fileID: 5490091606128542859, guid: 90f6199055806e94fafd56bf466e0cf4, type: 3}
-  cookedFriesPreviewPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
-  burgerPreviewPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
-  drinkPreviewPrefab: {fileID: 2138174889334687165, guid: 078cc9dffd7cf1b498ca9ec56c9787af, type: 3}
+  rawPattyPreviewPrefab: {fileID: 6808599801469802662, guid: 9a410000000000000000000000000005, type: 3}
+  cookedPattyPreviewPrefab: {fileID: 5182101408359990397, guid: 9a410000000000000000000000000006, type: 3}
+  rawFriesPreviewPrefab: {fileID: 8540346786976737586, guid: 26bb89b41873bd540be20d3295040ac5, type: 3}
+  cookedFriesPreviewPrefab: {fileID: 5513790519829109655, guid: 9a410000000000000000000000000002, type: 3}
+  burgerPreviewPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
+  drinkPreviewPrefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
 --- !u!1 &807814671
 GameObject:
   m_ObjectHideFlags: 0
@@ -17152,9 +17152,9 @@ MonoBehaviour:
   moneyHintText: {fileID: 1670613558}
   inventory: {fileID: 1011475397}
   money: {fileID: 0}
-  burgerPreviewPrefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
-  friesPreviewPrefab: {fileID: 5513790519829109655, guid: c6420b9261592eb4b871b6acac4d90c8, type: 3}
-  drinkPreviewPrefab: {fileID: 103920410066052846, guid: c21890caac874da4181fef610b3c7c8a, type: 3}
+  burgerPreviewPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
+  friesPreviewPrefab: {fileID: 5513790519829109655, guid: 9a410000000000000000000000000002, type: 3}
+  drinkPreviewPrefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
   refreshInterval: 0.35
 --- !u!114 &1771794270
 MonoBehaviour:

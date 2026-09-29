@@ -6,8 +6,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
   m_Name: Cheese
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Cheese
-  prefab: {fileID: 1485319667670839895, guid: faddb7582ea378c44a767cc63fe84c89, type: 3}
+  itemName: Raw Cheese
+  prefab: {fileID: 1485319667670839895, guid: 9a410000000000000000000000000009, type: 3}
   price: 0
   startingQuantity: 10
   orderPackSize: 10

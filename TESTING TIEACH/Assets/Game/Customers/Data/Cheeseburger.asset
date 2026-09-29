@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Cheeseburger
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Cheeseburger
-  prefab: {fileID: 5898702171912911067, guid: 7dbc5016287a421438d04b83688612bb, type: 3}
+  prefab: {fileID: 3788165045944647515, guid: ec6bf2e77f65a7f409c77252b689633d, type: 3}
   price: 15
   startingQuantity: 0
   orderPackSize: 10

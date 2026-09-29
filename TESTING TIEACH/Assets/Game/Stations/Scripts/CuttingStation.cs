@@ -40,4 +40,32 @@ public class CuttingStation : MonoBehaviour
         processedIngredients.Add(config.tomatoIngredient);
         return true;
     }
+
+    public bool HasCarriedSupply(CustomerOrderConfig config, List<ItemDefinition> carried, int amount = 1)
+    {
+        if (config == null || carried == null || config.cheeseIngredient == null
+            || config.slicedCheeseIngredient == null) return false;
+        amount = Mathf.Max(1, amount);
+        int found = 0;
+        foreach (ItemDefinition item in carried)
+            if (item == config.cheeseIngredient && ++found >= amount)
+                return true;
+        return false;
+    }
+
+    public bool TrySliceCheese(CustomerOrderConfig config, List<ItemDefinition> carried, int amount = 1)
+    {
+        amount = Mathf.Max(1, amount);
+        if (!HasCarriedSupply(config, carried, amount)) return false;
+        int remaining = amount;
+        for (int i = carried.Count - 1; i >= 0 && remaining > 0; i--)
+        {
+            if (carried[i] != config.cheeseIngredient) continue;
+            carried.RemoveAt(i);
+            remaining--;
+        }
+        for (int i = 0; i < amount; i++)
+            carried.Add(config.slicedCheeseIngredient);
+        return true;
+    }
 }

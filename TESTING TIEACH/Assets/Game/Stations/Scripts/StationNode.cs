@@ -90,7 +90,7 @@ public class StationNode : MonoBehaviour
                 processedName + " + " + pantryName, outputName);
         }
         else if (cutting != null)
-            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw toppings", "sliced toppings");
+            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw cheese", "sliced cheese");
         else if (freezer != null)
             SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-", "patties");
         else if (fryer != null)

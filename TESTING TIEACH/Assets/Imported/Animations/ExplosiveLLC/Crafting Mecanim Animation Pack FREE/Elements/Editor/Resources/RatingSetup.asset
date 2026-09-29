@@ -14,4 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   active: 1
   counter: 5
+<<<<<<< Updated upstream
   lastCheck: 497418.7925929073
+=======
+  lastCheck: 497413.6898779967
+>>>>>>> Stashed changes
