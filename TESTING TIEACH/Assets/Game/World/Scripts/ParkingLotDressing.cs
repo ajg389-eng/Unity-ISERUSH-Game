@@ -1,10 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 /// <summary>
-/// Paints parking stalls on the east side of the restaurant lot and
-/// tracks which stalls are free for arriving cars and the delivery van.
+/// Tracks parking stalls on the east side of the restaurant lot for
+/// arriving cars and the delivery van.
 /// The scene bus is hidden and kept as the pose a visiting bus parks in.
 /// </summary>
 public class ParkingLotDressing : MonoBehaviour
@@ -133,8 +132,6 @@ public class ParkingLotDressing : MonoBehaviour
 
     const float StallWidth = 4.4f;
     const float StallDepth = 5.4f;
-    const float LineWidth = 0.09f;
-    const float LineHeight = 0.035f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -152,11 +149,6 @@ public class ParkingLotDressing : MonoBehaviour
         if (!TryGetLotBounds(out Bounds lot))
             return;
 
-        Material paint = CreateLineMaterial();
-        Transform root = transform;
-        root.SetParent(GameObject.Find("ParkingLot")?.transform, true);
-
-        float paintY = lot.max.y + 0.025f;
         float east = lot.max.x - 0.28f;
         float west = east - StallDepth;
         float south = lot.min.z + 0.35f;
@@ -164,23 +156,6 @@ public class ParkingLotDressing : MonoBehaviour
         int stallCount = Mathf.Max(1, Mathf.FloorToInt((north - south) / StallWidth));
         float used = stallCount * StallWidth;
         float z0 = (south + north - used) * 0.5f;
-
-        AddLine(root, paint,
-            new Vector3((west + east) * 0.5f, paintY, z0),
-            new Vector3(StallDepth, LineHeight, LineWidth));
-        AddLine(root, paint,
-            new Vector3((west + east) * 0.5f, paintY, z0 + used),
-            new Vector3(StallDepth, LineHeight, LineWidth));
-        AddLine(root, paint,
-            new Vector3(east, paintY, z0 + used * 0.5f),
-            new Vector3(LineWidth, LineHeight, used));
-
-        for (int i = 1; i < stallCount; i++)
-        {
-            AddLine(root, paint,
-                new Vector3((west + east) * 0.5f, paintY, z0 + i * StallWidth),
-                new Vector3(StallDepth, LineHeight, 1.2f));
-        }
 
         Quaternion facing = Quaternion.LookRotation(Vector3.left, Vector3.up);
         for (int i = 0; i < stallCount; i++)
@@ -300,43 +275,6 @@ public class ParkingLotDressing : MonoBehaviour
         }
 
         return found;
-    }
-
-    static Material CreateLineMaterial()
-    {
-        Shader shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-        if (shader == null)
-            shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
-        if (shader == null)
-            shader = Shader.Find("Standard");
-
-        var material = new Material(shader);
-        Color paint = new Color(0.96f, 0.96f, 0.9f, 1f);
-        material.color = paint;
-        if (material.HasProperty("_BaseColor"))
-            material.SetColor("_BaseColor", paint);
-        if (material.HasProperty("_Color"))
-            material.SetColor("_Color", paint);
-        material.renderQueue = 2450;
-        return material;
-    }
-
-    static void AddLine(Transform parent, Material paint, Vector3 center, Vector3 size)
-    {
-        GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        line.name = "StallLine";
-        line.transform.SetParent(parent, true);
-        line.transform.position = center;
-        line.transform.localScale = size;
-        Collider collider = line.GetComponent<Collider>();
-        if (collider != null)
-            Destroy(collider);
-        MeshRenderer renderer = line.GetComponent<MeshRenderer>();
-        renderer.sharedMaterial = paint;
-        renderer.shadowCastingMode = ShadowCastingMode.Off;
-        renderer.receiveShadows = false;
     }
 
     static Vector3 StallCenter(float west, float east, float z0, int stall)

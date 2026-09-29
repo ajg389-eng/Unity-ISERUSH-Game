@@ -10,7 +10,7 @@ public sealed class StreetScenery : MonoBehaviour
     {
         // Traffic extends the road and the grid establishes the restaurant first.
         yield return null;
-        if (!RoadTrafficController.TryGetHighway(out float west, out float east, out float roadZ, out float roadY))
+        if (!RoadTrafficController.TryGetHighway(out _, out _, out float roadZ, out _))
             yield break;
         var grid = GridManager.Instance;
         if (grid == null || grid.floor == null) yield break;
@@ -23,36 +23,7 @@ public sealed class StreetScenery : MonoBehaviour
             if (lobby != null) building.Encapsulate(lobby.bounds);
         }
         float farSide = building.center.z < roadZ ? 1f : -1f;
-        float roadEdge = roadZ + farSide * 5f;
-        GameObject roads = GameObject.Find("Roads");
-        if (roads != null)
-            foreach (Renderer r in roads.GetComponentsInChildren<Renderer>())
-                if (r.name.IndexOf("Lane", System.StringComparison.OrdinalIgnoreCase) >= 0)
-                    roadEdge = farSide > 0 ? Mathf.Max(roadEdge, r.bounds.max.z) : Mathf.Min(roadEdge, r.bounds.min.z);
-
-        // Across the road, away from the east-side parking entrance.
-        float stopX = Mathf.Clamp(building.min.x - 9f, west + 15f, east - 15f);
         float yaw = farSide > 0 ? 180f : 0f;
-        Vector3 stop = new Vector3(stopX, roadY, roadEdge + farSide * 3.3f);
-        // The bench remains in its roadside position; center the shelter over it.
-        Vector3 benchPosition = stop + Vector3.right * 4.5f;
-        GameObject shelter = Place("Bus Stop", benchPosition, yaw, 2.8f);
-        float binX = benchPosition.x + 2.5f;
-        if (shelter != null)
-        {
-            Bounds shelterBounds = shelter.GetComponentInChildren<Renderer>().bounds;
-            foreach (Renderer r in shelter.GetComponentsInChildren<Renderer>()) shelterBounds.Encapsulate(r.bounds);
-            // Measure the front edge, rather than the pivot, so the shelter
-            // sits just off the roadside path without projecting into traffic.
-            float frontZ = farSide > 0 ? shelterBounds.min.z : shelterBounds.max.z;
-            float shift = roadEdge + farSide * 0.45f - frontZ;
-            shelter.transform.position += Vector3.forward * shift;
-            benchPosition.z += shift;
-            binX = shelterBounds.max.x + 1.35f;
-        }
-        Place("Bench_1", benchPosition, yaw, 0.6f);
-        Place("Dustbin", new Vector3(binX, roadY, benchPosition.z), 0, 0.9f);
-        Place("Hydrant", new Vector3(stopX + 9f, roadY, roadEdge + farSide * 1.1f), yaw, 0.9f);
 
         // Restrict placement to distant hills, keeping the windmill in the backdrop.
         Vector3 hill = default;

@@ -40,7 +40,6 @@ public class CustomerSpawner : MonoBehaviour
     bool arrivalScheduled;
     bool waitingForOpening = true;
     bool clockHooked;
-    bool nextArrivalOnFoot;
     readonly List<Vector3> entryPointsBuffer = new List<Vector3>();
 
     /// <summary>
@@ -168,17 +167,14 @@ public class CustomerSpawner : MonoBehaviour
         waitRemaining -= Time.deltaTime;
         if (waitRemaining > 0f) return;
 
-        bool allowCar = !nextArrivalOnFoot;
-        if (!TrySpawn(false, allowCar))
+        if (!TrySpawn(false))
         {
-            // A full lot or a missing register should retry soon, not skip
-            // the rest of the morning.
+            // A missing register should retry soon, not skip the rest of the morning.
             waitRemaining = 5f;
             arrivalScheduled = true;
             return;
         }
 
-        nextArrivalOnFoot = false;
         waitingForOpening = false;
         ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
     }
@@ -187,25 +183,23 @@ public class CustomerSpawner : MonoBehaviour
 
     public bool SpawnNow(bool force = false)
     {
-        if (!TrySpawn(force, false)) return false;
+        if (!TrySpawn(force)) return false;
         ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
         return true;
     }
 
     /// <summary>
-    /// Clears the tutorial arrival block and schedules a visible on-foot customer
-    /// promptly. Later arrivals return to the normal randomized car/foot system.
+    /// Clears the tutorial arrival block and schedules a visible customer promptly.
     /// </summary>
     public void ResumeAfterTutorial()
     {
         waitingForOpening = false;
-        nextArrivalOnFoot = true;
         scheduledRatePerSecond = MeanCustomersPerMinute() / 60f;
         waitRemaining = 3f;
         arrivalScheduled = true;
     }
 
-    bool TrySpawn(bool force = false, bool allowCar = false)
+    bool TrySpawn(bool force = false)
     {
         LastSpawnError = null;
         if (customerPrefab == null)
@@ -226,15 +220,6 @@ public class CustomerSpawner : MonoBehaviour
         if (r == null && !force)
         {
             LastSpawnError = "Need an open register";
-            return false;
-        }
-
-        if (allowCar && CustomerArrivalTraffic.TryDispatchCar(this))
-            return true;
-
-        if (allowCar && ParkingLotDressing.HasParkingStalls)
-        {
-            LastSpawnError = "Parking lot is full";
             return false;
         }
 
