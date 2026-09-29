@@ -27,7 +27,7 @@ public class HeldMeal
 /// Meals expire if held too long — overproducing wastes food.
 /// Inventory is viewed in Manage mode by clicking the heat lamp.
 /// </summary>
-public class HeatLampStation : MonoBehaviour
+public class HeatLampStation : MonoBehaviour, IStationBuffer
 {
     public const int FixedCapacity = 4;
     public static HeatLampStation Instance { get; private set; }
@@ -97,6 +97,32 @@ public class HeatLampStation : MonoBehaviour
     public int TotalDelivered => totalDelivered;
     public int TotalSold => totalSold;
     public bool HasSpace => meals.Count < maxCapacity;
+    public int InputSlotCapacity => maxCapacity;
+    public int OutputSlotCapacity => maxCapacity;
+    public int GetInputCount(ItemDefinition item) => CountHeldMatching(item);
+    public int GetOutputCount(ItemDefinition item) => CountHeldMatching(item);
+    public bool CanAcceptInput(ItemDefinition item, int amount) =>
+        item != null && amount > 0 && meals.Count + amount <= maxCapacity;
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        if (!CanAcceptInput(item, amount)) return 0;
+        int stored = 0;
+        while (stored < amount)
+        {
+            CustomerOrder unit = sourceOrder != null && sourceOrder.CountQuantityOf(item) == 1
+                ? sourceOrder : CustomerOrder.FromItem(item, 1);
+            if (!DeliverMeal(unit)) break;
+            stored++;
+        }
+        return stored;
+    }
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0) return 0;
+        int taken = 0;
+        while (taken < amount && TryTakeSingleItem(item) != null) taken++;
+        return taken;
+    }
     public IReadOnlyList<HeldMeal> Meals => meals;
     public int PickupQueueCount => customerPickupQueue.Count;
 

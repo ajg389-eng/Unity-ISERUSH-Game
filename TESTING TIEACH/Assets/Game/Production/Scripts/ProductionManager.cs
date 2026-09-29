@@ -38,6 +38,13 @@ public class ProductionJob
     public int requestedSupplyUnits;
     /// <summary>Heat lamp this job must deliver to (from the last station's Assign Output link).</summary>
     public HeatLampStation deliveryHeatLamp;
+    /// <summary>Runtime-only claims that prevent two workers targeting the same station inventory.</summary>
+    [System.NonSerialized] public GameObject reservedWorkStation;
+    [System.NonSerialized] public GameObject reservedSourceStation;
+    [System.NonSerialized] public GameObject reservedDestinationStation;
+    [System.NonSerialized] public ItemDefinition reservedItem;
+    [System.NonSerialized] public int reservedOutputUnits;
+    [System.NonSerialized] public int reservedInputUnits;
 
     public bool IsHeatLampStep =>
         pipeline != null && currentStepIndex >= pipeline.Length;
@@ -148,6 +155,9 @@ public class ProductionManager : MonoBehaviour
     [HideInInspector] public List<string> hireFlowSteps = new List<string>();
 
     readonly List<ProductionJob> pendingJobs = new List<ProductionJob>();
+    readonly Dictionary<GameObject, ProductionJob> stationWorkReservations =
+        new Dictionary<GameObject, ProductionJob>();
+    readonly HashSet<ProductionJob> jobsWithReservations = new HashSet<ProductionJob>();
     sealed class TimedItemCount
     {
         public ItemDefinition item;
@@ -156,6 +166,14 @@ public class ProductionManager : MonoBehaviour
     }
     readonly List<TimedItemCount> orderedHistory = new List<TimedItemCount>();
     readonly List<TimedItemCount> completedHistory = new List<TimedItemCount>();
+    sealed class TimedFlowOutput
+    {
+        public ProductionFlowPlan flow;
+        public ItemDefinition item;
+        public int count;
+        public float time;
+    }
+    readonly List<TimedFlowOutput> completedFlowHistory = new List<TimedFlowOutput>();
     const float ThroughputWindowSeconds = 60f;
     MoneyManager moneyManager;
 
@@ -300,6 +318,32 @@ public class ProductionManager : MonoBehaviour
         RecordHistory(completedHistory, order);
     }
 
+    public void RecordFlowCompletedOutput(KitchenEmployee worker, ItemDefinition item, int count)
+    {
+        if (worker == null || item == null || count <= 0) return;
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        if (flow == null) return;
+        completedFlowHistory.Add(new TimedFlowOutput
+        {
+            flow = flow,
+            item = item,
+            count = count,
+            time = Time.time
+        });
+        PruneThroughputHistory();
+    }
+
+    public float GetFlowCompletedOutputPerMinute(ProductionFlowPlan flow)
+    {
+        if (flow == null) return 0f;
+        PruneThroughputHistory();
+        int total = 0;
+        foreach (TimedFlowOutput entry in completedFlowHistory)
+            if (entry != null && entry.flow == flow)
+                total += entry.count;
+        return total;
+    }
+
     void RecordHistory(List<TimedItemCount> history, CustomerOrder order)
     {
         if (history == null || order?.lines == null) return;
@@ -317,6 +361,7 @@ public class ProductionManager : MonoBehaviour
         float cutoff = Time.time - ThroughputWindowSeconds;
         orderedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
         completedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+        completedFlowHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
     }
 
     static Dictionary<ItemDefinition, int> SumHistory(List<TimedItemCount> history)
@@ -1193,17 +1238,30 @@ public class ProductionManager : MonoBehaviour
         if (employee.ShouldDeliverInsteadOfCook()) return false;
 
         ProductionJob bestJob = null;
+        var candidates = new List<ProductionJob>();
         foreach (var job in pendingJobs)
         {
             if (job == null || job.assignedTo != null) continue;
             if (!employee.CanTakeJobStep(job)) continue;
-            bestJob = job;
+            candidates.Add(job);
+        }
+
+        // Finish work already moving through the system before releasing more raw material.
+        // This keeps downstream buffers flowing and prevents a worker holding a patty while
+        // an earlier batch occupies the Grill or Assembly Station.
+        candidates.Sort((a, b) => b.currentStepIndex.CompareTo(a.currentStepIndex));
+        foreach (ProductionJob candidate in candidates)
+        {
+            if (!TryReserveCurrentStation(candidate, employee)) continue;
+            bestJob = candidate;
             break;
         }
 
         if (bestJob == null)
             bestJob = TryQueueCompatibleStockJob(employee);
         if (bestJob == null) return false;
+        if (bestJob.reservedWorkStation == null && !TryReserveCurrentStation(bestJob, employee))
+            return false;
         bestJob.assignedTo = employee;
         employee.AssignJob(bestJob);
         return true;
@@ -1240,15 +1298,226 @@ public class ProductionManager : MonoBehaviour
 
     public void ReleaseJob(ProductionJob job)
     {
-        if (job != null)
-            job.assignedTo = null;
+        if (job == null) return;
+        ReleaseReservations(job);
+        job.assignedTo = null;
+    }
+
+    /// <summary>Discard runtime-only production work before rebuilding a saved kitchen.</summary>
+    public void ResetTransientProductionState()
+    {
+        foreach (ProductionJob job in new List<ProductionJob>(jobsWithReservations))
+            ReleaseReservations(job);
+        stationWorkReservations.Clear();
+        jobsWithReservations.Clear();
+        pendingJobs.Clear();
+        orderedHistory.Clear();
+        completedHistory.Clear();
+        completedFlowHistory.Clear();
     }
 
     public void CompleteJob(ProductionJob job)
     {
         if (job == null) return;
+        ReleaseReservations(job);
         job.assignedTo = null;
         pendingJobs.Remove(job);
+    }
+
+    public bool TryReserveCurrentStation(ProductionJob job, KitchenEmployee employee)
+    {
+        if (job == null || employee == null || !job.CurrentStationType.HasValue) return false;
+        GameObject station = employee.GetOperatedStationObject(job.CurrentStationType.Value);
+        if (station == null) return false;
+        if (stationWorkReservations.TryGetValue(station, out ProductionJob owner)
+            && owner != null && owner != job)
+            return false;
+
+        stationWorkReservations[station] = job;
+        job.reservedWorkStation = station;
+        jobsWithReservations.Add(job);
+
+        // A source worker must claim the next buffer before taking physical stock.
+        // Reserving one slot is sufficient to make the single-buffer Grill exclusive;
+        // the claim is expanded to the worker's actual batch during handoff.
+        if (job.CurrentStationType.Value == StationType.Freezer)
+        {
+            GameObject destination = GetFlowOutput(employee, station);
+            int desiredBatch = Mathf.Clamp(employee.CarryCapacity, 1, 4);
+            if (job.pipeline != null && System.Array.IndexOf(job.pipeline, StationType.Assembly) >= 0)
+                desiredBatch = Mathf.Min(desiredBatch, AssemblyStation.IngredientCapacity);
+            if (destination == null || !TryReserveDestination(job, destination, job.product, desiredBatch))
+            {
+                ReleaseWorkReservation(job);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public void ReleaseWorkReservation(ProductionJob job)
+    {
+        if (job == null || job.reservedWorkStation == null) return;
+        if (stationWorkReservations.TryGetValue(job.reservedWorkStation, out ProductionJob owner)
+            && owner == job)
+            stationWorkReservations.Remove(job.reservedWorkStation);
+        job.reservedWorkStation = null;
+        RemoveReservationTrackingIfEmpty(job);
+    }
+
+    public bool TryReserveTransfer(ProductionJob job, GameObject source, GameObject destination,
+        ItemDefinition item, int requestedUnits)
+    {
+        if (job == null || source == null || destination == null || item == null || requestedUnits <= 0)
+            return false;
+
+        IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
+        IStationBuffer destinationBuffer = destination.GetComponent<IStationBuffer>();
+        if (sourceBuffer == null || destinationBuffer == null) return false;
+
+        int outputAvailable = sourceBuffer.GetOutputCount(item) - ReservedOutputCount(source, item, job);
+        int destinationAvailable = GetAvailableInputCapacity(destinationBuffer, destination, item, job);
+        int units = Mathf.Min(requestedUnits, outputAvailable, destinationAvailable);
+        if (units <= 0 || !destinationBuffer.CanAcceptInput(item, units)) return false;
+
+        ReleaseTransferReservations(job);
+        job.reservedSourceStation = source;
+        job.reservedDestinationStation = destination;
+        job.reservedItem = item;
+        job.reservedOutputUnits = units;
+        job.reservedInputUnits = units;
+        jobsWithReservations.Add(job);
+        return true;
+    }
+
+    public bool TryReserveDestination(ProductionJob job, GameObject destination,
+        ItemDefinition item, int requestedUnits)
+    {
+        if (job == null || destination == null || item == null || requestedUnits <= 0)
+            return false;
+        IStationBuffer destinationBuffer = destination.GetComponent<IStationBuffer>();
+        if (destinationBuffer == null) return false;
+
+        int available = GetAvailableInputCapacity(destinationBuffer, destination, item, job);
+        int units = Mathf.Min(requestedUnits, available);
+        if (units <= 0 || !destinationBuffer.CanAcceptInput(item, units)) return false;
+
+        job.reservedDestinationStation = destination;
+        job.reservedItem = item;
+        job.reservedInputUnits = units;
+        jobsWithReservations.Add(job);
+        return true;
+    }
+
+    public int GetReservedTransferUnits(ProductionJob job) =>
+        job != null ? Mathf.Min(job.reservedOutputUnits, job.reservedInputUnits) : 0;
+
+    public int GetReservedInputUnits(ProductionJob job) =>
+        job != null ? job.reservedInputUnits : 0;
+
+    public int GetReservedInputCount(GameObject station, ItemDefinition item = null)
+    {
+        if (station == null) return 0;
+        int total = 0;
+        foreach (ProductionJob job in jobsWithReservations)
+            if (job != null && job.reservedDestinationStation == station
+                && (item == null || job.reservedItem == item))
+                total += job.reservedInputUnits;
+        return total;
+    }
+
+    public int GetReservedOutputCount(GameObject station, ItemDefinition item = null)
+    {
+        if (station == null) return 0;
+        int total = 0;
+        foreach (ProductionJob job in jobsWithReservations)
+            if (job != null && job.reservedSourceStation == station
+                && (item == null || job.reservedItem == item))
+                total += job.reservedOutputUnits;
+        return total;
+    }
+
+    public void ConsumeOutputReservation(ProductionJob job, int amount)
+    {
+        if (job == null || amount <= 0) return;
+        job.reservedOutputUnits = Mathf.Max(0, job.reservedOutputUnits - amount);
+        if (job.reservedOutputUnits == 0) job.reservedSourceStation = null;
+        RemoveReservationTrackingIfEmpty(job);
+    }
+
+    public void ConsumeInputReservation(ProductionJob job, int amount)
+    {
+        if (job == null || amount <= 0) return;
+        job.reservedInputUnits = Mathf.Max(0, job.reservedInputUnits - amount);
+        if (job.reservedInputUnits == 0) job.reservedDestinationStation = null;
+        RemoveReservationTrackingIfEmpty(job);
+    }
+
+    int ReservedOutputCount(GameObject station, ItemDefinition item, ProductionJob except)
+    {
+        int total = 0;
+        foreach (ProductionJob job in jobsWithReservations)
+            if (job != null && job != except && job.reservedSourceStation == station
+                && job.reservedItem == item)
+                total += job.reservedOutputUnits;
+        return total;
+    }
+
+    int ReservedInputCount(GameObject station, ItemDefinition item, ProductionJob except)
+    {
+        int total = 0;
+        foreach (ProductionJob job in jobsWithReservations)
+            if (job != null && job != except && job.reservedDestinationStation == station
+                && job.reservedItem == item)
+                total += job.reservedInputUnits;
+        return total;
+    }
+
+    int GetAvailableInputCapacity(IStationBuffer buffer, GameObject station, ItemDefinition item,
+        ProductionJob except)
+    {
+        int occupied;
+        HeatLampStation lamp = station.GetComponent<HeatLampStation>();
+        if (lamp != null)
+            occupied = lamp.Count;
+        else if (station.GetComponent<GrillStation>() != null)
+        {
+            if (ReservedInputCount(station, item, except) > 0) return 0;
+            occupied = buffer.GetInputCount(item) + buffer.GetOutputCount(item);
+        }
+        else if (station.GetComponent<AssemblyStation>() != null)
+            return Mathf.Max(0, AssemblyStation.IngredientCapacity - buffer.GetInputCount(item)
+                - ReservedInputCount(station, item, except));
+        else
+            occupied = buffer.GetInputCount(item);
+        return Mathf.Max(0, buffer.InputSlotCapacity - occupied
+            - ReservedInputCount(station, item, except));
+    }
+
+    void ReleaseTransferReservations(ProductionJob job)
+    {
+        if (job == null) return;
+        job.reservedSourceStation = null;
+        job.reservedDestinationStation = null;
+        job.reservedItem = null;
+        job.reservedOutputUnits = 0;
+        job.reservedInputUnits = 0;
+        RemoveReservationTrackingIfEmpty(job);
+    }
+
+    void ReleaseReservations(ProductionJob job)
+    {
+        if (job == null) return;
+        ReleaseWorkReservation(job);
+        ReleaseTransferReservations(job);
+        jobsWithReservations.Remove(job);
+    }
+
+    void RemoveReservationTrackingIfEmpty(ProductionJob job)
+    {
+        if (job != null && job.reservedWorkStation == null && job.reservedSourceStation == null
+            && job.reservedDestinationStation == null)
+            jobsWithReservations.Remove(job);
     }
 
     public void RegisterEmployee(KitchenEmployee emp)
@@ -1285,8 +1554,9 @@ public class ProductionManager : MonoBehaviour
     public bool DeliverToHeatLamp(CustomerOrder order, HeatLampStation lamp = null)
     {
         var l = lamp != null ? lamp : heatLamp;
-        if (l == null) return false;
-        return l.DeliverMeal(order);
+        ItemDefinition item = order != null ? order.PrimaryItem : null;
+        IStationBuffer buffer = l;
+        return buffer != null && buffer.StoreInput(item, 1, order) == 1;
     }
 
     public Vector3 GetFreezerPosition(KitchenEmployee forEmployee = null)
@@ -1387,16 +1657,24 @@ public class ProductionManager : MonoBehaviour
 
     public bool PlacePattyOnGrill(KitchenEmployee forEmployee = null)
     {
-        var g = GetGrillFor(forEmployee);
-        if (g == null || !g.CanPlacePatty()) return false;
-        g.PlacePatty();
-        return true;
+        return PlacePattiesOnGrill(forEmployee, PattyItem, 1) == 1;
+    }
+
+    public int PlacePattiesOnGrill(KitchenEmployee forEmployee, ItemDefinition item, int amount)
+    {
+        IStationBuffer buffer = GetGrillFor(forEmployee);
+        return buffer != null ? buffer.StoreInput(item, amount) : 0;
     }
 
     public bool TakePattyFromGrill(KitchenEmployee forEmployee = null)
     {
-        var g = GetGrillFor(forEmployee);
-        return g != null && g.TakeCookedPatty();
+        return TakePattiesFromGrill(forEmployee, PattyItem, 1) == 1;
+    }
+
+    public int TakePattiesFromGrill(KitchenEmployee forEmployee, ItemDefinition item, int amount)
+    {
+        IStationBuffer buffer = GetGrillFor(forEmployee);
+        return buffer != null ? buffer.TakeOutput(item, amount) : 0;
     }
 
     public float GetFreezerProcessTime(KitchenEmployee forEmployee = null)
@@ -1408,18 +1686,22 @@ public class ProductionManager : MonoBehaviour
 
     public bool TryTakePattyFromFreezer(KitchenEmployee forEmployee = null)
     {
+        return TryTakePattiesFromFreezer(forEmployee, PattyItem, 1) == 1;
+    }
+
+    public int TryTakePattiesFromFreezer(KitchenEmployee forEmployee, ItemDefinition item, int amount)
+    {
         var f = forEmployee != null ? forEmployee.GetFreezerStation() : null;
         if (f == null) f = freezer;
-        if (f == null) return false;
-        return f.TryTakePatty(PattyItem);
+        IStationBuffer buffer = f;
+        return buffer != null ? buffer.TakeOutput(item, amount) : 0;
     }
 
     public bool HasPattyInStock()
     {
-        if (PattyItem == null) return false;
-        var inv = KitchenInventory.Instance;
-        if (inv == null) return true;
-        return inv.Has(PattyItem);
+        var f = freezer != null ? freezer : FindObjectOfType<FreezerStation>();
+        IStationBuffer buffer = f;
+        return PattyItem != null && buffer != null && buffer.GetOutputCount(PattyItem) > 0;
     }
 
     public float GetGrillProcessTime(KitchenEmployee forEmployee = null)

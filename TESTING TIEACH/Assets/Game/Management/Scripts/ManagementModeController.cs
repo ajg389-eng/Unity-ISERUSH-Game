@@ -65,6 +65,8 @@ public class ManagementModeController : MonoBehaviour
     TextMeshProUGUI productionOutputName;
     TextMeshProUGUI productionOutputRate;
     TextMeshProUGUI productionCycleText;
+    GameObject stationDiagnosticsRoot;
+    TextMeshProUGUI stationDiagnosticsText;
     GameObject pickupInventoryRoot;
     TextMeshProUGUI pickupStockText;
     readonly RawImage[] pickupSlotPreviews = new RawImage[4];
@@ -194,6 +196,7 @@ public class ManagementModeController : MonoBehaviour
                 RefreshHeatLampInventory();
             else
                 RefreshRecipeStationRatesLive();
+            RefreshStationDiagnostics();
         }
 
         if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
@@ -638,7 +641,99 @@ public class ManagementModeController : MonoBehaviour
 
         RefreshProductSection();
         RefreshHeatLampInventory();
+        RefreshStationDiagnostics();
         ApplyPanelLayout(isHeatLamp);
+    }
+
+    void EnsureStationDiagnosticsUI()
+    {
+        if (stationPopup == null || stationDiagnosticsRoot != null) return;
+
+        stationDiagnosticsRoot = new GameObject("StationDiagnostics", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement));
+        stationDiagnosticsRoot.transform.SetParent(stationPopup.transform, false);
+        stationDiagnosticsRoot.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.94f);
+        var size = stationDiagnosticsRoot.GetComponent<LayoutElement>();
+        size.minHeight = 62f;
+        size.preferredHeight = 62f;
+        size.flexibleHeight = 0f;
+
+        var labelObject = new GameObject("DiagnosticsText", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelObject.transform.SetParent(stationDiagnosticsRoot.transform, false);
+        RectTransform labelRect = (RectTransform)labelObject.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(8f, 5f);
+        labelRect.offsetMax = new Vector2(-8f, -5f);
+        stationDiagnosticsText = labelObject.GetComponent<TextMeshProUGUI>();
+        stationDiagnosticsText.fontSize = 10.5f;
+        stationDiagnosticsText.alignment = TextAlignmentOptions.TopLeft;
+        stationDiagnosticsText.color = new Color(0.91f, 0.93f, 0.94f, 1f);
+        stationDiagnosticsText.richText = true;
+        stationDiagnosticsText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) stationDiagnosticsText.font = TMP_Settings.defaultFontAsset;
+    }
+
+    void RefreshStationDiagnostics()
+    {
+        EnsureStationDiagnosticsUI();
+        if (stationDiagnosticsRoot == null || stationDiagnosticsText == null) return;
+        bool show = selectedStation != null;
+        stationDiagnosticsRoot.SetActive(show);
+        if (!show) return;
+
+        StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(selectedStation.gameObject);
+        string state = metrics != null ? metrics.CurrentState.ToString() : "Idle";
+        string utilization = metrics != null && metrics.TotalSeconds >= 1f
+            ? "Working " + metrics.WorkingPercent.ToString("0") + "%  |  Blocked "
+                + metrics.BlockedPercent.ToString("0") + "%  |  Starved "
+                + metrics.StarvedPercent.ToString("0") + "%  |  Idle "
+                + metrics.IdlePercent.ToString("0") + "%"
+            : "Collecting utilization data...";
+
+        ProductionManager manager = ProductionManager.Instance;
+        int incoming = manager != null ? manager.GetReservedInputCount(selectedStation.gameObject) : 0;
+        int outgoing = manager != null ? manager.GetReservedOutputCount(selectedStation.gameObject) : 0;
+        string buffer = BuildBufferSummary(selectedStation, incoming, outgoing);
+        stationDiagnosticsText.text = "<b>STATE: " + state.ToUpperInvariant() + "</b>\n"
+            + utilization + "\n" + buffer;
+    }
+
+    static string BuildBufferSummary(StationNode node, int incoming, int outgoing)
+    {
+        if (node == null) return "Buffer unavailable";
+        AssemblyStation assembly = node.GetComponent<AssemblyStation>();
+        if (assembly != null)
+            return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + AssemblyStation.IngredientCapacity
+                + "  |  input B " + assembly.BufferedPantryInputCount + "/" + AssemblyStation.IngredientCapacity
+                + "  |  output " + assembly.BufferedOutputCount + "/" + AssemblyStation.OutputCapacity
+                + "  |  reserved in " + incoming + ", out " + outgoing;
+
+        GrillStation grill = node.GetComponent<GrillStation>();
+        if (grill != null)
+            return "Buffer: " + grill.BufferedPattyCount + "/" + GrillStation.BufferCapacity
+                + (grill.IsCooked() ? " ready" : (grill.IsCookingPatty ? " cooking" : " empty"))
+                + "  |  reserved in " + incoming + ", out " + outgoing;
+
+        HeatLampStation pickup = node.GetComponent<HeatLampStation>();
+        if (pickup != null)
+            return "Buffer: " + pickup.Count + "/" + pickup.maxCapacity
+                + "  |  reserved in " + incoming + ", out " + outgoing;
+
+        FreezerStation freezer = node.GetComponent<FreezerStation>();
+        if (freezer != null)
+        {
+            ProductionManager manager = ProductionManager.Instance;
+            int stock = manager != null && manager.PattyItem != null
+                ? freezer.GetOutputCount(manager.PattyItem) : 0;
+            return "Output stock: " + stock + "  |  reserved out " + outgoing;
+        }
+
+        IStationBuffer stationBuffer = node.GetComponent<IStationBuffer>();
+        if (stationBuffer != null)
+            return "Capacity: input " + stationBuffer.InputSlotCapacity + "  |  output "
+                + stationBuffer.OutputSlotCapacity + "  |  reserved in " + incoming + ", out " + outgoing;
+        return "No local buffer  |  reserved in " + incoming + ", out " + outgoing;
     }
 
     void RefreshRecipeStationRatesLive()
@@ -1041,16 +1136,17 @@ public class ManagementModeController : MonoBehaviour
         CollapseInactiveLayout(inventoryInfoText != null ? inventoryInfoText.gameObject : null);
         CollapseInactiveLayout(productionDiagramRoot);
         CollapseInactiveLayout(pickupInventoryRoot);
+        CollapseInactiveLayout(stationDiagnosticsRoot);
 
         float height;
         if (heatLampCompact)
-            height = 180f;
+            height = 246f;
         else if (hasRecipeControls)
-            height = 260f;
+            height = 326f;
         else if (hasInput)
-            height = 220f;
+            height = 286f;
         else
-            height = 220f;
+            height = 286f;
 
         if (!usingScenePopup)
             ApplyPopupLayout(rt, height);
@@ -1097,14 +1193,16 @@ public class ManagementModeController : MonoBehaviour
         if (heatLampCompact)
         {
             if (pickupInventoryRoot != null) pickupInventoryRoot.transform.SetSiblingIndex(1);
-            if (statusText != null) statusText.transform.SetSiblingIndex(2);
+            if (stationDiagnosticsRoot != null) stationDiagnosticsRoot.transform.SetSiblingIndex(2);
+            if (statusText != null) statusText.transform.SetSiblingIndex(3);
         }
         else
         {
             if (productionDiagramRoot != null) productionDiagramRoot.transform.SetSiblingIndex(1);
             if (productInfoText != null) productInfoText.transform.SetSiblingIndex(2);
             if (productListContainer != null) productListContainer.SetSiblingIndex(3);
-            if (statusText != null) statusText.transform.SetSiblingIndex(4);
+            if (stationDiagnosticsRoot != null) stationDiagnosticsRoot.transform.SetSiblingIndex(4);
+            if (statusText != null) statusText.transform.SetSiblingIndex(5);
         }
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);

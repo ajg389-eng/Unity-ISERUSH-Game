@@ -2,6 +2,22 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
+/// Common physical inventory contract for stations on a production flow.
+/// An item transfer must remove units from one buffer before inserting them
+/// into the next buffer or a worker's carried inventory.
+/// </summary>
+public interface IStationBuffer
+{
+    int InputSlotCapacity { get; }
+    int OutputSlotCapacity { get; }
+    int GetInputCount(ItemDefinition item);
+    int GetOutputCount(ItemDefinition item);
+    bool CanAcceptInput(ItemDefinition item, int amount);
+    int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null);
+    int TakeOutput(ItemDefinition item, int amount);
+}
+
+/// <summary>
 /// Attach to kitchen stations. Tracks which worker operates this station
 /// and where its output is routed (Assign Output → click another station).
 /// </summary>
@@ -28,6 +44,7 @@ public class StationNode : MonoBehaviour
     void Awake()
     {
         SyncAssignedWorkers();
+        StationRuntimeMetrics.EnsureOn(gameObject);
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
     }
@@ -261,6 +278,7 @@ public class StationNode : MonoBehaviour
         if (go == null) return null;
         var node = go.GetComponent<StationNode>();
         if (node == null) node = go.AddComponent<StationNode>();
+        StationRuntimeMetrics.EnsureOn(go);
         return node;
     }
 
@@ -277,5 +295,115 @@ public class StationNode : MonoBehaviour
             ?? col.GetComponentInParent<HeatLampStation>()?.gameObject
             ?? col.GetComponentInParent<Register>()?.gameObject;
         return go != null ? EnsureOn(go) : null;
+    }
+}
+
+public enum StationRuntimeState
+{
+    Idle,
+    Working,
+    Starved,
+    Blocked
+}
+
+/// <summary>
+/// Measures what a station actually spends time doing. The totals are runtime observations,
+/// not theoretical rates, so they expose starving and blocked buffers caused by the layout.
+/// </summary>
+public sealed class StationRuntimeMetrics : MonoBehaviour
+{
+    StationNode node;
+    float workingSeconds;
+    float starvedSeconds;
+    float blockedSeconds;
+    float idleSeconds;
+
+    public StationRuntimeState CurrentState { get; private set; } = StationRuntimeState.Idle;
+    public float TotalSeconds => workingSeconds + starvedSeconds + blockedSeconds + idleSeconds;
+    public float WorkingSeconds => workingSeconds;
+    public float StarvedSeconds => starvedSeconds;
+    public float BlockedSeconds => blockedSeconds;
+    public float IdleSeconds => idleSeconds;
+    public float WorkingPercent => Percent(workingSeconds);
+    public float StarvedPercent => Percent(starvedSeconds);
+    public float BlockedPercent => Percent(blockedSeconds);
+    public float IdlePercent => Percent(idleSeconds);
+
+    public static StationRuntimeMetrics EnsureOn(GameObject station)
+    {
+        if (station == null) return null;
+        StationRuntimeMetrics metrics = station.GetComponent<StationRuntimeMetrics>();
+        return metrics != null ? metrics : station.AddComponent<StationRuntimeMetrics>();
+    }
+
+    void Awake()
+    {
+        node = GetComponent<StationNode>();
+    }
+
+    void Update()
+    {
+        if (node == null) node = GetComponent<StationNode>();
+        CurrentState = EvaluateState();
+        float elapsed = Time.deltaTime;
+        switch (CurrentState)
+        {
+            case StationRuntimeState.Working: workingSeconds += elapsed; break;
+            case StationRuntimeState.Starved: starvedSeconds += elapsed; break;
+            case StationRuntimeState.Blocked: blockedSeconds += elapsed; break;
+            default: idleSeconds += elapsed; break;
+        }
+    }
+
+    float Percent(float seconds)
+    {
+        return TotalSeconds > 0.01f ? seconds * 100f / TotalSeconds : 0f;
+    }
+
+    StationRuntimeState EvaluateState()
+    {
+        if (node != null && node.assignedWorkers != null)
+        {
+            foreach (KitchenEmployee worker in node.assignedWorkers)
+            {
+                if (worker == null || worker.GetCurrentStationObject() != gameObject) continue;
+                if (worker.IsActivelyWorkingAt(gameObject)) return StationRuntimeState.Working;
+                if (worker.CurrentActivity == KitchenEmployee.WorkerActivityState.Blocked)
+                    return StationRuntimeState.Blocked;
+            }
+        }
+
+        AssemblyStation assembly = GetComponent<AssemblyStation>();
+        if (assembly != null)
+        {
+            if (assembly.BufferedOutputCount >= AssemblyStation.OutputCapacity)
+                return StationRuntimeState.Blocked;
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            if (recipe != null && (assembly.BufferedProcessedInputCount < Mathf.Max(1, recipe.processedInputAmount)
+                || assembly.BufferedPantryInputCount < Mathf.Max(1, recipe.pantryInputAmount)))
+                return StationRuntimeState.Starved;
+        }
+
+        GrillStation grill = GetComponent<GrillStation>();
+        if (grill != null)
+        {
+            if (grill.IsCookingPatty) return StationRuntimeState.Working;
+            if (grill.IsCooked()) return StationRuntimeState.Blocked;
+            if (!grill.HasPattyOnGrill) return StationRuntimeState.Starved;
+        }
+
+        HeatLampStation pickup = GetComponent<HeatLampStation>();
+        if (pickup != null)
+            return pickup.Count >= pickup.maxCapacity ? StationRuntimeState.Blocked : StationRuntimeState.Idle;
+
+        FreezerStation freezer = GetComponent<FreezerStation>();
+        if (freezer != null)
+        {
+            ProductionManager manager = ProductionManager.Instance;
+            if (manager != null && manager.PattyItem != null && !freezer.HasPatty(manager.PattyItem))
+                return StationRuntimeState.Starved;
+        }
+
+        return StationRuntimeState.Idle;
     }
 }

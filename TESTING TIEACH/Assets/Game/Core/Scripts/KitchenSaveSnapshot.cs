@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 4, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 5, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
@@ -16,7 +16,7 @@ public class KitchenSaveSnapshot
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1; public Vector3 counterPosition; }
+    [Serializable] public class Equipment { public string item, product; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public List<int> stations = new List<int>(), workers = new List<int>(); }
 
@@ -59,8 +59,16 @@ public class KitchenSaveSnapshot
                             || (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(go)) && WorkerFlowAssigner.GetStationId(go) == WorkerFlowAssigner.GetStationId(item.prefab));
                     if (!match) continue;
                     objects.Add(go);
-                    s.equipment.Add(new Equipment { item=item.name, position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
-                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero });
+                    var grill = go.GetComponent<GrillStation>();
+                    var assembly = go.GetComponent<AssemblyStation>();
+                    ItemDefinition product = assembly != null ? assembly.selectedProduct : grill != null ? grill.selectedProduct : null;
+                    s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
+                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
+                        processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
+                        pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
+                        bufferedOutputs=assembly != null ? assembly.BufferedOutputCount : 0,
+                        processingUnits=grill != null ? grill.BufferedPattyCount : 0,
+                        processProgress=grill != null ? grill.CookProgressSeconds : 0f });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -90,13 +98,14 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>4 || inv==null || pm==null) return false;
+        if(version<1 || version>5 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
         foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
         if(workers.Count>0 && pm.employeePrefab==null) return false;
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
+        pm.ResetTransientProductionState();
         pm.employees.Clear(); pm.productionFlows.Clear();
         foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
             if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
@@ -120,6 +129,9 @@ public class KitchenSaveSnapshot
         }
         for(int i=0;i<equipment.Count;i++) {
             var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
+            ItemDefinition product = !string.IsNullOrEmpty(e.product) && definitions.TryGetValue(e.product,out var savedProduct) ? savedProduct : null;
+            var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
+            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
             if(e.slot>=0) {
                 CounterSurface closest=null; float best=float.PositiveInfinity;
                 foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }
@@ -142,6 +154,7 @@ public class KitchenSaveSnapshot
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
+        foreach(var flow in pm.productionFlows) if(flow!=null) WorkerFlowAssigner.ApplyBalancedTeam(flow);
         // Version 1 checkpoints included the removed door lesson at index 2.
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1

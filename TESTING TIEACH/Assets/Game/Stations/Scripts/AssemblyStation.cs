@@ -6,7 +6,7 @@ using UnityEngine.Serialization;
 /// Recipe-driven assembly station. Recipes may create final menu items or intermediates
 /// that feed a later assembly station.
 /// </summary>
-public class AssemblyStation : MonoBehaviour
+public class AssemblyStation : MonoBehaviour, IStationBuffer
 {
     public const int IngredientCapacity = 2;
     public const int OutputCapacity = 2;
@@ -43,6 +43,42 @@ public class AssemblyStation : MonoBehaviour
     public int BufferedProcessedInputCount => bufferedProcessedInputs;
     public int BufferedPantryInputCount => bufferedPantryInputs;
     public int BufferedOutputCount => bufferedOutputs;
+    public int InputSlotCapacity => IngredientCapacity * 2;
+    public int OutputSlotCapacity => OutputCapacity;
+
+    public int GetInputCount(ItemDefinition item)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null) return 0;
+        if (item == recipe.pantryInput) return bufferedPantryInputs;
+        if (recipe.processedInput == null || item == recipe.processedInput) return bufferedProcessedInputs;
+        return 0;
+    }
+
+    public int GetOutputCount(ItemDefinition item)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && recipe.Produces(item) ? bufferedOutputs : 0;
+    }
+
+    public bool CanAcceptInput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null || amount <= 0) return false;
+        if (item == recipe.pantryInput)
+            return bufferedPantryInputs + amount <= IngredientCapacity;
+        return (recipe.processedInput == null || item == recipe.processedInput)
+            && bufferedProcessedInputs + amount <= IngredientCapacity;
+    }
+
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (!CanAcceptInput(item, amount) || recipe == null) return 0;
+        if (item == recipe.pantryInput)
+            return ReceivePantryInput(item, amount);
+        return ReceiveProcessedInput(item, amount);
+    }
 
     public bool HasProductSelected => GetSelectedRecipe() != null;
 
@@ -173,6 +209,18 @@ public class AssemblyStation : MonoBehaviour
         bufferedOutputs -= taken;
         if (taken > 0) RefreshTableDisplay();
         return taken;
+    }
+
+    public void RestoreBufferedState(ItemDefinition product, int processedInputs, int pantryInputs, int outputs)
+    {
+        selectedProduct = product;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        selectedRecipe = config != null ? config.GetAssemblyRecipe(product) : null;
+        bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, IngredientCapacity);
+        bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, IngredientCapacity);
+        bufferedOutputs = Mathf.Clamp(outputs, 0, OutputCapacity);
+        RefreshTableDisplay();
     }
 
     public Vector3 GetInteractionPosition()

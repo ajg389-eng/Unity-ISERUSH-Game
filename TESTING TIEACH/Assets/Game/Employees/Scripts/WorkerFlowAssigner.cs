@@ -654,6 +654,11 @@ public static class WorkflowAnalysis
         public int minimumCarryCapacity = 1;
         public int maximumCarryCapacity = 1;
         public string bottleneck = "None";
+        public float layoutEfficiencyPercent;
+        public float runtimeWorkingPercent;
+        public float runtimeWaitPercent;
+        public float actualOutputPerMinute;
+        public float throughputEfficiencyPercent;
     }
 
     public static List<GameObject> GetOrderedRoute(KitchenEmployee employee)
@@ -978,7 +983,14 @@ public static class WorkflowAnalysis
             + "\nLayout: " + layout.routeTiles.ToString("0") + " route tiles"
             + " (" + layout.travelSeconds.ToString("0.0") + "s travel/trip)"
             + "  |  Carry: " + FormatCarryRange(layout)
-            + "  |  Bottleneck: " + layout.bottleneck;
+            + "  |  Bottleneck: " + layout.bottleneck
+            + "\nEfficiency: process " + layout.stationWorkSeconds.ToString("0.0") + "s"
+            + "  |  travel " + layout.travelSeconds.ToString("0.0") + "s"
+            + "  |  layout " + layout.layoutEfficiencyPercent.ToString("0") + "%"
+            + "  |  wait " + layout.runtimeWaitPercent.ToString("0") + "%"
+            + "\nThroughput: " + layout.actualOutputPerMinute.ToString("0.0") + "/min actual"
+            + "  |  " + layout.effectiveOutputPerMinute.ToString("0.0") + "/min modeled"
+            + "  |  score " + layout.throughputEfficiencyPercent.ToString("0") + "%";
         foreach (ItemDefinition item in products)
         {
             string name = inventory != null ? inventory.GetDisplayName(item)
@@ -1084,6 +1096,25 @@ public static class WorkflowAnalysis
         if (grid != null)
             result.travelSeconds = result.routeTiles * grid.cellSize / Mathf.Max(0.1f, moveSpeed);
 
+        float productiveCycleSeconds = result.stationWorkSeconds + result.travelSeconds;
+        result.layoutEfficiencyPercent = productiveCycleSeconds > 0.01f
+            ? result.stationWorkSeconds * 100f / productiveCycleSeconds : 0f;
+
+        float trackedWorking = 0f;
+        float trackedWaiting = 0f;
+        var trackedStations = new HashSet<GameObject>();
+        foreach (GameObject station in route)
+        {
+            if (station == null || !trackedStations.Add(station)) continue;
+            StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(station);
+            if (metrics == null) continue;
+            trackedWorking += metrics.WorkingSeconds;
+            trackedWaiting += metrics.StarvedSeconds + metrics.BlockedSeconds + metrics.IdleSeconds;
+        }
+        float trackedTotal = trackedWorking + trackedWaiting;
+        result.runtimeWorkingPercent = trackedTotal > 0.01f ? trackedWorking * 100f / trackedTotal : 0f;
+        result.runtimeWaitPercent = trackedTotal > 0.01f ? trackedWaiting * 100f / trackedTotal : 0f;
+
         result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, out string stationBottleneck);
 
         float laborCycle = 0f;
@@ -1136,6 +1167,12 @@ public static class WorkflowAnalysis
                 || result.laborCapacityPerMinute < result.stationCapacityPerMinute - 0.01f);
         result.bottleneck = laborLimited ? "Worker travel/workload"
             : (!string.IsNullOrEmpty(stationBottleneck) ? stationBottleneck : "None");
+        ProductionManager production = ProductionManager.Instance;
+        result.actualOutputPerMinute = production != null
+            ? production.GetFlowCompletedOutputPerMinute(flow) : 0f;
+        result.throughputEfficiencyPercent = result.effectiveOutputPerMinute > 0.01f
+            ? Mathf.Clamp(result.actualOutputPerMinute * 100f / result.effectiveOutputPerMinute, 0f, 100f)
+            : 0f;
         return result;
     }
 
