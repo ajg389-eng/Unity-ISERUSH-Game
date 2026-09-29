@@ -57,7 +57,8 @@ public class StationNode : MonoBehaviour
         if (grill != null)
             SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
         else if (assembly != null)
-            SetIo(RateForCycle(assembly.processTimeSeconds, batchSize), RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties", "burgers");
+            SetIo(RateForCycle(assembly.processTimeSeconds, batchSize) * 2f,
+                RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties + buns", "burgers");
         else if (cutting != null)
             SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw toppings", "sliced toppings");
         else if (freezer != null)

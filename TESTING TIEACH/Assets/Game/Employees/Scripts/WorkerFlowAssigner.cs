@@ -282,7 +282,8 @@ public static class WorkerFlowAssigner
             var grill = go.GetComponent<GrillStation>();
             if (grill != null) grill.selectedProduct = burgerItem;
             var assembly = go.GetComponent<AssemblyStation>();
-            if (assembly != null) assembly.selectedProduct = burgerItem;
+            if (assembly != null)
+                assembly.SetRecipe(ProductionManager.Instance.orderConfig.GetAssemblyRecipe(burgerItem));
         }
     }
 
@@ -912,8 +913,8 @@ public static class WorkflowAnalysis
         bool hasRegister = FlowHas(flow, "Register", typeof(Register));
         bool hasDrink = FlowHas(flow, "Drink", typeof(DrinkStation));
         bool canBurger = FlowHas(flow, "Freezer", typeof(FreezerStation))
-            || FlowHas(flow, "Grill", typeof(GrillStation))
-            || FlowHas(flow, "Assembly", typeof(AssemblyStation));
+            && FlowHas(flow, "Grill", typeof(GrillStation))
+            && FlowHas(flow, "Assembly", typeof(AssemblyStation));
         bool canFries = FlowHas(flow, "Pantry", typeof(PantryStation))
             && FlowHas(flow, "Fryer", typeof(FryerStation));
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
@@ -957,6 +958,10 @@ public static class WorkflowAnalysis
                 : product;
             if (resource != null && !result.requiredResources.Contains(resource))
                 result.requiredResources.Add(resource);
+            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(product) : null;
+            if (recipe != null && recipe.pantryInput != null
+                && !result.requiredResources.Contains(recipe.pantryInput))
+                result.requiredResources.Add(recipe.pantryInput);
         }
 
         result.summary = (layout.hasAssignedWorker ? "Cycle " : "Projected cycle ") + cycleLabel
@@ -972,6 +977,10 @@ public static class WorkflowAnalysis
                 ? (config.friesIngredient != null ? config.friesIngredient : item)
                 : item;
             float unitCost = GetIngredientUnitCost(resource, inventory);
+            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(item) : null;
+            if (recipe != null && recipe.pantryInput != null)
+                unitCost += GetIngredientUnitCost(recipe.pantryInput, inventory)
+                    * Mathf.Max(1, recipe.pantryInputAmount);
             int sell = Mathf.Max(0, item.price);
             float profit = sell - unitCost;
             result.lines.Add(

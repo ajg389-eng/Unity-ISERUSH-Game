@@ -52,12 +52,16 @@ public class ManagementModeController : MonoBehaviour
 
     GameObject productionDiagramRoot;
     GameObject productionInputCard;
+    GameObject productionSecondInputCard;
     GameObject productionConversionRoot;
     GameObject productionOutputCard;
     RawImage productionInputPreview;
+    RawImage productionSecondInputPreview;
     RawImage productionOutputPreview;
     TextMeshProUGUI productionInputName;
     TextMeshProUGUI productionInputRate;
+    TextMeshProUGUI productionSecondInputName;
+    TextMeshProUGUI productionSecondInputRate;
     TextMeshProUGUI productionOutputName;
     TextMeshProUGUI productionOutputRate;
     TextMeshProUGUI productionCycleText;
@@ -702,6 +706,9 @@ public class ManagementModeController : MonoBehaviour
 
         productionInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input", out productionInputPreview,
             out productionInputName, out productionInputRate);
+        productionSecondInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input 2",
+            out productionSecondInputPreview, out productionSecondInputName, out productionSecondInputRate);
+        productionSecondInputCard.SetActive(false);
 
         productionConversionRoot = new GameObject("Conversion", typeof(RectTransform),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));
@@ -805,12 +812,15 @@ public class ManagementModeController : MonoBehaviour
         if (productionDiagramRoot == null || node == null) return;
 
         GameObject inputPrefab = null;
+        GameObject secondInputPrefab = null;
         GameObject outputPrefab = null;
         string inputName = string.IsNullOrEmpty(node.inputUnit) || node.inputUnit == "-"
             ? "Kitchen stock" : ToTitleCase(node.inputUnit);
+        string secondInputName = string.Empty;
         string outputName = string.IsNullOrEmpty(node.outputUnit)
             ? "Items" : ToTitleCase(node.outputUnit);
         float inputRate = node.HasInputAmount ? node.inputAmountPerMinute : node.outputAmountPerMinute;
+        float secondInputRate = inputRate;
         float cycleSeconds = 0f;
 
         var freezer = node.GetComponent<FreezerStation>();
@@ -839,11 +849,17 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (assembly != null)
         {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
             inputPrefab = cookedPattyPreviewPrefab;
             outputPrefab = burgerPreviewPrefab;
-            inputName = "Cooked patties";
-            outputName = assembly.selectedProduct != null
-                ? DisplayItemName(assembly.selectedProduct) : "Burger";
+            inputName = recipe != null ? recipe.processedInputName : "Cooked patty";
+            secondInputPrefab = recipe != null && recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
+            secondInputName = recipe != null && recipe.pantryInput != null
+                ? DisplayItemName(recipe.pantryInput) : "Bun";
+            inputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1);
+            secondInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1);
+            outputName = recipe != null ? recipe.DisplayName
+                : (assembly.selectedProduct != null ? DisplayItemName(assembly.selectedProduct) : "Burger");
             cycleSeconds = assembly.processTimeSeconds;
         }
         else if (cutting != null)
@@ -883,14 +899,22 @@ public class ManagementModeController : MonoBehaviour
         }
 
         productionDiagramRoot.SetActive(true);
-        SetProductionDiagramMode(outputOnly);
+        bool hasTwoInputs = assembly != null;
+        SetProductionDiagramMode(outputOnly, hasTwoInputs);
         if (!outputOnly)
             SetDiagramPreview(productionInputPreview, inputPrefab, inputName);
+        if (hasTwoInputs)
+            SetDiagramPreview(productionSecondInputPreview, secondInputPrefab, secondInputName);
         SetDiagramPreview(productionOutputPreview, outputPrefab, outputName);
         if (!outputOnly)
         {
             productionInputName.text = inputName;
             productionInputRate.text = FormatPerMinute(inputRate) + " / min";
+        }
+        if (hasTwoInputs)
+        {
+            productionSecondInputName.text = secondInputName;
+            productionSecondInputRate.text = FormatPerMinute(secondInputRate) + " / min";
         }
         productionOutputName.text = outputName;
         productionOutputRate.text = FormatPerMinute(node.outputAmountPerMinute) + " / min";
@@ -898,7 +922,7 @@ public class ManagementModeController : MonoBehaviour
             productionCycleText.text = FormatSeconds(cycleSeconds) + "s\ncycle";
     }
 
-    void SetProductionDiagramMode(bool outputOnly)
+    void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false)
     {
         var diagramSize = productionDiagramRoot != null
             ? productionDiagramRoot.GetComponent<LayoutElement>() : null;
@@ -910,6 +934,7 @@ public class ManagementModeController : MonoBehaviour
         }
 
         if (productionInputCard != null) productionInputCard.SetActive(!outputOnly);
+        if (productionSecondInputCard != null) productionSecondInputCard.SetActive(!outputOnly && twoInputs);
         if (productionConversionRoot != null) productionConversionRoot.SetActive(!outputOnly);
         if (productionOutputCard == null) return;
 
@@ -918,6 +943,26 @@ public class ManagementModeController : MonoBehaviour
         outputSize.minWidth = outputOnly ? 150f : 98f;
         outputSize.preferredWidth = outputOnly ? 180f : 104f;
         outputSize.flexibleWidth = outputOnly ? 0f : 1f;
+
+        SetProductionCardWidth(productionInputCard, twoInputs ? 66f : 98f, twoInputs ? 76f : 104f);
+        SetProductionCardWidth(productionSecondInputCard, 66f, 76f);
+        SetProductionCardWidth(productionOutputCard, outputOnly ? 150f : (twoInputs ? 76f : 98f),
+            outputOnly ? 180f : (twoInputs ? 88f : 104f));
+        if (productionInputCard != null)
+        {
+            TextMeshProUGUI heading = productionInputCard.transform.Find("Heading")?.GetComponent<TextMeshProUGUI>();
+            if (heading != null) heading.text = twoInputs ? "INPUT 1" : "INPUT";
+        }
+    }
+
+    static void SetProductionCardWidth(GameObject card, float min, float preferred)
+    {
+        if (card == null) return;
+        LayoutElement size = card.GetComponent<LayoutElement>();
+        if (size == null) return;
+        size.minWidth = min;
+        size.preferredWidth = preferred;
+        size.flexibleWidth = 1f;
     }
 
     static void SetDiagramPreview(RawImage image, GameObject prefab, string label)
@@ -1248,9 +1293,25 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        IEnumerable<ItemDefinition> options = grill != null
-            ? config.GetGrillProducts()
-            : config.GetAssemblyProducts();
+        if (assembly != null)
+        {
+            int recipeCount = 0;
+            AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
+            foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
+            {
+                if (recipe == null) continue;
+                recipeCount++;
+                bool selectedRecipe = currentRecipe == recipe;
+                Button recipeButton = CreateProductButton(
+                    recipe.DisplayName + (selectedRecipe ? " [Selected]" : ""), true);
+                AssemblyRecipeDefinition capturedRecipe = recipe;
+                recipeButton.onClick.AddListener(() => SetSelectedAssemblyRecipe(capturedRecipe));
+            }
+            productListContainer.gameObject.SetActive(recipeCount > 0);
+            return;
+        }
+
+        IEnumerable<ItemDefinition> options = config.GetGrillProducts();
 
         int optionCount = 0;
         foreach (var item in options)
@@ -1271,18 +1332,15 @@ public class ManagementModeController : MonoBehaviour
         if (productListContainer == null) return;
 
         var vertical = productListContainer.GetComponent<VerticalLayoutGroup>();
-        if (vertical != null) vertical.enabled = false;
-
-        var horizontal = productListContainer.GetComponent<HorizontalLayoutGroup>();
-        if (horizontal == null)
-            horizontal = productListContainer.gameObject.AddComponent<HorizontalLayoutGroup>();
-        horizontal.enabled = true;
-        horizontal.spacing = 5f;
-        horizontal.childAlignment = TextAnchor.MiddleCenter;
-        horizontal.childControlWidth = true;
-        horizontal.childControlHeight = true;
-        horizontal.childForceExpandWidth = true;
-        horizontal.childForceExpandHeight = true;
+        if (vertical == null)
+            vertical = productListContainer.gameObject.AddComponent<VerticalLayoutGroup>();
+        vertical.enabled = true;
+        vertical.spacing = 5f;
+        vertical.childAlignment = TextAnchor.MiddleCenter;
+        vertical.childControlWidth = true;
+        vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true;
+        vertical.childForceExpandHeight = false;
     }
 
     void SetSelectedProduct(ItemDefinition item)
@@ -1299,10 +1357,22 @@ public class ManagementModeController : MonoBehaviour
         var assembly = selectedStation.GetComponent<AssemblyStation>();
         if (assembly != null)
         {
-            assembly.selectedProduct = item;
+            var manager = ProductionManager.Instance;
+            var config = manager != null ? manager.orderConfig : null;
+            assembly.SetRecipe(config != null ? config.GetAssemblyRecipe(item) : null);
             RefreshPopup();
             SetStatus("Assembly set to produce " + (item.itemName ?? item.name));
         }
+    }
+
+    void SetSelectedAssemblyRecipe(AssemblyRecipeDefinition recipe)
+    {
+        if (selectedStation == null || recipe == null) return;
+        AssemblyStation assembly = selectedStation.GetComponent<AssemblyStation>();
+        if (assembly == null) return;
+        assembly.SetRecipe(recipe);
+        RefreshPopup();
+        SetStatus("Assembly recipe set to " + recipe.DisplayName);
     }
 
     void EnsureProductUI()

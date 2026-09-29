@@ -161,14 +161,14 @@ public class OnboardingTutorial : MonoBehaviour
             "The fries flow is Pantry > Fryer > Pickup Station, starting with potatoes from the pantry.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
-            "Cutting Station",
-            "Buy and place a <b>Cutting Station</b>. It uses the former drink-station model and slices lettuce, cheese, and tomatoes for burgers.\n\n" +
-            "Route burgers through it after the grill and before assembly.\n\nPlace one to continue.",
-            "Next", Highlight.Drink, openInventory: true, requirePlaced: true),
+            "Pantry",
+            "Buy and place a <b>pantry</b>. It supplies buns for burgers and potatoes for fries.\n\n" +
+            "For a burger, the worker carries the cooked patty here, adds a bun, then continues to assembly.\n\nPlace one to continue.",
+            "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly",
-            "Buy and place an <b>assembly</b> table. This finishes burgers: bun, cooked patty, and toppings.\n\n" +
-            "Grill output should point here. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
+            "Buy and place an <b>assembly</b> table. It always combines two inputs into one output.\n\n" +
+            "For the Burger recipe, the inputs are one cooked patty and one bun. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
             "Next", Highlight.Assembly, openInventory: true, requirePlaced: true),
         new Step(
             "Pickup Station",
@@ -176,14 +176,14 @@ public class OnboardingTutorial : MonoBehaviour
             "If this sits empty, upstream stations are too slow. If it fills and items expire, you produced more than you can serve.\n\nPlace one to continue.",
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
-            "Pantry",
-            "Buy and place a <b>pantry</b> for burger ingredients and the potatoes used to make fries.\n\n" +
-            "A fries worker starts here, then carries potatoes to the fryer.\n\nPlace one to continue.",
-            "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
+            "Assembly recipe",
+            "Select the assembly station in Management to choose its recipe. Burger is the first recipe available, and more recipes can be added later.\n\n" +
+            "The station panel shows both required inputs and the single finished output.",
+            "Next", Highlight.Management),
         new Step(
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press Q then 3), then <b>Menu & Supply</b>.\n\n" +
-            "Buy Burger, Lettuce, Cheese, Tomatoes, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
+            "Buy Burger patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
@@ -194,8 +194,8 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Create a flow",
             "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
-            "Click stations <b>in production order</b>. Example burger line: freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
-            "For this tutorial, also buy a Cutting Station, then build Freezer > Grill > Cutting Station > Assembly > Pickup Station. Next stays locked until this burger route is complete.",
+            "Click stations <b>in production order</b>. The burger line is freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
+            "Build Freezer > Grill > Assembly > Pickup Station. Then make a short Pantry > Assembly feeder flow so buns arrive independently.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true),
         new Step(
             "Edit a flow",
@@ -246,11 +246,11 @@ public class OnboardingTutorial : MonoBehaviour
         "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
         "Its output should eventually lead to a Pickup Station so customers can collect the finished fries.",
 
-        "Buy and place a <b>Cutting Station</b>. This is the former drink-station model, now used to slice burger toppings.\n\n" +
-        "Route burgers from the grill to cutting, then assembly.",
+        "Place a <b>pantry</b> so the burger line can collect buns. The same pantry supplies potatoes to a fries line.\n\n" +
+        "Route burgers from the grill to the pantry, then assembly.",
 
-        "Place an <b>assembly</b> table. Workers combine a cooked patty with the bun and toppings here to finish a burger.\n\n" +
-        "The burger route should move from grill to assembly, then from assembly to a Pickup Station.",
+        "Place an <b>assembly</b> table. Workers combine one cooked patty with one bun here to finish a burger.\n\n" +
+        "The burger route should move from grill to pantry to assembly, then from assembly to a Pickup Station.",
 
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
@@ -265,7 +265,7 @@ public class OnboardingTutorial : MonoBehaviour
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
 
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then select stations in production order.\n\n" +
-        "Build this burger route: <b>Freezer > Grill > Assembly > Pickup Station</b>. Click Finish when the sequence is correct.",
+        "Build this burger route: <b>Freezer > Grill > Assembly > Pickup Station</b>. Then create a <b>Pantry > Assembly</b> feeder flow for buns.",
 
         "Plans change, so you need to know how to revise one. Select the flow chip, then click <b>Edit Flow</b>.\n\n" +
         "Selecting an existing stop trims the route back to that point. Selecting a new station extends it. Check the route, then click Finish to save it.",
@@ -610,15 +610,14 @@ public class OnboardingTutorial : MonoBehaviour
 
     static bool IsBurgerTutorialFlow(ProductionFlowPlan flow)
     {
-        if (flow == null || flow.stations == null || flow.stations.Count != 5) return false;
+        if (flow == null || flow.stations == null || flow.stations.Count != 4) return false;
         foreach (var station in flow.stations)
             if (station == null || !station.activeInHierarchy || station.GetComponent<PlacedBuildItem>() == null)
                 return false;
         return flow.stations[0].GetComponent<FreezerStation>() != null
             && flow.stations[1].GetComponent<GrillStation>() != null
-            && flow.stations[2].GetComponent<CuttingStation>() != null
-            && flow.stations[3].GetComponent<AssemblyStation>() != null
-            && flow.stations[4].GetComponent<HeatLampStation>() != null;
+            && flow.stations[2].GetComponent<AssemblyStation>() != null
+            && flow.stations[3].GetComponent<HeatLampStation>() != null;
     }
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)

@@ -1,6 +1,27 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[System.Serializable]
+public class AssemblyRecipeDefinition
+{
+    public string recipeName = "Burger";
+    public ItemDefinition output;
+
+    [Header("Input 1: processed work")]
+    public string processedInputName = "Cooked patty";
+    [Min(1)] public int processedInputAmount = 1;
+
+    [Header("Input 2: pantry material")]
+    public ItemDefinition pantryInput;
+    [Min(1)] public int pantryInputAmount = 1;
+
+    public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
+        ? recipeName
+        : (output != null && !string.IsNullOrWhiteSpace(output.itemName) ? output.itemName : "Recipe");
+
+    public bool Produces(ItemDefinition item) => item != null && output == item;
+}
+
 /// <summary>
 /// Config for generating customer orders: any combination of burger, fries, and drink.
 /// Create via Assets > Create > FactoryGame > Customer Order Config.
@@ -15,6 +36,9 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition friesItem;
     [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
     public ItemDefinition friesIngredient;
+    [Header("Assembly recipes")]
+    [Tooltip("Recipes players can choose on an Assembly Station.")]
+    public List<AssemblyRecipeDefinition> assemblyRecipes = new List<AssemblyRecipeDefinition>();
     [Header("Burger toppings")]
     public ItemDefinition lettuceIngredient;
     public ItemDefinition cheeseIngredient;
@@ -105,16 +129,16 @@ public class CustomerOrderConfig : ScriptableObject
 
     /// <summary>
     /// Production pipeline for a single menu item (not including heat lamp delivery).
-    /// Burger: Freezer → Grill → Assembly
-    /// Fries: Fryer
-    /// Drink: none (cashier dispenses straight to the customer)
+    /// Burger main line: Freezer → Grill → Assembly. Pantry supplies buns in parallel.
+    /// Fries: Pantry → Fryer
+    /// Drink: Drink Fountain
     /// </summary>
     public StationType[] GetPipeline(ItemDefinition item)
     {
         switch (GetProductKind(item))
         {
             case ProductKind.Burger:
-                return new[] { StationType.Freezer, StationType.Grill, StationType.Cutting, StationType.Assembly };
+                return new[] { StationType.Freezer, StationType.Grill, StationType.Assembly };
             case ProductKind.Fries:
                 return new[] { StationType.Pantry, StationType.Fryer };
             case ProductKind.Drink:
@@ -133,7 +157,34 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>Products the assembly station can be set to make (burgers only).</summary>
     public IEnumerable<ItemDefinition> GetAssemblyProducts()
     {
-        if (burgerBase != null) yield return burgerBase;
+        bool yielded = false;
+        if (assemblyRecipes != null)
+        {
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe == null || recipe.output == null) continue;
+                yielded = true;
+                yield return recipe.output;
+            }
+        }
+        if (!yielded && burgerBase != null) yield return burgerBase;
+    }
+
+    public IEnumerable<AssemblyRecipeDefinition> GetAssemblyRecipes()
+    {
+        if (assemblyRecipes == null) yield break;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.output != null)
+                yield return recipe;
+    }
+
+    public AssemblyRecipeDefinition GetAssemblyRecipe(ItemDefinition output)
+    {
+        if (output == null || assemblyRecipes == null) return null;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.Produces(output))
+                return recipe;
+        return null;
     }
 
     public CustomerOrder GenerateRandomOrder()
@@ -206,9 +257,15 @@ public class CustomerOrderConfig : ScriptableObject
     public IEnumerable<ItemDefinition> GetIngredientItems()
     {
         if (burgerBase != null) yield return burgerBase;
-        if (lettuceIngredient != null) yield return lettuceIngredient;
-        if (cheeseIngredient != null) yield return cheeseIngredient;
-        if (tomatoIngredient != null) yield return tomatoIngredient;
+        if (assemblyRecipes != null)
+        {
+            var yieldedRecipeInputs = new HashSet<ItemDefinition>();
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe != null && recipe.pantryInput != null && yieldedRecipeInputs.Add(recipe.pantryInput))
+                    yield return recipe.pantryInput;
+            }
+        }
         if (friesIngredient != null) yield return friesIngredient;
         else if (friesItem != null) yield return friesItem;
         if (drinkItem != null) yield return drinkItem;

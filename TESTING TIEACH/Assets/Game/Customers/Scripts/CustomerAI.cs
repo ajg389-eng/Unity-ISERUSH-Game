@@ -53,6 +53,8 @@ public class CustomerAI : MonoBehaviour
     Phase phase = Phase.GoingToSlot;
     bool patienceStarted;
     CustomerPath exitPath;
+    bool hasReturnSpawnPoint;
+    Vector3 returnSpawnPoint;
 
     // Slot assigned by Register even while still walking the entry path
     bool hasQueueSlot;
@@ -170,6 +172,12 @@ public class CustomerAI : MonoBehaviour
         // If we already have a queue slot (joined before path setup), start moving once entry is done.
         if (phase != Phase.Entering)
             ApplyQueueSlotMovement();
+    }
+
+    public void SetReturnSpawnPoint(Vector3 point)
+    {
+        returnSpawnPoint = point;
+        hasReturnSpawnPoint = true;
     }
 
     public void SetOrder(CustomerOrder o)
@@ -415,8 +423,20 @@ public class CustomerAI : MonoBehaviour
         else
             route.Add(transform.position + Vector3.forward * 8f);
 
+        AppendReturnToSpawn(route);
         AppendCarReturn(route);
         DetourAroundBus(route);
+    }
+
+    void AppendReturnToSpawn(List<Vector3> into)
+    {
+        if (!hasReturnSpawnPoint || into == null) return;
+        Vector3 from = into.Count > 0 ? into[into.Count - 1] : transform.position;
+        returnSpawnPoint.y = from.y;
+        var outdoor = new List<Vector3>();
+        OutdoorCustomerPathfinder.Build(from, returnSpawnPoint, outdoor);
+        for (int i = 1; i < outdoor.Count; i++)
+            into.Add(outdoor[i]);
     }
 
     void AppendCarReturn(List<Vector3> into)

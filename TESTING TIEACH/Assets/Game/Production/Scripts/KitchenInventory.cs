@@ -114,7 +114,16 @@ public class KitchenInventory : MonoBehaviour
             if (e != null && e.item == item)
                 return e.quantity;
         }
-        return 0;
+
+        // A newly introduced ingredient will not exist in older saves or in a
+        // play session that was already running when the catalog changed.
+        IngredientStockEntry created = EnsureEntry(item);
+        if (grantStartingStock && created != null)
+        {
+            int start = item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
+            created.quantity = Mathf.Max(0, start);
+        }
+        return created != null ? created.quantity : 0;
     }
 
     public bool Has(ItemDefinition item, int amount = 1)

@@ -27,13 +27,13 @@ public class PantryStation : MonoBehaviour
         return transform.position + interactionOffset;
     }
 
-    public bool HasItem(ItemDefinition item)
+    public bool HasItem(ItemDefinition item, int amount = 1)
     {
-        if (item == null) return false;
+        if (item == null || amount <= 0) return false;
         if (!CanDispense(item)) return false;
         var inv = KitchenInventory.Instance;
         if (inv == null) return true; // legacy infinite if no inventory system
-        return inv.Has(item);
+        return inv.Has(item, amount);
     }
 
     public bool TakeItem(ItemDefinition item)
@@ -42,6 +42,14 @@ public class PantryStation : MonoBehaviour
         var inv = KitchenInventory.Instance;
         if (inv == null) return true;
         return inv.TryConsume(item, 1);
+    }
+
+    public bool TakeItems(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0 || !CanDispense(item)) return false;
+        var inv = KitchenInventory.Instance;
+        if (inv == null) return true;
+        return inv.TryConsume(item, amount);
     }
 
     /// <summary>
