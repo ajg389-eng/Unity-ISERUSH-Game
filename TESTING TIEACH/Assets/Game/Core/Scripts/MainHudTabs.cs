@@ -101,10 +101,9 @@ public class MainHudTabs : MonoBehaviour
             return;
         }
 
-        if (!AnyPanelOpen()) return;
-        if (Input.GetKeyDown(KeyCode.Alpha1)) SwitchTo(PrimaryPage.Build);
-        else if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchTo(PrimaryPage.Staff);
-        else if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchTo(PrimaryPage.Business);
+        if (Pressed(KeyCode.Alpha1, KeyCode.Keypad1)) TogglePage(PrimaryPage.Build);
+        else if (Pressed(KeyCode.Alpha2, KeyCode.Keypad2)) TogglePage(PrimaryPage.Staff);
+        else if (Pressed(KeyCode.Alpha3, KeyCode.Keypad3)) TogglePage(PrimaryPage.Business);
     }
 
     public void Build(bool forceDefaultLayout = false)
@@ -208,7 +207,7 @@ public class MainHudTabs : MonoBehaviour
         if (inventoryTabButton != null)
         {
             inventoryTabButton.onClick.RemoveAllListeners();
-            inventoryTabButton.onClick.AddListener(OnInventoryClicked);
+            inventoryTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Build));
             inventoryTabButton.transition = Selectable.Transition.None;
             if (inventoryTabButton.targetGraphic == null)
                 inventoryTabButton.targetGraphic = inventoryBg;
@@ -217,7 +216,7 @@ public class MainHudTabs : MonoBehaviour
         if (managementTabButton != null)
         {
             managementTabButton.onClick.RemoveAllListeners();
-            managementTabButton.onClick.AddListener(OnManagementClicked);
+            managementTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Staff));
             managementTabButton.transition = Selectable.Transition.None;
             if (managementTabButton.targetGraphic == null)
                 managementTabButton.targetGraphic = managementBg;
@@ -226,7 +225,7 @@ public class MainHudTabs : MonoBehaviour
         if (businessTabButton != null)
         {
             businessTabButton.onClick.RemoveAllListeners();
-            businessTabButton.onClick.AddListener(() => SwitchTo(PrimaryPage.Business));
+            businessTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Business));
             businessTabButton.transition = Selectable.Transition.None;
             if (businessTabButton.targetGraphic == null)
                 businessTabButton.targetGraphic = businessBg;
@@ -277,14 +276,25 @@ public class MainHudTabs : MonoBehaviour
         return img;
     }
 
-    void OnInventoryClicked()
+    void TogglePage(PrimaryPage page)
     {
-        SwitchTo(PrimaryPage.Build);
+        if (IsPageOpen(page))
+        {
+            CloseAll();
+            return;
+        }
+
+        SwitchTo(page);
     }
 
-    void OnManagementClicked()
+    bool IsPageOpen(PrimaryPage page)
     {
-        SwitchTo(PrimaryPage.Staff);
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (page == PrimaryPage.Build)
+            return inv != null && inv.IsPanelOpen;
+        if (mgmt == null || !mgmt.IsOpen) return false;
+        return page == lastPage;
     }
 
     public void OpenBuildPage() => SwitchTo(PrimaryPage.Build);
@@ -330,6 +340,11 @@ public class MainHudTabs : MonoBehaviour
         var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
         if (inv != null && inv.IsPanelOpen) inv.TogglePanel();
         if (mgmt != null && mgmt.IsOpen) mgmt.Close();
+    }
+
+    static bool Pressed(KeyCode key, KeyCode keypad)
+    {
+        return Input.GetKeyDown(key) || Input.GetKeyDown(keypad);
     }
 
     static bool AnyPanelOpen()

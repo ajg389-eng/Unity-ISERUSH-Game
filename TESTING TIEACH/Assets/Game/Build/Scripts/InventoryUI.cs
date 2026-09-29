@@ -604,12 +604,42 @@ public class InventoryUI : MonoBehaviour
         if (TryBindExistingTabs() && useSceneLayout && !forceDefaultLayout)
         {
             ApplyConnectedHudBackdrop();
+            KeepPanelsBelowTabBar();
             return;
         }
 
         BuildTabsHierarchy(forceDefaultLayout || !useSceneLayout);
         TryBindExistingTabs();
         ApplyConnectedHudBackdrop();
+        KeepPanelsBelowTabBar();
+    }
+
+    void KeepPanelsBelowTabBar()
+    {
+        if (panel == null) return;
+        Transform contentBox = panel.transform.Find(ContentBoxName);
+        if (contentBox == null) return;
+
+        float reserved = 128f;
+        var tabBar = contentBox.Find(TabBarName) as RectTransform;
+        if (tabBar != null)
+        {
+            float barHeight = tabBar.rect.height > 1f ? tabBar.rect.height : tabBar.sizeDelta.y;
+            float barTop = Mathf.Abs(tabBar.anchoredPosition.y);
+            reserved = barTop + barHeight + 18f;
+        }
+
+        ClearTabBar(contentBox.Find(StationsPanelName) as RectTransform, reserved);
+        ClearTabBar(contentBox.Find(FloorPanelName) as RectTransform, reserved);
+        ClearTabBar(contentBox.Find(CustomizePanelName) as RectTransform, reserved);
+    }
+
+    static void ClearTabBar(RectTransform page, float topInset)
+    {
+        if (page == null) return;
+        Vector2 max = page.offsetMax;
+        max.y = -topInset;
+        page.offsetMax = max;
     }
 
     bool TryBindExistingTabs()

@@ -51,6 +51,28 @@ public class TopHudUtilityControls : MonoBehaviour
         if (music == null) BindMusic();
         if (boundTime == null) BindTime();
         RefreshMusic();
+        FlashUnreadNotice();
+    }
+
+    void FlashUnreadNotice()
+    {
+        if (notificationButton == null) return;
+        var image = notificationButton.targetGraphic as Image;
+        bool unread = NotificationCenter.UnreadCount > 0;
+        if (!unread)
+        {
+            if (image != null) image.color = Control;
+            notificationButton.transform.localScale = Vector3.one;
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 7f);
+        if (image != null)
+            image.color = Color.Lerp(new Color(0.45f, 0.16f, 0.08f, 1f), Warning, pulse);
+        if (notificationButtonText != null)
+            notificationButtonText.color = Color.Lerp(Color.white, Warning, 0.35f + 0.65f * pulse);
+        float scale = 1f + 0.08f * pulse;
+        notificationButton.transform.localScale = new Vector3(scale, scale, 1f);
     }
 
     public void EnsureLayout()

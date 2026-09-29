@@ -7,7 +7,7 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 5;
+    const int CacheVersion = 6;
     const string RootName = "__ItemPreviewThumbnails";
 
     // Shared with the inventory preview frame so fitted square thumbnails do not
@@ -32,8 +32,17 @@ public static class ItemPreviewThumbnails
 
         Vector3 scale = previewScale ?? Vector3.one;
         int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode();
-        if (cache.TryGetValue(key, out var existing) && existing != null)
-            return existing;
+        if (cache.TryGetValue(key, out var existing))
+        {
+            if (existing != null && existing.IsCreated())
+                return existing;
+            cache.Remove(key);
+            if (existing != null)
+            {
+                existing.Release();
+                Object.Destroy(existing);
+            }
+        }
 
         EnsureStage();
         string label = !string.IsNullOrEmpty(displayName) ? displayName : prefab.name;
@@ -43,6 +52,7 @@ public static class ItemPreviewThumbnails
             filterMode = FilterMode.Bilinear,
             name = "Preview_" + label
         };
+        rt.Create();
 
         GameObject instance = null;
         try
@@ -50,6 +60,7 @@ public static class ItemPreviewThumbnails
             instance = Object.Instantiate(prefab, stage);
             instance.name = "PreviewInstance_" + label;
             SetLayerRecursively(instance, stage.gameObject.layer);
+            StripPreviewHelpers(instance);
 
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.Euler(15f, 150f, 0f);
@@ -126,19 +137,56 @@ public static class ItemPreviewThumbnails
         previewCamera.allowMSAA = true;
     }
 
+    static void StripPreviewHelpers(GameObject instance)
+    {
+        Transform[] parts = instance.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            Transform part = parts[i];
+            if (part == null) continue;
+            if (part.name != "InteractionHighlight") continue;
+            Object.DestroyImmediate(part.gameObject);
+        }
+
+        Canvas[] canvases = instance.GetComponentsInChildren<Canvas>(true);
+        for (int i = 0; i < canvases.Length; i++)
+        {
+            if (canvases[i] != null)
+                canvases[i].gameObject.SetActive(false);
+        }
+    }
+
     static Bounds CalculateBounds(GameObject go)
     {
         var renderers = go.GetComponentsInChildren<Renderer>();
         if (renderers == null || renderers.Length == 0)
             return new Bounds(go.transform.position, Vector3.one);
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
+        Vector3 origin = go.transform.position;
+        Bounds bounds = default;
+        bool found = false;
+        for (int i = 0; i < renderers.Length; i++)
         {
-            if (renderers[i] != null)
-                bounds.Encapsulate(renderers[i].bounds);
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled) continue;
+            // Floor markers spawned in Awake can sit on the real grid while the
+            // preview model is parked far below the world, which frames the
+            // station out of the picture.
+            if (Vector3.Distance(renderer.bounds.center, origin) > 12f)
+            {
+                renderer.enabled = false;
+                continue;
+            }
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+                bounds.Encapsulate(renderer.bounds);
         }
-        return bounds;
+
+        return found ? bounds : new Bounds(origin, Vector3.one);
     }
 
     static void SetLayerRecursively(GameObject go, int layer)

@@ -44,7 +44,7 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         contentRt.sizeDelta = Vector2.zero;
         content = contentGo.transform;
         var layout = contentGo.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(12, 12, 12, 12);
+        layout.padding = new RectOffset(16, 16, 8, 16);
         layout.spacing = 10f;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -58,9 +58,9 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
 
-        CreateText(content, "Title", "Store appearance", 22f, FontStyles.Bold, 34f, Color.white);
+        CreateText(content, "Title", "Store appearance", 22f, FontStyles.Bold, 36f, Color.white);
         CreateText(content, "Subtitle", "Choose a texture, then tint it. New texture assets are discovered automatically.",
-            13f, FontStyles.Normal, 40f, GameUITheme.TextSecondary);
+            15f, FontStyles.Normal, 52f, GameUITheme.TextPrimary);
 
         controls = new[]
         {
