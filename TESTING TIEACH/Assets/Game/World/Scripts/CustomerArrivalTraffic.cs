@@ -10,7 +10,7 @@ public class CustomerArrivalTraffic : MonoBehaviour
 
     public static bool TryDispatchCar(CustomerSpawner spawner)
     {
-        if (spawner == null) return false;
+        if (spawner == null || OnboardingTutorial.BlocksAutoCustomers) return false;
         if (!ParkingLotDressing.TryClaimRandomStall(out int stallId, out Vector3 center, out Quaternion facing))
             return false;
 

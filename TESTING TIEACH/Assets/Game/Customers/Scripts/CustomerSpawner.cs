@@ -201,9 +201,19 @@ public class CustomerSpawner : MonoBehaviour
         arrivalScheduled = true;
     }
 
-    bool TrySpawn(bool force = false)
+    public bool SpawnTutorialCustomer()
+    {
+        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(false, true);
+    }
+
+    bool TrySpawn(bool force = false, bool tutorialPractice = false)
     {
         LastSpawnError = null;
+        if (OnboardingTutorial.BlocksAutoCustomers && !tutorialPractice)
+        {
+            LastSpawnError = "Customers arrive during the tutorial customer step.";
+            return false;
+        }
         if (customerPrefab == null)
         {
             LastSpawnError = "No customer prefab on CustomerSpawner";
@@ -234,6 +244,7 @@ public class CustomerSpawner : MonoBehaviour
     /// </summary>
     public bool SpawnArrivingCustomer(Vector3 doorWorld, LotArrivalVehicle rideHome)
     {
+        if (OnboardingTutorial.BlocksAutoCustomers) return false;
         if (customerPrefab == null) return false;
         if (orderConfig != null && !orderConfig.HasEnabledItems) return false;
 

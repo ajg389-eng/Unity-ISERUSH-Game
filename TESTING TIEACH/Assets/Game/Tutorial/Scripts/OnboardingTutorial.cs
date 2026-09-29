@@ -16,7 +16,8 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
     public static bool IsActive => Instance != null && Instance.running;
-    public static bool BlocksAutoCustomers => IsActive;
+    public static bool BlocksAutoCustomers => IsActive || !IsComplete;
+    public static bool AllowsPracticeCustomer => IsActive && Steps[Instance.stepIndex].liveCustomer;
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
 
@@ -131,20 +132,20 @@ public class OnboardingTutorial : MonoBehaviour
     {
         new Step(
             "Empty kitchen",
-            "This shift starts with an <b>empty kitchen</b>. Start by placing a register on the lobby counter.\n\n" +
+            "This shift starts with an <b>empty kitchen</b>. Let's build it one step at a time.\n\n" +
             "You will buy each workstation, stock ingredients, then serve one customer. Use <b>Back</b> and <b>Next</b> to move through the steps.",
             "Next", Highlight.None),
-        new Step(
-            "Register",
-            "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
-            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
-            "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
             "Buy stations",
             "Open <b>Build</b> (top-left, or press Q then 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
+        new Step(
+            "Register",
+            "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
+            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
+            "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
             "Freezer",
             "Buy and place a <b>freezer</b>. It holds raw burger patties. A cook walks here first when a burger is ordered, then carries a patty to the grill.\n\n" +
@@ -201,8 +202,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
             "Click a station already on the path to trim it back. Click a new station to extend the route. Press Esc to restore the previous path.\n\n" +
-            "Open Edit and click Finish to save the burger route before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
-            "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireEditedFlow: true),
+            "Edit an existing flow and click Finish to save it before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
+            "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true),
         new Step(
             "Assign workers to a flow",
             "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
@@ -228,14 +229,14 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] GusDialogue =
     {
-        "I cleared out the kitchen so we can rebuild the operation properly. First, place a <b>register</b> on the lobby counter.\n\n" +
+        "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
-
-        "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
-        "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
 
         "Open <b>Build</b> at the top-left, or press <b>Q</b> then <b>1</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
         "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
+
+        "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
+        "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
 
         "Let's start the burger process. Buy and place a <b>freezer</b>. It stores raw patties, so this is the first stop for every burger.\n\n" +
         "If it is missing or empty, burger production cannot begin.",
@@ -259,7 +260,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Try placing it nearby. I do not want workers crossing the entire kitchen every time they need one ingredient.",
 
         "The equipment is useless without material to process. Open <b>Business</b>, or press <b>Q</b> then <b>3</b>, and choose <b>Menu & Supply</b>.\n\n" +
-        "Order at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. A delivery person will bring the combined order through the front door.",
+        "Order at least one pack of <b>Burger patties</b>, <b>Buns</b>, and <b>Potatoes</b>. A delivery person will bring the combined order through the front door.",
 
         "Now we need someone to run the process. Open <b>Staff</b>, or press <b>Q</b> then <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
@@ -344,6 +345,11 @@ public class OnboardingTutorial : MonoBehaviour
             return;
 
         PrepareEmptyKitchen();
+        foreach (var customer in FindObjectsByType<CustomerAI>(FindObjectsSortMode.None))
+        {
+            customer.gameObject.SetActive(false);
+            Destroy(customer.gameObject);
+        }
         running = true;
         pendingStart = false;
         stepIndex = 0;
@@ -547,7 +553,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
         if (step.requireEditedFlow && !flowEditCompleted) return false;
-        if ((step.requireFlow || step.requireWorkerOnFlow)
+        if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
             && ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
             return false;
         if (step.requireAllStations && !AllTutorialStationsPlaced())
@@ -622,20 +628,18 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
     {
-        if (IsActive && wasEdit && Steps[Instance.stepIndex].requireEditedFlow && IsBurgerTutorialFlow(flow))
+        if (IsActive && wasEdit && flow != null && flow.stations != null && flow.stations.Count >= 2)
             Instance.flowEditCompleted = true;
     }
 
     bool AllTutorialStationsPlaced()
     {
-        return HasPlacedStation(Highlight.Register)
-            && HasPlacedStation(Highlight.Freezer)
-            && HasPlacedStation(Highlight.Grill)
-            && HasPlacedStation(Highlight.Fryer)
-            && HasPlacedStation(Highlight.Drink)
-            && HasPlacedStation(Highlight.Assembly)
-            && HasPlacedStation(Highlight.HeatLamp)
-            && HasPlacedStation(Highlight.Pantry);
+        // Follow the authored placement lessons. A removed/replaced station
+        // must not remain a hidden requirement for the customer demonstration.
+        foreach (var step in Steps)
+            if (step.requirePlaced && !HasPlacedStation(step.highlight))
+                return false;
+        return true;
     }
 
     bool HasPlacedStation(Highlight kind)
@@ -687,15 +691,18 @@ public class OnboardingTutorial : MonoBehaviour
     void SpawnPracticeCustomer()
     {
         if (liveCustomerSpawned) return;
-        liveCustomerSpawned = true;
-
         var existing = FindObjectsByType<CustomerAI>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (existing != null && existing.Length > 0)
+        {
+            liveCustomerSpawned = true;
             return;
+        }
+
+        if (CustomerWallDoor.FindEntryDoor() == null || !HasPlacedStation(Highlight.Register)) return;
 
         var spawner = FindFirstObjectByType<CustomerSpawner>();
         if (spawner != null)
-            spawner.SpawnNow();
+            liveCustomerSpawned = spawner.SpawnTutorialCustomer();
     }
 
     void Complete(bool skipped)
@@ -936,6 +943,8 @@ public class OnboardingTutorial : MonoBehaviour
         }
         RefreshAdvanceGate();
         RefreshControlHighlights();
+        if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
+            SpawnPracticeCustomer();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
