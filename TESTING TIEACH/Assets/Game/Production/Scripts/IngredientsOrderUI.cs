@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -22,6 +23,16 @@ public class IngredientsOrderUI : MonoBehaviour
     public float refreshInterval = 0.35f;
     float nextRefresh;
     bool built;
+    readonly Dictionary<ItemDefinition, int> cartPacks = new Dictionary<ItemDefinition, int>();
+    TextMeshProUGUI deliveryStatusText;
+    TextMeshProUGUI cartSummaryText;
+    Button clearCartButton;
+    Button placeOrderButton;
+    TextMeshProUGUI placeOrderLabel;
+    GameObject expandedMenuRow;
+    GameObject expandedWorkflow;
+    LayoutElement expandedMenuLayout;
+    TextMeshProUGUI expandedChevron;
 
     void OnEnable()
     {
@@ -126,6 +137,15 @@ public class IngredientsOrderUI : MonoBehaviour
 
         for (int i = listContainer.childCount - 1; i >= 0; i--)
             Destroy(listContainer.GetChild(i).gameObject);
+        deliveryStatusText = null;
+        cartSummaryText = null;
+        clearCartButton = null;
+        placeOrderButton = null;
+        placeOrderLabel = null;
+        expandedMenuRow = null;
+        expandedWorkflow = null;
+        expandedMenuLayout = null;
+        expandedChevron = null;
 
         if (inventory == null)
         {
@@ -148,6 +168,7 @@ public class IngredientsOrderUI : MonoBehaviour
             if (item == null) continue;
             CreateOrderRow(item);
         }
+        CreateCartFooter();
 
         built = true;
     }
@@ -170,16 +191,36 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item)
     {
-        var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+        const float collapsedHeight = 62f;
+        const float expandedHeight = 132f;
+
+        var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
         row.transform.SetParent(listContainer, false);
         var le = row.AddComponent<LayoutElement>();
-        le.minHeight = 68;
-        le.preferredHeight = 68;
+        le.minHeight = collapsedHeight;
+        le.preferredHeight = collapsedHeight;
         row.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
 
-        var layout = row.GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(10, 12, 6, 6);
-        layout.spacing = 10;
+        var rowLayout = row.GetComponent<VerticalLayoutGroup>();
+        rowLayout.padding = new RectOffset(8, 8, 5, 5);
+        rowLayout.spacing = 4f;
+        rowLayout.childAlignment = TextAnchor.UpperCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = false;
+
+        var header = new GameObject("Header", typeof(RectTransform), typeof(Image), typeof(Button),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.transform.SetParent(row.transform, false);
+        var headerImage = header.GetComponent<Image>();
+        headerImage.color = Color.clear;
+        var headerLe = header.GetComponent<LayoutElement>();
+        headerLe.minHeight = 52f;
+        headerLe.preferredHeight = 52f;
+        var layout = header.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(2, 4, 1, 1);
+        layout.spacing = 10f;
         layout.childAlignment = TextAnchor.MiddleLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -187,31 +228,142 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
-        previewGo.transform.SetParent(row.transform, false);
+        previewGo.transform.SetParent(header.transform, false);
         var previewLe = previewGo.GetComponent<LayoutElement>();
-        previewLe.minWidth = 56;
-        previewLe.preferredWidth = 56;
-        previewLe.minHeight = 56;
-        previewLe.preferredHeight = 56;
+        previewLe.minWidth = 44;
+        previewLe.preferredWidth = 44;
+        previewLe.minHeight = 44;
+        previewLe.preferredHeight = 44;
         var preview = previewGo.GetComponent<RawImage>();
         preview.texture = ItemPreviewThumbnails.GetPrefab(GetPreviewPrefab(menu, item), item.itemName);
         preview.color = Color.white;
         preview.raycastTarget = false;
 
         var nameGo = new GameObject("Name", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
-        nameGo.transform.SetParent(row.transform, false);
-        nameGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        nameGo.transform.SetParent(header.transform, false);
+        var nameLe = nameGo.GetComponent<LayoutElement>();
+        nameLe.flexibleWidth = 1f;
+        nameLe.minHeight = 44f;
+        nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
         nameText.text = inventory.GetDisplayName(item);
         nameText.fontSize = 16;
+        nameText.fontStyle = FontStyles.Bold;
         nameText.color = Color.white;
-        nameText.alignment = TextAlignmentOptions.Left;
+        nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
-        Toggle toggle = CreateCheckbox(row.transform);
+        var chevronGo = new GameObject("Chevron", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        chevronGo.transform.SetParent(header.transform, false);
+        var chevronLe = chevronGo.GetComponent<LayoutElement>();
+        chevronLe.minWidth = 24f;
+        chevronLe.preferredWidth = 24f;
+        var chevron = chevronGo.GetComponent<TextMeshProUGUI>();
+        chevron.text = ">";
+        chevron.fontSize = 18f;
+        chevron.fontStyle = FontStyles.Bold;
+        chevron.color = GameUITheme.Accent;
+        chevron.alignment = TextAlignmentOptions.Center;
+        chevron.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) chevron.font = TMP_Settings.defaultFontAsset;
+
+        Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
         ItemDefinition captured = item;
         toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
+
+        var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        workflowGo.transform.SetParent(row.transform, false);
+        workflowGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 0.96f);
+        workflowGo.GetComponent<Image>().raycastTarget = false;
+        var workflowLe = workflowGo.GetComponent<LayoutElement>();
+        workflowLe.minHeight = 61f;
+        workflowLe.preferredHeight = 61f;
+
+        var workflowTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        workflowTextGo.transform.SetParent(workflowGo.transform, false);
+        var workflowRt = (RectTransform)workflowTextGo.transform;
+        workflowRt.anchorMin = Vector2.zero;
+        workflowRt.anchorMax = Vector2.one;
+        workflowRt.offsetMin = new Vector2(10f, 6f);
+        workflowRt.offsetMax = new Vector2(-10f, -6f);
+        var workflowText = workflowTextGo.GetComponent<TextMeshProUGUI>();
+        workflowText.text = GetWorkflowDescription(menu, item);
+        workflowText.fontSize = 11.5f;
+        workflowText.color = new Color(0.78f, 0.84f, 0.94f, 1f);
+        workflowText.alignment = TextAlignmentOptions.MidlineLeft;
+        workflowText.textWrappingMode = TextWrappingModes.Normal;
+        workflowText.overflowMode = TextOverflowModes.Ellipsis;
+        workflowText.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) workflowText.font = TMP_Settings.defaultFontAsset;
+        workflowGo.SetActive(false);
+
+        var headerButton = header.GetComponent<Button>();
+        headerButton.targetGraphic = headerImage;
+        headerButton.transition = Selectable.Transition.None;
+        headerButton.onClick.AddListener(() => ToggleMenuWorkflow(row, workflowGo, le, chevron,
+            collapsedHeight, expandedHeight));
+    }
+
+    void ToggleMenuWorkflow(GameObject row, GameObject workflow, LayoutElement rowLayout,
+        TextMeshProUGUI chevron, float collapsedHeight, float expandedHeight)
+    {
+        bool opening = workflow != null && !workflow.activeSelf;
+
+        if (expandedWorkflow != null)
+            expandedWorkflow.SetActive(false);
+        if (expandedMenuLayout != null)
+        {
+            expandedMenuLayout.minHeight = collapsedHeight;
+            expandedMenuLayout.preferredHeight = collapsedHeight;
+        }
+        if (expandedChevron != null)
+            expandedChevron.text = ">";
+
+        expandedMenuRow = null;
+        expandedWorkflow = null;
+        expandedMenuLayout = null;
+        expandedChevron = null;
+
+        if (opening)
+        {
+            workflow.SetActive(true);
+            rowLayout.minHeight = expandedHeight;
+            rowLayout.preferredHeight = expandedHeight;
+            chevron.text = "v";
+            expandedMenuRow = row;
+            expandedWorkflow = workflow;
+            expandedMenuLayout = rowLayout;
+            expandedChevron = chevron;
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)listContainer);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static string GetWorkflowDescription(CustomerOrderConfig menu, ItemDefinition item)
+    {
+        if (menu == null || item == null) return "";
+
+        const string label = "<color=#91A4C3>FLOW + MATERIAL</color>  ";
+        const string arrow = "  <color=#7E8CA6>→</color>  ";
+        string Step(string station, string material) =>
+            "<b>" + station + "</b> <color=#7FEA9A>[" + material + "]</color>";
+
+        if (menu.IsBurger(item))
+            return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
+                + arrow + Step("Assembly", "Cooked patty + bun") + arrow + Step("Pickup Station", "Burger")
+                + "\n" + Step("Pantry feeder", "Bun") + arrow + Step("Assembly input 2", "Bun buffer");
+
+        if (menu.IsFries(item))
+            return label + Step("Pantry", "Potatoes") + arrow + Step("Fryer", "Raw potatoes")
+                + arrow + Step("Pickup Station", "Fries");
+
+        if (menu.IsDrink(item))
+            return label + Step("Drink Fountain", "Drink stock") + arrow + Step("Pickup Station", "Filled drink");
+
+        return label + "No workflow configured";
     }
 
     GameObject GetPreviewPrefab(CustomerOrderConfig menu, ItemDefinition item)
@@ -306,40 +458,150 @@ public class IngredientsOrderUI : MonoBehaviour
         stockTmp.alignment = TextAlignmentOptions.Center;
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
-        var btnGo = new GameObject("OrderButton", typeof(RectTransform));
-        btnGo.transform.SetParent(row.transform, false);
-        btnGo.AddComponent<LayoutElement>().minWidth = 110;
-        var btnImg = btnGo.AddComponent<Image>();
-        btnImg.color = new Color(0.28f, 0.45f, 0.32f, 1f);
-        var btn = btnGo.AddComponent<Button>();
+        TextMeshProUGUI removeLabel;
+        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 36f, new Color(0.32f, 0.33f, 0.4f, 1f), out removeLabel);
 
-        var btnTextGo = new GameObject("Text", typeof(RectTransform));
-        btnTextGo.transform.SetParent(btnGo.transform, false);
-        var btnTmp = btnTextGo.AddComponent<TextMeshProUGUI>();
-        btnTmp.fontSize = 13;
-        btnTmp.alignment = TextAlignmentOptions.Center;
-        btnTmp.color = Color.white;
-        if (TMP_Settings.defaultFontAsset != null) btnTmp.font = TMP_Settings.defaultFontAsset;
-        var btnRt = (RectTransform)btnTextGo.transform;
-        btnRt.anchorMin = Vector2.zero;
-        btnRt.anchorMax = Vector2.one;
-        btnRt.offsetMin = Vector2.zero;
-        btnRt.offsetMax = Vector2.zero;
+        var countGo = new GameObject("CartCount", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
+        countGo.transform.SetParent(row.transform, false);
+        var countLe = countGo.GetComponent<LayoutElement>();
+        countLe.minWidth = 46f;
+        countLe.preferredWidth = 46f;
+        var countTmp = countGo.GetComponent<TextMeshProUGUI>();
+        countTmp.fontSize = 14;
+        countTmp.fontStyle = FontStyles.Bold;
+        countTmp.color = Color.white;
+        countTmp.alignment = TextAlignmentOptions.Center;
+        if (TMP_Settings.defaultFontAsset != null) countTmp.font = TMP_Settings.defaultFontAsset;
+
+        TextMeshProUGUI addLabel;
+        Button addButton = CreateCartButton(row.transform, "Add", "+", 44f, new Color(0.27f, 0.62f, 0.4f, 1f), out addLabel);
 
         var captured = item;
-        btn.onClick.AddListener(() =>
+        removeButton.onClick.AddListener(() =>
         {
-            if (inventory == null) return;
-            if (inventory.TryOrderPack(captured))
-                RefreshAll();
+            SetCartPacks(captured, GetCartPacks(captured) - 1);
+            RefreshAll();
+        });
+        addButton.onClick.AddListener(() =>
+        {
+            SetCartPacks(captured, GetCartPacks(captured) + 1);
+            RefreshAll();
         });
 
         var binder = row.AddComponent<IngredientOrderRow>();
         binder.item = item;
         binder.infoText = infoTmp;
         binder.stockText = stockTmp;
-        binder.orderButton = btn;
-        binder.orderButtonLabel = btnTmp;
+        binder.removeButton = removeButton;
+        binder.addButton = addButton;
+        binder.cartCountText = countTmp;
+    }
+
+    static Button CreateCartButton(Transform parent, string objectName, string label, float width, Color color, out TextMeshProUGUI text)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform), typeof(LayoutElement), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        var le = go.GetComponent<LayoutElement>();
+        le.minWidth = width;
+        le.preferredWidth = width;
+        le.minHeight = 38f;
+        go.GetComponent<Image>().color = color;
+
+        var textGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textGo.transform.SetParent(go.transform, false);
+        var rt = (RectTransform)textGo.transform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        text = textGo.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 16f;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        return go.GetComponent<Button>();
+    }
+
+    void CreateCartFooter()
+    {
+        var statusGo = new GameObject("DeliveryStatus", typeof(RectTransform), typeof(LayoutElement), typeof(Image));
+        statusGo.transform.SetParent(listContainer, false);
+        var statusLe = statusGo.GetComponent<LayoutElement>();
+        statusLe.minHeight = 38f;
+        statusLe.preferredHeight = 38f;
+        statusGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
+        var statusTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        statusTextGo.transform.SetParent(statusGo.transform, false);
+        var statusTextRt = (RectTransform)statusTextGo.transform;
+        statusTextRt.anchorMin = Vector2.zero;
+        statusTextRt.anchorMax = Vector2.one;
+        statusTextRt.offsetMin = new Vector2(6f, 0f);
+        statusTextRt.offsetMax = new Vector2(-6f, 0f);
+        deliveryStatusText = statusTextGo.GetComponent<TextMeshProUGUI>();
+        deliveryStatusText.fontSize = 13f;
+        deliveryStatusText.alignment = TextAlignmentOptions.Center;
+        deliveryStatusText.color = new Color(0.85f, 0.9f, 1f, 1f);
+        if (TMP_Settings.defaultFontAsset != null) deliveryStatusText.font = TMP_Settings.defaultFontAsset;
+
+        var footer = new GameObject("CartCheckout", typeof(RectTransform), typeof(LayoutElement), typeof(Image), typeof(HorizontalLayoutGroup));
+        footer.transform.SetParent(listContainer, false);
+        var footerLe = footer.GetComponent<LayoutElement>();
+        footerLe.minHeight = 52f;
+        footerLe.preferredHeight = 52f;
+        footer.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
+        var layout = footer.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(10, 10, 7, 7);
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+
+        var summaryGo = new GameObject("Summary", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
+        summaryGo.transform.SetParent(footer.transform, false);
+        summaryGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        cartSummaryText = summaryGo.GetComponent<TextMeshProUGUI>();
+        cartSummaryText.fontSize = 13f;
+        cartSummaryText.alignment = TextAlignmentOptions.Left;
+        cartSummaryText.color = Color.white;
+        if (TMP_Settings.defaultFontAsset != null) cartSummaryText.font = TMP_Settings.defaultFontAsset;
+
+        TextMeshProUGUI clearLabel;
+        clearCartButton = CreateCartButton(footer.transform, "ClearCart", "Clear", 62f, new Color(0.34f, 0.35f, 0.42f, 1f), out clearLabel);
+        clearLabel.fontSize = 12f;
+        clearCartButton.onClick.AddListener(() =>
+        {
+            cartPacks.Clear();
+            RefreshAll();
+        });
+
+        placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, new Color(0.27f, 0.62f, 0.4f, 1f), out placeOrderLabel);
+        placeOrderLabel.fontSize = 12f;
+        placeOrderButton.onClick.AddListener(SubmitCart);
+    }
+
+    int GetCartPacks(ItemDefinition item)
+    {
+        return item != null && cartPacks.TryGetValue(item, out int count) ? count : 0;
+    }
+
+    void SetCartPacks(ItemDefinition item, int count)
+    {
+        if (item == null) return;
+        if (count <= 0) cartPacks.Remove(item);
+        else cartPacks[item] = count;
+    }
+
+    void SubmitCart()
+    {
+        if (inventory == null || cartPacks.Count == 0) return;
+        if (inventory.TryOrderCart(cartPacks))
+        {
+            cartPacks.Clear();
+            RefreshAll();
+        }
     }
 
     public void Refresh() => RefreshAll();
@@ -353,6 +615,10 @@ public class IngredientsOrderUI : MonoBehaviour
             moneyHintText.text = money != null ? ("Money: $" + money.CurrentMoney) : "Money: —";
 
         if (listContainer == null || inventory == null) return;
+        var delivery = IngredientDeliveryService.Instance;
+        bool deliveryActive = delivery != null && delivery.HasPending;
+        int cartTotal = 0;
+        int cartPackCount = 0;
         foreach (Transform child in listContainer)
         {
             var row = child.GetComponent<IngredientOrderRow>();
@@ -363,17 +629,46 @@ public class IngredientsOrderUI : MonoBehaviour
             int price = inventory.GetPackPrice(row.item);
             int stock = inventory.GetCount(row.item);
 
-            if (row.infoText != null)
-                row.infoText.text = name + "\n<size=85%>Pack of " + pack + "</size>";
-            if (row.stockText != null)
-                row.stockText.text = "Stock\n" + stock;
-            if (row.orderButtonLabel != null)
-                row.orderButtonLabel.text = "Order $" + price;
+            int incoming = 0;
+            if (delivery != null)
+                incoming = delivery.GetIncomingCount(row.item);
 
-            bool can = money == null || money.CanAfford(price);
-            if (row.orderButton != null)
-                row.orderButton.interactable = can;
+            if (row.infoText != null)
+                row.infoText.text = name + "\n<size=85%>Pack of " + pack + "  |  $" + price + "</size>";
+            if (row.stockText != null)
+            {
+                row.stockText.text = incoming > 0
+                    ? "Stock\n" + stock + "\n<size=80%>+" + incoming + " incoming</size>"
+                    : "Stock\n" + stock;
+            }
+            int selected = GetCartPacks(row.item);
+            cartPackCount += selected;
+            cartTotal += selected * price;
+            if (row.cartCountText != null) row.cartCountText.text = "x" + selected;
+            if (row.removeButton != null) row.removeButton.interactable = !deliveryActive && selected > 0;
+            if (row.addButton != null) row.addButton.interactable = !deliveryActive;
         }
+
+
+        bool affordable = money == null || money.CanAfford(cartTotal);
+        if (deliveryStatusText != null)
+        {
+            float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
+            deliveryStatusText.text = deliveryActive
+                ? "Delivery in progress  |  Arrives " + IngredientDeliveryService.FormatCountdown(Mathf.Max(0f, remaining)) + "  |  New orders locked"
+                : "Build your cart, then place one combined delivery order.";
+            deliveryStatusText.color = deliveryActive
+                ? new Color(1f, 0.78f, 0.35f, 1f)
+                : new Color(0.75f, 0.84f, 0.96f, 1f);
+        }
+        if (cartSummaryText != null)
+            cartSummaryText.text = cartPackCount == 0 ? "Cart is empty" : "Cart: " + cartPackCount + " pack" + (cartPackCount == 1 ? "" : "s") + "  |  $" + cartTotal;
+        if (clearCartButton != null)
+            clearCartButton.interactable = !deliveryActive && cartPackCount > 0;
+        if (placeOrderButton != null)
+            placeOrderButton.interactable = !deliveryActive && cartPackCount > 0 && affordable;
+        if (placeOrderLabel != null)
+            placeOrderLabel.text = deliveryActive ? "Delivery Active" : (!affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal);
     }
 }
 
@@ -383,6 +678,7 @@ public class IngredientOrderRow : MonoBehaviour
     public ItemDefinition item;
     public TextMeshProUGUI infoText;
     public TextMeshProUGUI stockText;
-    public Button orderButton;
-    public TextMeshProUGUI orderButtonLabel;
+    public Button removeButton;
+    public Button addButton;
+    public TextMeshProUGUI cartCountText;
 }

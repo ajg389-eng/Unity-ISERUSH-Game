@@ -4,6 +4,8 @@ using UnityEngine;
 public class Register : MonoBehaviour
 {
     public bool isEnabled = true;
+    [System.NonSerialized] public bool isPlacementPreview;
+    public bool IsPlacedRegister => !isPlacementPreview && isActiveAndEnabled;
 
     [Header("Queue")]
     public Transform queueStart;
@@ -15,8 +17,8 @@ public class Register : MonoBehaviour
     public float serveArrivalRadius = 0.6f;
     public int maxQueue = 6;
 
-    [Header("Pickup line")]
-    [Tooltip("Customers wait in front of the heat lamp linked to this register (customer / lobby side).")]
+    [Header("Pickup line (legacy)")]
+    [Tooltip("Legacy value retained for scene compatibility. Pickup waiting areas no longer limit register ordering.")]
     public int maxPickup = 8;
 
     readonly List<CustomerAI> queue = new List<CustomerAI>();
@@ -39,20 +41,38 @@ public class Register : MonoBehaviour
     public float workerDutyRadius = 1.25f;
 
     [Header("Ordering")]
-    [Tooltip("Seconds the front customer spends ordering before moving to the heat-lamp pickup line.")]
+    [Tooltip("Seconds the front customer spends ordering before moving to the Pickup Station line.")]
     public float orderTakeSeconds = 1.25f;
+    [Tooltip("Menu used when the customer finishes ordering. Defaults to ProductionManager.orderConfig.")]
+    public CustomerOrderConfig orderConfig;
 
     float orderTimer;
     MoneyManager moneyManager;
     HeatLampStation cachedHeatLamp;
-    static bool raisedFirstCustomerEvent;
     static bool raisedFirstOrderServedEvent;
     bool queueGrowingRaised;
 
     void Awake()
     {
+        if (storeExit == null)
+        {
+            GameObject exit = GameObject.Find("Exit");
+            if (exit != null) storeExit = exit.transform;
+        }
         StationNode.EnsureOn(gameObject);
         EnsureInteractionTiles();
+    }
+
+    void OnDisable()
+    {
+        CustomerAI[] waiting = queue.ToArray();
+        CustomerAI[] collecting = pickup.ToArray();
+        queue.Clear();
+        pickup.Clear();
+        foreach (CustomerAI customer in waiting)
+            if (customer != null) customer.OnRegisterDisabled();
+        foreach (CustomerAI customer in collecting)
+            if (customer != null) customer.OnRegisterDisabled();
     }
 
     void EnsureInteractionTiles()
@@ -64,19 +84,13 @@ public class Register : MonoBehaviour
         tiles.EnsureHighlightReference();
     }
 
-    static bool IsDayOne =>
-        GameTimeManager.Instance == null || GameTimeManager.Instance.CurrentDay <= 1;
-
-    int EffectiveMaxQueue => Mathf.Min(maxQueue, 4);
-    int EffectiveMaxPickup => Mathf.Min(maxPickup, IsDayOne ? 2 : 3);
-    int EffectiveMaxInside => IsDayOne ? 4 : 6;
+    int EffectiveMaxQueue => Mathf.Min(maxQueue, 5);
 
     public bool HasSpace()
     {
-        if (!isEnabled || queueStart == null) return false;
-        if (queue.Count >= EffectiveMaxQueue) return false;
-        if (pickup.Count >= EffectiveMaxPickup) return false;
-        return queue.Count + pickup.Count < EffectiveMaxInside;
+        if (!IsPlacedRegister) return false;
+        if (!isEnabled) return false;
+        return queue.Count < EffectiveMaxQueue;
     }
 
     public bool TryJoinQueue(CustomerAI customer)
@@ -88,12 +102,6 @@ public class Register : MonoBehaviour
         queue.Add(customer);
         TryUnlockPickup();
         UpdateQueueTargets();
-
-        if (!raisedFirstCustomerEvent)
-        {
-            raisedFirstCustomerEvent = true;
-            TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstCustomerArrived);
-        }
 
         Sfx.Play(SfxId.CustomerArrive);
         return true;
@@ -160,20 +168,20 @@ public class Register : MonoBehaviour
     public bool IsFrontCustomerReady()
     {
         var front = GetFrontCustomer();
-        if (front == null || queueStart == null) return false;
+        if (front == null) return false;
         return Vector3.Distance(front.transform.position, GetQueueSlot(0)) <= serveArrivalRadius;
     }
 
     public void SendCustomerToPickup(CustomerAI customer)
     {
         if (customer == null || pickup.Contains(customer)) return;
-        if (pickup.Count >= EffectiveMaxPickup) return;
         if (!queue.Contains(customer)) return;
 
         queue.Remove(customer);
         pickup.Add(customer);
         orderTimer = 0f;
         UpdateQueueTargets();
+        customer.BeginPickupJourney();
         Sfx.Play(SfxId.CustomerArrive);
     }
 
@@ -184,7 +192,6 @@ public class Register : MonoBehaviour
     public bool TryTakeFrontOrder()
     {
         if (!isEnabled) return false;
-        if (pickup.Count >= EffectiveMaxPickup) return false;
 
         var front = GetFrontCustomer();
         if (front == null || !IsFrontCustomerReady())
@@ -204,8 +211,30 @@ public class Register : MonoBehaviour
         if (orderTimer < Mathf.Max(0.15f, orderTakeSeconds))
             return false;
 
+        CustomerOrderConfig menu = ResolveOrderConfig();
+        CustomerOrder selectedOrder = menu == null ? null
+            : OnboardingTutorial.IsActive ? CustomerOrder.FromItem(menu.burgerBase, 1)
+            : menu.GenerateRandomOrder();
+        if (selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0)
+        {
+            orderTimer = 0f;
+            return false;
+        }
+
+        front.SetOrder(selectedOrder);
         SendCustomerToPickup(front);
         return true;
+    }
+
+    CustomerOrderConfig ResolveOrderConfig()
+    {
+        if (orderConfig != null) return orderConfig;
+        if (ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null)
+            orderConfig = ProductionManager.Instance.orderConfig;
+        if (orderConfig != null) return orderConfig;
+        CustomerSpawner spawner = FindObjectOfType<CustomerSpawner>();
+        if (spawner != null) orderConfig = spawner.orderConfig;
+        return orderConfig;
     }
 
     public KitchenEmployee AssignedWorker
@@ -340,8 +369,6 @@ public class Register : MonoBehaviour
     public bool CompleteServe(CustomerAI customer, CustomerOrder soldOrder)
     {
         if (!isEnabled || customer == null) return false;
-        if (!pickup.Contains(customer) && (queue.Count == 0 || queue[0] != customer))
-            return false;
 
         int sale = customer.SalePrice > 0
             ? customer.SalePrice
@@ -352,10 +379,20 @@ public class Register : MonoBehaviour
 
     void CompleteServeFront(CustomerAI front, int sale)
     {
-        if (!pickup.Remove(front) && (queue.Count == 0 || queue[0] != front))
-            return;
+        bool removed = pickup.Remove(front);
         if (queue.Count > 0 && queue[0] == front)
+        {
             queue.RemoveAt(0);
+            removed = true;
+        }
+        else
+            removed |= queue.Remove(front);
+        if (!removed)
+        {
+            if (front != null)
+                front.OnServed(storeExit);
+            return;
+        }
 
         if (sale > 0)
         {
@@ -407,6 +444,7 @@ public class Register : MonoBehaviour
 
     void Update()
     {
+        if (!IsPlacedRegister) return;
         // Line 1: order at register. Line 2: wait at heat lamp for food.
         TryTakeFrontOrder();
     }
@@ -437,7 +475,7 @@ public class Register : MonoBehaviour
             var rends = GetComponentsInChildren<Renderer>();
             for (int i = 0; i < rends.Length; i++)
             {
-                if (rends[i] == null) continue;
+                if (CounterSurface.IsAuxiliaryPlacementRenderer(rends[i], transform)) continue;
                 if (!has) { bounds = rends[i].bounds; has = true; }
                 else bounds.Encapsulate(rends[i].bounds);
             }
@@ -500,15 +538,73 @@ public class Register : MonoBehaviour
     /// <summary>World position of the front order-queue stand (lobby side).</summary>
     public Vector3 GetFrontQueueWorldPosition() => GetQueueSlot(0);
 
+    /// <summary>Second lobby tile east of the counter — well clear of the wood.</summary>
+    public Vector3 GetDeliveryStandPosition()
+    {
+        if (CounterSurface.TryGetEmptyDeliverySpot(out _, out Vector3 stand))
+            return SlotHeight(stand);
+
+        float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
+        Vector3 fallback = GetQueueSlot(1);
+        fallback.x += cell;
+        return SlotHeight(fallback);
+    }
+
+    public Vector3 GetCounterDropPosition()
+    {
+        if (CounterSurface.TryGetEmptyDeliverySpot(out Vector3 drop, out _))
+            return drop;
+
+        Bounds slab = GetDropSurfaceBounds();
+        Vector3 stand = GetDeliveryStandPosition();
+        return new Vector3(slab.center.x, slab.max.y, stand.z);
+    }
+
+    public Vector3 PushOutOfCounter(Vector3 position, float radius)
+    {
+        Vector3 stand = GetDeliveryStandPosition();
+        if (position.x < stand.x)
+            position.x = stand.x;
+        return position;
+    }
+
+    public Bounds GetDropSurfaceBounds()
+    {
+        CounterSurface[] surfaces = FindObjectsByType<CounterSurface>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        bool found = false;
+        Bounds best = GetRegisterBounds();
+        float bestDist = float.MaxValue;
+        Vector3 here = transform.position;
+        for (int i = 0; i < surfaces.Length; i++)
+        {
+            if (surfaces[i] == null) continue;
+            Bounds b = surfaces[i].GetBaseBounds();
+            float dx = Mathf.Abs(b.center.x - here.x);
+            float dz = Mathf.Abs(b.center.z - here.z);
+            if (dx > 4f || dz > 8f) continue;
+            float dist = dx * dx + dz * dz;
+            if (found && dist >= bestDist) continue;
+            found = true;
+            bestDist = dist;
+            best = b;
+        }
+        return best;
+    }
+
+    /// <summary>World position used by build-mode customer queue previews.</summary>
+    public Vector3 GetQueuePreviewPosition(int index) => GetQueueSlot(Mathf.Max(0, index));
+
+    public int QueuePreviewCount => EffectiveMaxQueue;
+
     /// <summary>
     /// Customer / lobby side of the counter. Uses the register's queueDirection
     /// (order-line direction) — never worker interaction quads.
     /// </summary>
     Vector3 GetLobbyDir()
     {
-        if (queueDirection.sqrMagnitude > 0.0001f)
-            return queueDirection.normalized;
-        return -GetKitchenDir();
+        // Customer floor is always on the world-east side of the counter.
+        // Keep this independent of the prefab rotation and worker stand tiles.
+        return Vector3.right;
     }
 
     Vector3 SlotHeight(Vector3 pos)
@@ -522,10 +618,20 @@ public class Register : MonoBehaviour
 
     Vector3 GetQueueSlot(int index)
     {
-        Vector3 lobby = GetLobbyDir();
         Bounds bounds = GetRegisterBounds();
-        Vector3 first = bounds.center + lobby * (ExtentAlong(bounds, lobby) + Mathf.Max(1.15f, queueFrontOffset));
-        return SlotHeight(first) + lobby * (spacing * Mathf.Max(0, index));
+        GridManager placementGrid = GridManager.Instance;
+        float cell = placementGrid != null ? Mathf.Max(0.01f, placementGrid.cellSize) : 1f;
+        Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
+
+        // First cell immediately east of the register. Each following customer
+        // stands on the next cell in the same row.
+        int firstX = Mathf.FloorToInt((bounds.max.x + 0.01f - origin.x) / cell);
+        int rowZ = Mathf.FloorToInt((bounds.center.z - origin.z) / cell);
+        Vector3 first = new Vector3(
+            origin.x + (firstX + 0.5f) * cell,
+            transform.position.y,
+            origin.z + (rowZ + 0.5f) * cell);
+        return SlotHeight(CustomerStandLine.Place(first, index, cell));
     }
 
     /// <summary>
@@ -557,9 +663,8 @@ public class Register : MonoBehaviour
             anchor = orderFront + alongCounter * spacing;
         }
 
-        // Extend further into the lobby for people waiting behind the front of pickup.
-        Vector3 pos = anchor + lobby * (spacing * Mathf.Max(0, index));
-        return SlotHeight(pos);
+        float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
+        return SlotHeight(CustomerStandLine.Place(anchor, index, cell));
     }
 
     void UpdateQueueTargets()
@@ -571,12 +676,7 @@ public class Register : MonoBehaviour
             c.SetQueueSlot(this, GetQueueSlot(i), i == 0);
         }
 
-        for (int i = 0; i < pickup.Count; i++)
-        {
-            var c = pickup[i];
-            if (c == null) continue;
-            c.SetPickupSlot(this, GetPickupSlot(i), i == 0);
-        }
+        // Ordered customers are positioned by their product-specific pickup stations.
     }
 
     void OnDrawGizmosSelected()

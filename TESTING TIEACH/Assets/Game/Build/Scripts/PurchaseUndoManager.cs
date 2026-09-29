@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Records station buys, floor expansions, worker hires, and ingredient orders so they can be undone.
+/// Retains only the latest station buy, floor expansion, worker hire, or ingredient order.
+/// Once that action is undone, there is no older history to continue undoing.
 /// </summary>
 public class PurchaseUndoManager : MonoBehaviour
 {
@@ -30,8 +31,8 @@ public class PurchaseUndoManager : MonoBehaviour
 
     struct IngredientRecord
     {
-        public ItemDefinition item;
-        public int packSize;
+        public List<ItemDefinition> items;
+        public List<int> amounts;
         public int paid;
     }
 
@@ -56,15 +57,18 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public int Count => stack.Count;
     public bool CanUndo => stack.Count > 0;
+    public bool CanUndoIngredient => stack.Count > 0 && stack[stack.Count - 1].kind == Kind.Ingredient;
+
+    public bool TryUndoIngredient()
+    {
+        return CanUndoIngredient && TryUndo();
+    }
 
     public bool CanUndoFloor
     {
         get
         {
-            for (int i = stack.Count - 1; i >= 0; i--)
-                if (stack[i].kind == Kind.Floor)
-                    return true;
-            return false;
+            return stack.Count > 0 && stack[stack.Count - 1].kind == Kind.Floor;
         }
     }
 
@@ -72,11 +76,8 @@ public class PurchaseUndoManager : MonoBehaviour
     {
         get
         {
-            for (int i = stack.Count - 1; i >= 0; i--)
-            {
-                if (stack[i].kind != Kind.Floor) continue;
-                return "Undo Floor $" + stack[i].floor.paid;
-            }
+            if (CanUndoFloor)
+                return "Undo Floor $" + stack[stack.Count - 1].floor.paid;
             return "Undo Floor";
         }
     }
@@ -93,8 +94,7 @@ public class PurchaseUndoManager : MonoBehaviour
                 return "Undo Hire $" + e.worker.paid;
             if (e.kind == Kind.Ingredient)
             {
-                string iname = e.ingredient.item != null ? e.ingredient.item.itemName : "Ingredients";
-                return "Undo " + iname + " $" + e.ingredient.paid;
+                return "Undo Ingredient Order $" + e.ingredient.paid;
             }
             string name = e.station.item != null ? e.station.item.itemName : "Station";
             return "Undo " + name + " $" + e.station.paid;
@@ -142,14 +142,21 @@ public class PurchaseUndoManager : MonoBehaviour
 
     void Update()
     {
+        if (UIInputFocusGuard.IsTyping) return;
         if ((Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && Input.GetKeyDown(KeyCode.Z))
-            TryUndo();
+        {
+            var foodMenu = FindFirstObjectByType<IngredientsOrderUI>();
+            if (foodMenu != null && foodMenu.isActiveAndEnabled)
+                TryUndoIngredient();
+            else
+                TryUndo();
+        }
     }
 
     public void RecordStationPurchase(ItemDefinition item, int paid)
     {
         if (item == null) return;
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Station,
             station = new StationRecord { item = item, paid = Mathf.Max(0, paid), placed = null }
@@ -173,7 +180,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public void RecordFloorExpand(int addWidth, int addHeight, int paid)
     {
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Floor,
             floor = new FloorRecord
@@ -188,7 +195,7 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordWorkerHire(KitchenEmployee employee, int paid)
     {
         if (employee == null) return;
-        stack.Add(new Entry
+        ReplaceLast(new Entry
         {
             kind = Kind.Worker,
             worker = new WorkerRecord { employee = employee, paid = Mathf.Max(0, paid) }
@@ -198,16 +205,45 @@ public class PurchaseUndoManager : MonoBehaviour
     public void RecordIngredientPack(ItemDefinition item, int packSize, int paid)
     {
         if (item == null) return;
-        stack.Add(new Entry
+        RecordIngredientOrder(
+            new List<ItemDefinition> { item },
+            new List<int> { Mathf.Max(1, packSize) },
+            paid);
+    }
+
+    public void RecordIngredientOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts, int paid)
+    {
+        if (items == null || amounts == null || items.Count == 0 || items.Count != amounts.Count) return;
+        var recordedItems = new List<ItemDefinition>();
+        var recordedAmounts = new List<int>();
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i] == null || amounts[i] <= 0) continue;
+            recordedItems.Add(items[i]);
+            recordedAmounts.Add(amounts[i]);
+        }
+        if (recordedItems.Count == 0) return;
+        ReplaceLast(new Entry
         {
             kind = Kind.Ingredient,
             ingredient = new IngredientRecord
             {
-                item = item,
-                packSize = Mathf.Max(1, packSize),
+                items = recordedItems,
+                amounts = recordedAmounts,
                 paid = Mathf.Max(0, paid)
             }
         });
+    }
+
+    void ReplaceLast(Entry entry)
+    {
+        stack.Clear();
+        stack.Add(entry);
+    }
+
+    public void ClearHistory()
+    {
+        stack.Clear();
     }
 
     public void NotifyWorkerFired(KitchenEmployee employee)
@@ -258,22 +294,20 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndoLastFloor()
     {
-        for (int i = stack.Count - 1; i >= 0; i--)
-        {
-            if (stack[i].kind != Kind.Floor) continue;
-            if (!UndoFloor(stack[i].floor))
-            {
-                Sfx.Play(SfxId.UiError);
-                return false;
-            }
+        if (!CanUndoFloor)
+            return false;
 
-            stack.RemoveAt(i);
-            Sfx.Play(SfxId.EarnMoney);
-            RefreshRelatedUi();
-            return true;
+        int i = stack.Count - 1;
+        if (!UndoFloor(stack[i].floor))
+        {
+            Sfx.Play(SfxId.UiError);
+            return false;
         }
 
-        return false;
+        stack.RemoveAt(i);
+        Sfx.Play(SfxId.EarnMoney);
+        RefreshRelatedUi();
+        return true;
     }
 
     static void RefreshRelatedUi()
@@ -340,10 +374,24 @@ public class PurchaseUndoManager : MonoBehaviour
         var kitchen = KitchenInventory.Instance != null
             ? KitchenInventory.Instance
             : FindFirstObjectByType<KitchenInventory>();
-        if (kitchen == null || rec.item == null)
+        if (kitchen == null || rec.items == null || rec.amounts == null || rec.items.Count != rec.amounts.Count)
             return false;
-        if (!kitchen.TryConsume(rec.item, rec.packSize))
-            return false;
+
+        var delivery = IngredientDeliveryService.Instance;
+        if (delivery != null && delivery.TryCancelOrder(rec.items, rec.amounts))
+        {
+            var moneyRefund = FindFirstObjectByType<MoneyManager>();
+            if (moneyRefund != null)
+                moneyRefund.AddMoney(rec.paid);
+            return true;
+        }
+
+        for (int i = 0; i < rec.items.Count; i++)
+            if (!kitchen.Has(rec.items[i], rec.amounts[i]))
+                return false;
+
+        for (int i = 0; i < rec.items.Count; i++)
+            kitchen.TryConsume(rec.items[i], rec.amounts[i]);
 
         var money = FindFirstObjectByType<MoneyManager>();
         if (money != null)
@@ -371,7 +419,7 @@ public class PurchaseUndoManager : MonoBehaviour
         if (placer != null && placer.IsDragging)
             placer.CancelDrag();
 
-        if (grid != null)
+        if (grid != null && go.GetComponent<CustomerWallDoor>() == null)
         {
             var fp = go.GetComponent<BuildFootprint>();
             int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);

@@ -14,7 +14,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CustomerOrderConfig
   burgerBase: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
-  drinkItem: {fileID: 11400000, guid: c4e8a1f29b7d4e6a9f3c5d8e1a2b3c4d, type: 2}
-  burgerChance: 0.85
+  friesIngredient: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
+  assemblyRecipes:
+  - recipeName: Burger
+    output: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
+    processedInputName: Cooked patty
+    processedInputAmount: 1
+    pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
+    pantryInputAmount: 1
+  lettuceIngredient: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
+  cheeseIngredient: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
+  tomatoIngredient: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
+  drinkItem: {fileID: 0}
+  burgerChance: 0.7
   friesChance: 0.7
-  drinkChance: 0.55
+  drinkChance: 0.7

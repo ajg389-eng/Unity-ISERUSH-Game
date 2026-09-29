@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 /// <summary>
 /// Placeable station. Holds which ingredients can be grabbed here.
@@ -7,10 +8,16 @@ using UnityEngine;
 /// </summary>
 public class PantryStation : MonoBehaviour
 {
+    void Start()
+    {
+        RestaurantDetails.StockPantry(transform);
+    }
+
     [Tooltip("Ingredients this pantry can dispense (must also have stock in KitchenInventory)")]
     public List<ItemDefinition> stockedItems = new List<ItemDefinition>();
-    [Tooltip("Time in seconds for the employee to grab one ingredient.")]
-    public float interactionTimeSeconds = 0.5f;
+    [FormerlySerializedAs("interactionTimeSeconds")]
+    [Tooltip("Total time for one pantry operation.")]
+    [Min(0f)] public float processTimeSeconds = 0.5f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public Vector3 GetInteractionPosition()
@@ -20,13 +27,13 @@ public class PantryStation : MonoBehaviour
         return transform.position + interactionOffset;
     }
 
-    public bool HasItem(ItemDefinition item)
+    public bool HasItem(ItemDefinition item, int amount = 1)
     {
-        if (item == null) return false;
+        if (item == null || amount <= 0) return false;
         if (!CanDispense(item)) return false;
         var inv = KitchenInventory.Instance;
         if (inv == null) return true; // legacy infinite if no inventory system
-        return inv.Has(item);
+        return inv.Has(item, amount);
     }
 
     public bool TakeItem(ItemDefinition item)
@@ -35,6 +42,14 @@ public class PantryStation : MonoBehaviour
         var inv = KitchenInventory.Instance;
         if (inv == null) return true;
         return inv.TryConsume(item, 1);
+    }
+
+    public bool TakeItems(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0 || !CanDispense(item)) return false;
+        var inv = KitchenInventory.Instance;
+        if (inv == null) return true;
+        return inv.TryConsume(item, amount);
     }
 
     /// <summary>

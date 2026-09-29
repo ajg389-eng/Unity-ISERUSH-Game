@@ -1,6 +1,27 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[System.Serializable]
+public class AssemblyRecipeDefinition
+{
+    public string recipeName = "Burger";
+    public ItemDefinition output;
+
+    [Header("Input 1: processed work")]
+    public string processedInputName = "Cooked patty";
+    [Min(1)] public int processedInputAmount = 1;
+
+    [Header("Input 2: pantry material")]
+    public ItemDefinition pantryInput;
+    [Min(1)] public int pantryInputAmount = 1;
+
+    public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
+        ? recipeName
+        : (output != null && !string.IsNullOrWhiteSpace(output.itemName) ? output.itemName : "Recipe");
+
+    public bool Produces(ItemDefinition item) => item != null && output == item;
+}
+
 /// <summary>
 /// Config for generating customer orders: any combination of burger, fries, and drink.
 /// Create via Assets > Create > FactoryGame > Customer Order Config.
@@ -13,19 +34,28 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition burgerBase;
     [Tooltip("Fries side")]
     public ItemDefinition friesItem;
+    [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
+    public ItemDefinition friesIngredient;
+    [Header("Assembly recipes")]
+    [Tooltip("Recipes players can choose on an Assembly Station.")]
+    public List<AssemblyRecipeDefinition> assemblyRecipes = new List<AssemblyRecipeDefinition>();
+    [Header("Burger toppings")]
+    public ItemDefinition lettuceIngredient;
+    public ItemDefinition cheeseIngredient;
+    public ItemDefinition tomatoIngredient;
     [Tooltip("Drink")]
     public ItemDefinition drinkItem;
 
     [Header("Order chances (each item rolled independently)")]
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants a burger")]
-    public float burgerChance = 0.85f;
+    public float burgerChance = 0.7f;
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants fries")]
     public float friesChance = 0.7f;
     [Range(0f, 1f)]
     [Tooltip("Chance the customer wants a drink")]
-    public float drinkChance = 0.55f;
+    public float drinkChance = 0.7f;
 
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
     [System.NonSerialized] bool burgerEnabled = true;
@@ -63,14 +93,45 @@ public class CustomerOrderConfig : ScriptableObject
         if (IsBurger(item)) return ProductKind.Burger;
         if (IsFries(item)) return ProductKind.Fries;
         if (IsDrink(item)) return ProductKind.Drink;
+        return InferProductKind(item);
+    }
+
+    /// <summary>
+    /// True when both definitions are the same menu product, even if the kitchen
+    /// used a different ItemDefinition asset than the customer's order line.
+    /// </summary>
+    public bool SameMenuProduct(ItemDefinition a, ItemDefinition b)
+    {
+        if (a == null || b == null) return false;
+        if (a == b) return true;
+        if (!string.IsNullOrEmpty(a.itemName) && a.itemName == b.itemName) return true;
+        ProductKind kindA = GetProductKind(a);
+        ProductKind kindB = GetProductKind(b);
+        return kindA != ProductKind.None && kindA == kindB;
+    }
+
+    static ProductKind InferProductKind(ItemDefinition item)
+    {
+        if (item == null) return ProductKind.None;
+        string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+        if (string.IsNullOrEmpty(label)) return ProductKind.None;
+        if (label.IndexOf("burger", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Burger;
+        if (label.IndexOf("fries", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("fry", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Fries;
+        if (label.IndexOf("drink", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("soda", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("cola", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return ProductKind.Drink;
         return ProductKind.None;
     }
 
     /// <summary>
     /// Production pipeline for a single menu item (not including heat lamp delivery).
-    /// Burger: Freezer → Grill → Assembly
-    /// Fries: Fryer
-    /// Drink: none (cashier dispenses straight to the customer)
+    /// Burger main line: Freezer → Grill → Assembly. Pantry supplies buns in parallel.
+    /// Fries: Pantry → Fryer
+    /// Drink: Drink Fountain
     /// </summary>
     public StationType[] GetPipeline(ItemDefinition item)
     {
@@ -79,9 +140,9 @@ public class CustomerOrderConfig : ScriptableObject
             case ProductKind.Burger:
                 return new[] { StationType.Freezer, StationType.Grill, StationType.Assembly };
             case ProductKind.Fries:
-                return new[] { StationType.Fryer };
+                return new[] { StationType.Pantry, StationType.Fryer };
             case ProductKind.Drink:
-                return System.Array.Empty<StationType>();
+                return new[] { StationType.Drink };
             default:
                 return System.Array.Empty<StationType>();
         }
@@ -96,22 +157,64 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>Products the assembly station can be set to make (burgers only).</summary>
     public IEnumerable<ItemDefinition> GetAssemblyProducts()
     {
-        if (burgerBase != null) yield return burgerBase;
+        bool yielded = false;
+        if (assemblyRecipes != null)
+        {
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe == null || recipe.output == null) continue;
+                yielded = true;
+                yield return recipe.output;
+            }
+        }
+        if (!yielded && burgerBase != null) yield return burgerBase;
+    }
+
+    public IEnumerable<AssemblyRecipeDefinition> GetAssemblyRecipes()
+    {
+        if (assemblyRecipes == null) yield break;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.output != null)
+                yield return recipe;
+    }
+
+    public AssemblyRecipeDefinition GetAssemblyRecipe(ItemDefinition output)
+    {
+        if (output == null || assemblyRecipes == null) return null;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.Produces(output))
+                return recipe;
+        return null;
     }
 
     public CustomerOrder GenerateRandomOrder()
     {
         var order = new CustomerOrder();
 
-        bool wantBurger = burgerBase != null && burgerEnabled && Random.value < burgerChance;
+        // Burgers are the restaurant's central product: when enabled, every
+        // customer order includes one. Fries and drinks remain optional sides.
+        bool wantBurger = burgerBase != null && burgerEnabled;
         bool wantFries = friesItem != null && friesEnabled && Random.value < friesChance;
         bool wantDrink = drinkItem != null && drinkEnabled && Random.value < drinkChance;
 
         if (!wantBurger && !wantFries && !wantDrink)
         {
-            if (burgerBase != null && burgerEnabled) wantBurger = true;
-            else if (friesItem != null && friesEnabled) wantFries = true;
-            else if (drinkItem != null && drinkEnabled) wantDrink = true;
+            // Every order needs at least one item. Pick uniformly from the
+            // currently available menu so this fallback does not favor burgers.
+            var available = new List<ProductKind>();
+            if (burgerBase != null && burgerEnabled) available.Add(ProductKind.Burger);
+            if (friesItem != null && friesEnabled) available.Add(ProductKind.Fries);
+            if (drinkItem != null && drinkEnabled) available.Add(ProductKind.Drink);
+
+            if (available.Count > 0)
+            {
+                switch (available[Random.Range(0, available.Count)])
+                {
+                    case ProductKind.Burger: wantBurger = true; break;
+                    case ProductKind.Fries: wantFries = true; break;
+                    case ProductKind.Drink: wantDrink = true; break;
+                }
+            }
         }
 
         if (wantBurger)
@@ -130,6 +233,7 @@ public class CustomerOrderConfig : ScriptableObject
         var options = new List<ItemDefinition>();
         if (burgerBase != null && burgerEnabled) options.Add(burgerBase);
         if (friesItem != null && friesEnabled) options.Add(friesItem);
+        if (drinkItem != null && drinkEnabled) options.Add(drinkItem);
         if (options.Count == 0) return new CustomerOrder();
 
         var pick = options[Random.Range(0, options.Count)];
@@ -148,5 +252,22 @@ public class CustomerOrderConfig : ScriptableObject
         foreach (ItemDefinition item in GetMenuItems())
             if (IsItemEnabled(item))
                 yield return item;
+    }
+
+    public IEnumerable<ItemDefinition> GetIngredientItems()
+    {
+        if (burgerBase != null) yield return burgerBase;
+        if (assemblyRecipes != null)
+        {
+            var yieldedRecipeInputs = new HashSet<ItemDefinition>();
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe != null && recipe.pantryInput != null && yieldedRecipeInputs.Add(recipe.pantryInput))
+                    yield return recipe.pantryInput;
+            }
+        }
+        if (friesIngredient != null) yield return friesIngredient;
+        else if (friesItem != null) yield return friesItem;
+        if (drinkItem != null) yield return drinkItem;
     }
 }

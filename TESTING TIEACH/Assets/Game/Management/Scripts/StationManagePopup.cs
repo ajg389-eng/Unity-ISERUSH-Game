@@ -39,6 +39,20 @@ public class StationManagePopup : MonoBehaviour
     public Transform workerListContainer;
     public Transform productListContainer;
 
+    [Header("Production preview prefabs")]
+    [Tooltip("Toony Kitchen ingredient shown before grilling.")]
+    public GameObject rawPattyPreviewPrefab;
+    [Tooltip("Toony Kitchen ingredient shown after grilling and before assembly.")]
+    public GameObject cookedPattyPreviewPrefab;
+    [Tooltip("Toony Kitchen ingredient shown before frying.")]
+    public GameObject rawFriesPreviewPrefab;
+    [Tooltip("Toony Kitchen ingredient shown after frying.")]
+    public GameObject cookedFriesPreviewPrefab;
+    [Tooltip("Toony Kitchen preview used for an assembled burger.")]
+    public GameObject burgerPreviewPrefab;
+    [Tooltip("Toony Kitchen preview used for a drink.")]
+    public GameObject drinkPreviewPrefab;
+
     void Awake()
     {
         BindReferences();
@@ -92,6 +106,12 @@ public class StationManagePopup : MonoBehaviour
         controller.clearOutputButton = clearOutputButton;
         controller.workerListContainer = workerListContainer;
         controller.productListContainer = productListContainer;
+        controller.rawPattyPreviewPrefab = rawPattyPreviewPrefab;
+        controller.cookedPattyPreviewPrefab = cookedPattyPreviewPrefab;
+        controller.rawFriesPreviewPrefab = rawFriesPreviewPrefab;
+        controller.cookedFriesPreviewPrefab = cookedFriesPreviewPrefab;
+        controller.burgerPreviewPrefab = burgerPreviewPrefab;
+        controller.drinkPreviewPrefab = drinkPreviewPrefab;
         controller.popupAnchor = anchor;
         controller.popupPivot = pivot;
         controller.popupAnchoredPosition = anchoredPosition;

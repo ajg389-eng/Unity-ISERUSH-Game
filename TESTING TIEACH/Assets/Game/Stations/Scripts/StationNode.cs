@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -8,6 +9,8 @@ public class StationNode : MonoBehaviour
 {
     [Tooltip("Worker currently assigned to operate this station")]
     public KitchenEmployee assignedWorker;
+    [Tooltip("All workers allowed to operate this shared station. The first is kept in assignedWorker for legacy UI.")]
+    public List<KitchenEmployee> assignedWorkers = new List<KitchenEmployee>();
 
     [Tooltip("Where product from this station is sent (e.g. Pantry → Grill)")]
     public GameObject outputTarget;
@@ -24,6 +27,7 @@ public class StationNode : MonoBehaviour
 
     void Awake()
     {
+        SyncAssignedWorkers();
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
     }
@@ -41,23 +45,59 @@ public class StationNode : MonoBehaviour
         if (!force && !string.IsNullOrEmpty(outputUnit))
             return;
 
-        // inputAmount 0 = no input shown (source stations)
-        if (GetComponent<GrillStation>() != null)
-            SetIo(5f, 5f, "patties", "cooked patties");
-        else if (GetComponent<AssemblyStation>() != null)
-            SetIo(10f, 10f, "cooked patties", "burgers");
-        else if (GetComponent<FreezerStation>() != null)
-            SetIo(0f, 5f, "-", "patties");
-        else if (GetComponent<FryerStation>() != null)
-            SetIo(10f, 10f, "raw fries", "cooked fries");
-        else if (GetComponent<DrinkStation>() != null)
-            SetIo(0f, 10f, "-", "drinks");
-        else if (GetComponent<PantryStation>() != null)
-            SetIo(0f, 10f, "-", "ingredients");
+        // A cycle processes the active worker's carried batch. Source stations show no input.
+        int batchSize = GetActiveBatchSize();
+        GrillStation grill = GetComponent<GrillStation>();
+        AssemblyStation assembly = GetComponent<AssemblyStation>();
+        CuttingStation cutting = GetComponent<CuttingStation>();
+        FreezerStation freezer = GetComponent<FreezerStation>();
+        FryerStation fryer = GetComponent<FryerStation>();
+        DrinkStation drink = GetComponent<DrinkStation>();
+        PantryStation pantry = GetComponent<PantryStation>();
+        if (grill != null)
+            SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
+        else if (assembly != null)
+            SetIo(RateForCycle(assembly.processTimeSeconds, batchSize) * 2f,
+                RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties + buns", "burgers");
+        else if (cutting != null)
+            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw toppings", "sliced toppings");
+        else if (freezer != null)
+            SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-", "patties");
+        else if (fryer != null)
+            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potatoes", "fries");
+        else if (drink != null)
+            SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
+        else if (pantry != null)
+            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "stock", "potatoes / ingredients");
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
         else
             SetIo(0f, 10f, "-", "items");
+    }
+
+    int GetActiveBatchSize()
+    {
+        int batch = 1;
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee worker in assignedWorkers)
+            if (worker != null)
+                batch = Mathf.Max(batch, worker.CarryCapacity);
+
+        ProductionManager production = ProductionManager.Instance;
+        if (production?.productionFlows == null) return batch;
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow?.stations == null || !flow.stations.Contains(gameObject) || flow.workers == null) continue;
+            foreach (KitchenEmployee worker in flow.workers)
+                if (worker != null)
+                    batch = Mathf.Max(batch, worker.CarryCapacity);
+        }
+        return Mathf.Clamp(batch, 1, 4);
+    }
+
+    static float RateForCycle(float seconds, int batchSize)
+    {
+        return seconds > 0.001f ? 60f * Mathf.Max(1, batchSize) / seconds : 0f;
     }
 
     void SetIo(float input, float output, string inUnit, string outUnit)
@@ -76,7 +116,7 @@ public class StationNode : MonoBehaviour
         {
             var t = KitchenEmployee.GetStationTypeFrom(gameObject);
             if (t.HasValue) return t.Value.ToString();
-            if (GetComponent<HeatLampStation>() != null) return "Heat Lamp";
+            if (GetComponent<HeatLampStation>() != null) return "Pickup Station";
             return gameObject.name;
         }
     }
@@ -85,24 +125,75 @@ public class StationNode : MonoBehaviour
 
     public bool IsWorkStation => StationType.HasValue;
 
+    public bool HasAssignedWorker
+    {
+        get
+        {
+            SyncAssignedWorkers();
+            return assignedWorkers.Count > 0;
+        }
+    }
+
+    public bool IsWorkerAssigned(KitchenEmployee worker)
+    {
+        if (worker == null) return false;
+        SyncAssignedWorkers();
+        return assignedWorkers.Contains(worker);
+    }
+
+    void SyncAssignedWorkers()
+    {
+        if (assignedWorkers == null)
+            assignedWorkers = new List<KitchenEmployee>();
+        assignedWorkers.RemoveAll(worker => worker == null);
+        if (assignedWorker != null && !assignedWorkers.Contains(assignedWorker))
+            assignedWorkers.Insert(0, assignedWorker);
+        assignedWorker = assignedWorkers.Count > 0 ? assignedWorkers[0] : null;
+    }
+
+    public void AddWorker(KitchenEmployee worker)
+    {
+        if (worker == null) return;
+        SyncAssignedWorkers();
+        if (!assignedWorkers.Contains(worker))
+            assignedWorkers.Add(worker);
+        assignedWorker = assignedWorkers[0];
+        worker.AddOperatedStation(gameObject);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+    }
+
+    public void RemoveWorker(KitchenEmployee worker)
+    {
+        if (worker == null) return;
+        SyncAssignedWorkers();
+        assignedWorkers.Remove(worker);
+        if (worker.IsAssignedTo(gameObject))
+            worker.RemoveOperatedStation(gameObject);
+        assignedWorker = assignedWorkers.Count > 0 ? assignedWorkers[0] : null;
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+    }
+
     public void SetWorker(KitchenEmployee worker)
     {
-        if (assignedWorker == worker) return;
-
-        if (assignedWorker != null)
-            assignedWorker.RemoveOperatedStation(gameObject);
-
-        assignedWorker = worker;
-
-        if (worker != null)
-            worker.AddOperatedStation(gameObject);
-
-        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee existing in new List<KitchenEmployee>(assignedWorkers))
+            if (existing != worker)
+                RemoveWorker(existing);
+        if (worker == null)
+            ClearWorker();
+        else
+            AddWorker(worker);
     }
 
     public void ClearWorker()
     {
-        SetWorker(null);
+        SyncAssignedWorkers();
+        foreach (KitchenEmployee worker in new List<KitchenEmployee>(assignedWorkers))
+            if (worker != null && worker.IsAssignedTo(gameObject))
+                worker.RemoveOperatedStation(gameObject);
+        assignedWorkers.Clear();
+        assignedWorker = null;
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     public void SetOutput(GameObject target)
@@ -167,6 +258,7 @@ public class StationNode : MonoBehaviour
             ?? col.GetComponentInParent<GrillStation>()?.gameObject
             ?? col.GetComponentInParent<PantryStation>()?.gameObject
             ?? col.GetComponentInParent<AssemblyStation>()?.gameObject
+            ?? col.GetComponentInParent<CuttingStation>()?.gameObject
             ?? col.GetComponentInParent<FryerStation>()?.gameObject
             ?? col.GetComponentInParent<DrinkStation>()?.gameObject
             ?? col.GetComponentInParent<HeatLampStation>()?.gameObject

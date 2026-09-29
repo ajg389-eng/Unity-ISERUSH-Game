@@ -63,7 +63,7 @@ public class KitchenInventory : MonoBehaviour
 
         if (orderConfig != null)
         {
-            foreach (var item in orderConfig.GetMenuItems())
+            foreach (var item in orderConfig.GetIngredientItems())
                 Add(item);
         }
 
@@ -114,7 +114,16 @@ public class KitchenInventory : MonoBehaviour
             if (e != null && e.item == item)
                 return e.quantity;
         }
-        return 0;
+
+        // A newly introduced ingredient will not exist in older saves or in a
+        // play session that was already running when the catalog changed.
+        IngredientStockEntry created = EnsureEntry(item);
+        if (grantStartingStock && created != null)
+        {
+            int start = item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
+            created.quantity = Mathf.Max(0, start);
+        }
+        return created != null ? created.quantity : 0;
     }
 
     public bool Has(ItemDefinition item, int amount = 1)
@@ -190,25 +199,52 @@ public class KitchenInventory : MonoBehaviour
         return item.name;
     }
 
-    /// <summary>Spend money and add one pack of the ingredient.</summary>
+    /// <summary>Spend money and queue a one-minute ingredient delivery.</summary>
     public bool TryOrderPack(ItemDefinition item)
     {
         if (item == null) return false;
+        var cart = new Dictionary<ItemDefinition, int> { { item, 1 } };
+        return TryOrderCart(cart);
+    }
+
+    /// <summary>Pay for and dispatch every selected pack as one atomic shipment.</summary>
+    public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
+    {
+        if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
-        int price = GetPackPrice(item);
-        int pack = GetPackSize(item);
-
-        if (money != null)
+        IngredientDeliveryService service = IngredientDeliveryService.Instance;
+        if (service == null)
         {
-            if (!money.TrySpend(price))
-                return false;
+            var host = new GameObject("IngredientDeliveryService");
+            service = host.AddComponent<IngredientDeliveryService>();
+        }
+        if (service.HasPending) return false;
+
+        var items = new List<ItemDefinition>();
+        var amounts = new List<int>();
+        int totalPrice = 0;
+        foreach (var pair in packCounts)
+        {
+            if (pair.Key == null || pair.Value <= 0) continue;
+            items.Add(pair.Key);
+            amounts.Add(GetPackSize(pair.Key) * pair.Value);
+            totalPrice += GetPackPrice(pair.Key) * pair.Value;
+        }
+        if (items.Count == 0) return false;
+
+        if (money != null && !money.TrySpend(totalPrice))
+            return false;
+
+        if (!service.QueueOrder(items, amounts))
+        {
+            if (money != null) money.AddMoney(totalPrice);
+            return false;
         }
 
-        AddStock(item, pack);
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
-            undo.RecordIngredientPack(item, pack, money != null ? price : 0);
+            undo.RecordIngredientOrder(items, amounts, money != null ? totalPrice : 0);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.IngredientsOrdered);
         return true;
     }

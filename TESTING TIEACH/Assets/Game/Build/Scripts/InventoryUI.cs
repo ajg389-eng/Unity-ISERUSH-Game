@@ -4,10 +4,18 @@ using TMPro;
 
 public class InventoryUI : MonoBehaviour
 {
+    static readonly KeyCode[] NumberRowTabKeys =
+    {
+        KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
+        KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6,
+        KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9
+    };
+
     public const string ContentBoxName = "ContentBox";
     public const string TabBarName = "TabBar";
     public const string StationsPanelName = "StationsPanel";
     public const string FloorPanelName = "FloorPanel";
+    public const string CustomizePanelName = "CustomizePanel";
 
     public GameModeManager modeManager;
     public InventoryManager inventory;
@@ -47,9 +55,13 @@ public class InventoryUI : MonoBehaviour
     TextMeshProUGUI expandLabel;
     TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
+    PurchaseUndoFooter stationUndoFooter;
+    int displayedStationUnlockProgress = int.MinValue;
     bool expandUiBuilt;
     Transform floorContentParent;
     int activeTab;
+    int displayedCapacityMilestoneCount = -1;
+    ManagementTabInfoUI tabInfoUI;
 
     void Start()
     {
@@ -59,9 +71,14 @@ public class InventoryUI : MonoBehaviour
         if (inventoryButton)
             inventoryButton.onClick.AddListener(TogglePanel);
 
+        // The panel can be active in the scene before TogglePanel is ever called.
+        // Make its entire visible rect consume pointer input immediately.
+        EnsurePanelClickBlocker();
+        ApplyConnectedHudBackdrop();
         BindOrBuildTabs(forceDefaultLayout: false);
         EnsureExpandUi();
         EnsureUndoFooter();
+        EnsureTabInfo();
         WireTabButtons();
         RefreshAll();
         SelectTab(0);
@@ -70,9 +87,54 @@ public class InventoryUI : MonoBehaviour
 
     void Update()
     {
+        if (!UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen)
+        {
+            bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+            if (!unifiedNavigation && Input.GetKeyDown(KeyCode.Q))
+                TogglePanel();
+
+            if (!unifiedNavigation && panel != null && panel.activeSelf)
+                HandleNumberRowTabShortcut();
+        }
+
         ApplyModeState();
         RefreshExpandButton();
+
+        int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+        if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
+            || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
+            RefreshAll();
     }
+
+    void HandleNumberRowTabShortcut()
+    {
+        int requestedPosition = -1;
+        for (int i = 0; i < NumberRowTabKeys.Length; i++)
+        {
+            if (!Input.GetKeyDown(NumberRowTabKeys[i])) continue;
+            requestedPosition = i;
+            break;
+        }
+        if (requestedPosition < 0) return;
+
+        int count = tabPanels != null && tabButtons != null
+            ? Mathf.Min(Mathf.Min(tabPanels.Length, tabButtons.Length), NumberRowTabKeys.Length)
+            : 0;
+        if (requestedPosition >= count) return;
+
+        int[] visualOrder = new int[count];
+        for (int i = 0; i < count; i++)
+            visualOrder[i] = i;
+        System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
+            .CompareTo(GetTabSiblingIndex(tabButtons[b])));
+
+        SelectTab(visualOrder[requestedPosition]);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static int GetTabSiblingIndex(Button button) => button != null
+        ? button.transform.GetSiblingIndex()
+        : int.MaxValue;
 
     void ApplyModeState()
     {
@@ -102,16 +164,21 @@ public class InventoryUI : MonoBehaviour
     {
         if (!panel) return;
         bool opening = !panel.activeSelf;
+        if (!opening && tabInfoUI != null)
+            tabInfoUI.Close();
         panel.SetActive(opening);
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            EnsurePanelClickBlocker();
+            ApplyConnectedHudBackdrop();
             var mgmt = FindObjectOfType<ManagementScreenController>();
             if (mgmt != null && mgmt.IsOpen)
                 mgmt.Close();
             BindOrBuildTabs(forceDefaultLayout: false);
             EnsureExpandUi();
             EnsureUndoFooter();
+            EnsureTabInfo();
             WireTabButtons();
             RefreshAll();
             SelectTab(activeTab);
@@ -120,6 +187,41 @@ public class InventoryUI : MonoBehaviour
     }
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
+
+    /// <summary>Consumes clicks anywhere in the inventory panel's visible rect.</summary>
+    void EnsurePanelClickBlocker()
+    {
+        if (panel == null) return;
+        Image image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.AddComponent<Image>();
+            image.color = Color.clear;
+        }
+        image.raycastTarget = true;
+    }
+
+    /// <summary>
+    /// Keep the open build panel visually continuous with the connected top HUD.
+    /// The root remains transparent so it does not stack a second translucent
+    /// layer beneath ContentBox and create a darker band along the left edge.
+    /// </summary>
+    void ApplyConnectedHudBackdrop()
+    {
+        if (panel == null) return;
+
+        var rootImage = panel.GetComponent<Image>();
+        if (rootImage != null)
+        {
+            rootImage.color = Color.clear;
+            rootImage.raycastTarget = true;
+        }
+
+        Transform contentBox = panel.transform.Find(ContentBoxName);
+        var contentImage = contentBox != null ? contentBox.GetComponent<Image>() : null;
+        if (contentImage != null)
+            contentImage.color = HudTabColors.Strip;
+    }
 
     /// <summary>Editor / runtime: create Inventory ContentBox + tabs under the panel.</summary>
     public void SetupSceneTabs(bool forceDefaultLayout = true)
@@ -151,14 +253,32 @@ public class InventoryUI : MonoBehaviour
                 HudTabColors.Apply(tabButtons[i], i == activeTab);
         }
 
+        EnsureTabInfo();
+        if (tabInfoUI != null)
+            tabInfoUI.SetTab(tabPanels[activeTab]);
+        if (stationUndoFooter == null)
+            EnsureUndoFooter();
+        if (stationUndoFooter != null)
+            stationUndoFooter.gameObject.SetActive(activeTab == 0);
+
         if (activeTab == 0)
             RefreshAll();
         else
             RefreshExpandButton();
     }
 
+    void EnsureTabInfo()
+    {
+        if (tabInfoUI != null || panel == null) return;
+        Transform contentBox = panel.transform.Find(ContentBoxName);
+        tabInfoUI = ManagementTabInfoUI.EnsureOn(contentBox != null ? contentBox : panel.transform);
+        if (tabInfoUI != null)
+            tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
+    }
+
     public void RefreshAll()
     {
+        displayedStationUnlockProgress = OnboardingTutorial.StationUnlockProgress;
         if (!inventory || !contentParent) return;
 
         EnsureStationsScrollSetup();
@@ -174,6 +294,8 @@ public class InventoryUI : MonoBehaviour
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
+            if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
+                continue;
 
             if (useSquareCards || rowPrefab == null || rowPrefab.GetComponent<InventoryItemCardUI>() != null)
                 CreateSquareCard(item);
@@ -188,6 +310,19 @@ public class InventoryUI : MonoBehaviour
         var sr = contentParent.GetComponentInParent<ScrollRect>();
         if (sr != null)
             sr.normalizedPosition = new Vector2(0f, 1f);
+
+        displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+
+        // Inventory cards are rebuilt at runtime. Apply their one final appearance now,
+        // after layout has its real dimensions, so there is no unstyled frame or delayed
+        // second theme pass when returning to this tab.
+        GameUITheme.ApplyTo(transform);
+    }
+
+    public void OpenBuildPage()
+    {
+        OpenPanel();
+        SelectTab(0);
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
@@ -365,26 +500,37 @@ public class InventoryUI : MonoBehaviour
         ItemDefinition captured = item;
         card.Bind(
             captured,
-            inventory.GetCount(captured),
+            inventory.GetAcquiredCount(captured),
             onSelect: () =>
             {
-                inventory.SelectItem(captured);
-                var placer = FindObjectOfType<BuildPlacer>();
-                if (placer) placer.BeginPlacement(captured);
+                BeginItemPlacement(captured);
             },
             onBuy: () =>
             {
                 bool bought = inventory.PurchaseOne(captured);
                 if (bought)
                 {
-                    card.SetQuantity(inventory.GetCount(captured));
                     card.SetPrice(inventory.GetPurchasePrice(captured));
+                    card.SetOwnedCapacity(
+                        inventory.GetAcquiredCount(captured),
+                        inventory.GetStationCapacity(captured));
+                    card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
+                        inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
                     Sfx.Play(SfxId.Purchase);
+                    BeginItemPlacement(captured);
                 }
                 else
                     Sfx.Play(SfxId.UiError);
             },
             displayPrice: inventory.GetPurchasePrice(captured));
+        card.SetOwnedCapacity(
+            inventory.GetAcquiredCount(captured),
+            inventory.GetStationCapacity(captured));
+        card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
+            inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
+        card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(captured));
+        if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
+            card.transform.SetAsFirstSibling();
     }
 
     void CreateLegacyRow(ItemDefinition item)
@@ -398,16 +544,22 @@ public class InventoryUI : MonoBehaviour
         var priceText = row.transform.Find("PriceBack/Price").GetComponent<TextMeshProUGUI>();
 
         nameText.text = item.itemName;
-        qtyText.text = inventory.GetCount(item).ToString();
+        int owned = inventory.GetAcquiredCount(item);
+        int capacity = inventory.GetStationCapacity(item);
+        qtyText.text = owned + "/" + capacity;
         int price = inventory.GetPurchasePrice(item);
-        priceText.text = price <= 0 ? "FREE" : "$" + price;
+        bool atCapacity = inventory.IsAtStationCapacity(item);
+        bool tutorialLocked = OnboardingTutorial.IsStationLocked(item);
+        priceText.text = tutorialLocked ? "LOCKED" : atCapacity
+            ? "MAX"
+            : price <= 0 ? "FREE" : "$" + price;
+        buyButton.interactable = !tutorialLocked && !atCapacity;
+        nameButton.interactable = !tutorialLocked;
 
         ItemDefinition captured = item;
         nameButton.onClick.AddListener(() =>
         {
-            inventory.SelectItem(captured);
-            var placer = FindObjectOfType<BuildPlacer>();
-            if (placer) placer.BeginPlacement(captured);
+            BeginItemPlacement(captured);
         });
 
         buyButton.onClick.AddListener(() =>
@@ -415,25 +567,79 @@ public class InventoryUI : MonoBehaviour
             bool bought = inventory.PurchaseOne(captured);
             if (bought)
             {
-                qtyText.text = inventory.GetCount(captured).ToString();
+                int nextOwned = inventory.GetAcquiredCount(captured);
+                int nextCapacity = inventory.GetStationCapacity(captured);
+                qtyText.text = nextOwned + "/" + nextCapacity;
                 int nextPrice = inventory.GetPurchasePrice(captured);
-                priceText.text = nextPrice <= 0 ? "FREE" : "$" + nextPrice;
+                bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
+                priceText.text = nowAtCapacity
+                    ? "MAX"
+                    : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
+                buyButton.interactable = !nowAtCapacity;
                 Sfx.Play(SfxId.Purchase);
+                BeginItemPlacement(captured);
             }
             else
                 Sfx.Play(SfxId.UiError);
         });
     }
 
+    void BeginItemPlacement(ItemDefinition item)
+    {
+        if (item == null || inventory == null || inventory.GetCount(item) <= 0)
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+        inventory.SelectItem(item);
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null) placer.BeginPlacement(item);
+    }
+
     void BindOrBuildTabs(bool forceDefaultLayout)
     {
         if (panel == null) return;
+        RemoveLegacyCustomerManagement();
 
         if (TryBindExistingTabs() && useSceneLayout && !forceDefaultLayout)
+        {
+            ApplyConnectedHudBackdrop();
+            KeepPanelsBelowTabBar();
             return;
+        }
 
         BuildTabsHierarchy(forceDefaultLayout || !useSceneLayout);
         TryBindExistingTabs();
+        ApplyConnectedHudBackdrop();
+        KeepPanelsBelowTabBar();
+    }
+
+    void KeepPanelsBelowTabBar()
+    {
+        if (panel == null) return;
+        Transform contentBox = panel.transform.Find(ContentBoxName);
+        if (contentBox == null) return;
+
+        float reserved = 128f;
+        var tabBar = contentBox.Find(TabBarName) as RectTransform;
+        if (tabBar != null)
+        {
+            float barHeight = tabBar.rect.height > 1f ? tabBar.rect.height : tabBar.sizeDelta.y;
+            float barTop = Mathf.Abs(tabBar.anchoredPosition.y);
+            reserved = barTop + barHeight + 18f;
+        }
+
+        ClearTabBar(contentBox.Find(StationsPanelName) as RectTransform, reserved);
+        ClearTabBar(contentBox.Find(FloorPanelName) as RectTransform, reserved);
+        ClearTabBar(contentBox.Find(CustomizePanelName) as RectTransform, reserved);
+    }
+
+    static void ClearTabBar(RectTransform page, float topInset)
+    {
+        if (page == null) return;
+        Vector2 max = page.offsetMax;
+        max.y = -topInset;
+        page.offsetMax = max;
     }
 
     bool TryBindExistingTabs()
@@ -446,17 +652,22 @@ public class InventoryUI : MonoBehaviour
         var tabBar = contentBox.Find(TabBarName);
         var stationsPanel = contentBox.Find(StationsPanelName);
         var floorPanel = contentBox.Find(FloorPanelName);
-        if (tabBar == null || stationsPanel == null || floorPanel == null)
+        var customizePanel = contentBox.Find(CustomizePanelName);
+        if (tabBar == null || stationsPanel == null || floorPanel == null || customizePanel == null)
             return false;
 
         var stationsTab = tabBar.Find("Tab_Stations")?.GetComponent<Button>();
         var floorTab = tabBar.Find("Tab_Floor")?.GetComponent<Button>();
-        if (stationsTab == null || floorTab == null)
+        var customizeTab = tabBar.Find("Tab_Customize")?.GetComponent<Button>();
+        if (stationsTab == null || floorTab == null || customizeTab == null)
             return false;
 
-        tabButtons = new[] { stationsTab, floorTab };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
+        tabButtons = new[] { stationsTab, floorTab, customizeTab };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customizePanel.gameObject };
         floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
+
+        if (customizePanel.GetComponent<StoreAppearanceUI>() == null)
+            customizePanel.gameObject.AddComponent<StoreAppearanceUI>();
 
         var scrollContent = stationsPanel.Find("Scroll View/Viewport/Content")
             ?? stationsPanel.Find("Scroll View/Content");
@@ -480,7 +691,7 @@ public class InventoryUI : MonoBehaviour
             contentBox.SetParent(panel.transform, false);
 
             var boxImg = boxGo.GetComponent<Image>();
-            boxImg.color = HudTabColors.Panel;
+            boxImg.color = HudTabColors.Strip;
             boxImg.raycastTarget = true;
             applyDefaultLayout = true;
         }
@@ -496,7 +707,7 @@ public class InventoryUI : MonoBehaviour
 
             var boxImg = contentBox.GetComponent<Image>();
             if (boxImg != null)
-                boxImg.color = HudTabColors.Panel;
+                boxImg.color = HudTabColors.Strip;
         }
 
         Transform stationsPanel = contentBox.Find(StationsPanelName);
@@ -560,6 +771,22 @@ public class InventoryUI : MonoBehaviour
             floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
         }
 
+        Transform customizePanel = contentBox.Find(CustomizePanelName);
+        if (customizePanel == null)
+        {
+            var customizeGo = new GameObject(CustomizePanelName, typeof(RectTransform), typeof(Image));
+            customizePanel = customizeGo.transform;
+            customizePanel.SetParent(contentBox, false);
+            StretchFull((RectTransform)customizePanel);
+            ((RectTransform)customizePanel).offsetMax = new Vector2(0f, -86f);
+            ((RectTransform)customizePanel).offsetMin = new Vector2(16f, 60f);
+            var customizeImage = customizeGo.GetComponent<Image>();
+            customizeImage.color = Color.clear;
+            customizeImage.raycastTarget = false;
+        }
+        if (customizePanel.GetComponent<StoreAppearanceUI>() == null)
+            customizePanel.gameObject.AddComponent<StoreAppearanceUI>();
+
         Transform tabBar = contentBox.Find(TabBarName);
         if (tabBar == null)
         {
@@ -591,13 +818,44 @@ public class InventoryUI : MonoBehaviour
 
         EnsureTabButton(tabBar, "Tab_Stations", "Stations");
         EnsureTabButton(tabBar, "Tab_Floor", "Floor");
+        EnsureTabButton(tabBar, "Tab_Customize", "Customize");
 
         tabButtons = new[]
         {
             tabBar.Find("Tab_Stations").GetComponent<Button>(),
-            tabBar.Find("Tab_Floor").GetComponent<Button>()
+            tabBar.Find("Tab_Floor").GetComponent<Button>(),
+            tabBar.Find("Tab_Customize").GetComponent<Button>()
         };
-        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject };
+        tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customizePanel.gameObject };
+    }
+
+    void RemoveLegacyCustomerManagement()
+    {
+        if (panel != null)
+        {
+            Transform contentBox = panel.transform.Find(ContentBoxName);
+            Transform oldTab = contentBox != null ? contentBox.Find(TabBarName + "/Tab_CustomerManagement") : null;
+            Transform oldPanel = contentBox != null ? contentBox.Find("CustomerManagementPanel") : null;
+            DisableAndDestroy(oldTab);
+            DisableAndDestroy(oldPanel);
+        }
+
+        CustomerWaitAreaManager oldManager = CustomerWaitAreaManager.Instance != null
+            ? CustomerWaitAreaManager.Instance
+            : FindFirstObjectByType<CustomerWaitAreaManager>();
+        if (oldManager != null)
+        {
+            oldManager.SetEditing(false);
+            oldManager.ClearAreas();
+            DestroyObject(oldManager.gameObject);
+        }
+    }
+
+    static void DisableAndDestroy(Transform target)
+    {
+        if (target == null) return;
+        target.gameObject.SetActive(false);
+        DestroyObject(target.gameObject);
     }
 
     void WireTabButtons()
@@ -804,14 +1062,28 @@ public class InventoryUI : MonoBehaviour
             ? contentBox.Find(StationsPanelName + "/Scroll View") as RectTransform
             : panel.transform.Find("Scroll View") as RectTransform;
 
-        if (scroll != null)
+        // Older versions parented this footer to the station scroll area, which
+        // left it floating above the bottom of the screen. Remove that copy.
+        if (scroll != null && scroll.parent != null && scroll.parent != panel.transform)
         {
-            PurchaseUndoFooter.EnsureMatching(scroll);
+            var oldFooter = scroll.parent.Find(PurchaseUndoFooter.ObjectName);
+            if (oldFooter != null)
+                DestroyObject(oldFooter.gameObject);
+        }
+
+        // Match the content column horizontally, but parent to the full-screen
+        // inventory panel so y = 0 is the actual bottom edge of the screen.
+        if (contentBox is RectTransform contentBoxRt)
+        {
+            stationUndoFooter = PurchaseUndoFooter.EnsureMatching(contentBoxRt);
         }
         else
         {
-            PurchaseUndoFooter.EnsureOnPanel(panel.transform);
+            stationUndoFooter = PurchaseUndoFooter.EnsureOnPanel(panel.transform);
         }
+
+        if (stationUndoFooter != null)
+            stationUndoFooter.gameObject.SetActive(activeTab == 0);
 
         var floorPanel = contentBox != null ? contentBox.Find(FloorPanelName) : null;
         if (floorPanel != null)

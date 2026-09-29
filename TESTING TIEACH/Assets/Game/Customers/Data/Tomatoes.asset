@@ -1,0 +1,14 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
+  m_Name: Tomatoes
+  m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
+  itemName: Tomatoes
+  prefab: {fileID: 5028759993301923343, guid: 85938f0c69ec2764089c4ae07951faf6, type: 3}
+  price: 0
+  startingQuantity: 10
+  orderPackSize: 10
+  orderPackPrice: 8

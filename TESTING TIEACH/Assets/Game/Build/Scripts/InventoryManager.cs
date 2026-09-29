@@ -5,6 +5,12 @@ public class InventoryManager : MonoBehaviour
 {
     public List<ItemDefinition> allItems = new List<ItemDefinition>();
 
+    [Header("Station capacity")]
+    [Min(1), Tooltip("Owned copies of each station type once Milestone 2 is reached.")]
+    public int baseStationCapacity = 2;
+    [Min(0), Tooltip("Additional copies of every station type for each numbered milestone after 2.")]
+    public int capacityPerCompletedMilestone = 1;
+
     private Dictionary<ItemDefinition, int> counts = new Dictionary<ItemDefinition, int>();
     /// <summary>Total units ever acquired (starting stock + purchases). First of each item is free.</summary>
     private Dictionary<ItemDefinition, int> acquired = new Dictionary<ItemDefinition, int>();
@@ -36,6 +42,27 @@ public class InventoryManager : MonoBehaviour
         return acquired.TryGetValue(item, out int c) ? c : 0;
     }
 
+    public const int DoorPurchaseCap = 1;
+
+    /// <summary>Total owned capacity for one station type, including milestone rewards.</summary>
+    public int GetStationCapacity(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor
+            || item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
+            return DoorPurchaseCap;
+        if (OnboardingTutorial.BlocksProgression)
+            return 1;
+        int completed = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone);
+    }
+
+    public bool IsAtStationCapacity(ItemDefinition item)
+    {
+        return item == null || GetAcquiredCount(item) >= GetStationCapacity(item);
+    }
+
     /// <summary>Shop price: first unit of each station/item is free.</summary>
     public int GetPurchasePrice(ItemDefinition item)
     {
@@ -48,11 +75,14 @@ public class InventoryManager : MonoBehaviour
         SelectedItem = item;
     }
 
-    public bool CanPurchase(ItemDefinition item) => item != null;
+    public bool CanPurchase(ItemDefinition item)
+    {
+        return item != null && !OnboardingTutorial.IsStationLocked(item) && !IsAtStationCapacity(item);
+    }
 
     public bool PurchaseOne(ItemDefinition item)
     {
-        if (item == null) return false;
+        if (!CanPurchase(item)) return false;
         if (!counts.ContainsKey(item)) counts[item] = 0;
         if (!acquired.ContainsKey(item)) acquired[item] = 0;
 
@@ -85,6 +115,7 @@ public class InventoryManager : MonoBehaviour
     public bool TryConsumeOne(ItemDefinition item)
     {
         if (item == null) return false;
+        if (OnboardingTutorial.IsStationLocked(item)) return false;
         if (!counts.TryGetValue(item, out int c)) return false;
         if (c <= 0) return false;
         counts[item] = c - 1;
@@ -92,6 +123,36 @@ public class InventoryManager : MonoBehaviour
     }
 
     /// <summary>Add one item back to inventory (e.g. when removing a placed object). Does not spend money.</summary>
+    public void DebugClearEquipmentInventory()
+    {
+        foreach (var item in allItems)
+        {
+            if (item == null || item.prefab == null) continue;
+            var prefab = item.prefab;
+            bool equipment = item.buildFunction == ItemDefinition.BuildFunction.Register
+                || prefab.GetComponentInChildren<Register>(true) != null
+                || prefab.GetComponentInChildren<FreezerStation>(true) != null
+                || prefab.GetComponentInChildren<GrillStation>(true) != null
+                || prefab.GetComponentInChildren<FryerStation>(true) != null
+                || prefab.GetComponentInChildren<DrinkStation>(true) != null
+                || prefab.GetComponentInChildren<AssemblyStation>(true) != null
+                || item.itemName == "Cutting Station"
+                || prefab.GetComponentInChildren<HeatLampStation>(true) != null
+                || prefab.GetComponentInChildren<PantryStation>(true) != null;
+            if (!equipment) continue;
+            counts[item] = 0;
+            acquired[item] = 0;
+            if (SelectedItem == item) SelectedItem = null;
+        }
+    }
+
+    public void RestoreCounts(ItemDefinition item, int stored, int totalAcquired)
+    {
+        if (item == null) return;
+        counts[item] = Mathf.Max(0, stored);
+        acquired[item] = Mathf.Max(counts[item], totalAcquired);
+    }
+
     public void AddOne(ItemDefinition item)
     {
         if (item == null) return;

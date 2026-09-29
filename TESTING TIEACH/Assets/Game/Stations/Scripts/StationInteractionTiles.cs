@@ -78,6 +78,24 @@ public class StationInteractionTiles : MonoBehaviour
         ApplyHighlightVisibility(force: true);
     }
 
+    public void RebuildGeneratedHighlight()
+    {
+        // Authored prefab highlights already follow the station transform and must
+        // remain the placement-bounds exclusion reference. Replacing one leaves
+        // its renderer in the prefab hierarchy, which can offset later pickups.
+        if (buildModeHighlight != null && buildModeHighlight.name != "InteractionHighlight")
+        {
+            ApplyHighlightVisibility(force: true);
+            return;
+        }
+
+        if (buildModeHighlight != null && buildModeHighlight.name == "InteractionHighlight")
+            Destroy(buildModeHighlight);
+        buildModeHighlight = null;
+        CreateDefaultHighlightQuads();
+        ApplyHighlightVisibility(force: true);
+    }
+
     /// <summary>
     /// Builds the same neon-green floor stand tiles used by grill / heat lamp / etc.
     /// when this station has none in the prefab (registers).
@@ -111,7 +129,7 @@ public class StationInteractionTiles : MonoBehaviour
             p.y = y;
             quad.transform.position = p;
             quad.transform.rotation = Quaternion.Euler(90f, transform.eulerAngles.y, 0f);
-            quad.transform.localScale = Vector3.one * (cell * 0.92f);
+            SetWorldScale(quad.transform, Vector3.one * (cell * 0.92f));
 
             var renderer = quad.GetComponent<MeshRenderer>();
             if (renderer != null)
@@ -125,12 +143,25 @@ public class StationInteractionTiles : MonoBehaviour
         buildModeHighlight = root;
     }
 
+    static void SetWorldScale(Transform target, Vector3 worldScale)
+    {
+        if (target == null) return;
+        Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
+        target.localScale = new Vector3(
+            worldScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            worldScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            worldScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
     List<Vector3> GetDefaultHighlightWorldPositions(float cell)
     {
         var list = new List<Vector3>();
 
         // Prefer configured grid offsets when a grid exists.
-        var fromOffsets = GetInteractionTileWorldPositions();
+        // Counter-mounted stations need their marker derived from the counter edge,
+        // because imported prefab pivots are not aligned to the floor grid.
+        var mounted = GetComponent<CounterMountedItem>();
+        var fromOffsets = mounted == null ? GetInteractionTileWorldPositions() : null;
         if (fromOffsets != null && fromOffsets.Count > 0)
         {
             list.AddRange(fromOffsets);
@@ -140,6 +171,14 @@ public class StationInteractionTiles : MonoBehaviour
         // Registers / stations without offsets: one stand tile on the worker side of the counter.
         Vector3 kitchenDir = ResolveKitchenStandDirection();
         Vector3 center = transform.position + kitchenDir * cell;
+        if (mounted != null && mounted.surface != null)
+        {
+            Bounds counter = mounted.surface.GetBaseBounds();
+            center = GetVisualCenter();
+            float targetDepth = Vector3.Dot(counter.center, kitchenDir)
+                + ExtentAlong(counter, kitchenDir) + cell * 0.5f;
+            center += kitchenDir * (targetDepth - Vector3.Dot(center, kitchenDir));
+        }
         if (grid != null)
             center = grid.GetCellCenter(center);
 
@@ -165,11 +204,6 @@ public class StationInteractionTiles : MonoBehaviour
 
     Vector3 ResolveKitchenStandDirection()
     {
-        // Match the side other stations already use for their green stand tiles.
-        Vector3 peerDir = ResolveStandDirectionFromPeerStations();
-        if (peerDir.sqrMagnitude > 0.01f)
-            return peerDir;
-
         var reg = GetComponent<Register>();
         if (reg != null)
         {
@@ -179,12 +213,50 @@ public class StationInteractionTiles : MonoBehaviour
                 return -lobby.normalized;
         }
 
+        // Match the side other stations already use for their green stand tiles.
+        Vector3 peerDir = ResolveStandDirectionFromPeerStations();
+        if (peerDir.sqrMagnitude > 0.01f)
+            return peerDir;
+
         Vector3 localFwd = transform.TransformDirection(Vector3.forward);
         localFwd.y = 0f;
         if (localFwd.sqrMagnitude > 0.01f)
             return localFwd.normalized;
 
         return Vector3.forward;
+    }
+
+    Vector3 GetVisualCenter()
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        bool found = false;
+        Bounds bounds = new Bounds(transform.position, Vector3.zero);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null) continue;
+            Transform parent = renderer.transform;
+            bool isGeneratedHighlight = false;
+            while (parent != null && parent != transform)
+            {
+                if (parent.name == "InteractionHighlight")
+                {
+                    isGeneratedHighlight = true;
+                    break;
+                }
+                parent = parent.parent;
+            }
+            if (isGeneratedHighlight) continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
+        }
+        return found ? bounds.center : transform.position;
+    }
+
+    static float ExtentAlong(Bounds bounds, Vector3 direction)
+    {
+        direction = new Vector3(Mathf.Abs(direction.x), Mathf.Abs(direction.y), Mathf.Abs(direction.z));
+        return Vector3.Dot(bounds.extents, direction);
     }
 
     Vector3 ResolveStandDirectionFromPeerStations()
@@ -260,10 +332,15 @@ public class StationInteractionTiles : MonoBehaviour
         sharedHighlightMaterial = new Material(shader)
         {
             name = "InteractionHighlight_Runtime",
-            color = new Color(0.15f, 1f, 0.35f, 0.85f)
+            color = new Color(0.02f, 1f, 0.1f, 0.55f)
         };
         if (sharedHighlightMaterial.HasProperty("_BaseColor"))
-            sharedHighlightMaterial.SetColor("_BaseColor", new Color(0.15f, 1f, 0.35f, 0.85f));
+            sharedHighlightMaterial.SetColor("_BaseColor", new Color(0.02f, 1f, 0.1f, 0.55f));
+        if (sharedHighlightMaterial.HasProperty("_EmissionColor"))
+        {
+            sharedHighlightMaterial.EnableKeyword("_EMISSION");
+            sharedHighlightMaterial.SetColor("_EmissionColor", new Color(0.08f, 3f, 0.3f, 1f));
+        }
         if (sharedHighlightMaterial.HasProperty("_Surface"))
             sharedHighlightMaterial.SetFloat("_Surface", 1f);
         return sharedHighlightMaterial;

@@ -97,7 +97,7 @@ public class CustomersUI : MonoBehaviour
             new Vector2(0, 1), new Vector2(1, 1),
             new Vector2(0, -286), new Vector2(-28, 24),
             15, TextAlignmentOptions.MidlineLeft);
-        demandTitle.text = "Required output per minute";
+        demandTitle.text = "Live demand and throughput (last 60 simulation seconds)";
 
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
@@ -303,7 +303,7 @@ public class CustomersUI : MonoBehaviour
             ? ProductionManager.Instance
             : FindObjectOfType<ProductionManager>();
         List<ProductionManager.ItemOutputNeed> needs = pm != null
-            ? pm.GetRequiredOutputByItem()
+            ? pm.GetRequiredOutputByItem(includeDrinks: true)
             : new List<ProductionManager.ItemOutputNeed>();
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
@@ -329,12 +329,10 @@ public class CustomersUI : MonoBehaviour
             string name = row.item != null
                 ? (string.IsNullOrEmpty(row.item.itemName) ? row.item.name : row.item.itemName)
                 : "Item";
-            string rate = row.requiredPerMinute >= 10f
-                ? row.requiredPerMinute.ToString("0")
-                : row.requiredPerMinute.ToString("0.0");
             demandRows[i].text =
-                $"<b>{name}</b>  ·  need <color=#FFB070><b>{rate} / min</b></color>" +
-                $"  ·  ordered {row.requested}  ·  ready {row.ready}  ·  cooking {row.cooking}";
+                $"<b>{name}</b>  ·  outstanding <color=#FFB070><b>{row.requested}</b></color>" +
+                $"  ·  ready {row.ready}  ·  in production {row.cooking}  ·  shortfall {row.requiredOutput}\n" +
+                $"<size=85%>ordered {row.orderedLastMinute}/min  ·  completed {row.completedLastMinute}/min</size>";
         }
     }
 
@@ -345,8 +343,8 @@ public class CustomersUI : MonoBehaviour
             var go = new GameObject("DemandRow", typeof(RectTransform));
             go.transform.SetParent(demandListRoot, false);
             var le = go.AddComponent<LayoutElement>();
-            le.minHeight = 34;
-            le.preferredHeight = 38;
+            le.minHeight = 48;
+            le.preferredHeight = 50;
             go.AddComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.9f);
             var textGo = new GameObject("Text", typeof(RectTransform));
             textGo.transform.SetParent(go.transform, false);
@@ -359,7 +357,7 @@ public class CustomersUI : MonoBehaviour
             tmp.fontSize = 14;
             tmp.alignment = TextAlignmentOptions.MidlineLeft;
             tmp.color = Color.white;
-            tmp.enableWordWrapping = false;
+            tmp.enableWordWrapping = true;
             tmp.overflowMode = TextOverflowModes.Ellipsis;
             demandRows.Add(tmp);
         }

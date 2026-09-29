@@ -44,13 +44,20 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Queue length per station</b>");
-        var queues = s.QueueLengthPerStation;
-        if (queues.Count == 0)
-            sb.AppendLine("  No registers");
+        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
+        {
+            sb.AppendLine("  Unlocks at Milestone 2.");
+        }
         else
-            foreach (var kv in queues)
-                sb.AppendLine("  " + kv.Key + ": " + kv.Value);
-        sb.AppendLine("  <i><size=80%>Bottleneck identification</size></i>");
+        {
+            var queues = s.QueueLengthPerStation;
+            if (queues.Count == 0)
+                sb.AppendLine("  No registers");
+            else
+                foreach (var kv in queues)
+                    sb.AppendLine("  " + kv.Key + ": " + kv.Value);
+            sb.AppendLine("  <i><size=80%>Where customers are waiting</size></i>");
+        }
         sb.AppendLine();
 
         sb.AppendLine("<b>Average wait time</b>");
@@ -62,20 +69,30 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Station utilization (%)</b>");
-        var util = s.StationUtilizationPercent;
-        if (util.Count == 0)
-            sb.AppendLine("  —");
+        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
+        {
+            sb.AppendLine("  Unlocks at Milestone 2.");
+        }
         else
-            foreach (var kv in util)
-                sb.AppendLine("  " + kv.Key + ": " + kv.Value.ToString("F0") + "%");
-        sb.AppendLine("  <i><size=80%>Capacity usage</size></i>");
+        {
+            var util = s.StationUtilizationPercent;
+            if (util.Count == 0)
+                sb.AppendLine("  —");
+            else
+                foreach (var kv in util)
+                    sb.AppendLine("  " + kv.Key + ": " + kv.Value.ToString("F0") + "%");
+            sb.AppendLine("  <i><size=80%>Capacity usage</size></i>");
+        }
         sb.AppendLine();
 
         sb.AppendLine("<b>Worker utilization</b>");
-        sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
+        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
+            sb.AppendLine("  Unlocks at Milestone 2.");
+        else
+            sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Heat lamp stock</b>");
+        sb.AppendLine("<b>Pickup Station stock</b>");
         sb.AppendLine("  " + s.HeatLampStock + " / " + s.HeatLampCapacity + "  <i><size=80%>Make-to-stock buffer</size></i>");
         sb.AppendLine();
 
@@ -84,7 +101,7 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Revenue earned</b>");
-        sb.AppendLine("  $" + s.RevenueEarned + "  <i><size=80%>Sales from heat lamp</size></i>");
+        sb.AppendLine("  $" + s.RevenueEarned + "  <i><size=80%>Sales from pickup</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Order completion time</b>");

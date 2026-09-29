@@ -2,14 +2,30 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Lowers walls on the camera-facing side of the kitchen so you can see into the store.
-/// Add to any scene object (or it auto-creates beside the camera).
+/// Applies a Sims-style low-wall cutaway on the camera-facing side of the store.
+/// Individual compass sides can be locked at full height from Options → Visual.
 /// </summary>
 public class CameraWallCutaway : MonoBehaviour
 {
+    public enum WallSide
+    {
+        North = 0,
+        East = 1,
+        South = 2,
+        West = 3
+    }
+
     public static CameraWallCutaway Instance { get; private set; }
 
     static readonly List<CameraOcclusionWall> Walls = new List<CameraOcclusionWall>();
+    static readonly bool[] LockedSides = new bool[4];
+    static bool locksLoaded;
+
+    const string PrefLockNorth = "PauseMenu.LockWall.North";
+    const string PrefLockEast = "PauseMenu.LockWall.East";
+    const string PrefLockSouth = "PauseMenu.LockWall.South";
+    const string PrefLockWest = "PauseMenu.LockWall.West";
+    const string PrefAutomaticCutawayDefault = "CameraWallCutaway.AutomaticDefault.v1";
 
     [Tooltip("Camera used for cutaway. Defaults to main / PlayerCameraController.")]
     public Camera targetCamera;
@@ -19,11 +35,11 @@ public class CameraWallCutaway : MonoBehaviour
 
     public GridManager grid;
 
-    [Tooltip("How strongly a wall must face the camera side before it ducks (0–1).")]
+    [Tooltip("How strongly a wall must face the camera side before it cuts away (0-1).")]
     [Range(0.05f, 0.9f)]
     public float duckDotThreshold = 0.2f;
 
-    [Tooltip("How fast walls lower / rise.")]
+    [Tooltip("How fast walls transition between full height and cutaway height.")]
     public float duckSpeed = 7f;
 
     [Tooltip("Auto-tag scene objects named like Wall on start.")]
@@ -37,6 +53,7 @@ public class CameraWallCutaway : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        LoadLocks();
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (targetCamera == null)
@@ -80,17 +97,24 @@ public class CameraWallCutaway : MonoBehaviour
 
     void LateUpdate()
     {
-        if (targetCamera == null)
+        if (targetCamera == null || !targetCamera.isActiveAndEnabled)
         {
             targetCamera = Camera.main;
-            if (targetCamera == null) return;
+            if (targetCamera == null || !targetCamera.isActiveAndEnabled) return;
         }
 
         Vector3 focus = GetFocus();
         Vector3 cam = targetCamera.transform.position;
         Vector3 camFromFocus = cam - focus;
         camFromFocus.y = 0f;
-        if (camFromFocus.sqrMagnitude < 0.01f) return;
+        // Panning directly over the focus must not freeze the last wall targets.
+        if (camFromFocus.sqrMagnitude < 0.01f)
+        {
+            camFromFocus = -targetCamera.transform.forward;
+            camFromFocus.y = 0f;
+            if (camFromFocus.sqrMagnitude < 0.01f)
+                camFromFocus = Vector3.back;
+        }
         Vector3 camDir = camFromFocus.normalized;
 
         for (int i = Walls.Count - 1; i >= 0; i--)
@@ -105,7 +129,7 @@ public class CameraWallCutaway : MonoBehaviour
             Vector3 outward = wall.GetOutward(focus);
             float face = Vector3.Dot(camDir, outward);
 
-            // Also duck walls that sit on the camera side of the store (helps L-shaped dining).
+            // Also fade walls that sit on the camera side of the store (helps L-shaped dining).
             Vector3 toWall = wall.transform.position - focus;
             toWall.y = 0f;
             float onCamSide = toWall.sqrMagnitude > 0.01f
@@ -115,7 +139,95 @@ public class CameraWallCutaway : MonoBehaviour
             float side = Mathf.Max(face, onCamSide * 0.9f);
             // Soft blend near the threshold so orbiting feels smooth
             float t = Mathf.InverseLerp(duckDotThreshold, duckDotThreshold + 0.35f, side);
+            if (IsOutwardLocked(outward))
+                t = 0f;
             wall.SetDuckTarget(t);
+        }
+    }
+
+    public static bool IsWallLocked(WallSide side)
+    {
+        if (side == WallSide.East)
+            return true;
+        LoadLocks();
+        int index = (int)side;
+        if (index < 0 || index >= LockedSides.Length) return false;
+        return LockedSides[index];
+    }
+
+    public static void SetWallLocked(WallSide side, bool locked)
+    {
+        if (side == WallSide.East)
+            locked = true;
+        LoadLocks();
+        int index = (int)side;
+        if (index < 0 || index >= LockedSides.Length) return;
+        LockedSides[index] = locked;
+        PlayerPrefs.SetInt(PrefKey(side), locked ? 1 : 0);
+        PlayerPrefs.Save();
+        if (locked)
+            SnapLockedWallsUp(side);
+    }
+
+    static string PrefKey(WallSide side)
+    {
+        switch (side)
+        {
+            case WallSide.North: return PrefLockNorth;
+            case WallSide.East: return PrefLockEast;
+            case WallSide.South: return PrefLockSouth;
+            default: return PrefLockWest;
+        }
+    }
+
+    static void LoadLocks()
+    {
+        if (locksLoaded) return;
+        // One-time reset of legacy locks: automatic cutaways should behave the
+        // same before and after onboarding. Later explicit choices still persist.
+        if (PlayerPrefs.GetInt(PrefAutomaticCutawayDefault, 0) != 1)
+        {
+            PlayerPrefs.SetInt(PrefLockNorth, 0);
+            PlayerPrefs.SetInt(PrefLockEast, 0);
+            PlayerPrefs.SetInt(PrefLockSouth, 0);
+            PlayerPrefs.SetInt(PrefLockWest, 0);
+            PlayerPrefs.SetInt(PrefAutomaticCutawayDefault, 1);
+            PlayerPrefs.Save();
+        }
+        LockedSides[(int)WallSide.North] = PlayerPrefs.GetInt(PrefLockNorth, 0) == 1;
+        LockedSides[(int)WallSide.East] = PlayerPrefs.GetInt(PrefLockEast, 0) == 1;
+        LockedSides[(int)WallSide.South] = PlayerPrefs.GetInt(PrefLockSouth, 0) == 1;
+        LockedSides[(int)WallSide.West] = PlayerPrefs.GetInt(PrefLockWest, 0) == 1;
+        LockedSides[(int)WallSide.East] = true;
+        locksLoaded = true;
+    }
+
+    static bool IsOutwardLocked(Vector3 outward)
+    {
+        LoadLocks();
+        return LockedSides[(int)SideFromOutward(outward)];
+    }
+
+    public static WallSide SideFromOutward(Vector3 outward)
+    {
+        outward.y = 0f;
+        if (outward.sqrMagnitude < 0.0001f)
+            return WallSide.South;
+        if (Mathf.Abs(outward.x) >= Mathf.Abs(outward.z))
+            return outward.x >= 0f ? WallSide.East : WallSide.West;
+        return outward.z >= 0f ? WallSide.North : WallSide.South;
+    }
+
+    static void SnapLockedWallsUp(WallSide side)
+    {
+        Vector3 focus = Instance != null ? Instance.GetFocus() : Vector3.zero;
+        for (int i = 0; i < Walls.Count; i++)
+        {
+            var wall = Walls[i];
+            if (wall == null) continue;
+            if (SideFromOutward(wall.GetOutward(focus)) != side) continue;
+            wall.SetDuckTarget(0f);
+            wall.SnapUp();
         }
     }
 
@@ -169,18 +281,17 @@ public class CameraWallCutaway : MonoBehaviour
             var t = all[i];
             if (t == null) continue;
             string n = t.name;
-            // Procedural bricks/windows duck with their KitchenWallGroup parent — don't tag per-piece.
+            // Procedural bricks and windows cut away with their parent wall group.
             if (n.StartsWith("KitchenWallBrick_", System.StringComparison.OrdinalIgnoreCase)
                 || n.StartsWith("KitchenWindow_", System.StringComparison.OrdinalIgnoreCase)
                 || n.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
                 continue;
 
             bool isWall = n.StartsWith("Wall", System.StringComparison.OrdinalIgnoreCase);
-
             if (!isWall) continue;
+            if (t.GetComponent<CustomerWallDoor>() != null) continue;
             if (t.GetComponent<CameraOcclusionWall>() != null) continue;
 
-            // Skip tiny helper empties without visuals
             if (t.GetComponentInChildren<Renderer>(true) == null) continue;
 
             var occ = t.gameObject.AddComponent<CameraOcclusionWall>();
@@ -189,3 +300,5 @@ public class CameraWallCutaway : MonoBehaviour
         }
     }
 }
+
+

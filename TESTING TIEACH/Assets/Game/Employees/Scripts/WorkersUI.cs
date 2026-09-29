@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
 
@@ -29,6 +30,10 @@ public class WorkersUI : MonoBehaviour
     TMP_InputField flowNameInput;
     Button createFlowButton;
     TextMeshProUGUI flowStatus;
+    Button flowExpandButton;
+    TextMeshProUGUI flowExpandArrowLabel;
+    TextMeshProUGUI flowHeaderLabel;
+    bool flowExpanded = true;
 
     void Start()
     {
@@ -47,7 +52,15 @@ public class WorkersUI : MonoBehaviour
         ConfigureWorkerScroll();
         EnsureFlowSection();
         PurchaseUndoFooter.EnsureOnPanel(transform);
+        if (MilestoneProgressManager.Instance != null)
+            MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
         Refresh();
+    }
+
+    void OnDisable()
+    {
+        if (MilestoneProgressManager.Instance != null)
+            MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
     }
 
     void EnsureRefs()
@@ -275,7 +288,7 @@ public class WorkersUI : MonoBehaviour
         if (flowPanel != null)
         {
             LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
-            float panelHeight = Mathf.Max(120f, flowPanel.rect.height);
+            float panelHeight = Mathf.Max(44f, flowPanel.rect.height);
             // Header ends ~70px from top; panel starts at 74px; leave 10px gap under panel.
             topInset = 74f + panelHeight + 10f;
         }
@@ -303,7 +316,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV2") == null)
+        if (existing != null && existing.Find("LayoutV4") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -322,8 +335,13 @@ public class WorkersUI : MonoBehaviour
             flowListRow = existing.Find("FlowListRow");
             stepRow = existing.Find("StepRow");
             workerRow = existing.Find("WorkerRow");
-            flowNameInput = existing.Find("NameRow/FlowName")?.GetComponent<TMP_InputField>();
-            createFlowButton = existing.Find("ActionsRow/CreateFlow")?.GetComponent<Button>()
+            flowNameInput = existing.Find("FlowHeader/FlowName")?.GetComponent<TMP_InputField>()
+                ?? existing.Find("NameRow/FlowName")?.GetComponent<TMP_InputField>();
+            if (flowNameInput != null)
+                flowNameInput.characterLimit = ProductionFlowPlan.MaxNameLength;
+            BindFlowHeader(existing);
+            createFlowButton = existing.Find("FlowHeader/CreateFlow")?.GetComponent<Button>()
+                ?? existing.Find("ActionsRow/CreateFlow")?.GetComponent<Button>()
                 ?? existing.Find("FlowListRow/CreateFlow")?.GetComponent<Button>();
             flowStatus = existing.Find("EconomicsPanel/FlowStats")?.GetComponent<TextMeshProUGUI>()
                 ?? existing.Find("FlowStats")?.GetComponent<TextMeshProUGUI>()
@@ -341,7 +359,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV2", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV4", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -349,8 +367,8 @@ public class WorkersUI : MonoBehaviour
         versionLe.preferredHeight = 0;
 
         var vlg = go.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(10, 10, 8, 10);
-        vlg.spacing = 5;
+        vlg.padding = new RectOffset(8, 8, 6, 8);
+        vlg.spacing = 3;
         vlg.childAlignment = TextAnchor.UpperLeft;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -361,28 +379,11 @@ public class WorkersUI : MonoBehaviour
         fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        MakeLabel(flowPanel, "FLOWS", 10, new Color(0.72f, 0.8f, 0.95f, 1f), 14);
+        BuildFlowHeader();
 
         flowListRow = MakeRow(flowPanel, "FlowListRow", 28);
-
-        var actionsRow = MakeRow(flowPanel, "ActionsRow", 28);
-        Button editFlowButton = MakeChip(actionsRow, "Edit Flow", 96f);
-        editFlowButton.gameObject.name = "EditFlow";
-        createFlowButton = MakeChip(actionsRow, "Create Flow", 108f);
-        createFlowButton.gameObject.name = "CreateFlow";
-        WireFlowActionButtons();
-
-        MakeLabel(flowPanel, "NAME", 10, new Color(0.62f, 0.68f, 0.78f, 1f), 14);
-        var nameRow = MakeRow(flowPanel, "NameRow", 28);
-        flowNameInput = MakeNameInput(nameRow);
-
-        MakeLabel(flowPanel, "STATIONS", 10, new Color(0.62f, 0.68f, 0.78f, 1f), 14);
         stepRow = MakeRow(flowPanel, "StepRow", 28);
-
-        MakeLabel(flowPanel, "WORKERS  •  click a name to remove", 10, new Color(0.62f, 0.68f, 0.78f, 1f), 14);
         workerRow = MakeRow(flowPanel, "WorkerRow", 28);
-
-        MakeLabel(flowPanel, "ECONOMICS", 10, new Color(0.62f, 0.68f, 0.78f, 1f), 14);
         BuildEconomicsPanel(flowPanel);
 
         LayoutFlowPanel();
@@ -391,13 +392,93 @@ public class WorkersUI : MonoBehaviour
             flowPanel.SetSiblingIndex(header.GetSiblingIndex() + 1);
     }
 
+    void BuildFlowHeader()
+    {
+        var header = MakeRow(flowPanel, "FlowHeader", 28);
+        flowExpandButton = MakeChip(header, ">", 28f);
+        flowExpandButton.gameObject.name = "ExpandFlow";
+        flowExpandArrowLabel = flowExpandButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        flowHeaderLabel = MakeLabel(header, "FLOW", 10,
+            new Color(0.72f, 0.8f, 0.95f, 1f), 24);
+        var headerLayout = flowHeaderLabel.GetComponent<LayoutElement>();
+        if (headerLayout != null)
+        {
+            headerLayout.minWidth = 38f;
+            headerLayout.preferredWidth = 38f;
+            headerLayout.flexibleWidth = 0f;
+        }
+        flowNameInput = MakeNameInput(header);
+        Button editFlowButton = MakeChip(header, "Edit", 62f);
+        editFlowButton.gameObject.name = "EditFlow";
+        createFlowButton = MakeChip(header, "+ Flow", 72f);
+        createFlowButton.gameObject.name = "CreateFlow";
+        WireFlowActionButtons();
+        WireFlowExpandButton();
+        UpdateFlowHeader();
+    }
+
+    void BindFlowHeader(Transform root)
+    {
+        Transform header = root != null ? root.Find("FlowHeader") : null;
+        if (header == null) return;
+        flowExpandButton = header.Find("ExpandFlow")?.GetComponent<Button>();
+        flowExpandArrowLabel = flowExpandButton != null
+            ? flowExpandButton.GetComponentInChildren<TextMeshProUGUI>(true)
+            : null;
+        flowHeaderLabel = header.Find("Label")?.GetComponent<TextMeshProUGUI>();
+        WireFlowExpandButton();
+        UpdateFlowHeader();
+        ApplyFlowExpandedState();
+    }
+
+    void WireFlowExpandButton()
+    {
+        if (flowExpandButton == null) return;
+        flowExpandButton.onClick.RemoveListener(ToggleFlowExpanded);
+        flowExpandButton.onClick.AddListener(ToggleFlowExpanded);
+    }
+
+    void ToggleFlowExpanded()
+    {
+        flowExpanded = !flowExpanded;
+        ApplyFlowExpandedState();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void ApplyFlowExpandedState()
+    {
+        if (flowPanel == null) return;
+        for (int i = 0; i < flowPanel.childCount; i++)
+        {
+            Transform child = flowPanel.GetChild(i);
+            if (child.name.StartsWith("LayoutV") || child.name == "FlowHeader") continue;
+            child.gameObject.SetActive(flowExpanded);
+        }
+
+        if (flowExpandArrowLabel != null)
+        {
+            flowExpandArrowLabel.text = ">";
+            flowExpandArrowLabel.rectTransform.localEulerAngles = flowExpanded
+                ? new Vector3(0f, 0f, -90f)
+                : Vector3.zero;
+        }
+
+        LayoutFlowPanel();
+    }
+
+    void UpdateFlowHeader()
+    {
+        if (flowHeaderLabel == null) return;
+        flowHeaderLabel.text = "FLOW";
+    }
+
     void BuildEconomicsPanel(Transform parent)
     {
         var panel = new GameObject("EconomicsPanel", typeof(RectTransform), typeof(Image));
         panel.transform.SetParent(parent, false);
         panel.GetComponent<Image>().color = new Color(0.11f, 0.12f, 0.16f, 0.98f);
         var panelLe = panel.AddComponent<LayoutElement>();
-        panelLe.minHeight = 52;
+        panelLe.minHeight = 40;
         panelLe.flexibleWidth = 1;
 
         var panelFitter = panel.AddComponent<ContentSizeFitter>();
@@ -405,7 +486,7 @@ public class WorkersUI : MonoBehaviour
         panelFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         var panelVlg = panel.AddComponent<VerticalLayoutGroup>();
-        panelVlg.padding = new RectOffset(8, 8, 6, 8);
+        panelVlg.padding = new RectOffset(6, 6, 4, 5);
         panelVlg.spacing = 2;
         panelVlg.childAlignment = TextAnchor.UpperLeft;
         panelVlg.childControlWidth = true;
@@ -424,7 +505,7 @@ public class WorkersUI : MonoBehaviour
         flowStatus.lineSpacing = 4f;
         flowStatus.raycastTarget = false;
         var statusLe = statusGo.AddComponent<LayoutElement>();
-        statusLe.minHeight = 36;
+        statusLe.minHeight = 28;
         statusLe.flexibleWidth = 1;
         var statusFitter = statusGo.AddComponent<ContentSizeFitter>();
         statusFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
@@ -484,6 +565,16 @@ public class WorkersUI : MonoBehaviour
         return tmp;
     }
 
+    void MakeRowPrefix(Transform row, string text, float width = 62f)
+    {
+        var label = MakeLabel(row, text, 9f, new Color(0.62f, 0.68f, 0.78f, 1f), 24f);
+        var layout = label.GetComponent<LayoutElement>();
+        if (layout == null) return;
+        layout.minWidth = width;
+        layout.preferredWidth = width;
+        layout.flexibleWidth = 0f;
+    }
+
     TMP_InputField MakeNameInput(Transform parent)
     {
         var go = new GameObject("FlowName", typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
@@ -528,7 +619,7 @@ public class WorkersUI : MonoBehaviour
         input.placeholder = placeholder;
         input.textViewport = rect;
         input.lineType = TMP_InputField.LineType.SingleLine;
-        input.characterLimit = 28;
+        input.characterLimit = ProductionFlowPlan.MaxNameLength;
         input.onEndEdit.AddListener(OnFlowNameEdited);
         return input;
     }
@@ -536,11 +627,18 @@ public class WorkersUI : MonoBehaviour
     void OnFlowNameEdited(string value)
     {
         if (production == null) return;
-        string clean = string.IsNullOrWhiteSpace(value) ? "Unnamed Flow" : value.Trim();
-        production.SelectedFlow.flowName = clean;
+        production.SelectedFlow.SetName(value);
+        string clean = production.SelectedFlow.flowName;
+        if (production.SelectedFlow.workers != null)
+        {
+            foreach (KitchenEmployee worker in production.SelectedFlow.workers)
+                if (worker != null)
+                    worker.assignedFlowName = clean;
+        }
         if (flowNameInput != null && flowNameInput.text != clean)
             flowNameInput.SetTextWithoutNotify(clean);
         RebuildFlowListRow();
+        UpdateFlowHeader();
     }
 
     Button MakeChip(Transform parent, string label, float width)
@@ -574,7 +672,8 @@ public class WorkersUI : MonoBehaviour
     void WireFlowActionButtons()
     {
         if (createFlowButton == null && flowPanel != null)
-            createFlowButton = flowPanel.Find("ActionsRow/CreateFlow")?.GetComponent<Button>()
+            createFlowButton = flowPanel.Find("FlowHeader/CreateFlow")?.GetComponent<Button>()
+                ?? flowPanel.Find("ActionsRow/CreateFlow")?.GetComponent<Button>()
                 ?? flowPanel.Find("FlowListRow/CreateFlow")?.GetComponent<Button>();
         if (createFlowButton != null)
         {
@@ -584,7 +683,8 @@ public class WorkersUI : MonoBehaviour
 
         Button editFlowButton = null;
         if (flowPanel != null)
-            editFlowButton = flowPanel.Find("ActionsRow/EditFlow")?.GetComponent<Button>()
+            editFlowButton = flowPanel.Find("FlowHeader/EditFlow")?.GetComponent<Button>()
+                ?? flowPanel.Find("ActionsRow/EditFlow")?.GetComponent<Button>()
                 ?? flowPanel.Find("FlowListRow/EditFlow")?.GetComponent<Button>();
         if (editFlowButton != null)
         {
@@ -645,6 +745,7 @@ public class WorkersUI : MonoBehaviour
             Destroy(flowListRow.GetChild(i).gameObject);
 
         production.EnsureProductionFlows();
+        flowListRow.gameObject.SetActive(flowExpanded);
         for (int i = 0; i < production.productionFlows.Count; i++)
         {
             ProductionFlowPlan flow = production.productionFlows[i];
@@ -653,18 +754,23 @@ public class WorkersUI : MonoBehaviour
             bool selected = index == production.selectedFlowIndex;
             string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
             Button chip = MakeChip(flowListRow, label, Mathf.Clamp(18f + label.Length * 7f, 72f, 140f));
+            chip.gameObject.name = "FlowTab_" + (i + 1);
             var img = chip.GetComponent<Image>();
-            if (img != null)
-                img.color = selected ? HudTabColors.Active : HudTabColors.Idle;
+            GameUITheme.ApplyCompactTabButton(chip, selected);
             chip.onClick.AddListener(() =>
             {
                 if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
                     return;
                 production.SelectProductionFlow(index);
+                var cameraController = FindObjectOfType<PlayerCameraController>();
+                if (cameraController != null)
+                    cameraController.PanTo(flow);
                 RefreshFlowSection();
                 if (flowNameInput != null)
                     flowNameInput.ActivateInputField();
             });
+            var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
+            dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
     }
 
@@ -674,11 +780,13 @@ public class WorkersUI : MonoBehaviour
         for (int i = stepRow.childCount - 1; i >= 0; i--)
             Destroy(stepRow.GetChild(i).gameObject);
 
+        MakeRowPrefix(stepRow, "STATIONS");
+
         ProductionFlowPlan flow = production != null ? production.SelectedFlow : null;
         int count = flow != null && flow.stations.Count > 0 ? flow.stations.Count : flow != null ? flow.stepIds.Count : 0;
         if (count == 0)
         {
-            MakeLabel(stepRow, "Empty — use Create Flow, then click stations in the kitchen", 12,
+            MakeLabel(stepRow, "No stations", 12,
                 new Color(0.7f, 0.74f, 0.8f, 1f), 24);
             return;
         }
@@ -716,12 +824,9 @@ public class WorkersUI : MonoBehaviour
         for (int i = workerRow.childCount - 1; i >= 0; i--)
             Destroy(workerRow.GetChild(i).gameObject);
 
-        if (flow == null || flow.workers.Count == 0)
-        {
-            MakeLabel(workerRow, "No workers — assign from a worker card below", 12,
-                new Color(0.7f, 0.74f, 0.8f, 1f), 24);
-            return;
-        }
+        MakeRowPrefix(workerRow, "WORKERS");
+
+        if (flow == null) return;
 
         foreach (KitchenEmployee worker in new List<KitchenEmployee>(flow.workers))
         {
@@ -734,58 +839,119 @@ public class WorkersUI : MonoBehaviour
                 Refresh();
             });
         }
+
+        CreateWorkerDropZone(workerRow, flow);
+    }
+
+    void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
+    {
+        Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
+        string dropLabel = "+  DROP WORKER";
+        if (flow != null && flow.workers != null && flow.workers.Count >= 1 && !MilestoneFeatures.ExtraFlowStaffingUnlocked)
+            dropLabel = "UNLOCKS AT M2";
+        Button dropZone = MakeChip(parent, dropLabel, 126f);
+        dropZone.gameObject.name = "WorkerDropZone";
+        var image = dropZone.GetComponent<Image>();
+        if (image != null) image.color = idleColor;
+        var label = dropZone.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+        {
+            label.fontSize = 10f;
+            label.fontStyle = FontStyles.Bold;
+            label.color = new Color(0.78f, 0.88f, 1f, 1f);
+        }
+        var target = dropZone.gameObject.AddComponent<WorkerFlowDropTarget>();
+        target.Bind(this, flow, idleColor);
     }
 
     void RefreshFlowSection()
     {
-        EnsureFlowSection();
-        if (production == null) return;
-
-        production.EnsureProductionFlows();
-        ProductionFlowPlan flow = production.SelectedFlow;
-        if (flow != null
-            && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
+        try
         {
-            WorkerFlowAssigner.SynchronizeFlowRoute(flow);
-        }
+            EnsureFlowSection();
+            if (production == null) return;
 
-        RebuildFlowListRow();
-        RebuildStepRow();
-        RebuildWorkerRow(flow);
+            production.EnsureProductionFlows();
+            ProductionFlowPlan flow = production.SelectedFlow;
+            UpdateFlowHeader();
+            if (flow != null
+                && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
+            {
+                WorkerFlowAssigner.SynchronizeFlowRoute(flow);
+            }
 
-        if (flowNameInput != null && !flowNameInput.isFocused)
-            flowNameInput.SetTextWithoutNotify(flow.flowName);
-        WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
+            RebuildFlowListRow();
+            RebuildStepRow();
+            RebuildWorkerRow(flow);
 
-        if (flowStatus == null)
-        {
-            LayoutFlowPanel();
-            return;
-        }
+            if (flowNameInput != null && !flowNameInput.isFocused)
+                flowNameInput.SetTextWithoutNotify(flow.flowName);
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
 
-        if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
-        {
-            flowStatus.text = "Create or Edit a flow, then click kitchen stations in order.";
-            LayoutFlowPanel();
-            return;
-        }
+            if (flowStatus == null)
+            {
+                LayoutFlowPanel();
+                return;
+            }
 
-        var economics = WorkflowAnalysis.AnalyzeFlow(flow);
-        var sb = new System.Text.StringBuilder();
-        if (!string.IsNullOrEmpty(economics.summary))
-            sb.Append(economics.summary);
-        for (int i = 0; i < economics.lines.Count; i++)
-        {
+            if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
+            {
+                flowStatus.text = "<size=10><b>ECONOMICS</b></size>  Add stations to analyze this flow.\n"
+                    + "<b>Resources required:</b> None";
+                LayoutFlowPanel();
+                return;
+            }
+
+            var economics = WorkflowAnalysis.AnalyzeFlow(flow);
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrEmpty(economics.summary))
+                sb.Append(economics.summary);
+            for (int i = 0; i < economics.lines.Count; i++)
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(economics.lines[i]);
+            }
             if (sb.Length > 0) sb.Append('\n');
-            sb.Append(economics.lines[i]);
+            sb.Append("<b>Resources required:</b> ");
+            if (economics.requiredResources.Count > 0)
+            {
+                for (int i = 0; i < economics.requiredResources.Count; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    ItemDefinition resource = economics.requiredResources[i];
+                    string resourceName = GetRawResourceName(resource);
+                    sb.Append(resourceName).Append(" ×1");
+                }
+            }
+            else
+            {
+                sb.Append("None");
+            }
+            flowStatus.text = "<size=10><b>ECONOMICS</b></size>  " + sb;
+            LayoutFlowPanel();
         }
-        if (flow.workers.Count == 0)
+        finally
         {
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append("Assign workers with “Assign to Current Flow” on a card.");
+            GameUITheme.ApplyTo(transform);
         }
-        flowStatus.text = sb.ToString();
-        LayoutFlowPanel();
+    }
+
+    string GetRawResourceName(ItemDefinition resource)
+    {
+        if (resource == null) return "Unknown";
+
+        CustomerOrderConfig config = production != null ? production.orderConfig : null;
+        if (config != null)
+        {
+            if (config.IsBurger(resource)) return "Patty";
+            if (resource == config.friesIngredient) return "Potatoes";
+            if (config.IsFries(resource)) return "Potatoes";
+            if (config.IsDrink(resource)) return "Drink Stock";
+        }
+
+        return KitchenInventory.Instance != null
+            ? KitchenInventory.Instance.GetDisplayName(resource)
+            : (!string.IsNullOrEmpty(resource.itemName) ? resource.itemName : resource.name);
     }
 
     public void RefreshFlowOnly()
@@ -794,58 +960,91 @@ public class WorkersUI : MonoBehaviour
         RefreshFlowSection();
     }
 
-    public void Refresh()
+    public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
     {
-        EnsureRefs();
-        ApplyCleanLayout();
-        EnsureCardContainer();
-        EnsureFlowSection();
-        RefreshFlowSection();
-
-        if (production == null)
+        if (production == null || employee == null || flow == null) return;
+        if (!production.CanAddWorkerToFlow(flow) && (flow.workers == null || !flow.workers.Contains(employee)))
         {
-            if (countText != null) countText.text = "Workers: —";
-            if (costText != null) costText.text = "Hire: —";
-            if (hireButton != null) hireButton.interactable = false;
+            Sfx.Play(SfxId.UiError);
             return;
         }
+        production.AddWorkerToFlow(flow, employee);
+        int flowIndex = production.productionFlows.IndexOf(flow);
+        if (flowIndex >= 0)
+            production.SelectProductionFlow(flowIndex);
+        Sfx.Play(SfxId.UiClick);
+        Refresh();
+    }
 
-        int count = production.employees != null ? production.employees.Count : 0;
-        if (countText != null)
-            countText.text = "Workers: " + count;
-
-        bool canHire = production.employeePrefab != null;
-        var money = FindObjectOfType<MoneyManager>();
-        int hireCostNow = production.GetHireCost();
-        string costLabel = hireCostNow <= 0 ? "FREE" : "$" + hireCostNow;
-        if (production.employeePrefab == null)
+    public void Refresh()
+    {
+        try
         {
-            canHire = false;
-            costLabel = "N/A";
+            EnsureRefs();
+            ApplyCleanLayout();
+            EnsureCardContainer();
+            EnsureFlowSection();
+            RefreshFlowSection();
+
+            if (production == null)
+            {
+                if (countText != null) countText.text = "Workers: —";
+                if (costText != null) costText.text = "Hire: —";
+                if (hireButton != null) hireButton.interactable = false;
+                return;
+            }
+
+            int count = production.employees != null ? production.employees.Count : 0;
+            if (countText != null)
+                countText.text = "Workers: " + count;
+
+            bool canHire = production.employeePrefab != null;
+            var money = FindObjectOfType<MoneyManager>();
+            int hireCostNow = production.GetHireCost();
+            string costLabel = hireCostNow <= 0 ? "FREE" : "$" + hireCostNow;
+            if (production.employeePrefab == null)
+            {
+                canHire = false;
+                costLabel = "N/A";
+            }
+            else if (production.ExtraHireLocked)
+            {
+                canHire = false;
+                costLabel = "Milestone 2";
+            }
+            else if (!production.CanHireWorker())
+            {
+                canHire = false;
+                costLabel = "MAX";
+            }
+            else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
+            {
+                canHire = false;
+                costLabel = "$" + hireCostNow;
+            }
+
+            if (costText != null)
+                costText.text = costLabel;
+
+            if (hireButton != null)
+                hireButton.interactable = canHire;
+
+            if (cardContainer == null) return;
+            for (int i = cardContainer.childCount - 1; i >= 0; i--)
+                Destroy(cardContainer.GetChild(i).gameObject);
+
+            if (production.employees == null) return;
+            foreach (var emp in production.employees)
+            {
+                if (emp == null) continue;
+                var card = CreateCard();
+                if (card != null)
+                    card.Bind(emp);
+            }
         }
-        else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
+        finally
         {
-            canHire = false;
-            costLabel = "$" + hireCostNow;
-        }
-
-        if (costText != null)
-            costText.text = costLabel;
-
-        if (hireButton != null)
-            hireButton.interactable = canHire;
-
-        if (cardContainer == null) return;
-        for (int i = cardContainer.childCount - 1; i >= 0; i--)
-            Destroy(cardContainer.GetChild(i).gameObject);
-
-        if (production.employees == null) return;
-        foreach (var emp in production.employees)
-        {
-            if (emp == null) continue;
-            var card = CreateCard();
-            if (card != null)
-                card.Bind(emp);
+            GameUITheme.ApplyTo(transform);
         }
     }
 
@@ -867,6 +1066,173 @@ public class WorkersUI : MonoBehaviour
             Destroy(cardGo);
             return null;
         }
+        var dragSource = cardGo.GetComponent<WorkerFlowDragSource>();
+        if (dragSource == null) dragSource = cardGo.AddComponent<WorkerFlowDragSource>();
+        dragSource.Bind(card);
         return card;
+    }
+}
+
+class WorkerFlowDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+{
+    public static KitchenEmployee ActiveWorker { get; private set; }
+    static WorkerFlowDragSource activeSource;
+
+    WorkerCardUI card;
+    CanvasGroup cardGroup;
+    float originalAlpha;
+    bool originalBlocksRaycasts;
+    GameObject dragLabel;
+    RectTransform dragLabelRect;
+    Canvas rootCanvas;
+
+    public void Bind(WorkerCardUI workerCard)
+    {
+        card = workerCard;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        if (card == null) card = GetComponent<WorkerCardUI>();
+        if (card == null || card.employee == null) return;
+
+        FinishActiveDrag();
+        activeSource = this;
+        ActiveWorker = card.employee;
+        cardGroup = GetComponent<CanvasGroup>();
+        if (cardGroup == null) cardGroup = gameObject.AddComponent<CanvasGroup>();
+        originalAlpha = cardGroup.alpha;
+        originalBlocksRaycasts = cardGroup.blocksRaycasts;
+        cardGroup.alpha = 0.55f;
+        cardGroup.blocksRaycasts = false;
+
+        CreateDragLabel(card.employee.employeeName);
+        MoveDragLabel(eventData);
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (ActiveWorker == null) return;
+        MoveDragLabel(eventData);
+    }
+
+    public void OnEndDrag(PointerEventData eventData)
+    {
+        CleanupDrag();
+    }
+
+    void OnDisable()
+    {
+        if (activeSource == this)
+            CleanupDrag();
+    }
+
+    void OnDestroy()
+    {
+        if (activeSource == this)
+            CleanupDrag();
+    }
+
+    public static void FinishActiveDrag()
+    {
+        if (activeSource != null)
+            activeSource.CleanupDrag();
+        else
+            ActiveWorker = null;
+    }
+
+    void CleanupDrag()
+    {
+        if (cardGroup != null)
+        {
+            cardGroup.alpha = originalAlpha;
+            cardGroup.blocksRaycasts = originalBlocksRaycasts;
+        }
+        if (dragLabel != null) Destroy(dragLabel);
+        dragLabel = null;
+        dragLabelRect = null;
+        rootCanvas = null;
+        if (activeSource == this)
+            activeSource = null;
+        ActiveWorker = null;
+    }
+
+    void CreateDragLabel(string workerName)
+    {
+        rootCanvas = GetComponentInParent<Canvas>();
+        if (rootCanvas == null) return;
+
+        dragLabel = new GameObject("WorkerDragLabel", typeof(RectTransform), typeof(Image),
+            typeof(CanvasGroup));
+        dragLabel.transform.SetParent(rootCanvas.transform, false);
+        dragLabel.transform.SetAsLastSibling();
+        dragLabelRect = (RectTransform)dragLabel.transform;
+        dragLabelRect.sizeDelta = new Vector2(190f, 34f);
+        dragLabel.GetComponent<Image>().color = new Color(0.20f, 0.38f, 0.62f, 0.96f);
+        var group = dragLabel.GetComponent<CanvasGroup>();
+        group.blocksRaycasts = false;
+        group.interactable = false;
+
+        var textObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(dragLabel.transform, false);
+        var textRect = (RectTransform)textObject.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10f, 0f);
+        textRect.offsetMax = new Vector2(-10f, 0f);
+        var text = textObject.GetComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        text.text = workerName;
+        text.fontSize = 13f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = Color.white;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
+    }
+
+    void MoveDragLabel(PointerEventData eventData)
+    {
+        if (dragLabelRect == null || rootCanvas == null) return;
+        RectTransform canvasRect = rootCanvas.transform as RectTransform;
+        Camera camera = rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay
+            ? null : rootCanvas.worldCamera;
+        if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasRect, eventData.position, camera, out Vector2 localPoint))
+            dragLabelRect.localPosition = localPoint;
+    }
+}
+
+class WorkerFlowDropTarget : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPointerExitHandler
+{
+    WorkersUI owner;
+    ProductionFlowPlan flow;
+    Image image;
+    Color normalColor;
+
+    public void Bind(WorkersUI workersUi, ProductionFlowPlan targetFlow, Color color)
+    {
+        owner = workersUi;
+        flow = targetFlow;
+        image = GetComponent<Image>();
+        normalColor = color;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (WorkerFlowDragSource.ActiveWorker != null && image != null)
+            image.color = new Color(0.24f, 0.62f, 0.48f, 1f);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (image != null) image.color = normalColor;
+    }
+
+    public void OnDrop(PointerEventData eventData)
+    {
+        KitchenEmployee employee = WorkerFlowDragSource.ActiveWorker;
+        if (employee == null || owner == null || flow == null) return;
+        WorkerFlowDragSource.FinishActiveDrag();
+        owner.AssignDraggedWorker(employee, flow);
     }
 }

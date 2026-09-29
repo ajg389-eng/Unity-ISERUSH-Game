@@ -29,7 +29,10 @@ public class GameModeManager : MonoBehaviour
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            // The HUD is laid out as left, center, and right columns. Scaling from
+            // width keeps those columns at the same relative size at every aspect
+            // ratio instead of making fullscreen builds larger than the Game view.
+            scaler.matchWidthOrHeight = 0f;
         }
     }
 

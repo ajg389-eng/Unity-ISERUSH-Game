@@ -1,0 +1,167 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>Versioned kitchen checkpoint. Transient customers and cooking jobs restart on load.</summary>
+[Serializable]
+public class KitchenSaveSnapshot
+{
+    public int version = 4, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int wallTexture, floorTexture, roofTexture;
+    public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
+    public float minutes;
+    public bool tutorialComplete;
+    public List<Equipment> equipment = new List<Equipment>();
+    public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
+    public List<Worker> workers = new List<Worker>();
+    public List<Flow> flows = new List<Flow>();
+    [Serializable] public class Stock { public string item; public int count, acquired; }
+    [Serializable] public class Equipment { public string item; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1; public Vector3 counterPosition; }
+    [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
+    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public List<int> stations = new List<int>(), workers = new List<int>(); }
+
+    public static KitchenSaveSnapshot Capture()
+    {
+        var s = new KitchenSaveSnapshot();
+        var clock = GameTimeManager.Instance;
+        s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
+        var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
+        var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
+        s.tutorialComplete = OnboardingTutorial.IsComplete;
+        s.tutorialStep = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.SaveStepIndex : 0;
+        s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
+        var appearance = StoreAppearanceController.Instance;
+        if (appearance != null)
+        {
+            s.wallTexture = appearance.WallTextureIndex;
+            s.floorTexture = appearance.FloorTextureIndex;
+            s.roofTexture = appearance.RoofTextureIndex;
+            s.wallTint = appearance.WallTint;
+            s.floorTint = appearance.FloorTint;
+            s.roofTint = appearance.RoofTint;
+        }
+        var inv = UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
+        var objects = new List<GameObject>();
+        if (inv != null)
+        {
+            foreach (var item in inv.allItems) if (item != null) s.inventory.Add(new Stock { item=item.name, count=inv.GetCount(item), acquired=inv.GetAcquiredCount(item) });
+            foreach (var item in inv.allItems)
+            {
+                if (item == null || item.prefab == null) continue;
+                foreach (var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+                {
+                    var go = candidate.gameObject;
+                    if (objects.Contains(go) || go.name.Contains("Ghost")) continue;
+                    var placed = go.GetComponent<PlacedBuildItem>();
+                    var mounted = go.GetComponent<CounterMountedItem>();
+                    bool match = placed != null ? placed.itemDefinition == item : mounted != null ? mounted.itemDefinition == item
+                        : go.name.Replace("(Clone)", "").Trim() == item.prefab.name
+                            || (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(go)) && WorkerFlowAssigner.GetStationId(go) == WorkerFlowAssigner.GetStationId(item.prefab));
+                    if (!match) continue;
+                    objects.Add(go);
+                    s.equipment.Add(new Equipment { item=item.name, position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
+                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero });
+                }
+            }
+            for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
+        }
+        var kitchen=KitchenInventory.Instance;
+        if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity});
+        var pm=ProductionManager.Instance;
+        if(pm!=null) {
+            var staff=new List<KitchenEmployee>();
+            foreach(var employee in pm.employees) if(employee!=null) {
+                staff.Add(employee);
+                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel};
+                foreach(var station in employee.operatedStations) w.stations.Add(objects.IndexOf(station));
+                s.workers.Add(w);
+            }
+            foreach(var flow in pm.productionFlows) if(flow!=null) {
+                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds)};
+                foreach(var station in flow.stations) f.stations.Add(objects.IndexOf(station));
+                foreach(var worker in flow.workers) f.workers.Add(staff.IndexOf(worker));
+                s.flows.Add(f);
+            }
+        }
+        return s;
+    }
+
+    public bool Restore()
+    {
+        var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
+        var pm=ProductionManager.Instance;
+        if(version<1 || version>4 || inv==null || pm==null) return false;
+        // Validate assets before removing anything from the current kitchen.
+        var definitions=new Dictionary<string,ItemDefinition>();
+        foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
+        foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
+        if(workers.Count>0 && pm.employeePrefab==null) return false;
+        foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
+        pm.employees.Clear(); pm.productionFlows.Clear();
+        foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
+            if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
+                continue;
+            var placed=candidate.GetComponent<PlacedBuildItem>(); var mounted=candidate.GetComponent<CounterMountedItem>();
+            bool match=placed!=null || mounted!=null;
+            if (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(candidate.gameObject))) match = true;
+            if(!match) foreach(var item in inv.allItems) if(item!=null && item.prefab!=null && candidate.name.Replace("(Clone)","").Trim()==item.prefab.name) {match=true;break;}
+            if(!match) continue;
+            if(mounted!=null && mounted.surface!=null) mounted.surface.Release(mounted);
+            candidate.gameObject.SetActive(false); UnityEngine.Object.Destroy(candidate.gameObject);
+        }
+        var grid=GridManager.Instance;
+        if(grid!=null) { grid.ResyncOccupancyFromScene(); grid.TryExpand(Mathf.Max(0,width-grid.Width),Mathf.Max(0,height-grid.Height)); }
+        var objects=new List<GameObject>();
+        foreach(var e in equipment) {
+            var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation); go.transform.localScale=e.scale;
+            BuildPlacer.ConfigurePlacedObject(go,item);
+            var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
+            objects.Add(go);
+        }
+        for(int i=0;i<equipment.Count;i++) {
+            var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
+            if(e.slot>=0) {
+                CounterSurface closest=null; float best=float.PositiveInfinity;
+                foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }
+                if(closest!=null) { var mounted=go.GetComponent<CounterMountedItem>() ?? go.AddComponent<CounterMountedItem>(); mounted.itemDefinition=item; closest.Attach(mounted,e.slot); }
+            }
+        }
+        for(int i=0;i<equipment.Count;i++) { int output=equipment[i].output; if(output>=0 && output<objects.Count) StationNode.EnsureOn(objects[i]).SetOutput(objects[output]); }
+        foreach(var entry in inventory) if(definitions.TryGetValue(entry.item,out var item)) inv.RestoreCounts(item,entry.count,entry.acquired);
+        if(KitchenInventory.Instance!=null) { KitchenInventory.Instance.ClearAllStock(); foreach(var entry in ingredients) if(definitions.TryGetValue(entry.item,out var item)) KitchenInventory.Instance.AddStock(item,entry.count); }
+        var staff=new List<KitchenEmployee>();
+        foreach(var w in workers) {
+            var go=UnityEngine.Object.Instantiate(pm.employeePrefab,w.position,Quaternion.identity); var employee=go.GetComponent<KitchenEmployee>();
+            employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); pm.RegisterEmployee(employee); staff.Add(employee);
+            foreach(int i in w.stations) if(i>=0 && i<objects.Count) { employee.AddOperatedStation(objects[i]); StationNode.EnsureOn(objects[i]).AddWorker(employee); }
+            employee.SyncFromOperatedStations();
+        }
+        foreach(var f in flows) {
+            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps};
+            foreach(int i in f.stations) if(i>=0 && i<objects.Count) flow.stations.Add(objects[i]);
+            foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
+            pm.productionFlows.Add(flow);
+        }
+        // Version 1 checkpoints included the removed door lesson at index 2.
+        int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
+            ? tutorialStep - 1
+            : tutorialStep;
+        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
+        if(milestone>0 && MilestoneProgressManager.Instance!=null) MilestoneProgressManager.Instance.DebugJumpToNumberedMilestone(milestone,out _);
+        if(grid!=null) grid.ResyncOccupancyFromScene();
+        var appearance = StoreAppearanceController.Ensure();
+        if (version >= 4)
+            appearance.RestoreState(wallTexture, floorTexture, roofTexture, wallTint, floorTint, roofTint);
+        else
+            appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
+        var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
+        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
+        PurchaseUndoManager.Instance?.ClearHistory();
+        var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
+        if (placer != null)
+            placer.EnsureCustomerEntrance();
+        else
+            UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>()?.RequestRefresh();
+        return true;
+    }
+}

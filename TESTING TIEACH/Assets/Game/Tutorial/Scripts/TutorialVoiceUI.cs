@@ -26,19 +26,21 @@ public class TutorialVoiceUI : MonoBehaviour
     public GameObject bubbleRoot;
     public TextMeshProUGUI subtitleText;
     public Image bubbleBackground;
+    TextMeshProUGUI speakerLabel;
+    Image accentStrip;
 
     [Header("Position")]
     public BubbleAnchor anchor = BubbleAnchor.BottomCenter;
     [Tooltip("Distance from the anchored screen edge (X = horizontal, Y = vertical).")]
-    public Vector2 screenOffset = new Vector2(0f, 110f);
-    public Vector2 bubbleSize = new Vector2(720f, 120f);
+    public Vector2 screenOffset = new Vector2(0f, -112f);
+    public Vector2 bubbleSize = new Vector2(720f, 104f);
 
     [Header("Appearance")]
-    public Color backgroundColor = new Color(0.08f, 0.1f, 0.14f, 0.92f);
-    public Color textColor = new Color(0.95f, 0.97f, 1f, 1f);
-    public int fontSize = 22;
-    public Vector2 textPadding = new Vector2(20f, 16f);
-    public TextAlignmentOptions textAlignment = TextAlignmentOptions.Center;
+    public Color backgroundColor = new Color(0.137f, 0.157f, 0.188f, 0.97f);
+    public Color textColor = new Color(0.949f, 0.933f, 0.906f, 1f);
+    public int fontSize = 19;
+    public Vector2 textPadding = new Vector2(24f, 14f);
+    public TextAlignmentOptions textAlignment = TextAlignmentOptions.Left;
 
     bool built;
 
@@ -73,7 +75,7 @@ public class TutorialVoiceUI : MonoBehaviour
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.matchWidthOrHeight = 0f;
         }
 
         if (bubbleRoot == null)
@@ -94,6 +96,8 @@ public class TutorialVoiceUI : MonoBehaviour
             bubbleRoot.SetActive(false);
         }
 
+        EnsureThemeChrome();
+
         built = true;
         ApplyLayout();
     }
@@ -103,9 +107,17 @@ public class TutorialVoiceUI : MonoBehaviour
         if (bubbleRoot == null) return;
 
         var rt = (RectTransform)bubbleRoot.transform;
-        ApplyAnchor(rt);
-        rt.sizeDelta = bubbleSize;
-        rt.anchoredPosition = screenOffset;
+        // Subtitles always live below the two-row top HUD. Their width is based
+        // on the actual canvas width so narrow and fullscreen displays retain margins.
+        rt.anchorMin = new Vector2(0.5f, 1f);
+        rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        float canvasWidth = GetCanvasWidth();
+        float maximumWidth = Mathf.Max(240f, Mathf.Min(bubbleSize.x, canvasWidth - 40f));
+        float minimumWidth = Mathf.Min(420f, maximumWidth);
+        float responsiveWidth = Mathf.Clamp(canvasWidth * 0.82f, minimumWidth, maximumWidth);
+        rt.sizeDelta = new Vector2(responsiveWidth, Mathf.Clamp(bubbleSize.y, 96f, 112f));
+        rt.anchoredPosition = new Vector2(0f, -112f);
 
         if (bubbleBackground != null)
             bubbleBackground.color = backgroundColor;
@@ -113,15 +125,89 @@ public class TutorialVoiceUI : MonoBehaviour
         if (subtitleText != null)
         {
             subtitleText.fontSize = fontSize;
+            subtitleText.enableAutoSizing = true;
+            subtitleText.fontSizeMin = 14f;
+            subtitleText.fontSizeMax = Mathf.Max(16f, fontSize);
             subtitleText.color = textColor;
-            subtitleText.alignment = textAlignment;
+            subtitleText.alignment = TextAlignmentOptions.TopLeft;
+            subtitleText.overflowMode = TextOverflowModes.Ellipsis;
+            GameUITheme.ApplyTitleScreenFont(subtitleText);
 
             var textRt = subtitleText.rectTransform;
             textRt.anchorMin = Vector2.zero;
             textRt.anchorMax = Vector2.one;
             textRt.offsetMin = new Vector2(textPadding.x, textPadding.y);
-            textRt.offsetMax = new Vector2(-textPadding.x, -textPadding.y);
+            textRt.offsetMax = new Vector2(-textPadding.x, -34f);
         }
+
+
+        if (speakerLabel != null)
+        {
+            speakerLabel.text = "GUS";
+            speakerLabel.color = GameUITheme.Accent;
+            GameUITheme.ApplyTitleScreenFont(speakerLabel);
+        }
+        if (accentStrip != null)
+            accentStrip.color = GameUITheme.Accent;
+    }
+
+    void EnsureThemeChrome()
+    {
+        if (bubbleRoot == null) return;
+        if (bubbleBackground == null) bubbleBackground = bubbleRoot.GetComponent<Image>();
+
+        var shadow = bubbleRoot.GetComponent<Shadow>();
+        if (shadow == null) shadow = bubbleRoot.AddComponent<Shadow>();
+        shadow.effectColor = new Color(0.04f, 0.05f, 0.07f, 0.72f);
+        shadow.effectDistance = new Vector2(3f, -3f);
+        shadow.useGraphicAlpha = true;
+
+        Transform accent = bubbleRoot.transform.Find("AccentStrip");
+        if (accent == null)
+        {
+            var go = new GameObject("AccentStrip", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(bubbleRoot.transform, false);
+            accent = go.transform;
+        }
+        accentStrip = accent.GetComponent<Image>();
+        accentStrip.raycastTarget = false;
+        RectTransform accentRect = (RectTransform)accent;
+        accentRect.anchorMin = new Vector2(0f, 0f);
+        accentRect.anchorMax = new Vector2(0f, 1f);
+        accentRect.pivot = new Vector2(0f, 0.5f);
+        accentRect.anchoredPosition = Vector2.zero;
+        accentRect.sizeDelta = new Vector2(6f, 0f);
+
+        Transform speaker = bubbleRoot.transform.Find("Speaker");
+        if (speaker == null)
+        {
+            var go = new GameObject("Speaker", typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(bubbleRoot.transform, false);
+            speaker = go.transform;
+        }
+        speakerLabel = speaker.GetComponent<TextMeshProUGUI>();
+        speakerLabel.fontSize = 13f;
+        speakerLabel.fontStyle = FontStyles.Bold;
+        speakerLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        speakerLabel.raycastTarget = false;
+        RectTransform speakerRect = (RectTransform)speaker;
+        speakerRect.anchorMin = new Vector2(0f, 1f);
+        speakerRect.anchorMax = new Vector2(1f, 1f);
+        speakerRect.pivot = new Vector2(0.5f, 1f);
+        speakerRect.anchoredPosition = new Vector2(0f, -9f);
+        speakerRect.sizeDelta = new Vector2(-48f, 22f);
+
+        accent.SetAsFirstSibling();
+        speaker.SetAsLastSibling();
+    }
+
+    float GetCanvasWidth()
+    {
+        if (targetCanvas == null) return Mathf.Max(420f, Screen.width);
+        RectTransform canvasRect = targetCanvas.transform as RectTransform;
+        if (canvasRect != null && canvasRect.rect.width > 1f)
+            return canvasRect.rect.width;
+        return Mathf.Max(420f, Screen.width / Mathf.Max(0.01f, targetCanvas.scaleFactor));
     }
 
     void ApplyAnchor(RectTransform rt)
@@ -185,10 +271,10 @@ public class TutorialVoiceUI : MonoBehaviour
     public void Show(string text)
     {
         EnsureUI();
-        ApplyLayout();
         if (bubbleRoot == null || subtitleText == null) return;
 
         subtitleText.text = string.IsNullOrEmpty(text) ? "" : text;
+        ApplyLayout();
         bubbleRoot.SetActive(true);
     }
 

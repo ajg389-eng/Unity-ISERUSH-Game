@@ -12,6 +12,10 @@ public class GridManager : MonoBehaviour
     [Header("Expansion")]
     [Tooltip("Native size of a Unity Plane mesh (default Plane is 10x10). Used when scaling the floor.")]
     public float floorMeshWorldSize = 10f;
+    [Tooltip("Customer floor that extends south with the work floor. Auto-finds CustomerFloor when empty.")]
+    public Transform customerFloor;
+    [Tooltip("Divider counter that extends south with the floors. Auto-finds Countertop when empty.")]
+    public Transform dividerCounter;
     [Tooltip("Maximum grid width (cells) the player can expand to.")]
     public int maxWidth = 30;
     [Tooltip("Maximum grid height / depth (cells) the player can expand to.")]
@@ -116,6 +120,12 @@ public class GridManager : MonoBehaviour
             var cf = GameObject.Find("CustomerFloor");
             if (cf != null) walls.customerFloor = cf.transform;
         }
+        if (walls.customerFloor != null)
+        {
+            var extension = walls.customerFloor.GetComponent<CustomerFloorRuntimeExtension>();
+            if (extension == null) extension = walls.customerFloor.gameObject.AddComponent<CustomerFloorRuntimeExtension>();
+            extension.ApplyOneTileNorthEast(cellSize);
+        }
         walls.FitToGrid();
         ResyncOccupancyFromScene();
     }
@@ -146,6 +156,9 @@ public class GridManager : MonoBehaviour
         Width = newW;
         Height = newH;
         Origin = newOrigin;
+        ResizeCustomerFloorToDepth(newH, newOrigin);
+        ResizeDividerCounterToDepth(newH, newOrigin, addHeight);
+        SyncFloorTextureTiling();
 
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
@@ -183,6 +196,9 @@ public class GridManager : MonoBehaviour
         Width = newW;
         Height = newH;
         Origin = newOrigin;
+        ResizeCustomerFloorToDepth(newH, newOrigin);
+        ResizeDividerCounterToDepth(newH, newOrigin, -removeHeight);
+        SyncFloorTextureTiling();
 
         Nodes = new Node[Width, Height];
         for (int x = 0; x < Width; x++)
@@ -290,7 +306,54 @@ public class GridManager : MonoBehaviour
             floor.position.y,
             origin.z + worldH * 0.5f);
 
-        SyncFloorTextureTiling();
+    }
+
+    void ResizeCustomerFloorToDepth(int cellsH, Vector3 origin)
+    {
+        if (customerFloor == null)
+        {
+            GameObject found = GameObject.Find("CustomerFloor");
+            if (found != null) customerFloor = found.transform;
+        }
+        if (customerFloor == null) return;
+
+        float worldH = cellsH * cellSize;
+        float mesh = Mathf.Max(0.01f, floorMeshWorldSize);
+        Vector3 scale = customerFloor.localScale;
+
+        // Preserve the authored width and only extend toward world -Z (south).
+        customerFloor.localScale = new Vector3(scale.x, scale.y, worldH / mesh);
+        customerFloor.position = new Vector3(
+            customerFloor.position.x,
+            customerFloor.position.y,
+            origin.z + worldH * 0.5f);
+
+        int customerWidth = GetFloorCellWidth(customerFloor);
+        SyncFloorTextureTiling(customerFloor, customerWidth, cellsH);
+    }
+
+    void ResizeDividerCounterToDepth(int cellsH, Vector3 origin, int slotIndexDelta)
+    {
+        if (dividerCounter == null)
+        {
+            GameObject found = GameObject.Find("Countertop");
+            if (found != null) dividerCounter = found.transform;
+        }
+        if (dividerCounter == null) return;
+
+        CounterSurface surface = dividerCounter.GetComponent<CounterSurface>();
+        if (surface == null) surface = dividerCounter.gameObject.AddComponent<CounterSurface>();
+        float worldH = cellsH * cellSize;
+        surface.ResizeForKitchenDepth(
+            worldH, origin.z + worldH * 0.5f, cellsH, slotIndexDelta);
+    }
+
+    int GetFloorCellWidth(Transform targetFloor)
+    {
+        Renderer renderer = targetFloor != null ? targetFloor.GetComponentInChildren<Renderer>() : null;
+        if (renderer == null) return 1;
+        return Mathf.Max(1, Mathf.RoundToInt(
+            renderer.bounds.size.x / Mathf.Max(0.01f, cellSize)));
     }
 
     /// <summary>
@@ -300,14 +363,19 @@ public class GridManager : MonoBehaviour
     /// </summary>
     public void SyncFloorTextureTiling()
     {
-        if (!syncFloorTextureToGrid || floor == null) return;
-        if (Width <= 0 || Height <= 0) return;
+        SyncFloorTextureTiling(floor, Width, Height);
+    }
 
-        var renderer = floor.GetComponentInChildren<Renderer>();
+    void SyncFloorTextureTiling(Transform targetFloor, int cellsW, int cellsH)
+    {
+        if (!syncFloorTextureToGrid || targetFloor == null) return;
+        if (cellsW <= 0 || cellsH <= 0) return;
+
+        var renderer = targetFloor.GetComponentInChildren<Renderer>();
         if (renderer == null) return;
 
-        float tilesX = Width * Mathf.Max(0.01f, textureTilesPerCell);
-        float tilesY = Height * Mathf.Max(0.01f, textureTilesPerCell);
+        float tilesX = cellsW * Mathf.Max(0.01f, textureTilesPerCell);
+        float tilesY = cellsH * Mathf.Max(0.01f, textureTilesPerCell);
         var scale = new Vector2(tilesX, tilesY);
 
         // Prefer a per-renderer instance so we don't mutate the shared project material permanently.
@@ -597,6 +665,7 @@ public class GridManager : MonoBehaviour
         if (n.IndexOf("Preview", System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (go.GetComponentInParent<KitchenEmployee>() != null) return true;
         if (go.GetComponentInParent<CustomerAI>() != null) return true;
+        if (go.GetComponentInParent<CounterMountedItem>() != null) return true;
         if (n.StartsWith("Expand_", System.StringComparison.OrdinalIgnoreCase)) return true;
         if (go.transform.parent != null && go.transform.parent.name == "KitchenExpandWalls") return true;
         return false;
@@ -651,6 +720,8 @@ public class GridManager : MonoBehaviour
         var open = new List<(int x, int y, float g, float f)>();
         var closed = new HashSet<(int, int)>();
         var parent = new Dictionary<(int, int), (int, int)>();
+        var bestG = new Dictionary<(int, int), float>();
+        bestG[(sx, sy)] = 0f;
         open.Add((sx, sy, 0f, Heuristic(sx, sy, gx, gy)));
 
         while (open.Count > 0)
@@ -659,6 +730,8 @@ public class GridManager : MonoBehaviour
             var cur = open[0];
             open.RemoveAt(0);
             if (closed.Contains((cur.x, cur.y))) continue;
+            if (bestG.TryGetValue((cur.x, cur.y), out float knownG) && cur.g > knownG + 0.0001f)
+                continue;
             closed.Add((cur.x, cur.y));
 
             if (cur.x == gx && cur.y == gy)
@@ -672,7 +745,7 @@ public class GridManager : MonoBehaviour
                 }
                 path.Add((sx, sy));
                 path.Reverse();
-                foreach (var c in path)
+                foreach (var c in SimplifyPath(path))
                     result.Add(CellToWorld(c.Item1, c.Item2));
                 return result;
             }
@@ -680,7 +753,11 @@ public class GridManager : MonoBehaviour
             foreach (var (nx, ny) in Neighbors(cur.x, cur.y))
             {
                 if (!IsWalkable(nx, ny) || closed.Contains((nx, ny))) continue;
-                float g = cur.g + 1f;
+                bool diagonal = nx != cur.x && ny != cur.y;
+                float g = cur.g + (diagonal ? 1.41421356f : 1f);
+                if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)
+                    continue;
+                bestG[(nx, ny)] = g;
                 float f = g + Heuristic(nx, ny, gx, gy);
                 open.Add((nx, ny, g, f));
                 parent[(nx, ny)] = (cur.x, cur.y);
@@ -689,7 +766,32 @@ public class GridManager : MonoBehaviour
         return result;
     }
 
-    static float Heuristic(int x, int y, int gx, int gy) => Mathf.Abs(x - gx) + Mathf.Abs(y - gy);
+    static float Heuristic(int x, int y, int gx, int gy)
+    {
+        int dx = Mathf.Abs(x - gx);
+        int dy = Mathf.Abs(y - gy);
+        int diagonal = Mathf.Min(dx, dy);
+        return diagonal * 1.41421356f + Mathf.Abs(dx - dy);
+    }
+
+    static List<(int x, int y)> SimplifyPath(List<(int x, int y)> path)
+    {
+        if (path == null || path.Count <= 2) return path;
+        var result = new List<(int x, int y)> { path[0] };
+        for (int i = 1; i < path.Count - 1; i++)
+        {
+            var a = path[i - 1];
+            var b = path[i];
+            var c = path[i + 1];
+            int abX = System.Math.Sign(b.x - a.x);
+            int abY = System.Math.Sign(b.y - a.y);
+            int bcX = System.Math.Sign(c.x - b.x);
+            int bcY = System.Math.Sign(c.y - b.y);
+            if (abX != bcX || abY != bcY) result.Add(b);
+        }
+        result.Add(path[path.Count - 1]);
+        return result;
+    }
 
     IEnumerable<(int x, int y)> Neighbors(int x, int y)
     {
@@ -697,6 +799,16 @@ public class GridManager : MonoBehaviour
         if (x < Width - 1) yield return (x + 1, y);
         if (y > 0) yield return (x, y - 1);
         if (y < Height - 1) yield return (x, y + 1);
+        for (int dx = -1; dx <= 1; dx += 2)
+        for (int dy = -1; dy <= 1; dy += 2)
+        {
+            int nx = x + dx;
+            int ny = y + dy;
+            if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
+            // Do not squeeze diagonally between blocked corners.
+            if (!IsWalkable(x + dx, y) || !IsWalkable(x, y + dy)) continue;
+            yield return (nx, ny);
+        }
     }
 
     void OnDrawGizmos()

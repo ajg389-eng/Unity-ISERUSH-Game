@@ -4,6 +4,8 @@ using UnityEngine;
 [System.Serializable]
 public class ProductionFlowPlan
 {
+    public const int MaxNameLength = 15;
+
     public string flowName = "Flow";
     public KitchenFlowKind kind = KitchenFlowKind.Custom;
     public List<string> stepIds = new List<string>();
@@ -12,11 +14,23 @@ public class ProductionFlowPlan
 
     public void Clean()
     {
+        flowName = NormalizeName(flowName, "Flow");
         if (stepIds == null) stepIds = new List<string>();
         if (stations == null) stations = new List<GameObject>();
         stations.RemoveAll(station => station == null);
         if (workers == null) workers = new List<KitchenEmployee>();
         workers.RemoveAll(worker => worker == null);
+    }
+
+    public void SetName(string value)
+    {
+        flowName = NormalizeName(value, "Unnamed Flow");
+    }
+
+    public static string NormalizeName(string value, string fallback)
+    {
+        string clean = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        return clean.Length <= MaxNameLength ? clean : clean.Substring(0, MaxNameLength);
     }
 }
 
@@ -67,10 +81,11 @@ public static class WorkerFlowAssigner
         new FlowStationDef("Freezer", "Freezer", typeof(FreezerStation)),
         new FlowStationDef("Grill", "Grill", typeof(GrillStation)),
         new FlowStationDef("Assembly", "Assembly", typeof(AssemblyStation)),
+        new FlowStationDef("Cutting", "Cutting Station", typeof(CuttingStation)),
         new FlowStationDef("Fryer", "Fryer", typeof(FryerStation)),
         new FlowStationDef("Drink", "Drink", typeof(DrinkStation)),
         new FlowStationDef("Register", "Register", typeof(Register)),
-        new FlowStationDef("HeatLamp", "Heat Lamp", typeof(HeatLampStation)),
+        new FlowStationDef("HeatLamp", "Pickup Station", typeof(HeatLampStation)),
         new FlowStationDef("Pantry", "Pantry", typeof(PantryStation))
     };
 
@@ -240,7 +255,7 @@ public static class WorkerFlowAssigner
             bool isHeatLamp = nodes[i].GetComponent<HeatLampStation>() != null;
             if (!isHeatLamp && assigned < KitchenEmployee.MaxStations)
             {
-                node.SetWorker(emp);
+                node.AddWorker(emp);
                 assigned++;
             }
 
@@ -267,7 +282,8 @@ public static class WorkerFlowAssigner
             var grill = go.GetComponent<GrillStation>();
             if (grill != null) grill.selectedProduct = burgerItem;
             var assembly = go.GetComponent<AssemblyStation>();
-            if (assembly != null) assembly.selectedProduct = burgerItem;
+            if (assembly != null)
+                assembly.SetRecipe(ProductionManager.Instance.orderConfig.GetAssemblyRecipe(burgerItem));
         }
     }
 
@@ -286,9 +302,7 @@ public static class WorkerFlowAssigner
             if (register != null && !register.isEnabled)
                 continue;
 
-            var node = StationNode.EnsureOn(go);
-            if (node.assignedWorker == null || node.assignedWorker == emp)
-                return go;
+            return go;
         }
         return null;
     }
@@ -433,12 +447,6 @@ public static class WorkerFlowAssigner
             foreach (GameObject station in flow.stations)
             {
                 if (station == null) continue;
-                StationNode node = StationNode.EnsureOn(station);
-                if (node.assignedWorker != null && !team.Contains(node.assignedWorker))
-                {
-                    result.message = node.DisplayName + " belongs to another flow. Remove or reassign its worker first.";
-                    return result;
-                }
                 route.Add(station);
             }
         }
@@ -520,7 +528,7 @@ public static class WorkerFlowAssigner
             for (int j = 0; j < take; j++)
             {
                 StationNode node = StationNode.EnsureOn(workStations[start + j]);
-                node.SetWorker(worker);
+                node.AddWorker(worker);
                 stationNames.Add(node.DisplayName);
             }
             worker.assignedFlow = flow.kind;
@@ -575,7 +583,7 @@ public static class WorkerFlowAssigner
         if (grill >= 0 && assembly >= 0 && grill > assembly)
             return "Invalid product route: Grill must come before Assembly.";
         if (heatLamp >= 0 && heatLamp != steps.Count - 1)
-            return "Heat Lamp must be the final stop.";
+            return "Pickup Station must be the final stop.";
         return "";
     }
 
@@ -620,7 +628,7 @@ public static class WorkerFlowAssigner
             Register register = station.GetComponent<Register>();
             if (register != null && !register.isEnabled) continue;
             StationNode node = StationNode.EnsureOn(station);
-            if (!node.IsWorkStation || node.assignedWorker == null || team.Contains(node.assignedWorker))
+            if (node.IsWorkStation)
                 return station;
         }
         return null;
@@ -633,11 +641,50 @@ public static class WorkerFlowAssigner
 /// </summary>
 public static class WorkflowAnalysis
 {
+    public sealed class FlowLayoutMetrics
+    {
+        public float routeTiles;
+        public float travelSeconds;
+        public float stationWorkSeconds;
+        public float stationCapacityPerMinute;
+        public float laborCapacityPerMinute;
+        public float effectiveOutputPerMinute;
+        public float effectiveCycleSeconds;
+        public bool hasAssignedWorker;
+        public int minimumCarryCapacity = 1;
+        public int maximumCarryCapacity = 1;
+        public string bottleneck = "None";
+    }
+
     public static List<GameObject> GetOrderedRoute(KitchenEmployee employee)
     {
         var route = new List<GameObject>();
         if (employee == null || employee.operatedStations == null || employee.operatedStations.Count == 0)
             return route;
+
+        ProductionManager production = ProductionManager.Instance;
+        ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
+        if (flow?.stations != null && flow.stations.Count > 0)
+        {
+            int first = int.MaxValue;
+            int last = -1;
+            for (int i = 0; i < flow.stations.Count; i++)
+            {
+                GameObject station = flow.stations[i];
+                if (station == null || !employee.operatedStations.Contains(station)) continue;
+                first = Mathf.Min(first, i);
+                last = Mathf.Max(last, i);
+            }
+
+            if (last >= 0)
+            {
+                int routeEnd = Mathf.Min(flow.stations.Count - 1, last + 1);
+                for (int i = first; i <= routeEnd; i++)
+                    if (flow.stations[i] != null)
+                        route.Add(flow.stations[i]);
+                return route;
+            }
+        }
 
         GameObject current = FindRouteHead(employee.operatedStations);
         var visited = new HashSet<GameObject>();
@@ -647,7 +694,7 @@ public static class WorkflowAnalysis
             StationNode node = StationNode.EnsureOn(current);
             GameObject next = node != null ? node.outputTarget : null;
             StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
-            if (nextNode != null && nextNode.IsWorkStation && nextNode.assignedWorker != employee)
+            if (nextNode != null && nextNode.IsWorkStation && !nextNode.IsWorkerAssigned(employee))
             {
                 route.Add(next);
                 break;
@@ -698,7 +745,7 @@ public static class WorkflowAnalysis
         foreach (GameObject station in GetOrderedRoute(employee))
         {
             StationNode node = StationNode.EnsureOn(station);
-            if (node == null || !node.IsWorkStation || node.assignedWorker == employee)
+            if (node == null || !node.IsWorkStation || node.IsWorkerAssigned(employee))
                 work += GetStationWorkSeconds(station);
         }
         float walkWorld = GetRouteDistanceTiles(employee)
@@ -716,6 +763,8 @@ public static class WorkflowAnalysis
 
         float distance = GetRouteDistanceTiles(employee);
         float cycle = GetEstimatedCycleSeconds(employee);
+        int carry = Mathf.Clamp(employee.CarryCapacity, 1, 4);
+        float laborRate = cycle > 0.01f ? 60f * carry / cycle : 0f;
         string risk = count >= KitchenEmployee.MaxStations
             ? " | Risk: high task switching"
             : distance >= 12f ? " | Risk: excess walking" : "";
@@ -724,7 +773,8 @@ public static class WorkflowAnalysis
             : "";
         return flow + employee.employeeName + " | " + count + "/" + KitchenEmployee.MaxStations
             + " stations | Route " + distance.ToString("F0") + " tiles | Base cycle "
-            + cycle.ToString("F1") + "s" + risk;
+            + cycle.ToString("F1") + "s | Carry " + carry + " | Labor "
+            + laborRate.ToString("0.0") + "/min" + risk;
     }
 
     public static string GetAssignmentPreview(KitchenEmployee employee, StationNode candidate)
@@ -751,30 +801,20 @@ public static class WorkflowAnalysis
         StationNode[] nodes = Object.FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         int unstaffed = 0;
         int missingOutputs = 0;
-        GameObject slowest = null;
-        float slowestTime = 0f;
 
         foreach (StationNode node in nodes)
         {
             if (node == null || !node.IsWorkStation) continue;
             Register register = node.GetComponent<Register>();
             if (register != null && !register.isEnabled) continue;
-            if (node.assignedWorker == null) unstaffed++;
+            if (!node.HasAssignedWorker) unstaffed++;
             if (RequiresOutput(node) && node.outputTarget == null) missingOutputs++;
-            float seconds = GetStationWorkSeconds(node.gameObject);
-            if (seconds > slowestTime)
-            {
-                slowestTime = seconds;
-                slowest = node.gameObject;
-            }
         }
 
         if (missingOutputs > 0)
             notes.Add(missingOutputs + " production station(s) have no output link, so work can stall.");
         if (unstaffed > 0)
             notes.Add(unstaffed + " station(s) are unstaffed, creating unused capacity.");
-        if (slowest != null)
-            notes.Add(GetName(slowest) + " has the longest base process time (" + slowestTime.ToString("F1") + "s) and is a likely capacity constraint.");
 
         ProductionManager production = ProductionManager.Instance;
         if (production != null && production.employees != null)
@@ -799,7 +839,8 @@ public static class WorkflowAnalysis
     {
         StationType? type = node.StationType;
         return type == StationType.Freezer || type == StationType.Grill
-            || type == StationType.Assembly || type == StationType.Fryer;
+            || type == StationType.Assembly || type == StationType.Cutting || type == StationType.Pantry
+            || type == StationType.Fryer;
     }
 
     static float GetDistanceTiles(GridManager grid, GameObject from, GameObject to)
@@ -808,28 +849,38 @@ public static class WorkflowAnalysis
         Vector3 a = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(from));
         Vector3 b = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(to));
         List<Vector3> path = grid.GetPath(a, b);
-        if (path.Count >= 2) return path.Count - 1;
+        if (path.Count >= 2)
+        {
+            float distance = 0f;
+            for (int i = 1; i < path.Count; i++)
+                distance += Vector3.Distance(path[i - 1], path[i]) / Mathf.Max(0.01f, grid.cellSize);
+            return distance;
+        }
 
         grid.WorldToCell(a, out int ax, out int ay);
         grid.WorldToCell(b, out int bx, out int by);
-        return Mathf.Abs(ax - bx) + Mathf.Abs(ay - by);
+        int dx = Mathf.Abs(ax - bx);
+        int dy = Mathf.Abs(ay - by);
+        return Mathf.Min(dx, dy) * 1.41421356f + Mathf.Abs(dx - dy);
     }
 
     public static float GetStationWorkSeconds(GameObject station)
     {
         if (station == null) return 0f;
         FreezerStation freezer = station.GetComponent<FreezerStation>();
-        if (freezer != null) return freezer.interactionTimeSeconds;
+        if (freezer != null) return freezer.processTimeSeconds;
         GrillStation grill = station.GetComponent<GrillStation>();
-        if (grill != null) return grill.placeTimeSeconds + grill.cookTimeSeconds + grill.waitAfterCookedSeconds + grill.takeTimeSeconds;
+        if (grill != null) return grill.processTimeSeconds;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
-        if (assembly != null) return assembly.interactionTimeSeconds;
+        if (assembly != null) return assembly.processTimeSeconds;
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        if (cutting != null) return cutting.processTimeSeconds;
         FryerStation fryer = station.GetComponent<FryerStation>();
-        if (fryer != null) return fryer.loadTimeSeconds + fryer.cookTimeSeconds + fryer.waitAfterCookedSeconds + fryer.takeTimeSeconds;
+        if (fryer != null) return fryer.processTimeSeconds;
         DrinkStation drink = station.GetComponent<DrinkStation>();
-        if (drink != null) return drink.interactionTimeSeconds;
+        if (drink != null) return drink.processTimeSeconds;
         PantryStation pantry = station.GetComponent<PantryStation>();
-        if (pantry != null) return pantry.interactionTimeSeconds;
+        if (pantry != null) return pantry.processTimeSeconds;
         return 0f;
     }
 
@@ -837,6 +888,7 @@ public static class WorkflowAnalysis
     {
         public string summary = "";
         public readonly List<string> lines = new List<string>();
+        public readonly List<ItemDefinition> requiredResources = new List<ItemDefinition>();
     }
 
     /// <summary>
@@ -861,21 +913,25 @@ public static class WorkflowAnalysis
         bool hasRegister = FlowHas(flow, "Register", typeof(Register));
         bool hasDrink = FlowHas(flow, "Drink", typeof(DrinkStation));
         bool canBurger = FlowHas(flow, "Freezer", typeof(FreezerStation))
-            || FlowHas(flow, "Grill", typeof(GrillStation))
-            || FlowHas(flow, "Assembly", typeof(AssemblyStation));
-        bool canFries = FlowHas(flow, "Fryer", typeof(FryerStation));
+            && FlowHas(flow, "Grill", typeof(GrillStation))
+            && FlowHas(flow, "Assembly", typeof(AssemblyStation));
+        bool canFries = FlowHas(flow, "Pantry", typeof(PantryStation))
+            && FlowHas(flow, "Fryer", typeof(FryerStation));
+        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+        var inventory = Object.FindFirstObjectByType<KitchenInventory>();
 
         if (hasRegister && !canBurger && !canFries)
         {
             result.summary = hasDrink
                 ? "Service flow — serves full orders (food + drinks) to customers."
                 : "Service flow — register hands finished food to customers.";
+            if (hasDrink && config != null && config.drinkItem != null)
+                result.requiredResources.Add(config.drinkItem);
             return result;
         }
 
-        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
-        var inventory = Object.FindFirstObjectByType<KitchenInventory>();
-        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
+        FlowLayoutMetrics layout = AnalyzeFlowLayout(flow);
+        float perMinute = layout.effectiveOutputPerMinute;
         float cycle = perMinute > 0.01f ? 60f / perMinute : 0f;
         string cycleLabel = perMinute > 0.01f
             ? cycle.ToString("0.0") + "s  (~" + FormatRate(perMinute) + "/min)"
@@ -886,6 +942,8 @@ public static class WorkflowAnalysis
             products.Add(config.burgerBase);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
+        if (hasDrink && config != null && config.drinkItem != null)
+            products.Add(config.drinkItem);
 
         if (products.Count == 0)
         {
@@ -893,12 +951,36 @@ public static class WorkflowAnalysis
             return result;
         }
 
-        result.summary = "Cycle " + cycleLabel;
+        foreach (ItemDefinition product in products)
+        {
+            ItemDefinition resource = config != null && config.IsFries(product)
+                ? (config.friesIngredient != null ? config.friesIngredient : product)
+                : product;
+            if (resource != null && !result.requiredResources.Contains(resource))
+                result.requiredResources.Add(resource);
+            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(product) : null;
+            if (recipe != null && recipe.pantryInput != null
+                && !result.requiredResources.Contains(recipe.pantryInput))
+                result.requiredResources.Add(recipe.pantryInput);
+        }
+
+        result.summary = (layout.hasAssignedWorker ? "Cycle " : "Projected cycle ") + cycleLabel
+            + "\nLayout: " + layout.routeTiles.ToString("0") + " route tiles"
+            + " (" + layout.travelSeconds.ToString("0.0") + "s travel/trip)"
+            + "  |  Carry: " + FormatCarryRange(layout)
+            + "  |  Bottleneck: " + layout.bottleneck;
         foreach (ItemDefinition item in products)
         {
             string name = inventory != null ? inventory.GetDisplayName(item)
                 : (!string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name);
-            float unitCost = GetIngredientUnitCost(item, inventory);
+            ItemDefinition resource = config != null && config.IsFries(item)
+                ? (config.friesIngredient != null ? config.friesIngredient : item)
+                : item;
+            float unitCost = GetIngredientUnitCost(resource, inventory);
+            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(item) : null;
+            if (recipe != null && recipe.pantryInput != null)
+                unitCost += GetIngredientUnitCost(recipe.pantryInput, inventory)
+                    * Mathf.Max(1, recipe.pantryInputAmount);
             int sell = Mathf.Max(0, item.price);
             float profit = sell - unitCost;
             result.lines.Add(
@@ -931,10 +1013,7 @@ public static class WorkflowAnalysis
 
     public static float EstimateFlowCycleSeconds(ProductionFlowPlan flow)
     {
-        float perMinute = GetFlowBottleneckOutputPerMinute(flow);
-        if (perMinute > 0.01f)
-            return 60f / perMinute;
-        return EstimateFlowCycleSecondsFromTiming(flow);
+        return AnalyzeFlowLayout(flow).effectiveCycleSeconds;
     }
 
     /// <summary>
@@ -943,26 +1022,139 @@ public static class WorkflowAnalysis
     /// </summary>
     public static float GetFlowBottleneckOutputPerMinute(ProductionFlowPlan flow)
     {
-        if (flow == null) return 0f;
+        FlowLayoutMetrics metrics = AnalyzeFlowLayout(flow);
+        return metrics.hasAssignedWorker ? metrics.effectiveOutputPerMinute : 0f;
+    }
+
+    /// <summary>
+    /// Deterministic layout model shared by the flow UI and configured production rate.
+    /// Throughput is the lower of equipment capacity and worker route capacity. Walking is
+    /// measured on the same grid path workers use, with no random congestion penalty.
+    /// </summary>
+    public static FlowLayoutMetrics AnalyzeFlowLayout(ProductionFlowPlan flow)
+    {
+        var result = new FlowLayoutMetrics();
+        if (flow == null) return result;
         flow.Clean();
 
         if (flow.stations == null || flow.stations.Count == 0)
             WorkerFlowAssigner.SynchronizeFlowRoute(flow);
 
-        float minOut = float.MaxValue;
-        bool any = false;
-
+        var route = new List<GameObject>();
         if (flow.stations != null)
         {
             foreach (GameObject station in flow.stations)
+                if (station != null) route.Add(station);
+        }
+
+        GridManager grid = GridManager.Instance;
+        float moveSpeed = GetDefaultMoveSpeed();
+        for (int i = 0; i < route.Count; i++)
+        {
+            result.stationWorkSeconds += GetStationWorkSeconds(route[i]);
+            if (i == 0 || grid == null) continue;
+            result.routeTiles += GetDistanceTiles(grid, route[i - 1], route[i]);
+        }
+        if (grid != null)
+            result.travelSeconds = result.routeTiles * grid.cellSize / Mathf.Max(0.1f, moveSpeed);
+
+        result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, out string stationBottleneck);
+
+        float laborCycle = 0f;
+        float staffedLaborCapacity = float.MaxValue;
+        bool foundStaffedSegment = false;
+        result.minimumCarryCapacity = int.MaxValue;
+        result.maximumCarryCapacity = 1;
+        if (flow.workers != null)
+        {
+            foreach (KitchenEmployee worker in flow.workers)
+            {
+                if (worker == null || worker.OperatedStationCount == 0) continue;
+                result.hasAssignedWorker = true;
+                float workerCycle = GetEstimatedCycleSeconds(worker);
+                int carry = Mathf.Clamp(worker.CarryCapacity, 1, 4);
+                result.minimumCarryCapacity = Mathf.Min(result.minimumCarryCapacity, carry);
+                result.maximumCarryCapacity = Mathf.Max(result.maximumCarryCapacity, carry);
+                laborCycle = Mathf.Max(laborCycle, workerCycle);
+                if (workerCycle > 0.01f)
+                {
+                    staffedLaborCapacity = Mathf.Min(staffedLaborCapacity, 60f * carry / workerCycle);
+                    foundStaffedSegment = true;
+                }
+            }
+        }
+
+        // Before staffing, preview this layout using the employee prefab's movement speed.
+        // Once staffed, the slowest worker-owned route segment becomes the labor constraint.
+        if (!result.hasAssignedWorker)
+        {
+            laborCycle = result.stationWorkSeconds + result.travelSeconds;
+            result.minimumCarryCapacity = 1;
+            result.maximumCarryCapacity = 1;
+        }
+
+        result.laborCapacityPerMinute = result.hasAssignedWorker
+            ? (foundStaffedSegment ? staffedLaborCapacity : 0f)
+            : (laborCycle > 0.01f ? 60f / laborCycle : 0f);
+        if (result.stationCapacityPerMinute > 0.01f && result.laborCapacityPerMinute > 0.01f)
+            result.effectiveOutputPerMinute = Mathf.Min(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
+        else
+            result.effectiveOutputPerMinute = Mathf.Max(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
+
+        result.effectiveCycleSeconds = result.effectiveOutputPerMinute > 0.01f
+            ? 60f / result.effectiveOutputPerMinute
+            : laborCycle;
+
+        bool laborLimited = result.laborCapacityPerMinute > 0.01f
+            && (result.stationCapacityPerMinute <= 0.01f
+                || result.laborCapacityPerMinute < result.stationCapacityPerMinute - 0.01f);
+        result.bottleneck = laborLimited ? "Worker travel/workload"
+            : (!string.IsNullOrEmpty(stationBottleneck) ? stationBottleneck : "None");
+        return result;
+    }
+
+    static string FormatCarryRange(FlowLayoutMetrics layout)
+    {
+        if (layout == null) return "1 item";
+        int min = Mathf.Clamp(layout.minimumCarryCapacity, 1, 4);
+        int max = Mathf.Clamp(layout.maximumCarryCapacity, min, 4);
+        return min == max
+            ? min + (min == 1 ? " item" : " items")
+            : min + "-" + max + " items";
+    }
+
+    static float GetNominalStationCapacityPerMinute(List<GameObject> route, out string bottleneckName)
+    {
+        bottleneckName = "";
+        float minOut = float.MaxValue;
+        bool any = false;
+
+        if (route != null)
+        {
+            foreach (GameObject station in route)
             {
                 if (!TryGetStationOutputPerMinute(station, out float output)) continue;
-                minOut = Mathf.Min(minOut, output);
+                if (!any || output < minOut)
+                {
+                    minOut = output;
+                    bottleneckName = GetName(station);
+                }
                 any = true;
             }
         }
 
         return any ? minOut : 0f;
+    }
+
+    static float GetDefaultMoveSpeed()
+    {
+        if (ProductionManager.Instance != null && ProductionManager.Instance.employeePrefab != null)
+        {
+            KitchenEmployee sample = ProductionManager.Instance.employeePrefab.GetComponent<KitchenEmployee>();
+            if (sample != null && sample.moveSpeed > 0.1f)
+                return sample.moveSpeed;
+        }
+        return 3f;
     }
 
     static bool TryGetStationOutputPerMinute(GameObject station, out float outputPerMinute)
@@ -974,7 +1166,7 @@ public static class WorkflowAnalysis
 
         StationNode node = StationNode.EnsureOn(station);
         if (node == null) return false;
-        node.EnsureIoDefaults();
+        node.EnsureIoDefaults(force: true);
         if (node.outputAmountPerMinute <= 0.01f) return false;
 
         outputPerMinute = node.outputAmountPerMinute;

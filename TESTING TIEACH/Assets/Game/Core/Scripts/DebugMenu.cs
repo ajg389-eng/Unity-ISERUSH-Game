@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.UI;
 using TMPro;
 
@@ -55,7 +56,7 @@ public class DebugMenu : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt))
+        if (!UIInputFocusGuard.IsTyping && (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt)))
             SetVisible(!visible);
 
         if (visible)
@@ -107,13 +108,16 @@ public class DebugMenu : MonoBehaviour
         var time = GameTimeManager.Instance;
         string clock = time != null ? time.GetClockText() : "—";
         string speed = time != null ? time.GetSpeedLabel() : $"{Time.timeScale:0.##}x";
+        var milestones = MilestoneProgressManager.Instance;
+        string stage = milestones != null ? milestones.GetActiveMilestoneDebugLabel() : "—";
 
         statusText.text =
             $"Money: ${cash}\n" +
             $"Workers: {workers}   Jobs: {pending}\n" +
-            $"Heat Lamp: {lampCount}/{lampCap}\n" +
+            $"Pickup Station: {lampCount}/{lampCap}\n" +
             $"Kitchen stock units: {stockUnits}\n" +
-            $"Clock: {clock}   Speed: {speed}";
+            $"Clock: {clock}   Speed: {speed}\n" +
+            $"Milestone: {stage}";
     }
 
     void EnsureUI()
@@ -137,7 +141,7 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 720f);
+        prt.sizeDelta = new Vector2(320f, 1000f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
@@ -155,7 +159,7 @@ public class DebugMenu : MonoBehaviour
 
         statusText = CreateLabel(panel.transform, "", 13, FontStyles.Normal);
         statusText.alignment = TextAlignmentOptions.Left;
-        statusText.GetComponent<LayoutElement>().minHeight = 90;
+        statusText.GetComponent<LayoutElement>().minHeight = 108;
 
         toastText = CreateLabel(panel.transform, "", 12, FontStyles.Italic);
         toastText.color = new Color(0.55f, 0.95f, 0.65f);
@@ -181,9 +185,20 @@ public class DebugMenu : MonoBehaviour
 
         CreateButton(panel.transform, "Spawn Customer", () =>
         {
-            var spawner = FindObjectOfType<CustomerSpawner>();
+            var spawner = FindFirstObjectByType<CustomerSpawner>(FindObjectsInactive.Include);
             if (spawner == null) { Toast("No CustomerSpawner"); return; }
-            Toast(spawner.SpawnNow() ? "Customer spawned" : "Spawn failed (queue full?)");
+            if (!spawner.gameObject.activeInHierarchy)
+                spawner.gameObject.SetActive(true);
+            if (!spawner.SpawnNow(true))
+            {
+                Toast(string.IsNullOrEmpty(spawner.LastSpawnError)
+                    ? "Spawn failed"
+                    : spawner.LastSpawnError);
+                return;
+            }
+            Toast(Time.timeScale <= 0.001f
+                ? "Customer spawned (unpause to see them walk)"
+                : "Customer spawned");
             RefreshStatus();
         });
 
@@ -196,14 +211,27 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Clear Heat Lamp", () =>
+        CreateButton(panel.transform, "Clear Pickup Station", () =>
         {
             var lamp = HeatLampStation.Instance ?? FindObjectOfType<HeatLampStation>();
-            if (lamp == null) { Toast("No Heat Lamp"); return; }
+            if (lamp == null) { Toast("No Pickup Station"); return; }
             lamp.ClearAllMeals();
-            Toast("Heat lamp cleared");
+            Toast("Pickup Station cleared");
             RefreshStatus();
         });
+
+        CreateButton(panel.transform, "Place All Stations", () =>
+        {
+            var placer = FindFirstObjectByType<BuildPlacer>();
+            if (placer == null) { Toast("No BuildPlacer"); return; }
+            int placed = placer.DebugPlaceAllStations();
+            Toast(placed > 0
+                ? $"Placed {placed} missing stations"
+                : "All stations already placed or no space");
+            RefreshStatus();
+        });
+
+        CreateButton(panel.transform, "Clear All Stations", ClearAllEquipment);
 
         CreateButton(panel.transform, "Time 1x", () =>
         {
@@ -222,6 +250,13 @@ public class DebugMenu : MonoBehaviour
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.SuperFast);
             Toast("20x");
             RefreshStatus();
+        });
+        CreateButton(panel.transform, "Skip to End of Day", () =>
+        {
+            var time = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
+            if (time == null) { Toast("No GameTimeManager"); return; }
+            if (!time.DebugSkipToEndOfDay()) { Toast("Day already ended"); return; }
+            SetVisible(false);
         });
         CreateButton(panel.transform, "Force Milestone Quiz", () =>
         {
@@ -248,6 +283,23 @@ public class DebugMenu : MonoBehaviour
                 Toast("No side menu");
             }
         });
+
+        CreateLabel(panel.transform, "Skip to milestone", 13, FontStyles.Bold);
+        var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));
+        jumpRow.transform.SetParent(panel.transform, false);
+        jumpRow.AddComponent<LayoutElement>().minHeight = 32;
+        var jumpLayout = jumpRow.AddComponent<HorizontalLayoutGroup>();
+        jumpLayout.spacing = 4f;
+        jumpLayout.childAlignment = TextAnchor.MiddleCenter;
+        jumpLayout.childControlWidth = true;
+        jumpLayout.childControlHeight = true;
+        jumpLayout.childForceExpandWidth = true;
+        jumpLayout.childForceExpandHeight = true;
+        for (int n = 1; n <= 6; n++)
+        {
+            int milestoneNumber = n;
+            CreateButton(jumpRow.transform, milestoneNumber.ToString(), () => JumpToMilestone(milestoneNumber));
+        }
         CreateButton(panel.transform, "Pause / Unpause", () =>
         {
             GameTimeManager.Instance?.TogglePausePlay();
@@ -274,6 +326,93 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateButton(panel.transform, "Close", () => SetVisible(false));
+    }
+
+    void ClearAllEquipment()
+    {
+        var management = ManagementModeController.Instance;
+        if (management != null && management.IsCapturingFlow) management.CancelFlowCapture();
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null) { placer.CancelPlacement(); placer.CancelDrag(); }
+
+        var equipment = new HashSet<GameObject>();
+        CollectEquipment<FreezerStation>(equipment);
+        CollectEquipment<GrillStation>(equipment);
+        CollectEquipment<FryerStation>(equipment);
+        CollectEquipment<DrinkStation>(equipment);
+        CollectEquipment<AssemblyStation>(equipment);
+        CollectEquipment<PantryStation>(equipment);
+        CollectEquipment<HeatLampStation>(equipment);
+        CollectEquipment<Register>(equipment);
+
+        var production = ProductionManager.Instance;
+        if (production != null && production.productionFlows != null)
+        {
+            foreach (var flow in production.productionFlows)
+            {
+                if (flow == null) continue;
+                flow.Clean();
+                if (!flow.stations.Exists(station => equipment.Contains(station))) continue;
+                foreach (var worker in flow.workers)
+                    if (worker != null) worker.ClearAllOperatedStations();
+                flow.workers.Clear();
+                flow.stations.Clear();
+                flow.stepIds.Clear();
+            }
+            production.lastFlowBalance = null;
+            production.SyncLegacyFlowSelection();
+        }
+
+        var inventory = FindFirstObjectByType<InventoryManager>();
+        foreach (var node in FindObjectsByType<StationNode>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (equipment.Contains(node.gameObject)) node.ClearWorker();
+            if (equipment.Contains(node.gameObject) || equipment.Contains(node.outputTarget)) node.SetOutput(null);
+        }
+        foreach (var station in equipment)
+        {
+            var mounted = station.GetComponent<CounterMountedItem>();
+            if (mounted != null && mounted.surface != null) mounted.surface.Release(mounted);
+            // Inactive before Destroy so occupancy scans exclude it in this frame.
+            station.SetActive(false);
+            Destroy(station);
+        }
+        inventory?.DebugClearEquipmentInventory();
+        PurchaseUndoManager.Instance?.ClearHistory();
+        GridManager.Instance?.ResyncOccupancyFromScene();
+        FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
+        FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Include)?.Refresh();
+        Toast($"Cleared {equipment.Count} stations");
+        RefreshStatus();
+    }
+
+    static void CollectEquipment<T>(HashSet<GameObject> equipment) where T : Component
+    {
+        foreach (var station in FindObjectsByType<T>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            equipment.Add(station.gameObject);
+    }
+
+    void JumpToMilestone(int number)
+    {
+        var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
+        if (tutorial != null && (OnboardingTutorial.IsActive || !OnboardingTutorial.IsComplete))
+            tutorial.Skip();
+
+        var milestones = MilestoneProgressManager.Instance;
+        if (milestones == null)
+        {
+            Toast("No MilestoneProgressManager");
+            return;
+        }
+
+        if (!milestones.DebugJumpToNumberedMilestone(number, out string label))
+        {
+            Toast("Could not jump to milestone " + number);
+            return;
+        }
+
+        Toast("Now on " + label);
+        RefreshStatus();
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string text, float size, FontStyles style)

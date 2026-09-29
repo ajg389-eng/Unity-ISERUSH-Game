@@ -42,6 +42,34 @@ public class ManagementModeController : MonoBehaviour
     public Transform productListContainer;
     public TextMeshProUGUI inventoryInfoText;
 
+    [Header("Station production previews")]
+    public GameObject rawPattyPreviewPrefab;
+    public GameObject cookedPattyPreviewPrefab;
+    public GameObject rawFriesPreviewPrefab;
+    public GameObject cookedFriesPreviewPrefab;
+    public GameObject burgerPreviewPrefab;
+    public GameObject drinkPreviewPrefab;
+
+    GameObject productionDiagramRoot;
+    GameObject productionInputCard;
+    GameObject productionSecondInputCard;
+    GameObject productionConversionRoot;
+    GameObject productionOutputCard;
+    RawImage productionInputPreview;
+    RawImage productionSecondInputPreview;
+    RawImage productionOutputPreview;
+    TextMeshProUGUI productionInputName;
+    TextMeshProUGUI productionInputRate;
+    TextMeshProUGUI productionSecondInputName;
+    TextMeshProUGUI productionSecondInputRate;
+    TextMeshProUGUI productionOutputName;
+    TextMeshProUGUI productionOutputRate;
+    TextMeshProUGUI productionCycleText;
+    GameObject pickupInventoryRoot;
+    TextMeshProUGUI pickupStockText;
+    readonly RawImage[] pickupSlotPreviews = new RawImage[4];
+    readonly TextMeshProUGUI[] pickupSlotLabels = new TextMeshProUGUI[4];
+
     [Header("Workflow decision support")]
     public GameObject workflowDecisionHud;
     public TextMeshProUGUI workflowDecisionText;
@@ -81,6 +109,7 @@ public class ManagementModeController : MonoBehaviour
 
     public bool IsCapturingFlow => capturedFlow != null;
     public ProductionFlowPlan CapturedFlow => capturedFlow;
+    public KitchenEmployee SelectedEmployee => selectedEmployee;
 
     void Awake()
     {
@@ -134,6 +163,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode)
         {
+            CustomerWallDoor.HideActivePopup();
             if (IsCapturingFlow)
                 CancelFlowCapture();
             if (selectedStation != null || pending != PendingAction.None || selectedEmployee != null)
@@ -148,7 +178,7 @@ public class ManagementModeController : MonoBehaviour
         UpdateOutputDragPreview();
         RefreshWorkflowDecisionHud();
 
-        if (Input.GetKeyDown(KeyCode.Escape) && IsCapturingFlow)
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && IsCapturingFlow)
         {
             CancelFlowCapture();
             PauseMenuUI.MarkEscapeHandled();
@@ -166,7 +196,7 @@ public class ManagementModeController : MonoBehaviour
                 RefreshRecipeStationRatesLive();
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
+        if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape) && HasCancellableManageAction())
         {
             if (PauseMenuUI.IsOpen)
                 return;
@@ -188,8 +218,16 @@ public class ManagementModeController : MonoBehaviour
         if (IsPointerOverUI()) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (IsCapturingFlow)
+        {
+            CustomerWallDoor.HideActivePopup();
+            StationNode flowStation = FindFlowStationUnderRay(ray);
+            if (flowStation != null) AddCapturedFlowStation(flowStation);
+            return;
+        }
         if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
         {
+            CustomerWallDoor.HideActivePopup();
             if (pending == PendingAction.None && !IsCapturingFlow)
             {
                 ClearEmployeeSelection();
@@ -203,10 +241,23 @@ public class ManagementModeController : MonoBehaviour
         var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
         if (clickedEmployee != null && !IsCapturingFlow)
         {
+            CustomerWallDoor.HideActivePopup();
             CancelOutputDrag();
             SelectEmployeeForAssignment(clickedEmployee);
             return;
         }
+
+        CustomerWallDoor clickedDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
+        if (clickedDoor != null && !IsCapturingFlow)
+        {
+            CancelOutputDrag();
+            ClearEmployeeSelection();
+            ClearSelection();
+            clickedDoor.ShowRolePopup();
+            return;
+        }
+
+        CustomerWallDoor.HideActivePopup();
 
         var node = StationNode.FindFromCollider(hit.collider);
         if (node == null)
@@ -217,12 +268,6 @@ public class ManagementModeController : MonoBehaviour
                 ClearSelection();
             }
             CancelOutputDrag();
-            return;
-        }
-
-        if (IsCapturingFlow)
-        {
-            AddCapturedFlowStation(node);
             return;
         }
 
@@ -555,13 +600,13 @@ public class ManagementModeController : MonoBehaviour
 
         var t = node != null ? node.StationType : null;
         if (node != null && node.GetComponent<HeatLampStation>() != null)
-            SetStatus("Holding finished food for customers to pick up.");
+            SetStatus("Holding finished items for customers to pick up.");
         else if (node != null && (node.GetComponent<GrillStation>() != null || node.GetComponent<AssemblyStation>() != null))
-            SetStatus("Choose a recipe. Input / output amounts are set on this station.");
+            SetStatus("Choose what this station should produce.");
         else if (t == StationType.Register)
-            SetStatus("Takes orders — customers pick up at the heat lamp.");
+            SetStatus("Takes orders. Customers collect them at the Pickup Station.");
         else
-            SetStatus("Input and output amounts for this station.");
+            SetStatus("Production rate at the current cycle time.");
     }
 
     void RefreshPopup()
@@ -584,6 +629,7 @@ public class ManagementModeController : MonoBehaviour
         {
             if (workerInfoText != null) workerInfoText.gameObject.SetActive(false);
             if (outputInfoText != null) outputInfoText.gameObject.SetActive(false);
+            if (productionDiagramRoot != null) productionDiagramRoot.SetActive(false);
         }
         else
         {
@@ -606,31 +652,9 @@ public class ManagementModeController : MonoBehaviour
     {
         if (node == null) return;
         node.EnsureIoDefaults(force: true);
-
-        string outUnit = string.IsNullOrEmpty(node.outputUnit) ? "items" : node.outputUnit;
-
-        if (workerInfoText != null)
-        {
-            if (node.HasInputAmount)
-            {
-                string inUnit = string.IsNullOrEmpty(node.inputUnit) ? "items" : node.inputUnit;
-                workerInfoText.gameObject.SetActive(true);
-                workerInfoText.alignment = TextAlignmentOptions.Left;
-                workerInfoText.text = "Input: " + FormatPerMinute(node.inputAmountPerMinute) + " " + inUnit + " / min";
-                TightenLabel(workerInfoText, 22f);
-            }
-            else
-            {
-                workerInfoText.gameObject.SetActive(false);
-            }
-        }
-
-        if (outputInfoText != null)
-        {
-            outputInfoText.gameObject.SetActive(true);
-            outputInfoText.text = "Output: " + FormatPerMinute(node.outputAmountPerMinute) + " " + outUnit + " / min";
-            TightenLabel(outputInfoText, 22f);
-        }
+        if (workerInfoText != null) workerInfoText.gameObject.SetActive(false);
+        if (outputInfoText != null) outputInfoText.gameObject.SetActive(false);
+        RefreshProductionDiagram(node);
     }
 
     static void TightenLabel(TextMeshProUGUI label, float height)
@@ -650,6 +674,325 @@ public class ManagementModeController : MonoBehaviour
         return rate.ToString("0.0");
     }
 
+    void EnsureProductionDiagramUI()
+    {
+        if (stationPopup == null || productionDiagramRoot != null) return;
+
+        Transform existing = stationPopup.transform.Find("ProductionDiagram");
+        if (existing != null)
+            Destroy(existing.gameObject);
+
+        productionDiagramRoot = new GameObject("ProductionDiagram", typeof(RectTransform), typeof(Image),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        productionDiagramRoot.transform.SetParent(stationPopup.transform, false);
+        productionDiagramRoot.transform.SetSiblingIndex(1);
+        var diagramBackground = productionDiagramRoot.GetComponent<Image>();
+        diagramBackground.color = Color.clear;
+        diagramBackground.raycastTarget = false;
+
+        var layout = productionDiagramRoot.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(8, 8, 7, 7);
+        layout.spacing = 7f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        var rootLayout = productionDiagramRoot.GetComponent<LayoutElement>();
+        rootLayout.minHeight = 154f;
+        rootLayout.preferredHeight = 154f;
+        rootLayout.flexibleHeight = 0f;
+
+        productionInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input", out productionInputPreview,
+            out productionInputName, out productionInputRate);
+        productionSecondInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input 2",
+            out productionSecondInputPreview, out productionSecondInputName, out productionSecondInputRate);
+        productionSecondInputCard.SetActive(false);
+
+        productionConversionRoot = new GameObject("Conversion", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        productionConversionRoot.transform.SetParent(productionDiagramRoot.transform, false);
+        var centerLayout = productionConversionRoot.GetComponent<VerticalLayoutGroup>();
+        centerLayout.childAlignment = TextAnchor.MiddleCenter;
+        centerLayout.childControlWidth = true;
+        centerLayout.childControlHeight = true;
+        centerLayout.childForceExpandWidth = true;
+        centerLayout.childForceExpandHeight = false;
+        centerLayout.spacing = 5f;
+        var centerSize = productionConversionRoot.GetComponent<LayoutElement>();
+        centerSize.minWidth = 42f;
+        centerSize.preferredWidth = 42f;
+        centerSize.flexibleWidth = 0f;
+
+        TextMeshProUGUI arrow = CreateDiagramText(productionConversionRoot.transform, "Arrow", ">", 30f, 40f);
+        arrow.color = new Color(0.3f, 0.9f, 1f, 1f);
+        productionCycleText = CreateDiagramText(productionConversionRoot.transform, "CycleTime", "0s\ncycle", 11f, 38f);
+        productionCycleText.color = new Color(1f, 0.78f, 0.32f, 1f);
+
+        productionOutputCard = CreateProductionCard(productionDiagramRoot.transform, "Output", out productionOutputPreview,
+            out productionOutputName, out productionOutputRate);
+        productionDiagramRoot.SetActive(false);
+    }
+
+    static GameObject CreateProductionCard(Transform parent, string heading, out RawImage preview,
+        out TextMeshProUGUI itemName, out TextMeshProUGUI rate)
+    {
+        var card = new GameObject(heading + "Card", typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        card.transform.SetParent(parent, false);
+        card.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.98f);
+        var size = card.GetComponent<LayoutElement>();
+        size.minWidth = 98f;
+        size.preferredWidth = 104f;
+        size.flexibleWidth = 1f;
+
+        var layout = card.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(5, 5, 4, 5);
+        layout.spacing = 2f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        TextMeshProUGUI title = CreateDiagramText(card.transform, "Heading", heading.ToUpperInvariant(), 10f, 15f);
+        title.color = new Color(0.65f, 0.72f, 0.84f, 1f);
+
+        var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        previewFrame.transform.SetParent(card.transform, false);
+        // Match ItemPreviewThumbnails' camera background so the frame and texture read as one surface.
+        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        var previewSize = previewFrame.GetComponent<LayoutElement>();
+        previewSize.minHeight = 68f;
+        previewSize.preferredHeight = 68f;
+        previewSize.flexibleHeight = 0f;
+
+        var previewObject = new GameObject("Preview", typeof(RectTransform), typeof(RawImage),
+            typeof(AspectRatioFitter));
+        previewObject.transform.SetParent(previewFrame.transform, false);
+        preview = previewObject.GetComponent<RawImage>();
+        preview.color = Color.white;
+        preview.raycastTarget = false;
+        var previewFitter = previewObject.GetComponent<AspectRatioFitter>();
+        previewFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        previewFitter.aspectRatio = 1f;
+
+        itemName = CreateDiagramText(card.transform, "ItemName", "Item", 11f, 22f);
+        itemName.enableAutoSizing = true;
+        itemName.fontSizeMin = 8f;
+        itemName.fontSizeMax = 11f;
+        rate = CreateDiagramText(card.transform, "Rate", "0 / min", 12f, 20f);
+        rate.color = new Color(1f, 0.78f, 0.32f, 1f);
+        return card;
+    }
+
+    static TextMeshProUGUI CreateDiagramText(Transform parent, string objectName, string value,
+        float fontSize, float height)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        go.transform.SetParent(parent, false);
+        var text = go.GetComponent<TextMeshProUGUI>();
+        text.text = value;
+        text.fontSize = fontSize;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        var size = go.GetComponent<LayoutElement>();
+        size.minHeight = height;
+        size.preferredHeight = height;
+        size.flexibleHeight = 0f;
+        return text;
+    }
+
+    void RefreshProductionDiagram(StationNode node)
+    {
+        EnsureProductionDiagramUI();
+        if (productionDiagramRoot == null || node == null) return;
+
+        GameObject inputPrefab = null;
+        GameObject secondInputPrefab = null;
+        GameObject outputPrefab = null;
+        string inputName = string.IsNullOrEmpty(node.inputUnit) || node.inputUnit == "-"
+            ? "Kitchen stock" : ToTitleCase(node.inputUnit);
+        string secondInputName = string.Empty;
+        string outputName = string.IsNullOrEmpty(node.outputUnit)
+            ? "Items" : ToTitleCase(node.outputUnit);
+        float inputRate = node.HasInputAmount ? node.inputAmountPerMinute : node.outputAmountPerMinute;
+        float secondInputRate = inputRate;
+        float cycleSeconds = 0f;
+
+        var freezer = node.GetComponent<FreezerStation>();
+        var grill = node.GetComponent<GrillStation>();
+        var assembly = node.GetComponent<AssemblyStation>();
+        var cutting = node.GetComponent<CuttingStation>();
+        var fryer = node.GetComponent<FryerStation>();
+        var drink = node.GetComponent<DrinkStation>();
+        var pantry = node.GetComponent<PantryStation>();
+
+        bool outputOnly = false;
+        if (freezer != null)
+        {
+            outputPrefab = rawPattyPreviewPrefab;
+            outputName = "Raw patties";
+            cycleSeconds = freezer.processTimeSeconds;
+            outputOnly = true;
+        }
+        else if (grill != null)
+        {
+            inputPrefab = rawPattyPreviewPrefab;
+            outputPrefab = cookedPattyPreviewPrefab;
+            inputName = "Raw patties";
+            outputName = "Cooked patties";
+            cycleSeconds = grill.processTimeSeconds;
+        }
+        else if (assembly != null)
+        {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            inputPrefab = cookedPattyPreviewPrefab;
+            outputPrefab = burgerPreviewPrefab;
+            inputName = recipe != null ? recipe.processedInputName : "Cooked patty";
+            secondInputPrefab = recipe != null && recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
+            secondInputName = recipe != null && recipe.pantryInput != null
+                ? DisplayItemName(recipe.pantryInput) : "Bun";
+            inputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1);
+            secondInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1);
+            outputName = recipe != null ? recipe.DisplayName
+                : (assembly.selectedProduct != null ? DisplayItemName(assembly.selectedProduct) : "Burger");
+            cycleSeconds = assembly.processTimeSeconds;
+        }
+        else if (cutting != null)
+        {
+            inputPrefab = burgerPreviewPrefab;
+            outputPrefab = burgerPreviewPrefab;
+            inputName = "Raw lettuce, cheese, tomato";
+            outputName = "Sliced burger toppings";
+            cycleSeconds = cutting.processTimeSeconds;
+        }
+        else if (fryer != null)
+        {
+            inputPrefab = rawFriesPreviewPrefab;
+            outputPrefab = cookedFriesPreviewPrefab;
+            inputName = "Potatoes";
+            outputName = "Fries";
+            cycleSeconds = fryer.processTimeSeconds;
+        }
+        else if (drink != null)
+        {
+            outputPrefab = drinkPreviewPrefab;
+            outputName = "Drinks";
+            cycleSeconds = drink.processTimeSeconds;
+            outputOnly = true;
+        }
+        else if (pantry != null)
+        {
+            outputPrefab = burgerPreviewPrefab;
+            outputName = "Ingredients";
+            cycleSeconds = pantry.processTimeSeconds;
+            outputOnly = true;
+        }
+        else
+        {
+            productionDiagramRoot.SetActive(false);
+            return;
+        }
+
+        productionDiagramRoot.SetActive(true);
+        bool hasTwoInputs = assembly != null;
+        SetProductionDiagramMode(outputOnly, hasTwoInputs);
+        if (!outputOnly)
+            SetDiagramPreview(productionInputPreview, inputPrefab, inputName);
+        if (hasTwoInputs)
+            SetDiagramPreview(productionSecondInputPreview, secondInputPrefab, secondInputName);
+        SetDiagramPreview(productionOutputPreview, outputPrefab, outputName);
+        if (!outputOnly)
+        {
+            productionInputName.text = inputName;
+            productionInputRate.text = FormatPerMinute(inputRate) + " / min";
+        }
+        if (hasTwoInputs)
+        {
+            productionSecondInputName.text = secondInputName;
+            productionSecondInputRate.text = FormatPerMinute(secondInputRate) + " / min";
+        }
+        productionOutputName.text = outputName;
+        productionOutputRate.text = FormatPerMinute(node.outputAmountPerMinute) + " / min";
+        if (!outputOnly)
+            productionCycleText.text = FormatSeconds(cycleSeconds) + "s\ncycle";
+    }
+
+    void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false)
+    {
+        var diagramSize = productionDiagramRoot != null
+            ? productionDiagramRoot.GetComponent<LayoutElement>() : null;
+        if (diagramSize != null)
+        {
+            diagramSize.minHeight = 154f;
+            diagramSize.preferredHeight = 154f;
+            diagramSize.flexibleHeight = 0f;
+        }
+
+        if (productionInputCard != null) productionInputCard.SetActive(!outputOnly);
+        if (productionSecondInputCard != null) productionSecondInputCard.SetActive(!outputOnly && twoInputs);
+        if (productionConversionRoot != null) productionConversionRoot.SetActive(!outputOnly);
+        if (productionOutputCard == null) return;
+
+        var outputSize = productionOutputCard.GetComponent<LayoutElement>();
+        if (outputSize == null) return;
+        outputSize.minWidth = outputOnly ? 150f : 98f;
+        outputSize.preferredWidth = outputOnly ? 180f : 104f;
+        outputSize.flexibleWidth = outputOnly ? 0f : 1f;
+
+        SetProductionCardWidth(productionInputCard, twoInputs ? 66f : 98f, twoInputs ? 76f : 104f);
+        SetProductionCardWidth(productionSecondInputCard, 66f, 76f);
+        SetProductionCardWidth(productionOutputCard, outputOnly ? 150f : (twoInputs ? 76f : 98f),
+            outputOnly ? 180f : (twoInputs ? 88f : 104f));
+        if (productionInputCard != null)
+        {
+            TextMeshProUGUI heading = productionInputCard.transform.Find("Heading")?.GetComponent<TextMeshProUGUI>();
+            if (heading != null) heading.text = twoInputs ? "INPUT 1" : "INPUT";
+        }
+    }
+
+    static void SetProductionCardWidth(GameObject card, float min, float preferred)
+    {
+        if (card == null) return;
+        LayoutElement size = card.GetComponent<LayoutElement>();
+        if (size == null) return;
+        size.minWidth = min;
+        size.preferredWidth = preferred;
+        size.flexibleWidth = 1f;
+    }
+
+    static void SetDiagramPreview(RawImage image, GameObject prefab, string label)
+    {
+        if (image == null) return;
+        image.texture = prefab != null ? ItemPreviewThumbnails.GetPrefab(prefab, label) : null;
+        image.color = image.texture != null ? Color.white : new Color(1f, 1f, 1f, 0.08f);
+        var fitter = image.GetComponent<AspectRatioFitter>();
+        if (fitter != null && image.texture != null && image.texture.height > 0)
+            fitter.aspectRatio = (float)image.texture.width / image.texture.height;
+    }
+
+    static string DisplayItemName(ItemDefinition item)
+    {
+        if (item == null) return "Item";
+        return !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
+    }
+
+    static string ToTitleCase(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "Items";
+        return char.ToUpperInvariant(value[0]) + value.Substring(1);
+    }
+
+    static string FormatSeconds(float seconds)
+    {
+        return Mathf.Approximately(seconds, Mathf.Round(seconds))
+            ? seconds.ToString("0") : seconds.ToString("0.0");
+    }
+
     void ApplyPopupLayout(RectTransform rt, float height)
     {
         if (rt == null) return;
@@ -664,9 +1007,8 @@ public class ManagementModeController : MonoBehaviour
     {
         if (stationPopup == null) return;
 
-        bool hasRecipe = selectedStation != null
-            && (selectedStation.GetComponent<GrillStation>() != null
-                || selectedStation.GetComponent<AssemblyStation>() != null);
+        bool hasRecipeControls = productListContainer != null
+            && productListContainer.gameObject.activeSelf;
         bool hasInput = selectedStation != null
             && !heatLampCompact
             && selectedStation.HasInputAmount;
@@ -694,16 +1036,18 @@ public class ManagementModeController : MonoBehaviour
         CollapseInactiveLayout(productInfoText != null ? productInfoText.gameObject : null);
         CollapseInactiveLayout(productListContainer != null ? productListContainer.gameObject : null);
         CollapseInactiveLayout(inventoryInfoText != null ? inventoryInfoText.gameObject : null);
+        CollapseInactiveLayout(productionDiagramRoot);
+        CollapseInactiveLayout(pickupInventoryRoot);
 
         float height;
         if (heatLampCompact)
+            height = 180f;
+        else if (hasRecipeControls)
             height = 260f;
-        else if (hasRecipe)
-            height = 250f;
         else if (hasInput)
-            height = 150f;
+            height = 220f;
         else
-            height = 130f;
+            height = 220f;
 
         if (!usingScenePopup)
             ApplyPopupLayout(rt, height);
@@ -718,13 +1062,8 @@ public class ManagementModeController : MonoBehaviour
 
         if (statusText != null)
         {
-            statusText.fontSize = 12;
-            statusText.alignment = TextAlignmentOptions.Center;
-            var statusLe = statusText.GetComponent<LayoutElement>();
-            if (statusLe == null) statusLe = statusText.gameObject.AddComponent<LayoutElement>();
-            statusLe.minHeight = 28;
-            statusLe.preferredHeight = 32;
-            statusLe.flexibleHeight = 0;
+            statusText.text = string.Empty;
+            statusText.gameObject.SetActive(false);
         }
 
         if (productInfoText != null && productInfoText.gameObject.activeSelf)
@@ -750,6 +1089,21 @@ public class ManagementModeController : MonoBehaviour
             }
         }
 
+        // Keep a predictable vertical order regardless of the serialized scene hierarchy.
+        if (stationTitleText != null) stationTitleText.transform.SetSiblingIndex(0);
+        if (heatLampCompact)
+        {
+            if (pickupInventoryRoot != null) pickupInventoryRoot.transform.SetSiblingIndex(1);
+            if (statusText != null) statusText.transform.SetSiblingIndex(2);
+        }
+        else
+        {
+            if (productionDiagramRoot != null) productionDiagramRoot.transform.SetSiblingIndex(1);
+            if (productInfoText != null) productInfoText.transform.SetSiblingIndex(2);
+            if (productListContainer != null) productListContainer.SetSiblingIndex(3);
+            if (statusText != null) statusText.transform.SetSiblingIndex(4);
+        }
+
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
@@ -766,34 +1120,41 @@ public class ManagementModeController : MonoBehaviour
     void RefreshHeatLampInventory()
     {
         EnsureInventoryUI();
-        if (inventoryInfoText == null) return;
+        if (pickupInventoryRoot == null) return;
 
         var lamp = selectedStation != null ? selectedStation.GetComponent<HeatLampStation>() : null;
         bool show = lamp != null;
-        inventoryInfoText.gameObject.SetActive(show);
+        pickupInventoryRoot.SetActive(show);
+        if (inventoryInfoText != null) inventoryInfoText.gameObject.SetActive(false);
         if (!show) return;
 
-        inventoryInfoText.fontSize = 16;
-        inventoryInfoText.alignment = TextAlignmentOptions.Left;
-        inventoryInfoText.text = "Inventory\n" + lamp.GetManagePanelText();
-
-        var le = inventoryInfoText.GetComponent<LayoutElement>();
-        if (le != null)
+        var inventorySize = pickupInventoryRoot.GetComponent<LayoutElement>();
+        if (inventorySize != null)
         {
-            le.minHeight = 140;
-            le.flexibleHeight = 1;
+            inventorySize.minHeight = 112f;
+            inventorySize.preferredHeight = 112f;
+            inventorySize.flexibleHeight = 0f;
         }
 
-        // Keep inventory under the title for heat lamp
-        inventoryInfoText.transform.SetSiblingIndex(1);
-        if (statusText != null)
-            statusText.transform.SetSiblingIndex(2);
+        pickupStockText.text = "STOCK  " + lamp.Count + " / 4";
+        for (int i = 0; i < pickupSlotPreviews.Length; i++)
+        {
+            HeldMeal meal = i < lamp.Meals.Count ? lamp.Meals[i] : null;
+            ItemDefinition item = meal != null && meal.order != null ? meal.order.PrimaryItem : null;
+            GameObject prefab = GetPickupPreviewPrefab(item);
+            string label = item != null ? DisplayItemName(item) : "Empty";
+            SetDiagramPreview(pickupSlotPreviews[i], prefab, label);
+            pickupSlotLabels[i].text = label;
+            pickupSlotLabels[i].color = item != null
+                ? Color.white : new Color(0.55f, 0.58f, 0.65f, 1f);
+        }
     }
 
     void EnsureInventoryUI()
     {
         if (stationPopup == null) return;
-        if (inventoryInfoText != null) return;
+        if (inventoryInfoText == null)
+        {
 
         inventoryInfoText = CreateLabel(stationPopup.transform, "Inventory\n—", 18);
         inventoryInfoText.gameObject.name = "InventoryInfo";
@@ -803,6 +1164,105 @@ public class ManagementModeController : MonoBehaviour
         le.minHeight = 90;
         le.flexibleHeight = 1;
         inventoryInfoText.gameObject.SetActive(false);
+        }
+
+        if (pickupInventoryRoot != null) return;
+        pickupInventoryRoot = new GameObject("PickupInventory", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        pickupInventoryRoot.transform.SetParent(stationPopup.transform, false);
+        var rootLayout = pickupInventoryRoot.GetComponent<VerticalLayoutGroup>();
+        rootLayout.spacing = 4f;
+        rootLayout.childAlignment = TextAnchor.UpperCenter;
+        rootLayout.childControlWidth = true;
+        rootLayout.childControlHeight = true;
+        rootLayout.childForceExpandWidth = true;
+        rootLayout.childForceExpandHeight = false;
+        var rootSize = pickupInventoryRoot.GetComponent<LayoutElement>();
+        rootSize.minHeight = 112f;
+        rootSize.preferredHeight = 112f;
+        rootSize.flexibleHeight = 0f;
+
+        pickupStockText = CreateDiagramText(pickupInventoryRoot.transform, "Stock", "STOCK  0 / 4", 14f, 22f);
+        pickupStockText.fontStyle = FontStyles.Bold;
+        pickupStockText.color = new Color(1f, 0.78f, 0.32f, 1f);
+
+        var row = new GameObject("Slots", typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        row.transform.SetParent(pickupInventoryRoot.transform, false);
+        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 5f;
+        rowLayout.childAlignment = TextAnchor.MiddleCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = true;
+        var rowSize = row.GetComponent<LayoutElement>();
+        rowSize.minHeight = 82f;
+        rowSize.preferredHeight = 82f;
+        rowSize.flexibleHeight = 0f;
+
+        for (int i = 0; i < pickupSlotPreviews.Length; i++)
+            CreatePickupInventorySlot(row.transform, i);
+
+        pickupInventoryRoot.SetActive(false);
+    }
+
+    void CreatePickupInventorySlot(Transform parent, int index)
+    {
+        var slot = new GameObject("Slot" + (index + 1), typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        slot.transform.SetParent(parent, false);
+        slot.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.98f);
+        var slotLayout = slot.GetComponent<VerticalLayoutGroup>();
+        slotLayout.padding = new RectOffset(3, 3, 3, 3);
+        slotLayout.spacing = 2f;
+        slotLayout.childAlignment = TextAnchor.UpperCenter;
+        slotLayout.childControlWidth = true;
+        slotLayout.childControlHeight = true;
+        slotLayout.childForceExpandWidth = true;
+        slotLayout.childForceExpandHeight = false;
+        var slotSize = slot.GetComponent<LayoutElement>();
+        slotSize.minWidth = 54f;
+        slotSize.preferredWidth = 60f;
+        slotSize.flexibleWidth = 1f;
+
+        var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement));
+        previewFrame.transform.SetParent(slot.transform, false);
+        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        var frameSize = previewFrame.GetComponent<LayoutElement>();
+        frameSize.minHeight = 52f;
+        frameSize.preferredHeight = 52f;
+
+        var previewObject = new GameObject("Preview", typeof(RectTransform), typeof(RawImage),
+            typeof(AspectRatioFitter));
+        previewObject.transform.SetParent(previewFrame.transform, false);
+        var preview = previewObject.GetComponent<RawImage>();
+        preview.raycastTarget = false;
+        var fitter = previewObject.GetComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fitter.aspectRatio = 1f;
+        pickupSlotPreviews[index] = preview;
+
+        var label = CreateDiagramText(slot.transform, "Item", "Empty", 9f, 18f);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 7f;
+        label.fontSizeMax = 9f;
+        pickupSlotLabels[index] = label;
+    }
+
+    GameObject GetPickupPreviewPrefab(ItemDefinition item)
+    {
+        if (item == null) return null;
+        CustomerOrderConfig menu = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (menu != null)
+        {
+            if (menu.IsBurger(item)) return burgerPreviewPrefab;
+            if (menu.IsFries(item)) return cookedFriesPreviewPrefab;
+            if (menu.IsDrink(item)) return drinkPreviewPrefab;
+        }
+        return null;
     }
 
     void RefreshProductSection()
@@ -814,36 +1274,73 @@ public class ManagementModeController : MonoBehaviour
         var assembly = selectedStation != null ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool show = grill != null || assembly != null;
 
-        productInfoText.gameObject.SetActive(show);
+        productInfoText.gameObject.SetActive(false);
         productListContainer.gameObject.SetActive(show);
         if (!show) return;
 
+        ConfigureProductListLayout();
+
         ItemDefinition current = grill != null ? grill.selectedProduct : assembly.selectedProduct;
-        string currentName = current != null
-            ? (!string.IsNullOrEmpty(current.itemName) ? current.itemName : current.name)
-            : "(none — pick below)";
-        productInfoText.text = "Recipe: " + currentName;
 
         for (int i = productListContainer.childCount - 1; i >= 0; i--)
             Destroy(productListContainer.GetChild(i).gameObject);
 
         var pm = ProductionManager.Instance;
         var config = pm != null ? pm.orderConfig : null;
-        if (config == null) return;
+        if (config == null)
+        {
+            productListContainer.gameObject.SetActive(false);
+            return;
+        }
 
-        IEnumerable<ItemDefinition> options = grill != null
-            ? config.GetGrillProducts()
-            : config.GetAssemblyProducts();
+        if (assembly != null)
+        {
+            int recipeCount = 0;
+            AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
+            foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
+            {
+                if (recipe == null) continue;
+                recipeCount++;
+                bool selectedRecipe = currentRecipe == recipe;
+                Button recipeButton = CreateProductButton(
+                    recipe.DisplayName + (selectedRecipe ? " [Selected]" : ""), true);
+                AssemblyRecipeDefinition capturedRecipe = recipe;
+                recipeButton.onClick.AddListener(() => SetSelectedAssemblyRecipe(capturedRecipe));
+            }
+            productListContainer.gameObject.SetActive(recipeCount > 0);
+            return;
+        }
 
+        IEnumerable<ItemDefinition> options = config.GetGrillProducts();
+
+        int optionCount = 0;
         foreach (var item in options)
         {
             if (item == null) continue;
+            optionCount++;
             string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
             bool selected = current == item;
             var btn = CreateProductButton(label + (selected ? " ✓" : ""), true);
             var captured = item;
             btn.onClick.AddListener(() => SetSelectedProduct(captured));
         }
+        productListContainer.gameObject.SetActive(optionCount > 0);
+    }
+
+    void ConfigureProductListLayout()
+    {
+        if (productListContainer == null) return;
+
+        var vertical = productListContainer.GetComponent<VerticalLayoutGroup>();
+        if (vertical == null)
+            vertical = productListContainer.gameObject.AddComponent<VerticalLayoutGroup>();
+        vertical.enabled = true;
+        vertical.spacing = 5f;
+        vertical.childAlignment = TextAnchor.MiddleCenter;
+        vertical.childControlWidth = true;
+        vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true;
+        vertical.childForceExpandHeight = false;
     }
 
     void SetSelectedProduct(ItemDefinition item)
@@ -860,10 +1357,22 @@ public class ManagementModeController : MonoBehaviour
         var assembly = selectedStation.GetComponent<AssemblyStation>();
         if (assembly != null)
         {
-            assembly.selectedProduct = item;
+            var manager = ProductionManager.Instance;
+            var config = manager != null ? manager.orderConfig : null;
+            assembly.SetRecipe(config != null ? config.GetAssemblyRecipe(item) : null);
             RefreshPopup();
             SetStatus("Assembly set to produce " + (item.itemName ?? item.name));
         }
+    }
+
+    void SetSelectedAssemblyRecipe(AssemblyRecipeDefinition recipe)
+    {
+        if (selectedStation == null || recipe == null) return;
+        AssemblyStation assembly = selectedStation.GetComponent<AssemblyStation>();
+        if (assembly == null) return;
+        assembly.SetRecipe(recipe);
+        RefreshPopup();
+        SetStatus("Assembly recipe set to " + recipe.DisplayName);
     }
 
     void EnsureProductUI()
@@ -1009,6 +1518,7 @@ public class ManagementModeController : MonoBehaviour
 
     void CancelAndHide()
     {
+        CustomerWallDoor.HideActivePopup();
         pending = PendingAction.None;
         CancelOutputDrag();
         ClearEmployeeSelection();
@@ -1021,6 +1531,7 @@ public class ManagementModeController : MonoBehaviour
             || pending != PendingAction.None
             || selectedStation != null
             || selectedEmployee != null
+            || CustomerWallDoor.HasActivePopup
             || (stationPopup != null && stationPopup.activeSelf);
     }
 
@@ -1240,6 +1751,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (capturedFlow == null) return false;
         ProductionFlowPlan finished = capturedFlow;
+        bool wasEdit = !capturingNewFlow;
         if (finished.stations.Count == 0)
         {
             SetStatus("A flow needs at least one station.");
@@ -1264,6 +1776,7 @@ public class ManagementModeController : MonoBehaviour
         SetFlowCaptureHudVisible(false);
 
         WorkerFlowAssigner.SynchronizeFlowRoute(finished);
+        OnboardingTutorial.NotifyFlowSaved(finished, wasEdit);
 
         ProductionManager production = ProductionManager.Instance;
         if (production != null)
@@ -1338,17 +1851,6 @@ public class ManagementModeController : MonoBehaviour
         if (string.IsNullOrEmpty(stationId))
         {
             SetStatus("That object cannot be used in a production flow.");
-            return;
-        }
-        ProductionManager production = ProductionManager.Instance;
-        if (production != null && production.IsStationOnOtherFlow(node.gameObject, capturedFlow))
-        {
-            SetStatus(node.DisplayName + " already belongs to another flow.");
-            return;
-        }
-        if (node.assignedWorker != null && !capturedFlow.workers.Contains(node.assignedWorker))
-        {
-            SetStatus(node.DisplayName + " is assigned to " + node.assignedWorker.employeeName + ". Remove that worker first.");
             return;
         }
         if (capturedFlow.stations.Contains(node.gameObject))
@@ -1639,9 +2141,27 @@ public class ManagementModeController : MonoBehaviour
     {
         if (Camera.main == null || IsPointerOverUI()) return null;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (IsCapturingFlow) return FindFlowStationUnderRay(ray);
         return Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer)
             ? StationNode.FindFromCollider(hit.collider)
             : null;
+    }
+
+    StationNode FindFlowStationUnderRay(Ray ray)
+    {
+        // Mounted stations can overlap the counter collider. Look through scenery
+        // while capturing a flow, choosing the nearest actual station on the ray.
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, clickLayer);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
+        {
+            StationNode node = StationNode.FindFromCollider(hit.collider);
+            if (node == null) continue;
+            Register register = node.GetComponent<Register>();
+            if (register != null && !register.IsPlacedRegister) continue;
+            return node;
+        }
+        return null;
     }
 
     void SetWorkflowDecisionHudVisible(bool show)
@@ -1688,6 +2208,7 @@ public class ManagementModeController : MonoBehaviour
 
                 TryImportScenePopup(stationPopup);
                 BindPopupReferences();
+                EnsureProductionDiagramUI();
                 WirePopupButtons();
                 return;
             }
@@ -1706,6 +2227,7 @@ public class ManagementModeController : MonoBehaviour
         popup.CopyReferencesTo(this);
         usingScenePopup = true;
         BindPopupReferences();
+        EnsureProductionDiagramUI();
         WirePopupButtons();
     }
 

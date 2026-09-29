@@ -5,7 +5,7 @@ using UnityEngine.Rendering;
 
 /// <summary>
 /// Shows a selected worker's ordered station flow on the floor grid.
-/// Station focus still uses the elevated worker-to-station assignment link.
+/// Selecting a station does not create an additional world-space link.
 /// </summary>
 public class WorkerAssignmentLinkVisuals : MonoBehaviour
 {
@@ -67,7 +67,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void Update()
     {
         bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        bool show = manage && (focusedWorker != null || focusedStation != null || focusedFlow != null);
+        bool show = manage && (focusedWorker != null || focusedFlow != null);
 
         if (show != visible)
         {
@@ -124,7 +124,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void ApplyFocus()
     {
-        visible = focusedWorker != null || focusedStation != null || focusedFlow != null;
+        visible = focusedWorker != null || focusedFlow != null;
         if (visible) Refresh();
         else ClearVisuals();
     }
@@ -153,8 +153,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-        if (focusedStation != null && focusedStation.assignedWorker != null)
-            CreateAssignmentLink(focusedStation.assignedWorker.gameObject, focusedStation.gameObject);
     }
 
     void DrawDraftFlow(ProductionFlowPlan flow)
@@ -229,7 +227,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 bool isStart = i == 0;
                 bool isEnd = i == chain.Count - 1;
                 StationNode stopNode = StationNode.EnsureOn(chain[i]);
-                bool isHandoff = isEnd && stopNode != null && stopNode.IsWorkStation && stopNode.assignedWorker != worker;
+                bool isHandoff = isEnd && stopNode != null && stopNode.IsWorkStation && !stopNode.IsWorkerAssigned(worker);
                 string role = isHandoff ? "HANDOFF" : isStart && isEnd ? "START / END" : isStart ? "START" : isEnd ? "END" : "STOP " + i;
                 Color markerColor = isStart ? startColor : isEnd ? endColor : stopColor;
                 string owner = showOwner ? worker.employeeName + "\n" : "";
@@ -290,7 +288,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             StationNode node = StationNode.EnsureOn(current);
             GameObject next = node != null ? node.outputTarget : null;
             StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
-            if (nextNode != null && nextNode.IsWorkStation && nextNode.assignedWorker != worker)
+            if (nextNode != null && nextNode.IsWorkStation && !nextNode.IsWorkerAssigned(worker))
             {
                 chain.Add(next);
                 break;

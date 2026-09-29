@@ -7,8 +7,12 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 2;
+    const int CacheVersion = 6;
     const string RootName = "__ItemPreviewThumbnails";
+
+    // Shared with the inventory preview frame so fitted square thumbnails do not
+    // reveal a second background shade around their edges.
+    public static readonly Color BackgroundColor = GameUITheme.Backdrop;
 
     static readonly Dictionary<int, RenderTexture> cache = new Dictionary<int, RenderTexture>();
     static Camera previewCamera;
@@ -18,17 +22,27 @@ public static class ItemPreviewThumbnails
     {
         if (item == null || item.prefab == null)
             return null;
-        return GetPrefab(item.prefab, item.itemName);
+        return GetPrefab(item.prefab, item.itemName, item.placementScale);
     }
 
-    public static Texture GetPrefab(GameObject prefab, string displayName = null)
+    public static Texture GetPrefab(GameObject prefab, string displayName = null, Vector3? previewScale = null)
     {
         if (prefab == null)
             return null;
 
-        int key = prefab.GetInstanceID() ^ (CacheVersion * 397);
-        if (cache.TryGetValue(key, out var existing) && existing != null)
-            return existing;
+        Vector3 scale = previewScale ?? Vector3.one;
+        int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode();
+        if (cache.TryGetValue(key, out var existing))
+        {
+            if (existing != null && existing.IsCreated())
+                return existing;
+            cache.Remove(key);
+            if (existing != null)
+            {
+                existing.Release();
+                Object.Destroy(existing);
+            }
+        }
 
         EnsureStage();
         string label = !string.IsNullOrEmpty(displayName) ? displayName : prefab.name;
@@ -38,6 +52,7 @@ public static class ItemPreviewThumbnails
             filterMode = FilterMode.Bilinear,
             name = "Preview_" + label
         };
+        rt.Create();
 
         GameObject instance = null;
         try
@@ -45,10 +60,14 @@ public static class ItemPreviewThumbnails
             instance = Object.Instantiate(prefab, stage);
             instance.name = "PreviewInstance_" + label;
             SetLayerRecursively(instance, stage.gameObject.layer);
+            StripPreviewHelpers(instance);
 
             instance.transform.localPosition = Vector3.zero;
             instance.transform.localRotation = Quaternion.Euler(15f, 150f, 0f);
-            instance.transform.localScale = Vector3.one;
+            // Match the same non-uniform scale used by the placed item. Uniform scale is
+            // handled by camera framing, but preserving the proportions prevents compact
+            // counter stations from appearing squeezed in their inventory cards.
+            instance.transform.localScale = scale;
 
             Bounds bounds = CalculateBounds(instance);
             // Frame so the longest side fits — keeps stations to scale in a square render.
@@ -109,7 +128,7 @@ public static class ItemPreviewThumbnails
 
         previewCamera = camT.GetComponent<Camera>();
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
-        previewCamera.backgroundColor = new Color(0.16f, 0.17f, 0.2f, 1f);
+        previewCamera.backgroundColor = BackgroundColor;
         previewCamera.cullingMask = 1 << 31;
         previewCamera.enabled = false;
         previewCamera.nearClipPlane = 0.05f;
@@ -118,19 +137,56 @@ public static class ItemPreviewThumbnails
         previewCamera.allowMSAA = true;
     }
 
+    static void StripPreviewHelpers(GameObject instance)
+    {
+        Transform[] parts = instance.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            Transform part = parts[i];
+            if (part == null) continue;
+            if (part.name != "InteractionHighlight") continue;
+            Object.DestroyImmediate(part.gameObject);
+        }
+
+        Canvas[] canvases = instance.GetComponentsInChildren<Canvas>(true);
+        for (int i = 0; i < canvases.Length; i++)
+        {
+            if (canvases[i] != null)
+                canvases[i].gameObject.SetActive(false);
+        }
+    }
+
     static Bounds CalculateBounds(GameObject go)
     {
         var renderers = go.GetComponentsInChildren<Renderer>();
         if (renderers == null || renderers.Length == 0)
             return new Bounds(go.transform.position, Vector3.one);
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
+        Vector3 origin = go.transform.position;
+        Bounds bounds = default;
+        bool found = false;
+        for (int i = 0; i < renderers.Length; i++)
         {
-            if (renderers[i] != null)
-                bounds.Encapsulate(renderers[i].bounds);
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled) continue;
+            // Floor markers spawned in Awake can sit on the real grid while the
+            // preview model is parked far below the world, which frames the
+            // station out of the picture.
+            if (Vector3.Distance(renderer.bounds.center, origin) > 12f)
+            {
+                renderer.enabled = false;
+                continue;
+            }
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+                bounds.Encapsulate(renderer.bounds);
         }
-        return bounds;
+
+        return found ? bounds : new Bounds(origin, Vector3.one);
     }
 
     static void SetLayerRecursively(GameObject go, int layer)

@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top-left Inventory / Management tabs. Place under PlayerUI via
+/// Top-left Build / Staff / Business tabs. Place under PlayerUI via
 /// Game → Setup Main HUD Tabs so you can edit position in the scene.
 /// </summary>
 public class MainHudTabs : MonoBehaviour
@@ -27,12 +27,18 @@ public class MainHudTabs : MonoBehaviour
 
     Image inventoryBg;
     Image managementBg;
+    Image businessBg;
     Button inventoryTabButton;
     Button managementTabButton;
+    Button businessTabButton;
     bool built;
+    PrimaryPage lastPage = PrimaryPage.Build;
+
+    enum PrimaryPage { Build, Staff, Business }
 
     public Transform InventoryTabTransform => inventoryTabButton != null ? inventoryTabButton.transform : null;
     public Transform ManagementTabTransform => managementTabButton != null ? managementTabButton.transform : null;
+    public Transform BusinessTabTransform => businessTabButton != null ? businessTabButton.transform : null;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -84,6 +90,22 @@ public class MainHudTabs : MonoBehaviour
         transform.SetAsLastSibling();
     }
 
+    void Update()
+    {
+        if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
+
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            if (AnyPanelOpen()) CloseAll();
+            else SwitchTo(lastPage);
+            return;
+        }
+
+        if (Pressed(KeyCode.Alpha1, KeyCode.Keypad1)) TogglePage(PrimaryPage.Build);
+        else if (Pressed(KeyCode.Alpha2, KeyCode.Keypad2)) TogglePage(PrimaryPage.Staff);
+        else if (Pressed(KeyCode.Alpha3, KeyCode.Keypad3)) TogglePage(PrimaryPage.Business);
+    }
+
     public void Build(bool forceDefaultLayout = false)
     {
         var rt = (RectTransform)transform;
@@ -93,7 +115,9 @@ public class MainHudTabs : MonoBehaviour
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
         bg.raycastTarget = true;
-        bg.color = StripColor;
+        // The connected top-HUD backdrop supplies the strip color across the
+        // full screen, including the gaps between all three control groups.
+        bg.color = Color.clear;
 
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
@@ -120,7 +144,7 @@ public class MainHudTabs : MonoBehaviour
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
         rt.anchoredPosition = screenOffset;
-        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 12f);
+        rt.sizeDelta = new Vector2(TabWidth * 3f + TabSpacing * 2f + 16f, TabHeight + 12f);
     }
 
     static void ApplyDefaultLayoutGroup(HorizontalLayoutGroup hlg)
@@ -139,18 +163,26 @@ public class MainHudTabs : MonoBehaviour
         // Prefer scene-authored tabs; only create missing ones.
         inventoryBg = FindTabImage("InventoryTab");
         managementBg = FindTabImage("ManagementTab");
+        businessBg = FindTabImage("BusinessTab");
 
         if (inventoryBg == null)
-            inventoryBg = CreateTab("InventoryTab", "Inventory");
+            inventoryBg = CreateTab("InventoryTab", "Build");
         if (managementBg == null)
-            managementBg = CreateTab("ManagementTab", "Management");
+            managementBg = CreateTab("ManagementTab", "Staff");
+        if (businessBg == null)
+            businessBg = CreateTab("BusinessTab", "Business");
 
         inventoryTabButton = inventoryBg != null ? inventoryBg.GetComponent<Button>() : null;
         managementTabButton = managementBg != null ? managementBg.GetComponent<Button>() : null;
+        businessTabButton = businessBg != null ? businessBg.GetComponent<Button>() : null;
+        SetTabLabel(inventoryBg, "Build");
+        SetTabLabel(managementBg, "Staff");
+        SetTabLabel(businessBg, "Business");
 
         // Remove accidental duplicates left from older rebuild logic.
         RemoveDuplicateTabs("InventoryTab", inventoryBg != null ? inventoryBg.transform : null);
         RemoveDuplicateTabs("ManagementTab", managementBg != null ? managementBg.transform : null);
+        RemoveDuplicateTabs("BusinessTab", businessBg != null ? businessBg.transform : null);
     }
 
     Image FindTabImage(string objectName)
@@ -175,7 +207,7 @@ public class MainHudTabs : MonoBehaviour
         if (inventoryTabButton != null)
         {
             inventoryTabButton.onClick.RemoveAllListeners();
-            inventoryTabButton.onClick.AddListener(OnInventoryClicked);
+            inventoryTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Build));
             inventoryTabButton.transition = Selectable.Transition.None;
             if (inventoryTabButton.targetGraphic == null)
                 inventoryTabButton.targetGraphic = inventoryBg;
@@ -184,10 +216,19 @@ public class MainHudTabs : MonoBehaviour
         if (managementTabButton != null)
         {
             managementTabButton.onClick.RemoveAllListeners();
-            managementTabButton.onClick.AddListener(OnManagementClicked);
+            managementTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Staff));
             managementTabButton.transition = Selectable.Transition.None;
             if (managementTabButton.targetGraphic == null)
                 managementTabButton.targetGraphic = managementBg;
+        }
+
+        if (businessTabButton != null)
+        {
+            businessTabButton.onClick.RemoveAllListeners();
+            businessTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Business));
+            businessTabButton.transition = Selectable.Transition.None;
+            if (businessTabButton.targetGraphic == null)
+                businessTabButton.targetGraphic = businessBg;
         }
     }
 
@@ -235,33 +276,82 @@ public class MainHudTabs : MonoBehaviour
         return img;
     }
 
-    void OnInventoryClicked()
+    void TogglePage(PrimaryPage page)
     {
-        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        if (inv != null)
+        if (IsPageOpen(page))
         {
-            inv.TogglePanel();
+            CloseAll();
             return;
         }
 
-        // Fallback: invoke the legacy scene button if InventoryUI is missing.
-        var source = FindInventoryButton();
-        if (source != null)
-            source.onClick.Invoke();
+        SwitchTo(page);
     }
 
-    void OnManagementClicked()
+    bool IsPageOpen(PrimaryPage page)
     {
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-        if (mgmt != null)
+        if (page == PrimaryPage.Build)
+            return inv != null && inv.IsPanelOpen;
+        if (mgmt == null || !mgmt.IsOpen) return false;
+        return page == lastPage;
+    }
+
+    public void OpenBuildPage() => SwitchTo(PrimaryPage.Build);
+    public void OpenStaffPage() => SwitchTo(PrimaryPage.Staff);
+    public void OpenBusinessPage() => SwitchTo(PrimaryPage.Business);
+
+    void SwitchTo(PrimaryPage page)
+    {
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        lastPage = page;
+
+        if (page == PrimaryPage.Build)
         {
-            mgmt.Toggle();
+            if (mgmt != null && mgmt.IsOpen) mgmt.Close();
+            if (inv != null) inv.OpenBuildPage();
+            else FindInventoryButton()?.onClick.Invoke();
             return;
         }
 
-        var source = FindManagementButton();
-        if (source != null)
-            source.onClick.Invoke();
+        if (inv != null && inv.IsPanelOpen) inv.TogglePanel();
+        if (mgmt == null)
+        {
+            FindManagementButton()?.onClick.Invoke();
+            return;
+        }
+
+        if (page == PrimaryPage.Staff)
+        {
+            mgmt.OpenWorkersTab();
+            mgmt.SetUnifiedPrimaryPage(false);
+        }
+        else
+        {
+            mgmt.OpenCustomersTab();
+            mgmt.SetUnifiedPrimaryPage(true);
+        }
+    }
+
+    void CloseAll()
+    {
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (inv != null && inv.IsPanelOpen) inv.TogglePanel();
+        if (mgmt != null && mgmt.IsOpen) mgmt.Close();
+    }
+
+    static bool Pressed(KeyCode key, KeyCode keypad)
+    {
+        return Input.GetKeyDown(key) || Input.GetKeyDown(keypad);
+    }
+
+    static bool AnyPanelOpen()
+    {
+        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        return (inv != null && inv.IsPanelOpen) || (mgmt != null && mgmt.IsOpen);
     }
 
     void HideSourceButtons()
@@ -291,10 +381,16 @@ public class MainHudTabs : MonoBehaviour
         bool inventoryOpen = inv != null && inv.IsPanelOpen;
         bool managementOpen = mgmt != null && mgmt.IsOpen;
 
-        if (inventoryBg != null)
-            inventoryBg.color = inventoryOpen ? ActiveColor : IdleColor;
-        if (managementBg != null)
-            managementBg.color = managementOpen ? ActiveColor : IdleColor;
+        HudTabColors.Apply(inventoryTabButton, inventoryOpen);
+        HudTabColors.Apply(managementTabButton, managementOpen && lastPage == PrimaryPage.Staff);
+        HudTabColors.Apply(businessTabButton, managementOpen && lastPage == PrimaryPage.Business);
+    }
+
+    static void SetTabLabel(Image tab, string value)
+    {
+        if (tab == null) return;
+        var label = tab.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (label != null) label.text = value;
     }
 
     static Button FindInventoryButton()

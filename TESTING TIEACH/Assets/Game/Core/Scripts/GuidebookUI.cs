@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -7,13 +8,14 @@ using TMPro;
 /// </summary>
 public class GuidebookUI : MonoBehaviour
 {
-    static readonly Color CoverColor = new Color(0.28f, 0.15f, 0.09f, 1f);
-    static readonly Color SpineColor = new Color(0.16f, 0.08f, 0.05f, 1f);
-    static readonly Color PageColor = new Color(0.94f, 0.90f, 0.80f, 1f);
-    static readonly Color InkColor = new Color(0.16f, 0.11f, 0.08f, 1f);
-    static readonly Color MutedInk = new Color(0.38f, 0.28f, 0.20f, 1f);
-    static readonly Color NavColor = new Color(0.42f, 0.28f, 0.18f, 1f);
-    static readonly Color NavText = new Color(0.96f, 0.92f, 0.86f, 1f);
+    const string PrefSpreadIndex = "Guidebook.CurrentSpread";
+    static readonly Color CoverColor = GameUITheme.Backdrop;
+    static readonly Color SpineColor = GameUITheme.Edge;
+    static readonly Color PageColor = GameUITheme.Panel;
+    static readonly Color InkColor = GameUITheme.TextPrimary;
+    static readonly Color MutedInk = GameUITheme.TextSecondary;
+    static readonly Color NavColor = GameUITheme.Surface;
+    static readonly Color NavText = GameUITheme.TextPrimary;
 
     GameObject root;
     TextMeshProUGUI leftChapter;
@@ -25,6 +27,8 @@ public class GuidebookUI : MonoBehaviour
     TextMeshProUGUI folioText;
     Button prevButton;
     Button nextButton;
+    readonly List<Button> categoryButtons = new List<Button>();
+    readonly List<int> categoryPageIndexes = new List<int>();
     int spreadIndex;
     bool visible;
 
@@ -46,7 +50,8 @@ public class GuidebookUI : MonoBehaviour
         if (root == null) Build();
         visible = true;
         root.SetActive(true);
-        spreadIndex = 0;
+        int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
+        spreadIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpreadIndex, 0), 0, maxSpread);
         Refresh();
     }
 
@@ -60,6 +65,7 @@ public class GuidebookUI : MonoBehaviour
     void Update()
     {
         if (!visible) return;
+        if (UIInputFocusGuard.IsTyping) return;
         if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
             Turn(-1);
         else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
@@ -72,7 +78,7 @@ public class GuidebookUI : MonoBehaviour
         root.transform.SetParent(transform, false);
         Stretch((RectTransform)root.transform);
         var dim = root.GetComponent<Image>();
-        dim.color = new Color(0f, 0f, 0f, 0.45f);
+        dim.color = new Color(0f, 0f, 0f, 0.68f);
         dim.raycastTarget = true;
         var dimBtn = root.GetComponent<Button>();
         dimBtn.transition = Selectable.Transition.None;
@@ -88,7 +94,7 @@ public class GuidebookUI : MonoBehaviour
         bookRt.anchorMin = new Vector2(0.5f, 0.5f);
         bookRt.anchorMax = new Vector2(0.5f, 0.5f);
         bookRt.pivot = new Vector2(0.5f, 0.5f);
-        bookRt.sizeDelta = new Vector2(1180f, 720f);
+        bookRt.sizeDelta = new Vector2(1240f, 760f);
         book.GetComponent<Image>().color = CoverColor;
         var eatClicks = book.GetComponent<Button>();
         eatClicks.transition = Selectable.Transition.None;
@@ -120,6 +126,9 @@ public class GuidebookUI : MonoBehaviour
         prevButton.onClick.AddListener(() => Turn(-1));
         nextButton = CreateNavButton(book.transform, "NextButton", "›", new Vector2(1f, 0.5f), new Vector2(0f, 0.5f), new Vector2(14f, 0f));
         nextButton.onClick.AddListener(() => Turn(1));
+        ((RectTransform)prevButton.transform).anchoredPosition = new Vector2(-14f, -300f);
+        ((RectTransform)nextButton.transform).anchoredPosition = new Vector2(146f, -300f);
+        BuildCategoryBookmarks(book.transform);
 
         var close = CreateTextButton(book.transform, "CloseButton", "Close", new Vector2(1f, 1f), new Vector2(-18f, -12f), 120f, 36f);
         close.onClick.AddListener(() =>
@@ -129,7 +138,7 @@ public class GuidebookUI : MonoBehaviour
                 PauseMenuUI.Instance.CloseGuidebook();
         });
 
-        folioText = CreateLabel(book.transform, "Folio", "", 16f, TextAlignmentOptions.Center, MutedInk);
+        folioText = CreateLabel(book.transform, "Folio", "", 18f, TextAlignmentOptions.Center, GameUITheme.Accent);
         var folioRt = folioText.rectTransform;
         folioRt.anchorMin = new Vector2(0.5f, 0f);
         folioRt.anchorMax = new Vector2(0.5f, 0f);
@@ -143,6 +152,10 @@ public class GuidebookUI : MonoBehaviour
         var page = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
         page.transform.SetParent(parent, false);
         page.GetComponent<Image>().color = PageColor;
+        var pageOutline = page.AddComponent<Outline>();
+        pageOutline.effectColor = GameUITheme.Edge;
+        pageOutline.effectDistance = new Vector2(2f, -2f);
+        pageOutline.useGraphicAlpha = true;
         var pageLe = page.GetComponent<LayoutElement>();
         pageLe.minWidth = 200f;
         pageLe.preferredWidth = 520f;
@@ -150,16 +163,16 @@ public class GuidebookUI : MonoBehaviour
         pageLe.minHeight = 0f;
         pageLe.flexibleHeight = 1f;
         var vlg = page.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(28, 28, 22, 22);
-        vlg.spacing = 8f;
+        vlg.padding = new RectOffset(32, 32, 26, 26);
+        vlg.spacing = 10f;
         vlg.childAlignment = TextAnchor.UpperLeft;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
-        chapter = CreateLaidOutLabel(page.transform, "Chapter", 15f, FontStyles.Italic, MutedInk, 22f);
-        title = CreateLaidOutLabel(page.transform, "Title", 28f, FontStyles.Bold, InkColor, 36f);
+        chapter = CreateLaidOutLabel(page.transform, "Chapter", 17f, FontStyles.Bold, GameUITheme.Accent, 24f);
+        title = CreateLaidOutLabel(page.transform, "Title", 32f, FontStyles.Bold, InkColor, 42f);
 
         var scrollGo = new GameObject("BodyScroll", typeof(RectTransform), typeof(ScrollRect), typeof(LayoutElement), typeof(RectMask2D));
         scrollGo.transform.SetParent(page.transform, false);
@@ -190,7 +203,8 @@ public class GuidebookUI : MonoBehaviour
         bodyGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         body = bodyGo.AddComponent<TextMeshProUGUI>();
-        body.fontSize = 18f;
+        body.fontSize = 21f;
+        body.lineSpacing = 5f;
         body.color = InkColor;
         body.alignment = TextAlignmentOptions.TopLeft;
         body.textWrappingMode = TextWrappingModes.Normal;
@@ -213,8 +227,71 @@ public class GuidebookUI : MonoBehaviour
         int next = Mathf.Clamp(spreadIndex + delta, 0, Mathf.Max(0, maxSpread));
         if (next == spreadIndex) return;
         spreadIndex = next;
+        SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
         Refresh();
+    }
+
+    void JumpToPage(int pageIndex)
+    {
+        int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
+        spreadIndex = Mathf.Clamp(pageIndex / 2, 0, maxSpread);
+        SaveCurrentSpread();
+        Sfx.Play(SfxId.UiClick);
+        Refresh();
+    }
+
+    void SaveCurrentSpread()
+    {
+        PlayerPrefs.SetInt(PrefSpreadIndex, spreadIndex);
+        PlayerPrefs.Save();
+    }
+
+    void BuildCategoryBookmarks(Transform book)
+    {
+        categoryButtons.Clear();
+        categoryPageIndexes.Clear();
+
+        string previousChapter = null;
+        int bookmarkIndex = 0;
+        for (int pageIndex = 0; pageIndex < GuidebookPages.All.Length; pageIndex++)
+        {
+            string chapter = GuidebookPages.All[pageIndex].chapter ?? "Guide";
+            if (chapter == previousChapter) continue;
+            previousChapter = chapter;
+
+            int targetPage = pageIndex;
+            Button button = CreateBookmarkButton(book, chapter, bookmarkIndex,
+                () => JumpToPage(targetPage));
+            categoryButtons.Add(button);
+            categoryPageIndexes.Add(targetPage);
+            bookmarkIndex++;
+        }
+    }
+
+    static Button CreateBookmarkButton(Transform parent, string label, int index, UnityEngine.Events.UnityAction action)
+    {
+        var go = new GameObject("Bookmark_" + label, typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = Vector2.one;
+        rt.anchorMax = Vector2.one;
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(-4f, -62f - index * 44f);
+        rt.sizeDelta = new Vector2(138f, 38f);
+
+        var image = go.GetComponent<Image>();
+        image.color = Color.white;
+        var button = go.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(action);
+        ApplyButtonColors(button);
+
+        var text = CreateLabel(go.transform, "Label", label, 15f, TextAlignmentOptions.MidlineLeft, NavText);
+        Stretch(text.rectTransform, 14f, 0f, 8f, 0f);
+        text.fontStyle = FontStyles.Bold;
+        text.raycastTarget = false;
+        return button;
     }
 
     void Refresh()
@@ -232,6 +309,31 @@ public class GuidebookUI : MonoBehaviour
         int maxSpread = (pages.Length + 1) / 2 - 1;
         prevButton.interactable = spreadIndex > 0;
         nextButton.interactable = spreadIndex < maxSpread;
+        RefreshCategoryBookmarks(rightIndex);
+    }
+
+    void RefreshCategoryBookmarks(int visibleRightPage)
+    {
+        int active = 0;
+        for (int i = 0; i < categoryPageIndexes.Count; i++)
+        {
+            if (categoryPageIndexes[i] <= visibleRightPage)
+                active = i;
+        }
+
+        for (int i = 0; i < categoryButtons.Count; i++)
+        {
+            Button button = categoryButtons[i];
+            if (button == null) continue;
+            bool selected = i == active;
+            var colors = button.colors;
+            colors.normalColor = selected ? GameUITheme.Accent : GameUITheme.Surface;
+            colors.selectedColor = selected ? GameUITheme.Accent : GameUITheme.SurfaceHover;
+            button.colors = colors;
+            var label = button.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null)
+                label.color = selected ? GameUITheme.Charcoal : GameUITheme.TextPrimary;
+        }
     }
 
     static void ApplyPage(GuidebookPages.Page page, TextMeshProUGUI chapter, TextMeshProUGUI title, TextMeshProUGUI body, bool hasPage)
@@ -265,6 +367,7 @@ public class GuidebookUI : MonoBehaviour
         go.GetComponent<Image>().color = NavColor;
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = go.GetComponent<Image>();
+        ApplyButtonColors(btn);
         var tmp = CreateLabel(go.transform, "Label", label, 40f, TextAlignmentOptions.Center, NavText);
         Stretch(tmp.rectTransform);
         tmp.fontStyle = FontStyles.Bold;
@@ -285,11 +388,25 @@ public class GuidebookUI : MonoBehaviour
         go.GetComponent<Image>().color = NavColor;
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = go.GetComponent<Image>();
+        ApplyButtonColors(btn);
         var tmp = CreateLabel(go.transform, "Label", label, 18f, TextAlignmentOptions.Center, NavText);
         Stretch(tmp.rectTransform);
         tmp.fontStyle = FontStyles.Bold;
         tmp.raycastTarget = false;
         return btn;
+    }
+
+    static void ApplyButtonColors(Button button)
+    {
+        var colors = button.colors;
+        colors.normalColor = GameUITheme.Surface;
+        colors.highlightedColor = GameUITheme.SurfaceHover;
+        colors.pressedColor = GameUITheme.Accent;
+        colors.selectedColor = GameUITheme.SurfaceHover;
+        colors.disabledColor = new Color(GameUITheme.Surface.r, GameUITheme.Surface.g, GameUITheme.Surface.b, 0.38f);
+        colors.colorMultiplier = 1f;
+        colors.fadeDuration = 0.08f;
+        button.colors = colors;
     }
 
     static TextMeshProUGUI CreateLaidOutLabel(Transform parent, string name, float size, FontStyles style, Color color, float height)

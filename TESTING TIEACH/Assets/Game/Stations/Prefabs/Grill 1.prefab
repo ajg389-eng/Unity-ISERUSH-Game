@@ -231,10 +231,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GrillStation
   selectedProduct: {fileID: 0}
-  cookTimeSeconds: 3
-  placeTimeSeconds: 0.5
-  waitAfterCookedSeconds: 0.5
-  takeTimeSeconds: 0.5
+  processTimeSeconds: 3
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!114 &-3850870227712596159
 MonoBehaviour:

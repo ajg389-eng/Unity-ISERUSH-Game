@@ -80,11 +80,15 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         mealsWasted++;
         dayMealsWasted++;
+        NotificationCenter.Post("Prepared food expired at a pickup station. Review target stock and demand.",
+            GameNotificationKind.Warning, "food-wasted", 30f);
     }
 
     public void RecordCustomerLost()
     {
         dayCustomersLost++;
+        NotificationCenter.Post("A customer left before receiving their order.",
+            GameNotificationKind.Warning, "customer-walkout", 20f);
     }
 
     /// <summary>Called when a customer successfully enters the store.</summary>

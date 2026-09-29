@@ -1,118 +1,227 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
+using UnityEngine.Rendering;
 
 /// <summary>
-/// World-space label above a worker showing what they are currently holding.
+/// Shows the worker's held food as a small world-space model above their head.
+/// Up to four carried units are shown as a compact cluster.
 /// </summary>
 public class EmployeeInventoryLabel : MonoBehaviour
 {
-    public Vector3 offset = new Vector3(0f, 2.35f, 0f);
-    public float scale = 0.014f;
-    public Color textColor = new Color(1f, 0.95f, 0.75f, 1f);
-    public Color emptyColor = new Color(0.7f, 0.72f, 0.78f, 0.85f);
-    [Tooltip("If true, hide the label when the worker holds nothing.")]
-    public bool hideWhenEmpty = true;
+    public Vector3 offset = new Vector3(0f, 2.5f, 0f);
+    [Min(0.1f)] public float singleItemSize = 0.58f;
+    [Min(0.1f)] public float groupedItemSize = 0.36f;
+    [Min(0f)] public float groupedSpacing = 0.28f;
+    public float rotationSpeed = 28f;
+    public float bobHeight = 0.045f;
+    public float bobSpeed = 2.4f;
 
     KitchenEmployee employee;
-    Canvas canvas;
-    TextMeshProUGUI labelText;
-    Image background;
-    string lastText;
+    Transform previewRoot;
+    KitchenEmployee.HeldPreviewKind shownKind = KitchenEmployee.HeldPreviewKind.None;
+    ItemDefinition shownItem;
+    int shownCount;
 
     void Start()
     {
-        employee = GetComponent<KitchenEmployee>();
-        if (employee == null) employee = GetComponentInParent<KitchenEmployee>();
-        if (employee == null) return;
-        EnsureLabel();
+        employee = GetComponent<KitchenEmployee>() ?? GetComponentInParent<KitchenEmployee>();
+        EnsurePreviewRoot();
     }
 
-    void EnsureLabel()
+    void EnsurePreviewRoot()
     {
-        if (canvas != null) return;
+        if (previewRoot != null) return;
 
-        var existing = transform.Find("InventoryLabel");
-        if (existing != null) Destroy(existing.gameObject);
+        Transform oldLabel = transform.Find("InventoryLabel");
+        if (oldLabel != null)
+        {
+            oldLabel.gameObject.SetActive(false);
+            Destroy(oldLabel.gameObject);
+        }
 
-        var go = new GameObject("InventoryLabel");
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = offset;
-        go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = Vector3.one;
+        Transform existing = transform.Find("HeldItemPreview");
+        if (existing != null)
+        {
+            existing.gameObject.SetActive(false);
+            Destroy(existing.gameObject);
+        }
 
-        canvas = go.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        var rt = go.GetComponent<RectTransform>();
-        if (rt == null) rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(14f, 2.2f);
-        rt.localScale = Vector3.one * scale;
-
-        go.AddComponent<CanvasScaler>().dynamicPixelsPerUnit = 10f;
-
-        var bgGo = new GameObject("Background", typeof(RectTransform));
-        bgGo.transform.SetParent(go.transform, false);
-        var bgRt = (RectTransform)bgGo.transform;
-        bgRt.anchorMin = Vector2.zero;
-        bgRt.anchorMax = Vector2.one;
-        bgRt.offsetMin = new Vector2(-4f, -2f);
-        bgRt.offsetMax = new Vector2(4f, 2f);
-        background = bgGo.AddComponent<Image>();
-        background.color = new Color(0.08f, 0.09f, 0.12f, 0.82f);
-        background.raycastTarget = false;
-
-        var textGo = new GameObject("Text", typeof(RectTransform));
-        textGo.transform.SetParent(go.transform, false);
-        var textRt = (RectTransform)textGo.transform;
-        textRt.anchorMin = Vector2.zero;
-        textRt.anchorMax = Vector2.one;
-        textRt.offsetMin = Vector2.zero;
-        textRt.offsetMax = Vector2.zero;
-
-        labelText = textGo.AddComponent<TextMeshProUGUI>();
-        labelText.fontSize = 11;
-        labelText.alignment = TextAlignmentOptions.Center;
-        labelText.color = textColor;
-        labelText.textWrappingMode = TextWrappingModes.NoWrap;
-        labelText.overflowMode = TextOverflowModes.Overflow;
-        labelText.raycastTarget = false;
-        if (TMP_Settings.defaultFontAsset != null)
-            labelText.font = TMP_Settings.defaultFontAsset;
-
-        go.SetActive(false);
+        var root = new GameObject("HeldItemPreview");
+        root.transform.SetParent(transform, false);
+        root.transform.localPosition = offset;
+        previewRoot = root.transform;
+        root.SetActive(false);
     }
 
     void LateUpdate()
     {
         if (employee == null)
+            employee = GetComponent<KitchenEmployee>() ?? GetComponentInParent<KitchenEmployee>();
+        if (employee == null) return;
+        EnsurePreviewRoot();
+
+        KitchenEmployee.HeldPreviewKind kind = employee.GetHeldPreviewKind(out ItemDefinition item);
+        int count = kind == KitchenEmployee.HeldPreviewKind.None
+            ? 0
+            : Mathf.Clamp(employee.HeldPreviewCount, 1, 4);
+
+        if (kind != shownKind || item != shownItem || count != shownCount)
+            RebuildPreview(kind, item, count);
+
+        if (previewRoot == null || !previewRoot.gameObject.activeSelf) return;
+        float bob = Mathf.Sin(Time.time * bobSpeed) * bobHeight;
+        previewRoot.localPosition = offset + Vector3.up * bob;
+        previewRoot.localRotation = Quaternion.Euler(0f, Time.time * rotationSpeed, 0f);
+    }
+
+    void RebuildPreview(KitchenEmployee.HeldPreviewKind kind, ItemDefinition item, int count)
+    {
+        shownKind = kind;
+        shownItem = item;
+        shownCount = count;
+
+        for (int i = previewRoot.childCount - 1; i >= 0; i--)
         {
-            employee = GetComponent<KitchenEmployee>();
-            if (employee == null) return;
+            previewRoot.GetChild(i).gameObject.SetActive(false);
+            Destroy(previewRoot.GetChild(i).gameObject);
         }
-        EnsureLabel();
-        if (canvas == null || labelText == null) return;
 
-        canvas.transform.localPosition = offset;
-        if (Camera.main != null)
-            canvas.transform.forward = Camera.main.transform.forward;
-
-        string text = employee.GetHeldInventoryDisplay();
-        bool empty = string.IsNullOrEmpty(text);
-
-        if (empty && hideWhenEmpty)
+        if (kind == KitchenEmployee.HeldPreviewKind.None || count <= 0)
         {
-            canvas.gameObject.SetActive(false);
-            lastText = null;
+            previewRoot.gameObject.SetActive(false);
             return;
         }
 
-        canvas.gameObject.SetActive(true);
-        string display = empty ? "Holding: —" : "Holding: " + text;
-        if (display != lastText)
+        GameObject prefab = ResolvePrefab(kind, item);
+        if (prefab == null)
         {
-            lastText = display;
-            labelText.text = display;
-            labelText.color = empty ? emptyColor : textColor;
+            previewRoot.gameObject.SetActive(false);
+            return;
         }
+
+        float size = count == 1 ? singleItemSize : groupedItemSize;
+        for (int i = 0; i < count; i++)
+        {
+            var slot = new GameObject("HeldItem_" + (i + 1));
+            slot.transform.SetParent(previewRoot, false);
+            slot.transform.localPosition = GetClusterOffset(i, count);
+
+            GameObject model = Instantiate(prefab, slot.transform);
+            model.name = prefab.name + "_Preview";
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = Quaternion.identity;
+            model.transform.localScale = Vector3.one;
+            PreparePreviewModel(model);
+            NormalizeModel(model, slot.transform, size);
+        }
+
+        previewRoot.gameObject.SetActive(true);
+    }
+
+    Vector3 GetClusterOffset(int index, int count)
+    {
+        if (count <= 1) return Vector3.zero;
+        float half = groupedSpacing * 0.5f;
+        if (count == 2)
+            return new Vector3(index == 0 ? -half : half, 0f, 0f);
+        if (count == 3)
+        {
+            if (index == 0) return new Vector3(-half, 0f, -half);
+            if (index == 1) return new Vector3(half, 0f, -half);
+            return new Vector3(0f, 0.08f, half);
+        }
+        return new Vector3(index % 2 == 0 ? -half : half, 0f, index < 2 ? -half : half);
+    }
+
+    GameObject ResolvePrefab(KitchenEmployee.HeldPreviewKind kind, ItemDefinition item)
+    {
+        ManagementModeController controller = ManagementModeController.Instance;
+        if (controller != null)
+        {
+            GameObject fromController = GetPrefabFromController(controller, kind);
+            if (fromController != null) return fromController;
+        }
+
+        StationManagePopup[] popups = Resources.FindObjectsOfTypeAll<StationManagePopup>();
+        foreach (StationManagePopup popup in popups)
+        {
+            if (popup == null || !popup.gameObject.scene.IsValid()) continue;
+            GameObject fromPopup = GetPrefabFromPopup(popup, kind);
+            if (fromPopup != null) return fromPopup;
+        }
+
+        HeatLampStation lamp = HeatLampStation.Instance;
+        if (lamp != null)
+        {
+            if (kind == KitchenEmployee.HeldPreviewKind.Burger && lamp.burgerDisplayPrefab != null)
+                return lamp.burgerDisplayPrefab;
+            if (kind == KitchenEmployee.HeldPreviewKind.CookedFries && lamp.friesDisplayPrefab != null)
+                return lamp.friesDisplayPrefab;
+        }
+        return item != null ? item.prefab : null;
+    }
+
+    static GameObject GetPrefabFromController(ManagementModeController source, KitchenEmployee.HeldPreviewKind kind)
+    {
+        switch (kind)
+        {
+            case KitchenEmployee.HeldPreviewKind.RawPatty: return source.rawPattyPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.CookedPatty: return source.cookedPattyPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.RawFries: return source.rawFriesPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.CookedFries: return source.cookedFriesPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.Burger: return source.burgerPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.Drink: return source.drinkPreviewPrefab;
+            default: return null;
+        }
+    }
+
+    static GameObject GetPrefabFromPopup(StationManagePopup source, KitchenEmployee.HeldPreviewKind kind)
+    {
+        switch (kind)
+        {
+            case KitchenEmployee.HeldPreviewKind.RawPatty: return source.rawPattyPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.CookedPatty: return source.cookedPattyPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.RawFries: return source.rawFriesPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.CookedFries: return source.cookedFriesPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.Burger: return source.burgerPreviewPrefab;
+            case KitchenEmployee.HeldPreviewKind.Drink: return source.drinkPreviewPrefab;
+            default: return null;
+        }
+    }
+
+    static void PreparePreviewModel(GameObject model)
+    {
+        foreach (Collider collider in model.GetComponentsInChildren<Collider>(true))
+            collider.enabled = false;
+        foreach (Rigidbody body in model.GetComponentsInChildren<Rigidbody>(true))
+        {
+            body.isKinematic = true;
+            body.detectCollisions = false;
+        }
+        foreach (Canvas canvas in model.GetComponentsInChildren<Canvas>(true))
+            canvas.enabled = false;
+        foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+    }
+
+    static void NormalizeModel(GameObject model, Transform slot, float targetSize)
+    {
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+        float largest = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+        if (largest > 0.0001f)
+            model.transform.localScale *= targetSize / largest;
+
+        bounds = model.GetComponentsInChildren<Renderer>(true)[0].bounds;
+        renderers = model.GetComponentsInChildren<Renderer>(true);
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+        model.transform.position += slot.position - bounds.center;
     }
 }

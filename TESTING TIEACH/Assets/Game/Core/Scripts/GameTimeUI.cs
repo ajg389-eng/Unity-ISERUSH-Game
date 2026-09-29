@@ -11,6 +11,8 @@ public class GameTimeUI : MonoBehaviour
     public GameTimeManager timeManager;
     public TextMeshProUGUI dayText;
     public TextMeshProUGUI clockText;
+    public TextMeshProUGUI speedMultiplierText;
+    public TextMeshProUGUI rushText;
     public Button pauseButton;
     public Button playButton;
     public Button fastForwardButton;
@@ -25,8 +27,10 @@ public class GameTimeUI : MonoBehaviour
             timeManager = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
 
         BindReferences();
-        if ((pauseButton == null || clockText == null) && transform.childCount == 0)
+        if (clockText == null && transform.childCount == 0)
             BuildDefaultLayout();
+        TuneTimeRow();
+        EnsureSpeedStrip();
 
         CacheButtonHighlights();
         WireButtons();
@@ -39,7 +43,12 @@ public class GameTimeUI : MonoBehaviour
             timeManager.OnTimeChanged += Refresh;
             timeManager.OnSpeedChanged += Refresh;
             timeManager.OnDayEnded += Refresh;
+            timeManager.OnDayStarted += Refresh;
         }
+        EnsureSpeedStrip();
+        CacheButtonHighlights();
+        WireButtons();
+        TuneTimeRow();
         Refresh();
     }
 
@@ -50,15 +59,25 @@ public class GameTimeUI : MonoBehaviour
             timeManager.OnTimeChanged -= Refresh;
             timeManager.OnSpeedChanged -= Refresh;
             timeManager.OnDayEnded -= Refresh;
+            timeManager.OnDayStarted -= Refresh;
         }
     }
 
     void Update()
     {
         if (timeManager == null)
+        {
             timeManager = GameTimeManager.Instance;
-        if (timeManager != null && clockText != null)
-            clockText.text = timeManager.GetClockText();
+            if (timeManager != null)
+            {
+                timeManager.OnTimeChanged += Refresh;
+                timeManager.OnSpeedChanged += Refresh;
+                timeManager.OnDayEnded += Refresh;
+                timeManager.OnDayStarted += Refresh;
+                Refresh();
+            }
+        }
+        ApplyClockText();
     }
 
     void BindReferences()
@@ -68,6 +87,10 @@ public class GameTimeUI : MonoBehaviour
 
         if (clockText == null)
             clockText = FindComponentByNames<TextMeshProUGUI>("ClockText", "Clock", "TimeText");
+        if (speedMultiplierText == null)
+            speedMultiplierText = FindComponentByNames<TextMeshProUGUI>("SpeedMultiplierText");
+        if (rushText == null)
+            rushText = FindComponentByNames<TextMeshProUGUI>("RushText");
 
         if (pauseButton == null)
             pauseButton = FindComponentByNames<Button>("PauseButton", "||");
@@ -120,35 +143,153 @@ public class GameTimeUI : MonoBehaviour
         rowRt.offsetMax = Vector2.zero;
 
         var hlg = row.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 10f;
+        hlg.spacing = 8f;
         hlg.padding = new RectOffset(0, 0, 0, 0);
         hlg.childAlignment = TextAnchor.MiddleCenter;
-        hlg.childControlWidth = false;
+        hlg.childControlWidth = true;
         hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        dayText = CreateLabel(row.transform, "DayText", "Day 1", 18, 72f);
+        dayText = CreateLabel(row.transform, "DayText", "Day 1", 18, 70f);
         dayText.fontStyle = FontStyles.Bold;
         dayText.color = new Color(0.85f, 0.88f, 0.95f, 1f);
 
-        clockText = CreateLabel(row.transform, "ClockText", "10:00 AM", 26, 130f);
+        clockText = CreateLabel(row.transform, "ClockText", "10:00 AM", 20, 118f);
         clockText.fontStyle = FontStyles.Bold;
+        clockText.overflowMode = TextOverflowModes.Truncate;
+        clockText.enableWordWrapping = false;
+        clockText.enableAutoSizing = true;
+        clockText.fontSizeMin = 16;
+        clockText.fontSizeMax = 20;
 
-        var controls = new GameObject("Controls", typeof(RectTransform));
-        controls.transform.SetParent(row.transform, false);
-        controls.AddComponent<LayoutElement>().minWidth = 138f;
-        var controlsH = controls.AddComponent<HorizontalLayoutGroup>();
-        controlsH.spacing = 6f;
-        controlsH.childAlignment = TextAnchor.MiddleCenter;
-        controlsH.childControlWidth = true;
-        controlsH.childControlHeight = true;
-        controlsH.childForceExpandWidth = true;
-        controlsH.childForceExpandHeight = true;
+        speedMultiplierText = CreateLabel(row.transform, "SpeedMultiplierText", "3x", 15, 38f);
+        speedMultiplierText.fontStyle = FontStyles.Bold;
+        speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        speedMultiplierText.gameObject.SetActive(false);
 
-        pauseButton = CreateSpeedButton(controls.transform, "PauseButton", "||", out pauseHighlight);
-        playButton = CreateSpeedButton(controls.transform, "PlayButton", ">", out playHighlight);
-        fastForwardButton = CreateSpeedButton(controls.transform, "FastForwardButton", ">>", out fastHighlight);
+        rushText = CreateLabel(row.transform, "RushText", "RUSH", 16, 56f);
+        rushText.fontStyle = FontStyles.Bold;
+        rushText.color = new Color(1f, 0.58f, 0.22f, 1f);
+        rushText.overflowMode = TextOverflowModes.Truncate;
+        rushText.enableWordWrapping = false;
+    }
+
+    const string SpeedStripName = "SpeedControls";
+
+    void EnsureSpeedStrip()
+    {
+        Transform host = transform.parent;
+        var bar = GetComponentInParent<TopHudBar>();
+        if (bar != null && bar.transform.parent != null)
+            host = bar.transform.parent;
+        if (host == null)
+            host = transform;
+
+        Transform existing = host.Find(SpeedStripName);
+        if (existing == null && bar != null)
+            existing = bar.transform.Find(SpeedStripName);
+
+        GameObject strip;
+        if (existing != null)
+        {
+            strip = existing.gameObject;
+        }
+        else
+        {
+            strip = new GameObject(SpeedStripName, typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        }
+
+        if (strip.transform.parent != host)
+            strip.transform.SetParent(host, false);
+
+        var ignore = strip.GetComponent<LayoutElement>() ?? strip.AddComponent<LayoutElement>();
+        ignore.ignoreLayout = true;
+
+        var hlg = strip.GetComponent<HorizontalLayoutGroup>() ?? strip.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing = 6f;
+        hlg.padding = new RectOffset(0, 0, 0, 0);
+        hlg.childAlignment = TextAnchor.MiddleCenter;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = true;
+
+        if (pauseButton == null)
+            pauseButton = FindNamedButton(strip.transform, "PauseButton");
+        if (playButton == null)
+            playButton = FindNamedButton(strip.transform, "PlayButton");
+        if (fastForwardButton == null)
+            fastForwardButton = FindNamedButton(strip.transform, "FastButton") ?? FindNamedButton(strip.transform, "FastForwardButton");
+
+        if (pauseButton != null && pauseButton.transform.parent != strip.transform)
+            pauseButton.transform.SetParent(strip.transform, false);
+        if (playButton != null && playButton.transform.parent != strip.transform)
+            playButton.transform.SetParent(strip.transform, false);
+        if (fastForwardButton != null && fastForwardButton.transform.parent != strip.transform)
+            fastForwardButton.transform.SetParent(strip.transform, false);
+
+        if (pauseButton == null)
+            pauseButton = CreateSpeedButton(strip.transform, "PauseButton", "||", out pauseHighlight);
+        if (playButton == null)
+            playButton = CreateSpeedButton(strip.transform, "PlayButton", ">", out playHighlight);
+        if (fastForwardButton == null)
+            fastForwardButton = CreateSpeedButton(strip.transform, "FastForwardButton", ">>", out fastHighlight);
+
+        GameUITheme.ApplyCompactControlEffects(pauseButton);
+        GameUITheme.ApplyCompactControlEffects(playButton);
+        GameUITheme.ApplyCompactControlEffects(fastForwardButton);
+
+        pauseButton.transform.SetSiblingIndex(0);
+        playButton.transform.SetSiblingIndex(1);
+        fastForwardButton.transform.SetSiblingIndex(2);
+
+        var leftover = transform.Find("Row/Controls");
+        if (leftover != null)
+            Destroy(leftover.gameObject);
+
+        PositionSpeedStrip(strip.GetComponent<RectTransform>(), bar);
+    }
+
+    static Button FindNamedButton(Transform root, string objectName)
+    {
+        foreach (var btn in root.GetComponentsInChildren<Button>(true))
+        {
+            if (btn != null && btn.gameObject.name == objectName)
+                return btn;
+        }
+        return null;
+    }
+
+    void LateUpdate()
+    {
+        Transform host = transform.parent;
+        var bar = GetComponentInParent<TopHudBar>();
+        if (bar != null && bar.transform.parent != null)
+            host = bar.transform.parent;
+        if (host == null) return;
+        var strip = host.Find(SpeedStripName) as RectTransform;
+        if (strip == null && bar != null)
+            strip = bar.transform.Find(SpeedStripName) as RectTransform;
+        if (strip != null)
+            PositionSpeedStrip(strip, bar);
+    }
+
+    static void PositionSpeedStrip(RectTransform strip, TopHudBar bar)
+    {
+        if (strip == null) return;
+        strip.anchorMin = new Vector2(0.5f, 1f);
+        strip.anchorMax = new Vector2(0.5f, 1f);
+        strip.pivot = new Vector2(0.5f, 1f);
+        strip.sizeDelta = new Vector2(158f, 36f);
+
+        float y = -62f;
+        if (bar != null)
+        {
+            var barRt = (RectTransform)bar.transform;
+            y = barRt.anchoredPosition.y - barRt.rect.height - 6f;
+        }
+        strip.anchoredPosition = new Vector2(0f, y);
     }
 
     void CacheButtonHighlights()
@@ -240,8 +381,7 @@ public class GameTimeUI : MonoBehaviour
         if (dayText != null)
             dayText.text = timeManager.GetDayText();
 
-        if (clockText != null)
-            clockText.text = timeManager.GetClockText();
+        ApplyClockText();
 
         SetHighlight(pauseHighlight, timeManager.CurrentSpeed == GameTimeManager.SpeedMode.Paused);
         SetHighlight(playHighlight, timeManager.CurrentSpeed == GameTimeManager.SpeedMode.Play && !timeManager.IsShiftOver);
@@ -253,6 +393,138 @@ public class GameTimeUI : MonoBehaviour
             if (label != null)
                 label.text = timeManager.IsShiftOver ? "Next" : ">";
         }
+    }
+
+    void ApplyClockText()
+    {
+        if (timeManager == null) return;
+        EnsureSpeedMultiplierLabel();
+        EnsureRushLabel();
+
+        if (clockText != null)
+        {
+            clockText.enableWordWrapping = false;
+            clockText.overflowMode = TextOverflowModes.Truncate;
+            clockText.text = timeManager.GetClockText();
+            clockText.color = Color.white;
+        }
+
+        if (speedMultiplierText != null)
+        {
+            bool accelerated = timeManager.CurrentSpeed == GameTimeManager.SpeedMode.FastForward ||
+                               timeManager.CurrentSpeed == GameTimeManager.SpeedMode.SuperFast;
+            // Keep its reserved position even at normal speed so the clock never
+            // shifts when the multiplier appears.
+            speedMultiplierText.gameObject.SetActive(true);
+            speedMultiplierText.text = accelerated ? timeManager.GetSpeedLabel() : "";
+            speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        }
+
+        if (rushText != null)
+        {
+            if (!rushText.gameObject.activeSelf)
+                rushText.gameObject.SetActive(true);
+            bool rush = timeManager.IsRushHour;
+            rushText.text = rush ? "RUSH" : "";
+            rushText.color = new Color(1f, 0.58f, 0.22f, 1f);
+            rushText.overflowMode = TextOverflowModes.Truncate;
+            rushText.enableWordWrapping = false;
+            var rushLayout = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
+            rushLayout.minWidth = 56f;
+            rushLayout.preferredWidth = 56f;
+            rushLayout.flexibleWidth = 0f;
+        }
+    }
+
+    void TuneTimeRow()
+    {
+        var row = transform.Find("Row");
+        if (row != null)
+        {
+            var hlg = row.GetComponent<HorizontalLayoutGroup>();
+            if (hlg != null)
+                hlg.enabled = false;
+        }
+
+        if (dayText != null)
+        {
+            var le = dayText.GetComponent<LayoutElement>() ?? dayText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 76f;
+            le.preferredWidth = 76f;
+            le.flexibleWidth = 0f;
+            PositionTimeLabel(dayText.rectTransform, -205f, 76f);
+        }
+        if (clockText != null)
+        {
+            var le = clockText.GetComponent<LayoutElement>() ?? clockText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 110f;
+            le.preferredWidth = 118f;
+            le.flexibleWidth = 0f;
+            PositionTimeLabel(clockText.rectTransform, 0f, 118f);
+            clockText.enableAutoSizing = true;
+            clockText.fontSizeMin = 16;
+            clockText.fontSizeMax = 20;
+            clockText.enableWordWrapping = false;
+            clockText.overflowMode = TextOverflowModes.Truncate;
+        }
+        if (speedMultiplierText != null)
+        {
+            var le = speedMultiplierText.GetComponent<LayoutElement>() ?? speedMultiplierText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 38f;
+            le.preferredWidth = 38f;
+            le.flexibleWidth = 0f;
+            PositionTimeLabel(speedMultiplierText.rectTransform, 82f, 38f);
+        }
+        if (rushText != null)
+        {
+            var le = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 56f;
+            le.preferredWidth = 56f;
+            le.flexibleWidth = 0f;
+            rushText.gameObject.SetActive(true);
+            PositionTimeLabel(rushText.rectTransform, -113f, 56f);
+        }
+    }
+
+    static void PositionTimeLabel(RectTransform label, float centerX, float width)
+    {
+        if (label == null) return;
+        label.anchorMin = new Vector2(0.5f, 0f);
+        label.anchorMax = new Vector2(0.5f, 1f);
+        label.pivot = new Vector2(0.5f, 0.5f);
+        label.anchoredPosition = new Vector2(centerX, 0f);
+        label.sizeDelta = new Vector2(width, 0f);
+    }
+
+    void EnsureSpeedMultiplierLabel()
+    {
+        if (speedMultiplierText != null) return;
+        Transform parent = clockText != null ? clockText.transform.parent : transform;
+        if (parent == null) return;
+
+        speedMultiplierText = CreateLabel(parent, "SpeedMultiplierText", "", 15, 38f);
+        speedMultiplierText.fontStyle = FontStyles.Bold;
+        speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        if (clockText != null)
+            speedMultiplierText.transform.SetSiblingIndex(clockText.transform.GetSiblingIndex() + 1);
+    }
+
+    void EnsureRushLabel()
+    {
+        if (rushText != null) return;
+        Transform parent = clockText != null ? clockText.transform.parent : transform;
+        if (parent == null) return;
+
+        rushText = CreateLabel(parent, "RushText", "RUSH", 16, 56f);
+        rushText.fontStyle = FontStyles.Bold;
+        rushText.overflowMode = TextOverflowModes.Truncate;
+        rushText.enableWordWrapping = false;
+        if (clockText != null)
+            rushText.transform.SetSiblingIndex(clockText.transform.GetSiblingIndex() + 1);
     }
 
     static void SetHighlight(Image img, bool on)
@@ -288,7 +560,12 @@ public class GameTimeUI : MonoBehaviour
         highlight = go.AddComponent<Image>();
         highlight.color = new Color(0.22f, 0.24f, 0.3f, 1f);
         var btn = go.AddComponent<Button>();
-        go.AddComponent<LayoutElement>().minWidth = 44f;
+        var le = go.AddComponent<LayoutElement>();
+        le.minWidth = 44f;
+        le.preferredWidth = 44f;
+        le.minHeight = 32f;
+        le.preferredHeight = 32f;
+        le.flexibleWidth = 0f;
 
         var textGo = new GameObject("Text", typeof(RectTransform));
         textGo.transform.SetParent(go.transform, false);

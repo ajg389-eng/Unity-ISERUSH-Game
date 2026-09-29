@@ -8,9 +8,16 @@ using TMPro;
 /// </summary>
 public class ManagementScreenController : MonoBehaviour
 {
+    static readonly KeyCode[] NumberRowTabKeys =
+    {
+        KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
+        KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6,
+        KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9
+    };
+
     [Header("Open / Close")]
     public GameModeManager modeManager;
-    public KeyCode toggleKey = KeyCode.M;
+    public KeyCode toggleKey = KeyCode.E;
     public Button openButton;
     public GameObject managementPanel;
     public Button closeButton;
@@ -23,14 +30,16 @@ public class ManagementScreenController : MonoBehaviour
     public Button[] tabButtons;
     public GameObject[] tabPanels;
 
-    [Header("Sections (optional)")]
-    public GameObject statsSection;
-
     bool isOpen;
+    ManagementTabInfoUI tabInfoUI;
 
     void Start()
     {
+        // Older scenes serialized Alpha2 here. Keep the runtime binding authoritative.
+        toggleKey = KeyCode.E;
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        EnsurePanelClickBlocker(managementPanel);
+        ApplyManagementBackdrop();
         if (managementPanel != null)
             managementPanel.SetActive(false);
 
@@ -42,6 +51,9 @@ public class ManagementScreenController : MonoBehaviour
 
         WireTabButtons();
         EnsureCustomersTab();
+        tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
+        if (tabInfoUI != null)
+            tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
         SelectTab(0);
         EnsureManagementModeController();
     }
@@ -180,7 +192,7 @@ public class ManagementScreenController : MonoBehaviour
 
     public void SelectTab(int index)
     {
-        if (tabPanels == null) return;
+        if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
         for (int i = 0; i < tabPanels.Length; i++)
         {
@@ -192,13 +204,56 @@ public class ManagementScreenController : MonoBehaviour
             for (int i = 0; i < tabButtons.Length; i++)
                 HudTabColors.Apply(tabButtons[i], i == index);
         }
+
+        if (tabInfoUI == null)
+            tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
+        if (tabInfoUI != null)
+            tabInfoUI.SetTab(tabPanels[index]);
     }
 
     void Update()
     {
-        if (Input.GetKeyDown(toggleKey))
+        if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
+        bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+        if (!unifiedNavigation && Input.GetKeyDown(toggleKey))
+        {
             Toggle();
+            return;
+        }
+
+        if (!unifiedNavigation && isOpen)
+            HandleNumberRowTabShortcut();
     }
+
+    void HandleNumberRowTabShortcut()
+    {
+        int requestedPosition = -1;
+        for (int i = 0; i < NumberRowTabKeys.Length; i++)
+        {
+            if (!Input.GetKeyDown(NumberRowTabKeys[i])) continue;
+            requestedPosition = i;
+            break;
+        }
+        if (requestedPosition < 0) return;
+
+        int count = tabPanels != null && tabButtons != null
+            ? Mathf.Min(Mathf.Min(tabPanels.Length, tabButtons.Length), NumberRowTabKeys.Length)
+            : 0;
+        if (requestedPosition >= count) return;
+
+        int[] visualOrder = new int[count];
+        for (int i = 0; i < count; i++)
+            visualOrder[i] = i;
+        System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
+            .CompareTo(GetTabSiblingIndex(tabButtons[b])));
+
+        SelectTab(visualOrder[requestedPosition]);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static int GetTabSiblingIndex(Button button) => button != null
+        ? button.transform.GetSiblingIndex()
+        : int.MaxValue;
 
     public void Open()
     {
@@ -210,9 +265,8 @@ public class ManagementScreenController : MonoBehaviour
 
         managementPanel.SetActive(true);
         Sfx.Play(SfxId.UiOpen);
-        // Let clicks on empty overlay pass through to stations (like Build mode)
-        var panelImg = managementPanel.GetComponent<Image>();
-        if (panelImg != null) panelImg.raycastTarget = false;
+        EnsurePanelClickBlocker(managementPanel);
+        ApplyManagementBackdrop();
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
@@ -229,6 +283,27 @@ public class ManagementScreenController : MonoBehaviour
             else
                 Time.timeScale = 0f;
         }
+    }
+
+    void ApplyManagementBackdrop()
+    {
+        if (managementPanel == null) return;
+
+        var rootImage = managementPanel.GetComponent<Image>();
+        if (rootImage != null)
+        {
+            // ContentBox supplies the visible surface. Leaving the root clear
+            // avoids doubling the translucent HUD color where both overlap.
+            rootImage.color = Color.clear;
+            rootImage.raycastTarget = true;
+        }
+
+        // ContentBox is the visible fill in the scene-authored hierarchy. Match
+        // it to the connected top HUD instead of leaving a lighter slate block.
+        Transform contentBox = managementPanel.transform.Find("ContentBox");
+        var contentImage = contentBox != null ? contentBox.GetComponent<Image>() : null;
+        if (contentImage != null)
+            contentImage.color = HudTabColors.Strip;
     }
 
     /// <summary>
@@ -263,6 +338,8 @@ public class ManagementScreenController : MonoBehaviour
 
     public void OpenWorkersTab()
     {
+        if (!isOpen)
+            Open();
         if (tabPanels == null) return;
         for (int i = 0; i < tabPanels.Length; i++)
         {
@@ -272,6 +349,47 @@ public class ManagementScreenController : MonoBehaviour
                 return;
             }
         }
+    }
+
+    public void OpenCustomersTab()
+    {
+        if (!isOpen)
+            Open();
+        if (tabPanels == null) return;
+        for (int i = 0; i < tabPanels.Length; i++)
+        {
+            if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null)
+            {
+                SelectTab(i);
+                return;
+            }
+        }
+    }
+
+    public void SetUnifiedPrimaryPage(bool business)
+    {
+        if (tabButtons == null || tabButtons.Length == 0) return;
+
+        Transform tabBar = null;
+        for (int i = 0; i < tabButtons.Length; i++)
+        {
+            if (tabButtons[i] == null) continue;
+            if (tabBar == null) tabBar = tabButtons[i].transform.parent;
+
+            bool workers = i < tabPanels.Length && tabPanels[i] != null
+                && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null;
+            tabButtons[i].gameObject.SetActive(business ? !workers : false);
+
+            if (!business || workers) continue;
+            var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
+            bool customers = i < tabPanels.Length && tabPanels[i] != null
+                && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null;
+            if (label != null)
+                label.text = customers ? "Demand" : "Menu & Supply";
+        }
+
+        if (tabBar != null)
+            tabBar.gameObject.SetActive(business);
     }
 
     public void OpenIngredientsTab()
@@ -292,6 +410,7 @@ public class ManagementScreenController : MonoBehaviour
     public void Close()
     {
         if (managementPanel == null) return;
+        if (tabInfoUI != null) tabInfoUI.Close();
         managementPanel.SetActive(false);
         Sfx.Play(SfxId.UiClose);
         isOpen = false;
@@ -315,4 +434,20 @@ public class ManagementScreenController : MonoBehaviour
     }
 
     public bool IsOpen => isOpen;
+
+    /// <summary>
+    /// The panel's full visible rect must receive pointer events, even in empty
+    /// space between controls, so world station selection cannot leak through it.
+    /// </summary>
+    static void EnsurePanelClickBlocker(GameObject panel)
+    {
+        if (panel == null) return;
+        Image image = panel.GetComponent<Image>();
+        if (image == null)
+        {
+            image = panel.AddComponent<Image>();
+            image.color = Color.clear;
+        }
+        image.raycastTarget = true;
+    }
 }

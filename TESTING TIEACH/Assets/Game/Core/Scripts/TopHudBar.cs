@@ -8,8 +8,10 @@ using TMPro;
 public class TopHudBar : MonoBehaviour
 {
     public const string BarObjectName = "TopHudBar";
+    public const string BackdropObjectName = "TopHudConnectedBackdrop";
     public const string TimeSectionName = "TimeSection";
     public const string MoneyTextName = "MoneyText";
+    const float BarWidth = 760f;
 
     [Header("References")]
     public MoneyManager money;
@@ -32,6 +34,7 @@ public class TopHudBar : MonoBehaviour
         BindReferences();
         ApplyFitLayout();
         RemoveUndoFromBar();
+        EnsureUtilityControls();
     }
 
     void Update()
@@ -71,6 +74,7 @@ public class TopHudBar : MonoBehaviour
             existing.BindReferences();
             existing.ApplyFitLayout();
             existing.RemoveUndoFromBar();
+            existing.EnsureUtilityControls();
             return existing;
         }
 
@@ -111,11 +115,17 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = new Vector2(520f, barHeight);
+        // 760 fits between the 550-wide left and right tab strips at 1920
+        // without either side covering the money or notification controls.
+        rt.sizeDelta = new Vector2(BarWidth, barHeight);
+
+        EnsureConnectedBackdrop(rt.parent, Mathf.Max(60f, barHeight));
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
-        bg.color = new Color(0.06f, 0.06f, 0.09f, 0.96f);
+        // The full-width sibling supplies the shared background. Keep this
+        // graphic as a raycast surface without tinting the center a second time.
+        bg.color = Color.clear;
         bg.raycastTarget = true;
 
         var mask = GetComponent<RectMask2D>();
@@ -124,27 +134,25 @@ public class TopHudBar : MonoBehaviour
 
         var hlg = GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(16, 16, 8, 8);
-        hlg.spacing = 16f;
-        hlg.childAlignment = TextAnchor.MiddleCenter;
-        hlg.childControlWidth = true;
-        hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false;
-        hlg.childForceExpandHeight = true;
+        // Sections are anchored explicitly so variable-width utility text cannot
+        // push the clock away from the screen center.
+        hlg.enabled = false;
 
         var fitter = GetComponent<ContentSizeFitter>();
-        if (fitter == null) fitter = gameObject.AddComponent<ContentSizeFitter>();
-        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-        fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+        if (fitter != null)
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
 
         var moneySection = transform.Find("MoneySection") as RectTransform;
         if (moneySection != null)
         {
             var le = moneySection.GetComponent<LayoutElement>();
             if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
             le.minWidth = 90f;
             le.preferredWidth = 110f;
             le.flexibleWidth = 0f;
+            PositionSection(moneySection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(16f, 0f), new Vector2(110f, barHeight - 16f));
         }
 
         var timeSection = transform.Find(TimeSectionName) as RectTransform;
@@ -152,9 +160,12 @@ public class TopHudBar : MonoBehaviour
         {
             var le = timeSection.GetComponent<LayoutElement>();
             if (le == null) le = timeSection.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 360f;
-            le.preferredWidth = 380f;
+            le.ignoreLayout = true;
+            le.minWidth = 170f;
+            le.preferredWidth = 170f;
             le.flexibleWidth = 0f;
+            PositionSection(timeSection, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(170f, barHeight - 16f));
         }
 
         if (moneyText != null)
@@ -165,6 +176,76 @@ public class TopHudBar : MonoBehaviour
             moneyText.fontSizeMin = 18;
             moneyText.fontSizeMax = 24;
         }
+
+
+        var musicSection = transform.Find(TopHudUtilityControls.MusicSectionName) as RectTransform;
+        if (musicSection != null)
+        {
+            var le = musicSection.GetComponent<LayoutElement>() ?? musicSection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 206f;
+            le.preferredWidth = 206f;
+            le.flexibleWidth = 0f;
+            PositionSection(musicSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-116f, 0f), new Vector2(206f, barHeight - 16f));
+        }
+
+        var noticeSection = transform.Find(TopHudUtilityControls.NotificationSectionName) as RectTransform;
+        if (noticeSection != null)
+        {
+            var le = noticeSection.GetComponent<LayoutElement>() ?? noticeSection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 92f;
+            le.preferredWidth = 92f;
+            le.flexibleWidth = 0f;
+            PositionSection(noticeSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-16f, 0f), new Vector2(92f, barHeight - 16f));
+        }
+    }
+
+    static void EnsureConnectedBackdrop(Transform canvasTransform, float height)
+    {
+        if (canvasTransform == null) return;
+
+        Transform existing = canvasTransform.Find(BackdropObjectName);
+        GameObject backdrop = existing != null
+            ? existing.gameObject
+            : new GameObject(BackdropObjectName, typeof(RectTransform), typeof(Image));
+
+        if (backdrop.transform.parent != canvasTransform)
+            backdrop.transform.SetParent(canvasTransform, false);
+
+        var rect = (RectTransform)backdrop.transform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(0f, height);
+
+        var image = backdrop.GetComponent<Image>();
+        image.color = HudTabColors.Strip;
+        image.raycastTarget = false;
+
+        // It only fills the gaps between the existing controls and must never
+        // cover or reposition them.
+        backdrop.transform.SetAsFirstSibling();
+    }
+
+    static void PositionSection(RectTransform section, Vector2 anchor, Vector2 pivot, Vector2 position, Vector2 size)
+    {
+        section.anchorMin = anchor;
+        section.anchorMax = anchor;
+        section.pivot = pivot;
+        section.anchoredPosition = position;
+        section.sizeDelta = size;
+    }
+
+    void EnsureUtilityControls()
+    {
+        var controls = GetComponent<TopHudUtilityControls>();
+        if (controls == null)
+            controls = gameObject.AddComponent<TopHudUtilityControls>();
+        controls.EnsureLayout();
     }
 
     public void RemoveUndoFromBar()
@@ -213,9 +294,9 @@ public class TopHudBar : MonoBehaviour
         var section = new GameObject(TimeSectionName, typeof(RectTransform));
         section.transform.SetParent(parent, false);
         var le = section.AddComponent<LayoutElement>();
-        le.minWidth = 360f;
-        le.preferredWidth = 380f;
-        le.flexibleWidth = 0f;
+        le.minWidth = 320f;
+        le.preferredWidth = 400f;
+        le.flexibleWidth = 1f;
 
         if (section.GetComponent<GameTimeUI>() == null)
             section.AddComponent<GameTimeUI>();
