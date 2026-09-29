@@ -13,12 +13,28 @@ MonoBehaviour:
   m_Name: CustomerOrderConfig
   m_EditorClassIdentifier: Assembly-CSharp::CustomerOrderConfig
   burgerBase: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
+  cheeseburgerItem: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
   friesIngredient: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
   assemblyRecipes:
   - recipeName: Burger
     output: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
+    processedInput: {fileID: 0}
     processedInputName: Cooked patty
+    processedInputAmount: 1
+    pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
+    pantryInputAmount: 1
+  - recipeName: Cheese Patty
+    output: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
+    processedInput: {fileID: 0}
+    processedInputName: Cooked patty
+    processedInputAmount: 1
+    pantryInput: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
+    pantryInputAmount: 1
+  - recipeName: Cheeseburger
+    output: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
+    processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
+    processedInputName: Cheese patty
     processedInputAmount: 1
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1

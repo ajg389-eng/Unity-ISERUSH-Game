@@ -23,6 +23,8 @@ public class ProductionJob
     public CustomerOrder order;
     public ItemDefinition product;
     public StationType[] pipeline;
+    /// <summary>Outputs of repeated Assembly steps, in pipeline order.</summary>
+    public ItemDefinition[] assemblyStageProducts;
     /// <summary>Index into pipeline, or pipeline.Length for heat-lamp delivery.</summary>
     public int currentStepIndex;
     public KitchenEmployee assignedTo;
@@ -70,11 +72,37 @@ public class ProductionJob
         return -1;
     }
 
-    public ProductionJob(CustomerOrder o, StationType[] steps)
+    public int FindNextPipelineIndex(StationType type)
+    {
+        if (pipeline == null) return -1;
+        for (int i = Mathf.Max(0, currentStepIndex + 1); i < pipeline.Length; i++)
+            if (pipeline[i] == type) return i;
+        return -1;
+    }
+
+    public ItemDefinition CurrentWorkProduct
+    {
+        get
+        {
+            if (CurrentStationType != StationType.Assembly || assemblyStageProducts == null
+                || assemblyStageProducts.Length == 0)
+                return product;
+
+            int assemblyIndex = -1;
+            for (int i = 0; i <= currentStepIndex && i < pipeline.Length; i++)
+                if (pipeline[i] == StationType.Assembly) assemblyIndex++;
+            return assemblyStageProducts[Mathf.Clamp(assemblyIndex, 0, assemblyStageProducts.Length - 1)];
+        }
+    }
+
+    public ProductionJob(CustomerOrder o, StationType[] steps, IList<ItemDefinition> assemblyStages = null)
     {
         order = o;
         product = o != null ? o.PrimaryItem : null;
         pipeline = steps ?? System.Array.Empty<StationType>();
+        assemblyStageProducts = assemblyStages != null
+            ? new List<ItemDefinition>(assemblyStages).ToArray()
+            : System.Array.Empty<ItemDefinition>();
         currentStepIndex = 0;
         assignedTo = null;
         hasPatty = false;
@@ -319,7 +347,9 @@ public class ProductionManager : MonoBehaviour
         if (orderConfig == null) return chances;
 
         // Matches GenerateRandomOrder: independent rolls, with fallback to at least one item.
-        float b = orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase) ? Mathf.Clamp01(orderConfig.burgerChance) : 0f;
+        bool anyBurgerEnabled = (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
+            || (orderConfig.cheeseburgerItem != null && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem));
+        float b = anyBurgerEnabled ? Mathf.Clamp01(orderConfig.burgerChance) : 0f;
         float f = orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem) ? Mathf.Clamp01(orderConfig.friesChance) : 0f;
         float d = orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem) ? Mathf.Clamp01(orderConfig.drinkChance) : 0f;
         float none = (1f - b) * (1f - f) * (1f - d);
@@ -329,13 +359,22 @@ public class ProductionManager : MonoBehaviour
         float drinkP = d;
         if (none > 0f)
         {
-            if (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase)) burgerP += none;
+            if (anyBurgerEnabled) burgerP += none;
             else if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem)) friesP += none;
             else if (orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem)) drinkP += none;
         }
 
+        var enabledBurgers = new List<ItemDefinition>();
         if (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
-            chances[orderConfig.burgerBase] = burgerP;
+            enabledBurgers.Add(orderConfig.burgerBase);
+        if (orderConfig.cheeseburgerItem != null && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem))
+            enabledBurgers.Add(orderConfig.cheeseburgerItem);
+        if (enabledBurgers.Count > 0)
+        {
+            float perBurger = burgerP / enabledBurgers.Count;
+            foreach (ItemDefinition burger in enabledBurgers)
+                chances[burger] = perBurger;
+        }
         if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             chances[orderConfig.friesItem] = friesP;
         if (includeDrinks && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
@@ -492,6 +531,13 @@ public class ProductionManager : MonoBehaviour
             if (flow != null && flow.workers != null && flow.workers.Contains(worker))
                 return flow;
         return null;
+    }
+
+    public bool IsStationInWorkerFlow(KitchenEmployee worker, GameObject station)
+    {
+        if (station == null) return false;
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        return flow?.stations != null && flow.stations.Contains(station);
     }
 
     /// <summary>Returns the next stop from this worker's flow, allowing one station to have different routes in different flows.</summary>
@@ -683,7 +729,7 @@ public class ProductionManager : MonoBehaviour
             AssemblyRecipeDefinition recipe = station.GetSelectedRecipe();
             if (recipe == null || recipe.output == null || recipe.pantryInput == null) continue;
 
-            int target = 4 * Mathf.Max(1, recipe.pantryInputAmount);
+            int target = AssemblyStation.IngredientCapacity;
             int reserved = station.BufferedPantryInputCount;
             bool alreadyQueued = false;
             foreach (ProductionJob queued in pendingJobs)
@@ -935,13 +981,55 @@ public class ProductionManager : MonoBehaviour
             canDrink = drinkStation != null || FindObjectOfType<DrinkStation>() != null;
         }
 
-        if (canBurger && orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
+        if (canBurger && orderConfig.burgerBase != null
+            && HasAssemblyChainAvailable(orderConfig.burgerBase, hasConfiguredFlow)
+            && orderConfig.IsItemEnabled(orderConfig.burgerBase))
             list.Add(orderConfig.burgerBase);
+        if (canBurger && orderConfig.cheeseburgerItem != null
+            && HasAssemblyChainAvailable(orderConfig.cheeseburgerItem, hasConfiguredFlow)
+            && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem))
+            list.Add(orderConfig.cheeseburgerItem);
         if (canFries && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             list.Add(orderConfig.friesItem);
         if (canDrink && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
             list.Add(orderConfig.drinkItem);
         return list;
+    }
+
+    bool HasAssemblyChainAvailable(ItemDefinition product, bool useFlows)
+    {
+        List<ItemDefinition> chain = orderConfig != null ? orderConfig.GetAssemblyChain(product) : null;
+        if (chain == null || chain.Count == 0) return false;
+
+        if (useFlows && productionFlows != null)
+        {
+            foreach (ProductionFlowPlan flow in productionFlows)
+            {
+                if (flow?.stations == null) continue;
+                int stage = 0;
+                foreach (GameObject stationObject in flow.stations)
+                {
+                    AssemblyStation station = stationObject != null
+                        ? stationObject.GetComponent<AssemblyStation>() : null;
+                    if (station != null && station.CanProcess(chain[stage]))
+                    {
+                        stage++;
+                        if (stage >= chain.Count) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        var remaining = new HashSet<ItemDefinition>(chain);
+        foreach (AssemblyStation station in FindObjectsByType<AssemblyStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (station == null) continue;
+            foreach (ItemDefinition stageProduct in chain)
+                if (station.CanProcess(stageProduct)) remaining.Remove(stageProduct);
+        }
+        return remaining.Count == 0;
     }
 
     int CountIdleCookSlots(List<ItemDefinition> cookable)
@@ -1063,7 +1151,7 @@ public class ProductionManager : MonoBehaviour
         if (product == null) return null;
         var pipeline = orderConfig.GetPipeline(product);
         if (pipeline == null || pipeline.Length == 0) return null;
-        return new ProductionJob(singleItemOrder, pipeline);
+        return new ProductionJob(singleItemOrder, pipeline, orderConfig.GetAssemblyChain(product));
     }
 
     List<CustomerOrder> GetAllQueuedOrders()
@@ -1232,7 +1320,7 @@ public class ProductionManager : MonoBehaviour
     {
         if (forEmployee != null)
         {
-            var ast = forEmployee.GetAssemblyStation();
+            var ast = forEmployee.GetAssemblyStation(forEmployee.CurrentWorkProduct);
             if (ast != null) return ast.GetInteractionPosition();
         }
         return assembly != null ? assembly.GetInteractionPosition() : transform.position;
@@ -1275,7 +1363,7 @@ public class ProductionManager : MonoBehaviour
 
     public bool IsEmployeeOnAssemblyTile(Vector3 worldPosition, KitchenEmployee forEmployee = null)
     {
-        var a = forEmployee != null ? forEmployee.GetAssemblyStation() : null;
+        var a = forEmployee != null ? forEmployee.GetAssemblyStation(forEmployee.CurrentWorkProduct) : null;
         if (a == null) a = assembly;
         var tiles = a != null ? a.GetComponent<StationInteractionTiles>() : null;
         return tiles == null || tiles.IsEmployeeOnInteractionTile(worldPosition);
@@ -1342,7 +1430,7 @@ public class ProductionManager : MonoBehaviour
 
     public float GetAssemblyProcessTime(KitchenEmployee forEmployee = null)
     {
-        var a = forEmployee != null ? forEmployee.GetAssemblyStation() : null;
+        var a = forEmployee != null ? forEmployee.GetAssemblyStation(forEmployee.CurrentWorkProduct) : null;
         if (a == null) a = assembly;
         return a != null ? a.processTimeSeconds : 1f;
     }

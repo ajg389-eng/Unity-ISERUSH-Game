@@ -57,8 +57,21 @@ public class StationNode : MonoBehaviour
         if (grill != null)
             SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
         else if (assembly != null)
-            SetIo(RateForCycle(assembly.processTimeSeconds, batchSize) * 2f,
-                RateForCycle(assembly.processTimeSeconds, batchSize), "cooked patties + buns", "burgers");
+        {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            float outputRate = RateForCycle(assembly.processTimeSeconds, batchSize);
+            int processedAmount = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
+            int pantryAmount = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
+            string processedName = recipe != null && !string.IsNullOrWhiteSpace(recipe.processedInputName)
+                ? recipe.processedInputName : "cooked patty";
+            string pantryName = recipe != null && recipe.pantryInput != null
+                ? (!string.IsNullOrEmpty(recipe.pantryInput.itemName)
+                    ? recipe.pantryInput.itemName : recipe.pantryInput.name)
+                : "bun";
+            string outputName = recipe != null ? recipe.DisplayName : "burger";
+            SetIo(outputRate * (processedAmount + pantryAmount), outputRate,
+                processedName + " + " + pantryName, outputName);
+        }
         else if (cutting != null)
             SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw toppings", "sliced toppings");
         else if (freezer != null)

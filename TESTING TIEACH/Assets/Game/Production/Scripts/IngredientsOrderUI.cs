@@ -192,7 +192,7 @@ public class IngredientsOrderUI : MonoBehaviour
     void CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item)
     {
         const float collapsedHeight = 62f;
-        const float expandedHeight = 132f;
+        const float expandedHeight = 154f;
 
         var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
         row.transform.SetParent(listContainer, false);
@@ -278,8 +278,8 @@ public class IngredientsOrderUI : MonoBehaviour
         workflowGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 0.96f);
         workflowGo.GetComponent<Image>().raycastTarget = false;
         var workflowLe = workflowGo.GetComponent<LayoutElement>();
-        workflowLe.minHeight = 61f;
-        workflowLe.preferredHeight = 61f;
+        workflowLe.minHeight = 83f;
+        workflowLe.preferredHeight = 83f;
 
         var workflowTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         workflowTextGo.transform.SetParent(workflowGo.transform, false);
@@ -350,6 +350,12 @@ public class IngredientsOrderUI : MonoBehaviour
         const string arrow = "  <color=#7E8CA6>→</color>  ";
         string Step(string station, string material) =>
             "<b>" + station + "</b> <color=#7FEA9A>[" + material + "]</color>";
+
+        if (menu.IsCheeseburger(item))
+            return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
+                + arrow + Step("Assembly 1", "Cooked patty + cheese") + arrow + Step("Cheese patty", "Intermediate")
+                + arrow + Step("Assembly 2", "Cheese patty + bun") + arrow + Step("Pickup Station", "Cheeseburger")
+                + "\n" + Step("Pantry feeders", "Cheese + bun") + arrow + Step("Assembly buffers", "Inputs 2");
 
         if (menu.IsBurger(item))
             return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")

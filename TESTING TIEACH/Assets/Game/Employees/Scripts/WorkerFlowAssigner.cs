@@ -280,9 +280,9 @@ public static class WorkerFlowAssigner
         {
             if (go == null) continue;
             var grill = go.GetComponent<GrillStation>();
-            if (grill != null) grill.selectedProduct = burgerItem;
+            if (grill != null && grill.selectedProduct == null) grill.selectedProduct = burgerItem;
             var assembly = go.GetComponent<AssemblyStation>();
-            if (assembly != null)
+            if (assembly != null && !assembly.HasProductSelected)
                 assembly.SetRecipe(ProductionManager.Instance.orderConfig.GetAssemblyRecipe(burgerItem));
         }
     }
@@ -940,6 +940,10 @@ public static class WorkflowAnalysis
         var products = new List<ItemDefinition>();
         if (canBurger && config != null && config.burgerBase != null)
             products.Add(config.burgerBase);
+        int assemblyCount = CountStations(flow, typeof(AssemblyStation));
+        if (canBurger && config != null && config.cheeseburgerItem != null
+            && assemblyCount >= config.GetAssemblyChain(config.cheeseburgerItem).Count)
+            products.Add(config.cheeseburgerItem);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
         if (hasDrink && config != null && config.drinkItem != null)
@@ -955,13 +959,19 @@ public static class WorkflowAnalysis
         {
             ItemDefinition resource = config != null && config.IsFries(product)
                 ? (config.friesIngredient != null ? config.friesIngredient : product)
-                : product;
+                : (config != null && config.IsBurger(product) ? config.burgerBase : product);
             if (resource != null && !result.requiredResources.Contains(resource))
                 result.requiredResources.Add(resource);
-            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(product) : null;
-            if (recipe != null && recipe.pantryInput != null
-                && !result.requiredResources.Contains(recipe.pantryInput))
-                result.requiredResources.Add(recipe.pantryInput);
+            if (config != null)
+            {
+                foreach (ItemDefinition stageOutput in config.GetAssemblyChain(product))
+                {
+                    AssemblyRecipeDefinition recipe = config.GetAssemblyRecipe(stageOutput);
+                    if (recipe != null && recipe.pantryInput != null
+                        && !result.requiredResources.Contains(recipe.pantryInput))
+                        result.requiredResources.Add(recipe.pantryInput);
+                }
+            }
         }
 
         result.summary = (layout.hasAssignedWorker ? "Cycle " : "Projected cycle ") + cycleLabel
@@ -975,12 +985,18 @@ public static class WorkflowAnalysis
                 : (!string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name);
             ItemDefinition resource = config != null && config.IsFries(item)
                 ? (config.friesIngredient != null ? config.friesIngredient : item)
-                : item;
+                : (config != null && config.IsBurger(item) ? config.burgerBase : item);
             float unitCost = GetIngredientUnitCost(resource, inventory);
-            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(item) : null;
-            if (recipe != null && recipe.pantryInput != null)
-                unitCost += GetIngredientUnitCost(recipe.pantryInput, inventory)
-                    * Mathf.Max(1, recipe.pantryInputAmount);
+            if (config != null)
+            {
+                foreach (ItemDefinition stageOutput in config.GetAssemblyChain(item))
+                {
+                    AssemblyRecipeDefinition recipe = config.GetAssemblyRecipe(stageOutput);
+                    if (recipe != null && recipe.pantryInput != null)
+                        unitCost += GetIngredientUnitCost(recipe.pantryInput, inventory)
+                            * Mathf.Max(1, recipe.pantryInputAmount);
+                }
+            }
             int sell = Mathf.Max(0, item.price);
             float profit = sell - unitCost;
             result.lines.Add(
@@ -1009,6 +1025,16 @@ public static class WorkflowAnalysis
                 return true;
         }
         return false;
+    }
+
+    static int CountStations(ProductionFlowPlan flow, System.Type componentType)
+    {
+        if (flow?.stations == null) return 0;
+        int count = 0;
+        foreach (GameObject station in flow.stations)
+            if (station != null && station.GetComponent(componentType) != null)
+                count++;
+        return count;
     }
 
     public static float EstimateFlowCycleSeconds(ProductionFlowPlan flow)

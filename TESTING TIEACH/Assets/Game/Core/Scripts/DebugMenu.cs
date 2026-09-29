@@ -141,31 +141,37 @@ public class DebugMenu : MonoBehaviour
         prt.anchorMax = new Vector2(0f, 0.5f);
         prt.pivot = new Vector2(0f, 0.5f);
         prt.anchoredPosition = new Vector2(16f, 0f);
-        prt.sizeDelta = new Vector2(320f, 1000f);
+        prt.sizeDelta = new Vector2(390f, 760f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
         bg.raycastTarget = true;
 
         var vlg = panel.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(12, 12, 12, 12);
-        vlg.spacing = 6;
+        vlg.padding = new RectOffset(12, 12, 10, 10);
+        vlg.spacing = 5;
         vlg.childControlHeight = true;
+        vlg.childForceExpandHeight = false;
         vlg.childForceExpandWidth = true;
         vlg.childAlignment = TextAnchor.UpperCenter;
 
-        CreateLabel(panel.transform, "DEBUG MENU", 20, FontStyles.Bold);
-        CreateLabel(panel.transform, "F1 / ` to toggle", 12, FontStyles.Normal).color = new Color(0.7f, 0.75f, 0.85f);
+        CreateLabel(panel.transform, "DEBUG TOOLS", 20, FontStyles.Bold);
+        CreateLabel(panel.transform, "F1 or ` to toggle", 11, FontStyles.Normal).color = new Color(0.62f, 0.7f, 0.8f);
 
         statusText = CreateLabel(panel.transform, "", 13, FontStyles.Normal);
         statusText.alignment = TextAlignmentOptions.Left;
-        statusText.GetComponent<LayoutElement>().minHeight = 108;
+        statusText.GetComponent<LayoutElement>().minHeight = 92;
 
         toastText = CreateLabel(panel.transform, "", 12, FontStyles.Italic);
         toastText.color = new Color(0.55f, 0.95f, 0.65f);
         toastText.alignment = TextAlignmentOptions.Left;
+        toastText.GetComponent<LayoutElement>().minHeight = 18f;
 
-        CreateButton(panel.transform, $"+${moneyGrant} Money", () =>
+        Transform actionContent = CreateScrollContent(panel.transform);
+        CreateSectionHeader(actionContent, "RESOURCES");
+        Transform resourceRow = CreateButtonRow(actionContent, "ResourceRow");
+
+        CreateButton(resourceRow, $"+${moneyGrant} Money", () =>
         {
             var m = FindObjectOfType<MoneyManager>();
             if (m == null) { Toast("No MoneyManager"); return; }
@@ -174,7 +180,9 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Hire Worker (free)", () =>
+        CreateSectionHeader(actionContent, "PEOPLE");
+        Transform peopleRow = CreateButtonRow(actionContent, "PeopleRow");
+        CreateButton(peopleRow, "Hire Worker", () =>
         {
             var pm = ProductionManager.Instance ?? FindObjectOfType<ProductionManager>();
             if (pm == null) { Toast("No ProductionManager"); return; }
@@ -183,7 +191,7 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Spawn Customer", () =>
+        CreateButton(peopleRow, "Spawn Customer", () =>
         {
             var spawner = FindFirstObjectByType<CustomerSpawner>(FindObjectsInactive.Include);
             if (spawner == null) { Toast("No CustomerSpawner"); return; }
@@ -202,16 +210,18 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Fill Kitchen Stock", () =>
+        CreateButton(resourceRow, $"Ingredients +{stockFillAmount}", () =>
         {
             var inv = KitchenInventory.Instance ?? FindObjectOfType<KitchenInventory>();
             if (inv == null) { Toast("No KitchenInventory"); return; }
             inv.FillAllStock(stockFillAmount);
-            Toast($"+{stockFillAmount} each ingredient");
+            Toast($"Added {stockFillAmount} of every ingredient instantly");
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Clear Pickup Station", () =>
+        CreateSectionHeader(actionContent, "KITCHEN");
+        Transform kitchenRow = CreateButtonRow(actionContent, "KitchenRow");
+        CreateButton(kitchenRow, "Clear Pickup", () =>
         {
             var lamp = HeatLampStation.Instance ?? FindObjectOfType<HeatLampStation>();
             if (lamp == null) { Toast("No Pickup Station"); return; }
@@ -220,7 +230,7 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Place All Stations", () =>
+        CreateButton(kitchenRow, "Place Stations", () =>
         {
             var placer = FindFirstObjectByType<BuildPlacer>();
             if (placer == null) { Toast("No BuildPlacer"); return; }
@@ -231,34 +241,48 @@ public class DebugMenu : MonoBehaviour
             RefreshStatus();
         });
 
-        CreateButton(panel.transform, "Clear All Stations", ClearAllEquipment);
+        Transform kitchenRowTwo = CreateButtonRow(actionContent, "KitchenRowTwo");
+        CreateButton(kitchenRowTwo, "Clear All Stations", ClearAllEquipment);
 
-        CreateButton(panel.transform, "Time 1x", () =>
+        CreateSectionHeader(actionContent, "TIME");
+        Transform timeRow = CreateButtonRow(actionContent, "TimeRow");
+        CreateButton(timeRow, "1x", () =>
         {
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
             Toast("1x");
             RefreshStatus();
         });
-        CreateButton(panel.transform, "Time 3x", () =>
+        CreateButton(timeRow, "3x", () =>
         {
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.FastForward);
             Toast("3x");
             RefreshStatus();
         });
-        CreateButton(panel.transform, "Time 20x (Super)", () =>
+        CreateButton(timeRow, "20x", () =>
         {
             GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.SuperFast);
             Toast("20x");
             RefreshStatus();
         });
-        CreateButton(panel.transform, "Skip to End of Day", () =>
+        Transform timeRowTwo = CreateButtonRow(actionContent, "TimeRowTwo");
+        CreateButton(timeRowTwo, "End Day", () =>
         {
             var time = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
             if (time == null) { Toast("No GameTimeManager"); return; }
             if (!time.DebugSkipToEndOfDay()) { Toast("Day already ended"); return; }
             SetVisible(false);
         });
-        CreateButton(panel.transform, "Force Milestone Quiz", () =>
+        CreateButton(timeRowTwo, "Pause / Resume", () =>
+        {
+            GameTimeManager.Instance?.TogglePausePlay();
+            var t = GameTimeManager.Instance;
+            Toast(t != null && t.CurrentSpeed == GameTimeManager.SpeedMode.Paused ? "Paused" : "Resumed");
+            RefreshStatus();
+        });
+
+        CreateSectionHeader(actionContent, "PROGRESSION");
+        Transform progressionRow = CreateButtonRow(actionContent, "ProgressionRow");
+        CreateButton(progressionRow, "Force Quiz", () =>
         {
             var m = MilestoneProgressManager.Instance;
             if (m == null) { Toast("No MilestoneProgressManager"); return; }
@@ -266,7 +290,7 @@ public class DebugMenu : MonoBehaviour
             Toast("Quiz ready");
             FindFirstObjectByType<MilestoneQuizUI>()?.Show();
         });
-        CreateButton(panel.transform, "Open Milestone Map", () =>
+        CreateButton(progressionRow, "Milestone Map", () =>
         {
             if (OnboardingTutorial.BlocksProgression)
             {
@@ -284,9 +308,9 @@ public class DebugMenu : MonoBehaviour
             }
         });
 
-        CreateLabel(panel.transform, "Skip to milestone", 13, FontStyles.Bold);
+        CreateLabel(actionContent, "Jump to milestone", 12, FontStyles.Bold);
         var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));
-        jumpRow.transform.SetParent(panel.transform, false);
+        jumpRow.transform.SetParent(actionContent, false);
         jumpRow.AddComponent<LayoutElement>().minHeight = 32;
         var jumpLayout = jumpRow.AddComponent<HorizontalLayoutGroup>();
         jumpLayout.spacing = 4f;
@@ -300,15 +324,9 @@ public class DebugMenu : MonoBehaviour
             int milestoneNumber = n;
             CreateButton(jumpRow.transform, milestoneNumber.ToString(), () => JumpToMilestone(milestoneNumber));
         }
-        CreateButton(panel.transform, "Pause / Unpause", () =>
-        {
-            GameTimeManager.Instance?.TogglePausePlay();
-            var t = GameTimeManager.Instance;
-            Toast(t != null && t.CurrentSpeed == GameTimeManager.SpeedMode.Paused ? "Paused" : "Unpaused");
-            RefreshStatus();
-        });
-
-        CreateButton(panel.transform, "Skip Tutorial", () =>
+        CreateSectionHeader(actionContent, "TUTORIAL");
+        Transform tutorialRow = CreateButtonRow(actionContent, "TutorialRow");
+        CreateButton(tutorialRow, "Skip Tutorial", () =>
         {
             var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
             if (tutorial == null) { Toast("No tutorial"); return; }
@@ -316,7 +334,7 @@ public class DebugMenu : MonoBehaviour
             Toast("Tutorial skipped");
             RefreshStatus();
         });
-        CreateButton(panel.transform, "Restart Tutorial", () =>
+        CreateButton(tutorialRow, "Restart Tutorial", () =>
         {
             var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
             if (tutorial == null) { Toast("No tutorial"); return; }
@@ -415,6 +433,82 @@ public class DebugMenu : MonoBehaviour
         RefreshStatus();
     }
 
+    static Transform CreateScrollContent(Transform parent)
+    {
+        var scrollGo = new GameObject("Actions", typeof(RectTransform), typeof(Image),
+            typeof(ScrollRect), typeof(LayoutElement));
+        scrollGo.transform.SetParent(parent, false);
+        scrollGo.GetComponent<Image>().color = new Color(0.055f, 0.065f, 0.085f, 0.72f);
+        var scrollSize = scrollGo.GetComponent<LayoutElement>();
+        scrollSize.minHeight = 260f;
+        scrollSize.flexibleHeight = 1f;
+
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
+        viewport.transform.SetParent(scrollGo.transform, false);
+        viewport.GetComponent<Image>().color = Color.clear;
+        RectTransform viewportRect = (RectTransform)viewport.transform;
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = new Vector2(3f, 3f);
+        viewportRect.offsetMax = new Vector2(-3f, -3f);
+
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup),
+            typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        RectTransform contentRect = (RectTransform)content.transform;
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = Vector2.zero;
+
+        var layout = content.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(6, 6, 5, 5);
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        var fitter = content.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var scroll = scrollGo.GetComponent<ScrollRect>();
+        scroll.viewport = viewportRect;
+        scroll.content = contentRect;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 28f;
+        return content.transform;
+    }
+
+    static void CreateSectionHeader(Transform parent, string title)
+    {
+        TextMeshProUGUI label = CreateLabel(parent, title, 11f, FontStyles.Bold);
+        label.alignment = TextAlignmentOptions.Left;
+        label.color = new Color(1f, 0.76f, 0.3f, 1f);
+        label.characterSpacing = 1.5f;
+        label.GetComponent<LayoutElement>().minHeight = 18f;
+    }
+
+    static Transform CreateButtonRow(Transform parent, string objectName)
+    {
+        var row = new GameObject(objectName, typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<LayoutElement>().minHeight = 31f;
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 5f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = true;
+        return row.transform;
+    }
+
     static TextMeshProUGUI CreateLabel(Transform parent, string text, float size, FontStyles style)
     {
         var go = new GameObject("Label", typeof(RectTransform));
@@ -436,16 +530,23 @@ public class DebugMenu : MonoBehaviour
         var go = new GameObject(label, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var img = go.AddComponent<Image>();
-        img.color = new Color(0.28f, 0.34f, 0.42f, 1f);
+        img.color = new Color(0.21f, 0.26f, 0.33f, 1f);
         var btn = go.AddComponent<Button>();
+        var colors = btn.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.08f, 1.08f, 1.08f, 1f);
+        colors.pressedColor = new Color(0.82f, 0.88f, 0.94f, 1f);
+        colors.selectedColor = colors.highlightedColor;
+        btn.colors = colors;
         btn.onClick.AddListener(onClick);
-        go.AddComponent<LayoutElement>().minHeight = 34;
+        go.AddComponent<LayoutElement>().minHeight = 30;
 
         var textGo = new GameObject("Text", typeof(RectTransform));
         textGo.transform.SetParent(go.transform, false);
         var tmp = textGo.AddComponent<TextMeshProUGUI>();
         tmp.text = label;
-        tmp.fontSize = 14;
+        tmp.fontSize = 12;
+        tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;

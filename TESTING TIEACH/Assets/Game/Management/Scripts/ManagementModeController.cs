@@ -850,8 +850,11 @@ public class ManagementModeController : MonoBehaviour
         else if (assembly != null)
         {
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-            inputPrefab = cookedPattyPreviewPrefab;
-            outputPrefab = burgerPreviewPrefab;
+            inputPrefab = recipe != null && recipe.processedInput != null
+                ? recipe.processedInput.prefab : cookedPattyPreviewPrefab;
+            outputPrefab = recipe != null && recipe.output != null
+                ? (GetPickupPreviewPrefab(recipe.output) ?? recipe.output.prefab)
+                : burgerPreviewPrefab;
             inputName = recipe != null ? recipe.processedInputName : "Cooked patty";
             secondInputPrefab = recipe != null && recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
             secondInputName = recipe != null && recipe.pantryInput != null
@@ -1274,7 +1277,7 @@ public class ManagementModeController : MonoBehaviour
         var assembly = selectedStation != null ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool show = grill != null || assembly != null;
 
-        productInfoText.gameObject.SetActive(false);
+        productInfoText.gameObject.SetActive(show);
         productListContainer.gameObject.SetActive(show);
         if (!show) return;
 
@@ -1293,8 +1296,15 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
+        productInfoText.text = "SELECT RECIPE";
+        productInfoText.fontSize = 12f;
+        productInfoText.fontStyle = FontStyles.Bold;
+        productInfoText.alignment = TextAlignmentOptions.Center;
+        productInfoText.color = new Color(0.78f, 0.82f, 0.88f, 1f);
+
         if (assembly != null)
         {
+            Transform recipeRow = CreateRecipeRow();
             int recipeCount = 0;
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
             foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
@@ -1302,27 +1312,39 @@ public class ManagementModeController : MonoBehaviour
                 if (recipe == null) continue;
                 recipeCount++;
                 bool selectedRecipe = currentRecipe == recipe;
-                Button recipeButton = CreateProductButton(
-                    recipe.DisplayName + (selectedRecipe ? " [Selected]" : ""), true);
+                Button recipeButton = CreateRecipeCard(recipeRow, recipe, selectedRecipe);
                 AssemblyRecipeDefinition capturedRecipe = recipe;
                 recipeButton.onClick.AddListener(() => SetSelectedAssemblyRecipe(capturedRecipe));
+            }
+
+            LayoutElement listSize = productListContainer.GetComponent<LayoutElement>();
+            if (listSize != null)
+            {
+                listSize.minHeight = 122f;
+                listSize.preferredHeight = 122f;
             }
             productListContainer.gameObject.SetActive(recipeCount > 0);
             return;
         }
 
         IEnumerable<ItemDefinition> options = config.GetGrillProducts();
-
+        Transform grillRecipeRow = CreateRecipeRow();
         int optionCount = 0;
         foreach (var item in options)
         {
             if (item == null) continue;
             optionCount++;
-            string label = !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
             bool selected = current == item;
-            var btn = CreateProductButton(label + (selected ? " ✓" : ""), true);
+            Button btn = CreateRecipeCard(grillRecipeRow, item, selected);
             var captured = item;
             btn.onClick.AddListener(() => SetSelectedProduct(captured));
+        }
+
+        LayoutElement grillListSize = productListContainer.GetComponent<LayoutElement>();
+        if (grillListSize != null)
+        {
+            grillListSize.minHeight = 122f;
+            grillListSize.preferredHeight = 122f;
         }
         productListContainer.gameObject.SetActive(optionCount > 0);
     }
@@ -1341,6 +1363,115 @@ public class ManagementModeController : MonoBehaviour
         vertical.childControlHeight = true;
         vertical.childForceExpandWidth = true;
         vertical.childForceExpandHeight = false;
+    }
+
+    Transform CreateRecipeRow()
+    {
+        var row = new GameObject("RecipeCards", typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        row.transform.SetParent(productListContainer, false);
+
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        var size = row.GetComponent<LayoutElement>();
+        size.minHeight = 112f;
+        size.preferredHeight = 112f;
+        size.flexibleHeight = 0f;
+        return row.transform;
+    }
+
+    Button CreateRecipeCard(Transform parent, AssemblyRecipeDefinition recipe, bool selected)
+    {
+        GameObject previewPrefab = GetPickupPreviewPrefab(recipe.output);
+        if (previewPrefab == null && recipe.output != null)
+            previewPrefab = recipe.output.prefab;
+        return CreateRecipeCardVisual(parent, recipe.DisplayName, previewPrefab, selected);
+    }
+
+    Button CreateRecipeCard(Transform parent, ItemDefinition product, bool selected)
+    {
+        string recipeName = DisplayItemName(product);
+        GameObject previewPrefab = GetPickupPreviewPrefab(product);
+        if (previewPrefab == null && product != null)
+            previewPrefab = product.prefab;
+        return CreateRecipeCardVisual(parent, recipeName, previewPrefab, selected);
+    }
+
+    Button CreateRecipeCardVisual(Transform parent, string recipeDisplayName, GameObject previewPrefab, bool selected)
+    {
+        var card = new GameObject("Recipe_" + recipeDisplayName, typeof(RectTransform), typeof(Image),
+            typeof(Button), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(Outline));
+        card.transform.SetParent(parent, false);
+
+        var background = card.GetComponent<Image>();
+        background.color = selected
+            ? new Color(0.24f, 0.43f, 0.34f, 1f)
+            : new Color(0.075f, 0.085f, 0.115f, 0.98f);
+
+        var outline = card.GetComponent<Outline>();
+        outline.effectColor = selected
+            ? new Color(0.50f, 0.72f, 0.62f, 1f)
+            : new Color(0.18f, 0.21f, 0.25f, 1f);
+        outline.effectDistance = new Vector2(2f, -2f);
+
+        var button = card.GetComponent<Button>();
+        button.targetGraphic = background;
+        var colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.08f, 1.08f, 1.08f, 1f);
+        colors.pressedColor = new Color(0.86f, 0.9f, 0.88f, 1f);
+        colors.selectedColor = Color.white;
+        colors.colorMultiplier = 1f;
+        button.colors = colors;
+
+        var cardLayout = card.GetComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(6, 6, 6, 5);
+        cardLayout.spacing = 4f;
+        cardLayout.childAlignment = TextAnchor.UpperCenter;
+        cardLayout.childControlWidth = true;
+        cardLayout.childControlHeight = true;
+        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandHeight = false;
+
+        var cardSize = card.GetComponent<LayoutElement>();
+        cardSize.minWidth = 96f;
+        cardSize.preferredWidth = 108f;
+        cardSize.flexibleWidth = 0f;
+        cardSize.minHeight = 106f;
+        cardSize.preferredHeight = 106f;
+
+        var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement));
+        previewFrame.transform.SetParent(card.transform, false);
+        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        var previewSize = previewFrame.GetComponent<LayoutElement>();
+        previewSize.minHeight = 70f;
+        previewSize.preferredHeight = 70f;
+        previewSize.flexibleHeight = 0f;
+
+        var previewObject = new GameObject("Preview", typeof(RectTransform), typeof(RawImage),
+            typeof(AspectRatioFitter));
+        previewObject.transform.SetParent(previewFrame.transform, false);
+        var preview = previewObject.GetComponent<RawImage>();
+        preview.raycastTarget = false;
+        var previewFitter = previewObject.GetComponent<AspectRatioFitter>();
+        previewFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        previewFitter.aspectRatio = 1f;
+
+        SetDiagramPreview(preview, previewPrefab, recipeDisplayName);
+
+        TextMeshProUGUI recipeName = CreateDiagramText(card.transform, "RecipeName", recipeDisplayName, 12f, 20f);
+        recipeName.fontStyle = FontStyles.Bold;
+        recipeName.enableAutoSizing = true;
+        recipeName.fontSizeMin = 9f;
+        recipeName.fontSizeMax = 12f;
+        return button;
     }
 
     void SetSelectedProduct(ItemDefinition item)

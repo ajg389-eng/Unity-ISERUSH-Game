@@ -23,8 +23,14 @@ public class GrillStation : MonoBehaviour
     public bool HasPattyOnGrill => hasPatty;
     public bool IsCookingPatty => hasPatty && cookTimer < processTimeSeconds;
 
-    public bool CanProcess(ItemDefinition product) =>
-        product != null && selectedProduct != null && product == selectedProduct;
+    public bool CanProcess(ItemDefinition product)
+    {
+        if (product == null || selectedProduct == null) return false;
+        if (product == selectedProduct) return true;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        return config != null && config.IsBurger(product) && config.IsBurger(selectedProduct);
+    }
 
     public Vector3 GetInteractionPosition()
     {

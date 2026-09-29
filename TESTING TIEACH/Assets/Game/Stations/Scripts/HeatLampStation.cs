@@ -905,7 +905,7 @@ public class HeatLampStation : MonoBehaviour
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
 
         // Only stations before this lamp can contribute food to it.
-        for (int i = 0; i < lampIndex; i++)
+        for (int i = Mathf.Max(0, lampIndex - 1); i < lampIndex; i++)
         {
             GameObject station = flow.stations[i];
             if (station == null) continue;
