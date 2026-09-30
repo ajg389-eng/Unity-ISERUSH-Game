@@ -376,6 +376,8 @@ public class DebugMenu : MonoBehaviour
                 flow.workers.Clear();
                 flow.stations.Clear();
                 flow.stepIds.Clear();
+                flow.connections.Clear();
+                flow.graphInitialized = true;
             }
             production.lastFlowBalance = null;
             production.SyncLegacyFlowSelection();

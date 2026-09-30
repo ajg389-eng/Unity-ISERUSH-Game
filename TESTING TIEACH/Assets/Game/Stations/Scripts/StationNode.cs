@@ -19,7 +19,7 @@ public interface IStationBuffer
 
 /// <summary>
 /// Attach to kitchen stations. Tracks which worker operates this station
-/// and where its output is routed (Assign Output → click another station).
+/// and legacy station output data. Active worker routing is owned by production flows.
 /// </summary>
 public class StationNode : MonoBehaviour
 {
@@ -234,6 +234,7 @@ public class StationNode : MonoBehaviour
         bool isNewLink = target != null;
         outputTarget = target;
         StationOutputLinkVisuals.NotifyLinksChanged();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
 
         if (isNewLink)
             RaiseOutputAssignedEvents();
@@ -253,6 +254,7 @@ public class StationNode : MonoBehaviour
     {
         outputTarget = null;
         StationOutputLinkVisuals.NotifyLinksChanged();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     /// <summary>Heat lamp linked via Assign Output, or null.</summary>

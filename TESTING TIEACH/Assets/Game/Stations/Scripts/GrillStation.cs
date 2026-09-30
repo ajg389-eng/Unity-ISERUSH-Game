@@ -19,6 +19,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     [SerializeField, Min(0)] int pattyUnits;
     float cookTimer;
+    CustomerOrder bufferedOrder;
 
     public bool HasProductSelected => selectedProduct != null;
     public bool HasPattyOnGrill => pattyUnits > 0;
@@ -39,6 +40,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         if (!CanAcceptInput(item, amount)) return 0;
         pattyUnits = amount;
         cookTimer = 0f;
+        bufferedOrder = sourceOrder;
         return amount;
     }
     public int TakeOutput(ItemDefinition item, int amount)
@@ -50,6 +52,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         {
             pattyUnits = 0;
             cookTimer = 0f;
+            bufferedOrder = null;
         }
         return taken;
     }
@@ -62,6 +65,9 @@ public class GrillStation : MonoBehaviour, IStationBuffer
             ? ProductionManager.Instance.orderConfig : null;
         return config != null && config.IsBurger(product) && config.IsBurger(selectedProduct);
     }
+
+    public bool IsHoldingOrder(CustomerOrder order) =>
+        !HasPattyOnGrill || bufferedOrder == null || order == null || bufferedOrder == order;
 
     public Vector3 GetInteractionPosition()
     {
@@ -113,6 +119,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         cookTimer = pattyUnits > 0
             ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
             : 0f;
+        bufferedOrder = null;
     }
 
     void Update()

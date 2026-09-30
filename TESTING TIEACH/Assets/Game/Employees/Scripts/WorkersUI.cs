@@ -791,6 +791,22 @@ public class WorkersUI : MonoBehaviour
             return;
         }
 
+        flow.EnsureLegacyConnections();
+        if (flow.connections.Count > 0)
+        {
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection == null || connection.from == null || connection.to == null) continue;
+                StationNode fromNode = StationNode.EnsureOn(connection.from);
+                StationNode toNode = StationNode.EnsureOn(connection.to);
+                string edgeLabel = (fromNode != null ? fromNode.DisplayName : connection.from.name)
+                    + " → " + (toNode != null ? toNode.DisplayName : connection.to.name);
+                Button edgeChip = MakeChip(stepRow, edgeLabel, Mathf.Clamp(48f + edgeLabel.Length * 6f, 110f, 210f));
+                edgeChip.interactable = false;
+            }
+            return;
+        }
+
         for (int i = 0; i < count; i++)
         {
             if (i > 0)

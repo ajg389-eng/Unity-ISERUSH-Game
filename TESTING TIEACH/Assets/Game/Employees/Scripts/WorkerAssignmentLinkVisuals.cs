@@ -4,8 +4,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Shows a selected worker's ordered station flow on the floor grid.
-/// Selecting a station does not create an additional world-space link.
+/// Shows a selected worker's assigned production flow on the floor grid.
 /// </summary>
 public class WorkerAssignmentLinkVisuals : MonoBehaviour
 {
@@ -161,8 +160,16 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         if (grid == null || flow == null || flow.stations == null || flow.stations.Count == 0)
             return;
 
-        var points = new List<Vector3>();
-        int drawn = 0;
+        flow.EnsureLegacyConnections();
+        var incoming = new HashSet<GameObject>();
+        var outgoing = new HashSet<GameObject>();
+        foreach (ProductionFlowConnection connection in flow.connections)
+        {
+            if (connection == null || connection.from == null || connection.to == null) continue;
+            outgoing.Add(connection.from);
+            incoming.Add(connection.to);
+        }
+
         for (int i = 0; i < flow.stations.Count; i++)
         {
             GameObject station = flow.stations[i];
@@ -170,33 +177,25 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
             Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
             position.y = grid.Origin.y + floorOffset;
-            Color color = drawn == 0
-                ? startColor
-                : (i == flow.stations.Count - 1 || IsLastNonNullStation(flow, i) ? endColor : stopColor);
-            CreateMarker(position, (drawn + 1) + "\n" + GetDisplayName(station), color, grid.cellSize);
-
-            if (drawn > 0)
-            {
-                GameObject previousStation = null;
-                for (int j = i - 1; j >= 0; j--)
-                {
-                    if (flow.stations[j] != null)
-                    {
-                        previousStation = flow.stations[j];
-                        break;
-                    }
-                }
-                if (previousStation != null)
-                {
-                    Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(previousStation));
-                    AppendGridLeg(points, grid, previous, position);
-                }
-            }
-            drawn++;
+            bool root = !incoming.Contains(station);
+            bool end = !outgoing.Contains(station);
+            Color color = root ? startColor : end ? endColor : stopColor;
+            string role = root ? "START" : end ? "END" : "NODE";
+            CreateMarker(position, role + "\n" + GetDisplayName(station), color, grid.cellSize);
         }
 
-        if (points.Count >= 2)
-            CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName) + "_Draft", routeColor);
+        int edgeIndex = 0;
+        foreach (ProductionFlowConnection connection in flow.connections)
+        {
+            if (connection == null || connection.from == null || connection.to == null) continue;
+            var points = new List<Vector3>();
+            Vector3 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.from));
+            Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
+            AppendGridLeg(points, grid, from, to);
+            if (points.Count >= 2)
+                CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
+                    + "_Branch_" + edgeIndex++, routeColor);
+        }
     }
 
     static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)
@@ -245,59 +244,59 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     static List<List<GameObject>> BuildFlowChains(KitchenEmployee worker)
     {
-        var assigned = new List<GameObject>();
-        foreach (GameObject station in worker.operatedStations)
-            if (station != null && !assigned.Contains(station))
-                assigned.Add(station);
-
-        var targetedAssignedStations = new HashSet<GameObject>();
-        foreach (GameObject station in assigned)
+        var chains = new List<List<GameObject>>();
+        ProductionFlowPlan flow = ProductionManager.Instance != null
+            ? ProductionManager.Instance.GetFlowForWorker(worker) : null;
+        if (flow != null)
         {
-            StationNode node = StationNode.EnsureOn(station);
-            if (node != null && node.outputTarget != null && assigned.Contains(node.outputTarget))
-                targetedAssignedStations.Add(node.outputTarget);
+            flow.EnsureLegacyConnections();
+            var assigned = new HashSet<GameObject>();
+            foreach (GameObject station in worker.operatedStations)
+                if (station != null) assigned.Add(station);
+
+            var incomingAssigned = new HashSet<GameObject>();
+            foreach (ProductionFlowConnection connection in flow.connections)
+                if (connection != null && assigned.Contains(connection.from) && assigned.Contains(connection.to))
+                    incomingAssigned.Add(connection.to);
+
+            foreach (GameObject station in worker.operatedStations)
+                if (station != null && !incomingAssigned.Contains(station))
+                    AddWorkerGraphPaths(flow, worker, station, new List<GameObject>(), chains);
+
+            if (chains.Count > 0) return chains;
         }
 
-        var heads = new List<GameObject>();
-        foreach (GameObject station in assigned)
-            if (!targetedAssignedStations.Contains(station))
-                heads.Add(station);
-        if (heads.Count == 0 && assigned.Count > 0)
-            heads.Add(assigned[0]);
-
-        var chains = new List<List<GameObject>>();
-        var globallyVisited = new HashSet<GameObject>();
-        foreach (GameObject head in heads)
-            AddChain(worker, head, chains, globallyVisited);
-        foreach (GameObject station in assigned)
-            if (!globallyVisited.Contains(station))
-                AddChain(worker, station, chains, globallyVisited);
+        List<GameObject> route = WorkflowAnalysis.GetOrderedRoute(worker);
+        if (route.Count > 0)
+            chains.Add(route);
         return chains;
     }
 
-    static void AddChain(KitchenEmployee worker, GameObject head, List<List<GameObject>> chains, HashSet<GameObject> globallyVisited)
+    static void AddWorkerGraphPaths(ProductionFlowPlan flow, KitchenEmployee worker, GameObject current,
+        List<GameObject> prefix, List<List<GameObject>> chains)
     {
-        var chain = new List<GameObject>();
-        var chainVisited = new HashSet<GameObject>();
-        GameObject current = head;
-
-        while (current != null && chainVisited.Add(current))
+        if (current == null || prefix.Contains(current)) return;
+        var path = new List<GameObject>(prefix) { current };
+        List<GameObject> outgoing = flow.GetOutgoing(current);
+        bool extended = false;
+        foreach (GameObject next in outgoing)
         {
-            chain.Add(current);
-            globallyVisited.Add(current);
-            StationNode node = StationNode.EnsureOn(current);
-            GameObject next = node != null ? node.outputTarget : null;
-            StationNode nextNode = next != null ? StationNode.EnsureOn(next) : null;
-            if (nextNode != null && nextNode.IsWorkStation && !nextNode.IsWorkerAssigned(worker))
+            if (next == null) continue;
+            bool workerOwnsNext = worker.IsAssignedTo(next);
+            if (workerOwnsNext)
             {
-                chain.Add(next);
-                break;
+                AddWorkerGraphPaths(flow, worker, next, path, chains);
+                extended = true;
             }
-            current = next;
+            else
+            {
+                var handoff = new List<GameObject>(path) { next };
+                chains.Add(handoff);
+                extended = true;
+            }
         }
-
-        if (chain.Count > 0)
-            chains.Add(chain);
+        if (!extended)
+            chains.Add(path);
     }
 
     void AppendGridLeg(List<Vector3> points, GridManager grid, Vector3 from, Vector3 to)

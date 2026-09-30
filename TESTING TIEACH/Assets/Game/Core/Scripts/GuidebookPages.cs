@@ -101,16 +101,17 @@ public static class GuidebookPages
         new Page(
             "Management",
             "Create a flow",
-            "A <b>flow</b> is the cooking route: which stations run in which order, and where food is handed next.\n\n" +
+            "A <b>flow</b> is a network of station nodes showing how work can move through the kitchen.\n\n" +
             "1. Open Management → <b>Workers</b>.\n" +
             "2. Click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n" +
-            "3. Click stations <b>in production order</b> (example: freezer → grill → assembly → Pickup Station).\n" +
-            "4. Confirm when the path looks right. Esc cancels a new capture.\n\n" +
-            "Make separate flows for fries or drinks if those lines should run on their own. The lines drawn in the world are the route workers will follow."),
+            "3. Click stations in production order to create the first branch.\n" +
+            "4. Click an existing node to select it as a branch point, then click another station. Shift-click joins the active node to an existing node. Alt-click a new station to start another root. Ctrl-click removes a node.\n" +
+            "5. Confirm when the graph looks right. Esc cancels a new capture.\n\n" +
+            "Branches let one flow contain burger, fries, drinks, and ingredient-supply paths. Jobs choose the branch matching their next recipe step."),
         new Page(
             "Management",
             "Edit and assign",
-            "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Click a station already on the path to trim it back. Click a new station to extend it. Esc restores the previous path.\n\n" +
+            "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Click an existing node to make it active, then click a new station to extend that branch. Shift-click merges into an existing node, Alt-click starts another root, and Ctrl-click removes a node. Esc restores the previous graph.\n\n" +
             "<b>Assign to Current Flow</b> — select the flow, then use that button on a worker card. The name appears on the flow. Click the name chip to unassign. A second worker on the same line unlocks at <b>Milestone 2</b>.\n\n" +
             "Without at least one worker on a flow, that line will not cook — even if every station is placed and stocked."),
         new Page(

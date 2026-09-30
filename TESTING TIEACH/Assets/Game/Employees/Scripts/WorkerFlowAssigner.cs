@@ -2,6 +2,19 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [System.Serializable]
+public class ProductionFlowConnection
+{
+    public GameObject from;
+    public GameObject to;
+
+    public ProductionFlowConnection(GameObject from, GameObject to)
+    {
+        this.from = from;
+        this.to = to;
+    }
+}
+
+[System.Serializable]
 public class ProductionFlowPlan
 {
     public const int MaxNameLength = 15;
@@ -10,6 +23,8 @@ public class ProductionFlowPlan
     public KitchenFlowKind kind = KitchenFlowKind.Custom;
     public List<string> stepIds = new List<string>();
     public List<GameObject> stations = new List<GameObject>();
+    public List<ProductionFlowConnection> connections = new List<ProductionFlowConnection>();
+    public bool graphInitialized;
     public List<KitchenEmployee> workers = new List<KitchenEmployee>();
 
     public void Clean()
@@ -18,8 +33,50 @@ public class ProductionFlowPlan
         if (stepIds == null) stepIds = new List<string>();
         if (stations == null) stations = new List<GameObject>();
         stations.RemoveAll(station => station == null);
+        if (connections == null) connections = new List<ProductionFlowConnection>();
+        connections.RemoveAll(connection => connection == null || connection.from == null || connection.to == null
+            || connection.from == connection.to || !stations.Contains(connection.from) || !stations.Contains(connection.to));
+        var seenConnections = new HashSet<(GameObject, GameObject)>();
+        connections.RemoveAll(connection => !seenConnections.Add((connection.from, connection.to)));
         if (workers == null) workers = new List<KitchenEmployee>();
         workers.RemoveAll(worker => worker == null);
+    }
+
+    public void EnsureLegacyConnections()
+    {
+        Clean();
+        if (graphInitialized) return;
+        graphInitialized = true;
+        if (connections.Count > 0 || stations.Count < 2) return;
+        for (int i = 0; i + 1 < stations.Count; i++)
+            connections.Add(new ProductionFlowConnection(stations[i], stations[i + 1]));
+    }
+
+    public List<GameObject> GetOutgoing(GameObject station)
+    {
+        var result = new List<GameObject>();
+        if (station == null) return result;
+        EnsureLegacyConnections();
+        foreach (ProductionFlowConnection connection in connections)
+            if (connection.from == station && connection.to != null && !result.Contains(connection.to))
+                result.Add(connection.to);
+        return result;
+    }
+
+    public bool HasConnection(GameObject from, GameObject to)
+    {
+        if (from == null || to == null || connections == null) return false;
+        return connections.Exists(connection => connection != null && connection.from == from && connection.to == to);
+    }
+
+    public bool AddConnection(GameObject from, GameObject to)
+    {
+        if (from == null || to == null || from == to || HasConnection(from, to)) return false;
+        graphInitialized = true;
+        if (!stations.Contains(from)) stations.Add(from);
+        if (!stations.Contains(to)) stations.Add(to);
+        connections.Add(new ProductionFlowConnection(from, to));
+        return true;
     }
 
     public void SetName(string value)
@@ -74,7 +131,7 @@ public sealed class FlowStationDef
 /// </summary>
 public static class WorkerFlowAssigner
 {
-    public const int MaxSteps = 8;
+    public const int MaxSteps = 16;
 
     public static readonly FlowStationDef[] Catalog =
     {
@@ -125,7 +182,22 @@ public static class WorkerFlowAssigner
     public static string FormatFlow(ProductionFlowPlan flow)
     {
         if (flow == null) return "No flow selected";
-        flow.Clean();
+        flow.EnsureLegacyConnections();
+        if (flow.connections.Count > 0)
+        {
+            var edges = new List<string>();
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection?.from == null || connection.to == null) continue;
+                StationNode fromNode = StationNode.EnsureOn(connection.from);
+                StationNode toNode = StationNode.EnsureOn(connection.to);
+                string from = fromNode != null ? fromNode.DisplayName : connection.from.name;
+                string to = toNode != null ? toNode.DisplayName : connection.to.name;
+                edges.Add(from + " → " + to);
+            }
+            if (edges.Count > 0)
+                return string.Join(" | ", edges);
+        }
         if (flow.stations.Count > 0)
         {
             var labels = new List<string>();
@@ -259,8 +331,6 @@ public static class WorkerFlowAssigner
                 assigned++;
             }
 
-            if (i + 1 < nodes.Count)
-                node.SetOutput(nodes[i + 1]);
         }
 
         emp.assignedFlow = kind;
@@ -428,7 +498,8 @@ public static class WorkerFlowAssigner
             result.message = "Add at least one station to the flow.";
             return result;
         }
-        string orderProblem = ValidateStepOrder(flow.stepIds);
+        flow.EnsureLegacyConnections();
+        string orderProblem = flow.connections.Count > 0 ? "" : ValidateStepOrder(flow.stepIds);
         if (!string.IsNullOrEmpty(orderProblem))
         {
             result.message = orderProblem;
@@ -504,15 +575,8 @@ public static class WorkerFlowAssigner
                 worker.ClearAllOperatedStations();
 
         ConfigureProducts(flow.kind, route);
-        // Wire consecutive stations. Never clear the last output — fryer/assembly may
-        // already target a shared heat lamp (and clearing it stops the loop).
-        for (int i = 0; i < route.Count - 1; i++)
-        {
-            StationNode node = StationNode.EnsureOn(route[i]);
-            if (node != null)
-                node.SetOutput(route[i + 1]);
-        }
-
+        // Output links are player-authored. Rebalancing labor must not rewrite them
+        // from the flow's display order.
         int start = 0;
         for (int workerIndex = 0; workerIndex < activeWorkers; workerIndex++)
         {
@@ -671,24 +735,24 @@ public static class WorkflowAnalysis
         ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
         if (flow?.stations != null && flow.stations.Count > 0)
         {
-            int first = int.MaxValue;
-            int last = -1;
-            for (int i = 0; i < flow.stations.Count; i++)
-            {
-                GameObject station = flow.stations[i];
-                if (station == null || !employee.operatedStations.Contains(station)) continue;
-                first = Mathf.Min(first, i);
-                last = Mathf.Max(last, i);
-            }
+            flow.EnsureLegacyConnections();
+            var assigned = new HashSet<GameObject>(employee.operatedStations);
+            var included = new HashSet<GameObject>();
+            var incoming = new HashSet<GameObject>();
+            foreach (ProductionFlowConnection connection in flow.connections)
+                if (connection?.from != null && connection.to != null && assigned.Contains(connection.from))
+                    incoming.Add(connection.to);
 
-            if (last >= 0)
-            {
-                int routeEnd = Mathf.Min(flow.stations.Count - 1, last + 1);
-                for (int i = first; i <= routeEnd; i++)
-                    if (flow.stations[i] != null)
-                        route.Add(flow.stations[i]);
+            foreach (GameObject station in flow.stations)
+                if (station != null && assigned.Contains(station) && !incoming.Contains(station))
+                    AppendWorkerGraphRoute(flow, station, assigned, included, route);
+
+            foreach (GameObject station in flow.stations)
+                if (station != null && assigned.Contains(station) && !included.Contains(station))
+                    AppendWorkerGraphRoute(flow, station, assigned, included, route);
+
+            if (route.Count > 0)
                 return route;
-            }
         }
 
         GameObject current = FindRouteHead(employee.operatedStations);
@@ -707,6 +771,26 @@ public static class WorkflowAnalysis
             current = next;
         }
         return route;
+    }
+
+    static void AppendWorkerGraphRoute(ProductionFlowPlan flow, GameObject station,
+        HashSet<GameObject> assigned, HashSet<GameObject> included, List<GameObject> route)
+    {
+        if (station == null || !included.Add(station)) return;
+        route.Add(station);
+        foreach (GameObject next in flow.GetOutgoing(station))
+        {
+            if (next == null) continue;
+            if (assigned.Contains(next))
+                AppendWorkerGraphRoute(flow, next, assigned, included, route);
+            else if (!included.Contains(next))
+            {
+                // Include the first handoff destination so return and distance
+                // calculations end where this worker actually delivers.
+                included.Add(next);
+                route.Add(next);
+            }
+        }
     }
 
     static GameObject FindRouteHead(List<GameObject> assigned)
@@ -735,6 +819,24 @@ public static class WorkflowAnalysis
         if (employee == null) return 0f;
         GridManager grid = employee.grid != null ? employee.grid : GridManager.Instance;
         if (grid == null) return 0f;
+
+        ProductionManager production = ProductionManager.Instance;
+        ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
+        if (flow != null)
+        {
+            flow.EnsureLegacyConnections();
+            var assigned = new HashSet<GameObject>(employee.operatedStations);
+            float graphTiles = 0f;
+            bool foundEdge = false;
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection?.from == null || connection.to == null || !assigned.Contains(connection.from))
+                    continue;
+                graphTiles += GetDistanceTiles(grid, connection.from, connection.to);
+                foundEdge = true;
+            }
+            if (foundEdge) return graphTiles;
+        }
 
         List<GameObject> route = GetOrderedRoute(employee);
         float tiles = 0f;

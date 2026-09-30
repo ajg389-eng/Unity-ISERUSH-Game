@@ -4,7 +4,7 @@ using UnityEngine.Serialization;
 /// <summary>
 /// Placeable fryer. Worker loads fries from kitchen stock, cooks, then delivers to the heat lamp.
 /// </summary>
-public class FryerStation : MonoBehaviour
+public class FryerStation : MonoBehaviour, IStationBuffer
 {
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
@@ -13,6 +13,40 @@ public class FryerStation : MonoBehaviour
 
     bool hasBasket;
     float cookTimer;
+    CustomerOrder bufferedOrder;
+
+    ItemDefinition RawItem => ProductionManager.Instance != null
+        ? ProductionManager.Instance.PotatoItem : null;
+    ItemDefinition CookedItem => ProductionManager.Instance != null
+        ? ProductionManager.Instance.FriesItem : null;
+
+    public int InputSlotCapacity => 1;
+    public int OutputSlotCapacity => 1;
+    public int GetInputCount(ItemDefinition item) => item == RawItem && IsCooking ? 1 : 0;
+    public int GetOutputCount(ItemDefinition item) => item == CookedItem && IsCooked() ? 1 : 0;
+    public bool CanAcceptInput(ItemDefinition item, int amount) =>
+        !hasBasket && amount == 1 && item != null && item == RawItem;
+
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        if (!CanAcceptInput(item, amount)) return 0;
+        hasBasket = true;
+        cookTimer = 0f;
+        bufferedOrder = sourceOrder;
+        return 1;
+    }
+
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        if (amount <= 0 || item == null || item != CookedItem || !IsCooked()) return 0;
+        hasBasket = false;
+        cookTimer = 0f;
+        bufferedOrder = null;
+        return 1;
+    }
+
+    public bool IsHoldingOrder(CustomerOrder order) =>
+        !hasBasket || bufferedOrder == null || order == null || bufferedOrder == order;
 
     public Vector3 GetInteractionPosition()
     {
@@ -30,18 +64,12 @@ public class FryerStation : MonoBehaviour
     /// <summary>Consume one fries unit from kitchen stock and start cooking.</summary>
     public bool TryLoad(ItemDefinition potatoItem)
     {
-        if (hasBasket || potatoItem == null) return false;
-        hasBasket = true;
-        cookTimer = 0f;
-        return true;
+        return StoreInput(potatoItem, 1) == 1;
     }
 
     public bool TakeCooked()
     {
-        if (!IsCooked()) return false;
-        hasBasket = false;
-        cookTimer = 0f;
-        return true;
+        return TakeOutput(CookedItem, 1) == 1;
     }
 
     void Update()

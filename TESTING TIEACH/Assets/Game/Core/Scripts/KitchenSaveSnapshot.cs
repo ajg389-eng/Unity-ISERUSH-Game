@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 5, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 6, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
@@ -18,7 +18,8 @@ public class KitchenSaveSnapshot
     [Serializable] public class Stock { public string item; public int count, acquired; }
     [Serializable] public class Equipment { public string item, product; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
-    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public List<int> stations = new List<int>(), workers = new List<int>(); }
+    [Serializable] public class FlowEdge { public int from = -1, to = -1; }
+    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
     public static KitchenSaveSnapshot Capture()
     {
@@ -85,9 +86,11 @@ public class KitchenSaveSnapshot
                 s.workers.Add(w);
             }
             foreach(var flow in pm.productionFlows) if(flow!=null) {
-                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds)};
+                flow.EnsureLegacyConnections();
+                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized};
                 foreach(var station in flow.stations) f.stations.Add(objects.IndexOf(station));
                 foreach(var worker in flow.workers) f.workers.Add(staff.IndexOf(worker));
+                foreach(var edge in flow.connections) if(edge!=null) f.edges.Add(new FlowEdge {from=objects.IndexOf(edge.from),to=objects.IndexOf(edge.to)});
                 s.flows.Add(f);
             }
         }
@@ -98,7 +101,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>5 || inv==null || pm==null) return false;
+        if(version<1 || version>6 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
@@ -149,8 +152,10 @@ public class KitchenSaveSnapshot
             employee.SyncFromOperatedStations();
         }
         foreach(var f in flows) {
-            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps};
+            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps,graphInitialized=version>=6 && f.graphInitialized};
             foreach(int i in f.stations) if(i>=0 && i<objects.Count) flow.stations.Add(objects[i]);
+            if(f.edges!=null) foreach(var edge in f.edges) if(edge!=null && edge.from>=0 && edge.from<objects.Count && edge.to>=0 && edge.to<objects.Count) flow.connections.Add(new ProductionFlowConnection(objects[edge.from],objects[edge.to]));
+            flow.EnsureLegacyConnections();
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
