@@ -38,10 +38,14 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition burgerBase;
     [Tooltip("Optional premium burger assembled through additional recipe stages.")]
     public ItemDefinition cheeseburgerItem;
+    public ItemDefinition clBurgerItem;
+    public ItemDefinition cltBurgerItem;
     [Tooltip("Fries side")]
     public ItemDefinition friesItem;
     [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
     public ItemDefinition friesIngredient;
+    [Tooltip("Potato slices produced by a Cutting Station and consumed by the Fryer")]
+    public ItemDefinition slicedPotatoIngredient;
     [Header("Production stage items")]
     [Tooltip("Raw patty produced by the Freezer and carried to the Grill.")]
     public ItemDefinition rawPattyIngredient;
@@ -55,7 +59,11 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition cheeseIngredient;
     [Tooltip("Processed cheese produced by the Cutting Station and consumed by Assembly recipes.")]
     public ItemDefinition slicedCheeseIngredient;
+    public ItemDefinition slicedLettuceIngredient;
     public ItemDefinition tomatoIngredient;
+    public ItemDefinition slicedTomatoIngredient;
+    [Header("Cutting recipes")]
+    public List<CuttingRecipeDefinition> cuttingRecipes = new List<CuttingRecipeDefinition>();
     [Tooltip("Drink")]
     public ItemDefinition drinkItem;
 
@@ -73,10 +81,13 @@ public class CustomerOrderConfig : ScriptableObject
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
     [System.NonSerialized] bool burgerEnabled = true;
     [System.NonSerialized] bool cheeseburgerEnabled = true;
+    [System.NonSerialized] bool clBurgerEnabled = true;
+    [System.NonSerialized] bool cltBurgerEnabled = true;
     [System.NonSerialized] bool friesEnabled = true;
     [System.NonSerialized] bool drinkEnabled = true;
 
-    public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase || item == cheeseburgerItem);
+    public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
+        || item == cheeseburgerItem || item == clBurgerItem || item == cltBurgerItem);
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && item == friesItem;
     public bool IsDrink(ItemDefinition item) => item != null && item == drinkItem;
@@ -84,6 +95,8 @@ public class CustomerOrderConfig : ScriptableObject
     public bool IsItemEnabled(ItemDefinition item)
     {
         if (IsCheeseburger(item)) return cheeseburgerEnabled;
+        if (item == clBurgerItem) return clBurgerEnabled;
+        if (item == cltBurgerItem) return cltBurgerEnabled;
         if (item == burgerBase) return burgerEnabled;
         if (IsFries(item)) return friesEnabled;
         if (IsDrink(item)) return drinkEnabled;
@@ -93,6 +106,8 @@ public class CustomerOrderConfig : ScriptableObject
     public void SetItemEnabled(ItemDefinition item, bool enabled)
     {
         if (IsCheeseburger(item)) cheeseburgerEnabled = enabled;
+        else if (item == clBurgerItem) clBurgerEnabled = enabled;
+        else if (item == cltBurgerItem) cltBurgerEnabled = enabled;
         else if (item == burgerBase) burgerEnabled = enabled;
         else if (IsFries(item)) friesEnabled = enabled;
         else if (IsDrink(item)) drinkEnabled = enabled;
@@ -101,6 +116,8 @@ public class CustomerOrderConfig : ScriptableObject
     public bool HasEnabledItems =>
         (burgerBase != null && burgerEnabled)
         || (cheeseburgerItem != null && cheeseburgerEnabled)
+        || (clBurgerItem != null && clBurgerEnabled)
+        || (cltBurgerItem != null && cltBurgerEnabled)
         || (friesItem != null && friesEnabled)
         || (drinkItem != null && drinkEnabled);
 
@@ -151,7 +168,7 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>
     /// Production pipeline for a single menu item (not including heat lamp delivery).
     /// Burger main line: Freezer → Grill → Assembly. Pantry supplies buns in parallel.
-    /// Fries: Pantry → Fryer
+    /// Fries: Pantry → Cutting → Fryer
     /// Drink: Drink Fountain
     /// </summary>
     public StationType[] GetPipeline(ItemDefinition item)
@@ -168,7 +185,7 @@ public class CustomerOrderConfig : ScriptableObject
                     pipeline[2 + i] = StationType.Assembly;
                 return pipeline;
             case ProductKind.Fries:
-                return new[] { StationType.Pantry, StationType.Fryer };
+                return new[] { StationType.Pantry, StationType.Cutting, StationType.Fryer };
             case ProductKind.Drink:
                 return new[] { StationType.Drink };
             default:
@@ -176,10 +193,10 @@ public class CustomerOrderConfig : ScriptableObject
         }
     }
 
-    /// <summary>Products the grill can be set to cook.</summary>
+    /// <summary>Outputs the grill can be configured to produce.</summary>
     public IEnumerable<ItemDefinition> GetGrillProducts()
     {
-        if (burgerBase != null) yield return burgerBase;
+        if (cookedPattyIngredient != null) yield return cookedPattyIngredient;
     }
 
     /// <summary>Raw ingredients a Freezer may be configured to dispense.</summary>
@@ -230,6 +247,32 @@ public class CustomerOrderConfig : ScriptableObject
                 yield return recipe;
     }
 
+    public IEnumerable<CuttingRecipeDefinition> GetCuttingRecipes()
+    {
+        if (cuttingRecipes == null) yield break;
+        foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
+            if (recipe != null && recipe.input != null && recipe.output != null)
+                yield return recipe;
+    }
+
+    public CuttingRecipeDefinition GetCuttingRecipe(ItemDefinition output)
+    {
+        if (output == null || cuttingRecipes == null) return null;
+        foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
+            if (recipe != null && recipe.output == output)
+                return recipe;
+        return null;
+    }
+
+    public CuttingRecipeDefinition GetCuttingRecipeForInput(ItemDefinition input)
+    {
+        if (input == null || cuttingRecipes == null) return null;
+        foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
+            if (recipe != null && recipe.input == input)
+                return recipe;
+        return null;
+    }
+
     public AssemblyRecipeDefinition GetAssemblyRecipe(ItemDefinition output)
     {
         if (output == null || assemblyRecipes == null) return null;
@@ -270,11 +313,12 @@ public class CustomerOrderConfig : ScriptableObject
 
     ItemDefinition PickEnabledBurger()
     {
-        bool regular = burgerBase != null && burgerEnabled;
-        bool cheese = cheeseburgerItem != null && cheeseburgerEnabled;
-        if (regular && cheese) return Random.value < 0.5f ? burgerBase : cheeseburgerItem;
-        if (regular) return burgerBase;
-        return cheese ? cheeseburgerItem : null;
+        var available = new List<ItemDefinition>();
+        if (burgerBase != null && burgerEnabled) available.Add(burgerBase);
+        if (cheeseburgerItem != null && cheeseburgerEnabled) available.Add(cheeseburgerItem);
+        if (clBurgerItem != null && clBurgerEnabled) available.Add(clBurgerItem);
+        if (cltBurgerItem != null && cltBurgerEnabled) available.Add(cltBurgerItem);
+        return available.Count > 0 ? available[Random.Range(0, available.Count)] : null;
     }
 
     public CustomerOrder GenerateRandomOrder()
@@ -324,6 +368,8 @@ public class CustomerOrderConfig : ScriptableObject
         var options = new List<ItemDefinition>();
         if (burgerBase != null && burgerEnabled) options.Add(burgerBase);
         if (cheeseburgerItem != null && cheeseburgerEnabled) options.Add(cheeseburgerItem);
+        if (clBurgerItem != null && clBurgerEnabled) options.Add(clBurgerItem);
+        if (cltBurgerItem != null && cltBurgerEnabled) options.Add(cltBurgerItem);
         if (friesItem != null && friesEnabled) options.Add(friesItem);
         if (drinkItem != null && drinkEnabled) options.Add(drinkItem);
         if (options.Count == 0) return new CustomerOrder();
@@ -336,6 +382,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (burgerBase != null) yield return burgerBase;
         if (cheeseburgerItem != null) yield return cheeseburgerItem;
+        if (clBurgerItem != null) yield return clBurgerItem;
+        if (cltBurgerItem != null) yield return cltBurgerItem;
         if (friesItem != null) yield return friesItem;
         if (drinkItem != null) yield return drinkItem;
     }
@@ -357,4 +405,17 @@ public class CustomerOrderConfig : ScriptableObject
         if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
         if (drinkItem != null && yielded.Add(drinkItem)) yield return drinkItem;
     }
+}
+
+[System.Serializable]
+public class CuttingRecipeDefinition
+{
+    public string recipeName = "Sliced Ingredient";
+    public ItemDefinition input;
+    public ItemDefinition output;
+
+    public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
+        ? recipeName
+        : (output != null && !string.IsNullOrWhiteSpace(output.itemName)
+            ? output.itemName : "Cutting Recipe");
 }

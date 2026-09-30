@@ -71,6 +71,7 @@ public class ManagementModeController : MonoBehaviour
     TextMeshProUGUI pickupStockText;
     readonly RawImage[] pickupSlotPreviews = new RawImage[4];
     readonly TextMeshProUGUI[] pickupSlotLabels = new TextMeshProUGUI[4];
+    readonly TextMeshProUGUI[] pickupSlotFreshnessLabels = new TextMeshProUGUI[4];
 
     [Header("Workflow decision support")]
     public GameObject workflowDecisionHud;
@@ -161,6 +162,21 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode || employee == null) return;
         SelectEmployeeForAssignment(employee);
+    }
+
+    /// <summary>Select a flow from the Staff UI and focus its complete worker team.</summary>
+    public void SelectFlow(ProductionFlowPlan flow)
+    {
+        if (!IsManageMode || flow == null) return;
+
+        if (selectedWorkerHighlight != null)
+        {
+            selectedWorkerHighlight.SetHovered(false);
+            selectedWorkerHighlight = null;
+        }
+        selectedEmployee = null;
+        SetWorkflowDecisionHudVisible(false);
+        WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
     }
 
     void Update()
@@ -668,7 +684,8 @@ public class ManagementModeController : MonoBehaviour
         PantryStation pantry = station.GetComponent<PantryStation>();
         if (pantry != null) return pantry.selectedItem;
         if (station.GetComponent<GrillStation>() != null) return config.cookedPattyIngredient;
-        if (station.GetComponent<CuttingStation>() != null) return config.slicedCheeseIngredient;
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        if (cutting != null) return cutting.GetSelectedRecipe()?.output;
         if (station.GetComponent<FryerStation>() != null) return config.friesItem;
         if (station.GetComponent<DrinkStation>() != null) return config.drinkItem;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
@@ -687,15 +704,16 @@ public class ManagementModeController : MonoBehaviour
         }
         if (target.GetComponent<CuttingStation>() != null)
         {
-            if (stored == config.cheeseIngredient) return true;
-            reason = "The Cutting Station needs Raw Cheese, but this Pantry stores "
+            CuttingStation cutting = target.GetComponent<CuttingStation>();
+            if (cutting != null && cutting.CanProcess(stored)) return true;
+            reason = "This Cutting Station is not configured to process "
                 + DisplayItemName(stored) + ".";
             return false;
         }
         if (target.GetComponent<FryerStation>() != null)
         {
-            if (stored == config.friesIngredient) return true;
-            reason = "The Fryer needs " + DisplayItemName(config.friesIngredient)
+            if (stored == config.slicedPotatoIngredient) return true;
+            reason = "The Fryer needs " + DisplayItemName(config.slicedPotatoIngredient)
                 + ", but this Pantry stores " + DisplayItemName(stored) + ".";
             return false;
         }
@@ -716,10 +734,11 @@ public class ManagementModeController : MonoBehaviour
         if (target == null || item == null || config == null) return false;
         if (target.GetComponent<GrillStation>() != null)
             return item == config.rawPattyIngredient;
-        if (target.GetComponent<CuttingStation>() != null)
-            return item == config.cheeseIngredient;
+        CuttingStation cutting = target.GetComponent<CuttingStation>();
+        if (cutting != null)
+            return cutting.CanProcess(item);
         if (target.GetComponent<FryerStation>() != null)
-            return item == config.friesIngredient;
+            return item == config.slicedPotatoIngredient;
 
         AssemblyStation assembly = target.GetComponent<AssemblyStation>();
         if (assembly != null)
@@ -778,8 +797,31 @@ public class ManagementModeController : MonoBehaviour
                 selectedWorkerHighlight.SetHovered(true);
         }
 
-        WorkerAssignmentLinkVisuals.SetFocusedWorker(selectedEmployee);
+        FocusEmployeeFlow(selectedEmployee);
         RefreshWorkflowDecisionHud();
+    }
+
+    void FocusEmployeeFlow(KitchenEmployee employee)
+    {
+        ProductionManager production = ProductionManager.Instance != null
+            ? ProductionManager.Instance
+            : FindObjectOfType<ProductionManager>();
+        ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
+        if (production != null && flow != null)
+        {
+            int index = production.productionFlows.IndexOf(flow);
+            if (index >= 0)
+                production.SelectProductionFlow(index);
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
+        }
+        else
+        {
+            WorkerAssignmentLinkVisuals.SetFocusedWorker(employee);
+        }
+
+        WorkersUI workersUi = FindObjectOfType<WorkersUI>();
+        if (workersUi != null && workersUi.isActiveAndEnabled)
+            workersUi.Refresh();
     }
 
     void ClearEmployeeSelection()
@@ -1247,7 +1289,7 @@ public class ManagementModeController : MonoBehaviour
             inputPrefab = recipe != null && recipe.processedInput != null
                 ? recipe.processedInput.prefab : cookedPattyModel;
             outputPrefab = recipe != null && recipe.output != null
-                ? (GetPickupPreviewPrefab(recipe.output) ?? recipe.output.prefab)
+                ? (recipe.output.prefab ?? GetPickupPreviewPrefab(recipe.output))
                 : burgerPreviewPrefab;
             inputName = recipe != null ? recipe.processedInputName : "Cooked patty";
             secondInputPrefab = recipe != null && recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
@@ -1261,21 +1303,22 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (cutting != null)
         {
-            CustomerOrderConfig config = ProductionManager.Instance != null
-                ? ProductionManager.Instance.orderConfig : null;
-            inputPrefab = config != null && config.cheeseIngredient != null
-                ? config.cheeseIngredient.prefab : null;
-            outputPrefab = config != null && config.slicedCheeseIngredient != null
-                ? config.slicedCheeseIngredient.prefab : null;
-            inputName = "Raw cheese";
-            outputName = "Sliced cheese";
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            inputPrefab = recipe != null && recipe.input != null ? recipe.input.prefab : null;
+            outputPrefab = recipe != null && recipe.output != null ? recipe.output.prefab : null;
+            inputName = recipe != null ? DisplayItemName(recipe.input) : "Select ingredient";
+            outputName = recipe != null ? recipe.DisplayName : "Select recipe";
             cycleSeconds = cutting.processTimeSeconds;
         }
         else if (fryer != null)
         {
-            inputPrefab = rawFriesPreviewPrefab;
-            outputPrefab = cookedFriesPreviewPrefab;
-            inputName = "Potatoes";
+            ItemDefinition fryerInput = modelConfig != null ? modelConfig.slicedPotatoIngredient : null;
+            ItemDefinition fryerOutput = modelConfig != null ? modelConfig.friesItem : null;
+            inputPrefab = fryerInput != null && fryerInput.prefab != null
+                ? fryerInput.prefab : rawFriesPreviewPrefab;
+            outputPrefab = fryerOutput != null && fryerOutput.prefab != null
+                ? fryerOutput.prefab : cookedFriesPreviewPrefab;
+            inputName = fryerInput != null ? DisplayItemName(fryerInput) : "Potato slices";
             outputName = "Fries";
             cycleSeconds = fryer.processTimeSeconds;
         }
@@ -1395,14 +1438,14 @@ public class ManagementModeController : MonoBehaviour
             ? seconds.ToString("0") : seconds.ToString("0.0");
     }
 
-    void ApplyPopupLayout(RectTransform rt, float height)
+    void ApplyPopupLayout(RectTransform rt, float width, float height)
     {
         if (rt == null) return;
         rt.anchorMin = popupAnchor;
         rt.anchorMax = popupAnchor;
         rt.pivot = popupPivot;
         rt.anchoredPosition = popupAnchoredPosition;
-        rt.sizeDelta = new Vector2(300f, height);
+        rt.sizeDelta = new Vector2(width, height);
     }
 
     void ApplyPanelLayout(bool heatLampCompact)
@@ -1411,9 +1454,6 @@ public class ManagementModeController : MonoBehaviour
 
         bool hasRecipeControls = productListContainer != null
             && productListContainer.gameObject.activeSelf;
-        bool hasInput = selectedStation != null
-            && !heatLampCompact
-            && selectedStation.HasInputAmount;
 
         var rt = (RectTransform)stationPopup.transform;
         var vlg = stationPopup.GetComponent<VerticalLayoutGroup>();
@@ -1442,21 +1482,6 @@ public class ManagementModeController : MonoBehaviour
         CollapseInactiveLayout(pickupInventoryRoot);
         CollapseInactiveLayout(stationDiagnosticsRoot);
 
-        float height;
-        if (heatLampCompact)
-            height = 246f;
-        else if (hasRecipeControls)
-            height = 326f;
-        else if (hasInput)
-            height = 286f;
-        else
-            height = 286f;
-
-        if (!usingScenePopup)
-            ApplyPopupLayout(rt, height);
-        else
-            rt.sizeDelta = new Vector2(rt.sizeDelta.x > 10f ? rt.sizeDelta.x : 300f, height);
-
         if (stationTitleText != null)
         {
             stationTitleText.fontSize = 22;
@@ -1476,8 +1501,10 @@ public class ManagementModeController : MonoBehaviour
         {
             var listLe = productListContainer.GetComponent<LayoutElement>();
             if (listLe == null) listLe = productListContainer.gameObject.AddComponent<LayoutElement>();
-            listLe.minHeight = 32;
-            listLe.preferredHeight = 36;
+            // Recipe cards are 106 px tall. Do not collapse their container after
+            // RefreshProductSection has sized it, or later siblings overlap them.
+            listLe.minHeight = Mathf.Max(122f, listLe.minHeight);
+            listLe.preferredHeight = Mathf.Max(122f, listLe.preferredHeight);
             listLe.flexibleHeight = 0;
         }
 
@@ -1510,6 +1537,18 @@ public class ManagementModeController : MonoBehaviour
         }
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+
+        float minimumHeight = heatLampCompact ? 246f : 286f;
+        float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
+        float height = Mathf.Max(minimumHeight, preferredHeight);
+        float width = hasRecipeControls ? 340f : 300f;
+
+        if (!usingScenePopup)
+            ApplyPopupLayout(rt, width, height);
+        else
+            rt.sizeDelta = new Vector2(Mathf.Max(width, rt.sizeDelta.x), height);
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
     static void CollapseInactiveLayout(GameObject go)
@@ -1536,8 +1575,8 @@ public class ManagementModeController : MonoBehaviour
         var inventorySize = pickupInventoryRoot.GetComponent<LayoutElement>();
         if (inventorySize != null)
         {
-            inventorySize.minHeight = 112f;
-            inventorySize.preferredHeight = 112f;
+            inventorySize.minHeight = 128f;
+            inventorySize.preferredHeight = 128f;
             inventorySize.flexibleHeight = 0f;
         }
 
@@ -1552,6 +1591,25 @@ public class ManagementModeController : MonoBehaviour
             pickupSlotLabels[i].text = label;
             pickupSlotLabels[i].color = item != null
                 ? Color.white : new Color(0.55f, 0.58f, 0.65f, 1f);
+
+            TextMeshProUGUI freshnessLabel = pickupSlotFreshnessLabels[i];
+            if (freshnessLabel != null)
+            {
+                bool occupied = item != null && meal != null;
+                int percentage = occupied
+                    ? Mathf.RoundToInt(lamp.GetFreshnessModifier(meal) * 100f)
+                    : 0;
+                freshnessLabel.gameObject.SetActive(occupied);
+                if (occupied)
+                {
+                    freshnessLabel.text = percentage > 0 ? $"+{percentage}%" : $"{percentage}%";
+                    freshnessLabel.color = percentage > 0
+                        ? new Color(0.45f, 0.86f, 0.62f, 1f)
+                        : percentage < 0
+                            ? new Color(1f, 0.48f, 0.36f, 1f)
+                            : new Color(1f, 0.78f, 0.32f, 1f);
+                }
+            }
         }
     }
 
@@ -1583,8 +1641,8 @@ public class ManagementModeController : MonoBehaviour
         rootLayout.childForceExpandWidth = true;
         rootLayout.childForceExpandHeight = false;
         var rootSize = pickupInventoryRoot.GetComponent<LayoutElement>();
-        rootSize.minHeight = 112f;
-        rootSize.preferredHeight = 112f;
+        rootSize.minHeight = 128f;
+        rootSize.preferredHeight = 128f;
         rootSize.flexibleHeight = 0f;
 
         pickupStockText = CreateDiagramText(pickupInventoryRoot.transform, "Stock", "STOCK  0 / 4", 14f, 22f);
@@ -1602,8 +1660,8 @@ public class ManagementModeController : MonoBehaviour
         rowLayout.childForceExpandWidth = true;
         rowLayout.childForceExpandHeight = true;
         var rowSize = row.GetComponent<LayoutElement>();
-        rowSize.minHeight = 82f;
-        rowSize.preferredHeight = 82f;
+        rowSize.minHeight = 98f;
+        rowSize.preferredHeight = 98f;
         rowSize.flexibleHeight = 0f;
 
         for (int i = 0; i < pickupSlotPreviews.Length; i++)
@@ -1654,6 +1712,12 @@ public class ManagementModeController : MonoBehaviour
         label.fontSizeMin = 7f;
         label.fontSizeMax = 9f;
         pickupSlotLabels[index] = label;
+
+        var freshness = CreateDiagramText(slot.transform, "Freshness", "+50%", 9f, 14f);
+        freshness.fontStyle = FontStyles.Bold;
+        freshness.color = new Color(0.45f, 0.86f, 0.62f, 1f);
+        freshness.gameObject.SetActive(false);
+        pickupSlotFreshnessLabels[index] = freshness;
     }
 
     GameObject GetPickupPreviewPrefab(ItemDefinition item)
@@ -1671,6 +1735,14 @@ public class ManagementModeController : MonoBehaviour
         return null;
     }
 
+    static IEnumerable<ItemDefinition> GetCuttingOutputs(CustomerOrderConfig config)
+    {
+        if (config == null) yield break;
+        foreach (CuttingRecipeDefinition recipe in config.GetCuttingRecipes())
+            if (recipe != null && recipe.output != null)
+                yield return recipe.output;
+    }
+
     void RefreshProductSection()
     {
         EnsureProductUI();
@@ -1680,7 +1752,9 @@ public class ManagementModeController : MonoBehaviour
         var assembly = selectedStation != null ? selectedStation.GetComponent<AssemblyStation>() : null;
         var freezer = selectedStation != null ? selectedStation.GetComponent<FreezerStation>() : null;
         var pantry = selectedStation != null ? selectedStation.GetComponent<PantryStation>() : null;
-        bool show = grill != null || assembly != null || freezer != null || pantry != null;
+        var cutting = selectedStation != null ? selectedStation.GetComponent<CuttingStation>() : null;
+        bool show = grill != null || assembly != null || freezer != null || pantry != null
+            || cutting != null;
 
         productInfoText.gameObject.SetActive(show);
         productListContainer.gameObject.SetActive(show);
@@ -1688,10 +1762,11 @@ public class ManagementModeController : MonoBehaviour
 
         ConfigureProductListLayout();
 
-        ItemDefinition current = grill != null ? grill.selectedProduct
+        ItemDefinition current = grill != null ? grill.GetSelectedOutput()
             : assembly != null ? assembly.selectedProduct
             : freezer != null ? freezer.selectedItem
-            : pantry != null ? pantry.selectedItem : null;
+            : pantry != null ? pantry.selectedItem
+            : cutting != null ? cutting.selectedProduct : null;
 
         for (int i = productListContainer.childCount - 1; i >= 0; i--)
             Destroy(productListContainer.GetChild(i).gameObject);
@@ -1713,12 +1788,18 @@ public class ManagementModeController : MonoBehaviour
 
         if (assembly != null)
         {
-            Transform recipeRow = CreateRecipeRow();
+            Transform recipeRow = null;
             int recipeCount = 0;
+            int recipeRows = 0;
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
             foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
             {
                 if (recipe == null) continue;
+                if (recipeCount % 3 == 0)
+                {
+                    recipeRow = CreateRecipeRow();
+                    recipeRows++;
+                }
                 recipeCount++;
                 bool selectedRecipe = currentRecipe == recipe;
                 Button recipeButton = CreateRecipeCard(recipeRow, recipe, selectedRecipe);
@@ -1729,8 +1810,10 @@ public class ManagementModeController : MonoBehaviour
             LayoutElement listSize = productListContainer.GetComponent<LayoutElement>();
             if (listSize != null)
             {
-                listSize.minHeight = 122f;
-                listSize.preferredHeight = 122f;
+                float height = Mathf.Max(122f,
+                    recipeRows * 117f + Mathf.Max(0, recipeRows - 1) * 5f);
+                listSize.minHeight = height;
+                listSize.preferredHeight = height;
             }
             productListContainer.gameObject.SetActive(recipeCount > 0);
             return;
@@ -1739,6 +1822,7 @@ public class ManagementModeController : MonoBehaviour
         IEnumerable<ItemDefinition> options = freezer != null
             ? config.GetFreezerIngredients()
             : pantry != null ? config.GetPantryIngredients()
+            : cutting != null ? GetCuttingOutputs(config)
             : config.GetGrillProducts();
         Transform optionRow = null;
         int optionCount = 0;
@@ -1807,18 +1891,18 @@ public class ManagementModeController : MonoBehaviour
 
     Button CreateRecipeCard(Transform parent, AssemblyRecipeDefinition recipe, bool selected)
     {
-        GameObject previewPrefab = GetPickupPreviewPrefab(recipe.output);
-        if (previewPrefab == null && recipe.output != null)
-            previewPrefab = recipe.output.prefab;
+        GameObject previewPrefab = recipe.output != null ? recipe.output.prefab : null;
+        if (previewPrefab == null)
+            previewPrefab = GetPickupPreviewPrefab(recipe.output);
         return CreateRecipeCardVisual(parent, recipe.DisplayName, previewPrefab, selected);
     }
 
     Button CreateRecipeCard(Transform parent, ItemDefinition product, bool selected)
     {
         string recipeName = DisplayItemName(product);
-        GameObject previewPrefab = GetPickupPreviewPrefab(product);
-        if (previewPrefab == null && product != null)
-            previewPrefab = product.prefab;
+        GameObject previewPrefab = product != null ? product.prefab : null;
+        if (previewPrefab == null)
+            previewPrefab = GetPickupPreviewPrefab(product);
         return CreateRecipeCardVisual(parent, recipeName, previewPrefab, selected);
     }
 
@@ -1899,10 +1983,10 @@ public class ManagementModeController : MonoBehaviour
         var grill = selectedStation.GetComponent<GrillStation>();
         if (grill != null)
         {
-            grill.selectedProduct = item;
+            grill.SetRecipeOutput(item);
             RevalidateSelectedStationOutput();
             RefreshPopup();
-            SetStatus("Grill set to produce " + (item.itemName ?? item.name));
+            SetStatus("Grill recipe set to " + DisplayItemName(item));
             return;
         }
         var freezer = selectedStation.GetComponent<FreezerStation>();
@@ -1921,6 +2005,17 @@ public class ManagementModeController : MonoBehaviour
             RevalidateSelectedStationOutput();
             RefreshPopup();
             SetStatus("Pantry set to store " + DisplayItemName(item));
+            return;
+        }
+        var cutting = selectedStation.GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            var manager = ProductionManager.Instance;
+            var config = manager != null ? manager.orderConfig : null;
+            cutting.SetRecipe(config != null ? config.GetCuttingRecipe(item) : null);
+            RevalidateSelectedStationOutput();
+            RefreshPopup();
+            SetStatus("Cutting recipe set to " + DisplayItemName(item));
             return;
         }
         var assembly = selectedStation.GetComponent<AssemblyStation>();

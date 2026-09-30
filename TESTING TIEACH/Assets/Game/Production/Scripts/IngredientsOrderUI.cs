@@ -351,20 +351,40 @@ public class IngredientsOrderUI : MonoBehaviour
         string Step(string station, string material) =>
             "<b>" + station + "</b> <color=#7FEA9A>[" + material + "]</color>";
 
-        if (menu.IsCheeseburger(item))
-            return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
-                + arrow + Step("Assembly 1", "Cooked patty + sliced cheese") + arrow + Step("Cheese patty", "Intermediate")
-                + arrow + Step("Assembly 2", "Cheese patty + bun") + arrow + Step("Pickup Station", "Cheeseburger")
-                + "\n" + Step("Pantry", "Raw cheese") + arrow + Step("Cutting", "Sliced cheese")
-                + arrow + Step("Assembly 1", "Input 2") + "   " + Step("Pantry feeder", "Bun");
-
         if (menu.IsBurger(item))
-            return label + Step("Freezer", "Frozen patty") + arrow + Step("Grill", "Raw patty")
-                + arrow + Step("Assembly", "Cooked patty + bun") + arrow + Step("Pickup Station", "Burger")
-                + "\n" + Step("Pantry feeder", "Bun") + arrow + Step("Assembly input 2", "Bun buffer");
+        {
+            string Name(ItemDefinition definition, string fallback) => definition != null
+                && !string.IsNullOrWhiteSpace(definition.itemName) ? definition.itemName : fallback;
+            var stages = menu.GetAssemblyChain(item);
+            var flow = new List<string>
+            {
+                Step("Freezer", Name(menu.rawPattyIngredient, "Raw patty")),
+                Step("Grill", Name(menu.cookedPattyIngredient, "Cooked patty"))
+            };
+            var supplies = new List<string>();
+            for (int i = 0; i < stages.Count; i++)
+            {
+                AssemblyRecipeDefinition recipe = menu.GetAssemblyRecipe(stages[i]);
+                if (recipe == null) continue;
+                string processed = Name(recipe.processedInput, recipe.processedInputName);
+                string pantry = Name(recipe.pantryInput, "Ingredient");
+                flow.Add(Step("Assembly " + (i + 1), processed + " + " + pantry));
+                if (menu.AssemblySupplyRequiresCutting(recipe))
+                    supplies.Add(Step("Pantry", Name(recipe.rawPantryInput, "Raw ingredient"))
+                        + arrow + Step("Cutting", pantry)
+                        + arrow + Step("Assembly " + (i + 1), "Input 2"));
+                else
+                    supplies.Add(Step("Pantry", pantry)
+                        + arrow + Step("Assembly " + (i + 1), "Input 2"));
+            }
+            flow.Add(Step("Pickup Station", Name(item, "Burger")));
+            return label + string.Join(arrow, flow)
+                + (supplies.Count > 0 ? "\n" + string.Join("   ", supplies) : "");
+        }
 
         if (menu.IsFries(item))
-            return label + Step("Pantry", "Potatoes") + arrow + Step("Fryer", "Raw potatoes")
+            return label + Step("Pantry", "Potatoes") + arrow + Step("Cutting", "Potato slices")
+                + arrow + Step("Fryer", "Potato slices")
                 + arrow + Step("Pickup Station", "Fries");
 
         if (menu.IsDrink(item))
@@ -376,6 +396,7 @@ public class IngredientsOrderUI : MonoBehaviour
     GameObject GetPreviewPrefab(CustomerOrderConfig menu, ItemDefinition item)
     {
         if (menu == null || item == null) return null;
+        if (item.prefab != null) return item.prefab;
         if (menu.IsBurger(item)) return burgerPreviewPrefab;
         if (menu.IsFries(item)) return friesPreviewPrefab;
         if (menu.IsDrink(item)) return drinkPreviewPrefab;

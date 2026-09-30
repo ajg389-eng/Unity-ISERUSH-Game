@@ -267,6 +267,7 @@ public class ManagementScreenController : MonoBehaviour
         Sfx.Play(SfxId.UiOpen);
         EnsurePanelClickBlocker(managementPanel);
         ApplyManagementBackdrop();
+        SetUnifiedPrimaryPage(true);
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
@@ -378,18 +379,17 @@ public class ManagementScreenController : MonoBehaviour
 
             bool workers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null;
-            tabButtons[i].gameObject.SetActive(business ? !workers : false);
+            tabButtons[i].gameObject.SetActive(true);
 
-            if (!business || workers) continue;
             var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
             bool customers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null;
             if (label != null)
-                label.text = customers ? "Demand" : "Menu & Supply";
+                label.text = workers ? "Staff" : customers ? "Demand" : "Menu & Supply";
         }
 
         if (tabBar != null)
-            tabBar.gameObject.SetActive(business);
+            tabBar.gameObject.SetActive(true);
     }
 
     public void OpenIngredientsTab()

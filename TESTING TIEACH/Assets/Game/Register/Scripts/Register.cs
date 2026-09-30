@@ -442,6 +442,24 @@ public class Register : MonoBehaviour
         UpdateQueueTargets();
     }
 
+    public void ResetRuntimeState()
+    {
+        CustomerAI[] waiting = queue.ToArray();
+        CustomerAI[] collecting = pickup.ToArray();
+        queue.Clear();
+        pickup.Clear();
+        preparedOrder = null;
+        orderTimer = 0f;
+        queueGrowingRaised = false;
+        cachedHeatLamp = null;
+
+        foreach (CustomerAI customer in waiting)
+            if (customer != null) customer.OnRegisterDisabled();
+        foreach (CustomerAI customer in collecting)
+            if (customer != null) customer.OnRegisterDisabled();
+        UpdateQueueTargets();
+    }
+
     void Update()
     {
         if (!IsPlacedRegister) return;

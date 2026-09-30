@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Potatoes
+  m_Name: LettuceSlice
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Potatoes
-  prefab: {fileID: 8041849481946025025, guid: 9a41000000000000000000000000000e, type: 3}
+  itemName: Lettuce Slice
+  prefab: {fileID: 3750165873757496358, guid: 3797e2a185913ab47a316d080d691f1a, type: 3}
   price: 0
-  startingQuantity: 10
-  orderPackSize: 10
-  orderPackPrice: 12
+  startingQuantity: 0
+  orderPackSize: 0
+  orderPackPrice: 0

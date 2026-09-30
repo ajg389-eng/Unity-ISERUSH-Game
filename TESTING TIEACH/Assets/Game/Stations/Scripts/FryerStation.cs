@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Placeable fryer. Worker loads fries from kitchen stock, cooks, then delivers to the heat lamp.
+/// Placeable fryer. Worker loads sliced potatoes, cooks them, then delivers fries to pickup.
 /// </summary>
 public class FryerStation : MonoBehaviour, IStationBuffer
 {
@@ -16,7 +16,7 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     CustomerOrder bufferedOrder;
 
     ItemDefinition RawItem => ProductionManager.Instance != null
-        ? ProductionManager.Instance.PotatoItem : null;
+        ? ProductionManager.Instance.SlicedPotatoItem : null;
     ItemDefinition CookedItem => ProductionManager.Instance != null
         ? ProductionManager.Instance.FriesItem : null;
 
@@ -70,6 +70,13 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     public bool TakeCooked()
     {
         return TakeOutput(CookedItem, 1) == 1;
+    }
+
+    public void ResetRuntimeState()
+    {
+        hasBasket = false;
+        cookTimer = 0f;
+        bufferedOrder = null;
     }
 
     void Update()

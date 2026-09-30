@@ -63,6 +63,16 @@ public class WorkerCardUI : MonoBehaviour
         if (hits.Count == 0 || hits[0].gameObject == null) return;
 
         Transform clicked = hits[0].gameObject.transform;
+        Button clickedButton = clicked.GetComponentInParent<Button>();
+        if (clickedButton != null && clickedButton.transform.IsChildOf(transform))
+            return;
+        TMP_InputField clickedTmpInput = clicked.GetComponentInParent<TMP_InputField>();
+        if (clickedTmpInput != null && clickedTmpInput.transform.IsChildOf(transform))
+            return;
+        InputField clickedLegacyInput = clicked.GetComponentInParent<InputField>();
+        if (clickedLegacyInput != null && clickedLegacyInput.transform.IsChildOf(transform))
+            return;
+
         if (clicked == transform || clicked.IsChildOf(transform))
         {
             management.SelectWorker(employee);
@@ -77,9 +87,11 @@ public class WorkerCardUI : MonoBehaviour
         if (cardImage == null)
             cardImage = GetComponent<Image>();
 
-        bool selected = employee != null
+        bool primarySelected = employee != null
             && ManagementModeController.Instance != null
             && ManagementModeController.Instance.SelectedEmployee == employee;
+        bool selected = primarySelected
+            || WorkerAssignmentLinkVisuals.IsWorkerAssociatedWithFocusedFlow(employee);
 
         if (selectionOutline == null)
             selectionOutline = GetComponent<Outline>();
@@ -88,13 +100,17 @@ public class WorkerCardUI : MonoBehaviour
 
         if (cardImage != null)
             cardImage.color = selected
-                ? new Color(0.20f, 0.38f, 0.62f, 1f)
+                ? (primarySelected
+                    ? new Color(0.20f, 0.38f, 0.62f, 1f)
+                    : new Color(0.18f, 0.32f, 0.46f, 1f))
                 : new Color(0.18f, 0.2f, 0.26f, 0.98f);
 
         if (selectionOutline != null)
         {
             selectionOutline.enabled = selected;
-            selectionOutline.effectColor = new Color(0.25f, 0.88f, 1f, 1f);
+            selectionOutline.effectColor = primarySelected
+                ? new Color(0.25f, 0.88f, 1f, 1f)
+                : new Color(0.20f, 0.72f, 0.88f, 0.95f);
             selectionOutline.effectDistance = new Vector2(3f, -3f);
             selectionOutline.useGraphicAlpha = false;
         }

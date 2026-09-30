@@ -90,12 +90,18 @@ public class StationNode : MonoBehaviour
                 processedName + " + " + pantryName, outputName);
         }
         else if (cutting != null)
-            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw cheese", "sliced cheese");
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize),
+                RateForCycle(cutting.processTimeSeconds, batchSize),
+                ItemLabel(recipe != null ? recipe.input : null, "select ingredient"),
+                ItemLabel(recipe != null ? recipe.output : null, "select recipe"));
+        }
         else if (freezer != null)
             SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-",
                 ItemLabel(freezer.selectedItem, "select ingredient"));
         else if (fryer != null)
-            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potatoes", "fries");
+            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potato slices", "fries");
         else if (drink != null)
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
         else if (pantry != null)

@@ -31,6 +31,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     readonly List<LineRenderer> lines = new List<LineRenderer>();
     readonly List<TextMeshPro> labels = new List<TextMeshPro>();
     readonly List<Mesh> generatedMeshes = new List<Mesh>();
+    readonly List<WorkerHoverHighlight> flowWorkerHighlights = new List<WorkerHoverHighlight>();
     Material lineMaterial;
     Material lineOutlineMaterial;
     Material markerCenterMaterial;
@@ -55,6 +56,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     };
 
     public static bool HasFocusedWorker => Instance != null && Instance.focusedWorker != null;
+    public static ProductionFlowPlan FocusedFlow => Instance != null ? Instance.focusedFlow : null;
 
     void Awake()
     {
@@ -65,6 +67,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void OnDestroy()
     {
+        focusedFlow = null;
+        RefreshFlowWorkerHighlights();
         if (Instance == this) Instance = null;
         DestroyMaterial(lineMaterial);
         DestroyMaterial(lineOutlineMaterial);
@@ -163,15 +167,26 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         Instance.ApplyFocus();
     }
 
+    public static bool IsWorkerAssociatedWithFocusedFlow(KitchenEmployee worker)
+    {
+        ProductionFlowPlan flow = FocusedFlow;
+        return worker != null && flow != null && flow.workers != null && flow.workers.Contains(worker);
+    }
+
     void ApplyFocus()
     {
         visible = focusedWorker != null || focusedFlow != null;
         if (visible) Refresh();
-        else ClearVisuals();
+        else
+        {
+            RefreshFlowWorkerHighlights();
+            ClearVisuals();
+        }
     }
 
     public void Refresh()
     {
+        RefreshFlowWorkerHighlights();
         EnsureRoot();
         ClearVisuals();
 
@@ -194,6 +209,24 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
+    }
+
+    void RefreshFlowWorkerHighlights()
+    {
+        for (int i = 0; i < flowWorkerHighlights.Count; i++)
+            if (flowWorkerHighlights[i] != null)
+                flowWorkerHighlights[i].SetFlowHighlighted(false);
+        flowWorkerHighlights.Clear();
+
+        if (focusedFlow?.workers == null) return;
+        foreach (KitchenEmployee worker in focusedFlow.workers)
+        {
+            if (worker == null) continue;
+            WorkerHoverHighlight highlight = WorkerHoverHighlight.EnsureOn(worker);
+            if (highlight == null || flowWorkerHighlights.Contains(highlight)) continue;
+            highlight.SetFlowHighlighted(true);
+            flowWorkerHighlights.Add(highlight);
+        }
     }
 
     void DrawDraftFlow(ProductionFlowPlan flow)

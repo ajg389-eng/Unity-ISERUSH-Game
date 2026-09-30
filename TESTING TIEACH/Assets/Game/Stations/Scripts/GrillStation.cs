@@ -1,15 +1,16 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Placeable grill. Choose which product this grill cooks (Manage mode).
-/// Currently used for burgers; selection is required before jobs are accepted.
+/// Placeable grill. The selected product is the grill's own output, not the
+/// downstream menu item that Assembly will eventually create.
 /// </summary>
 public class GrillStation : MonoBehaviour, IStationBuffer
 {
     public const int BufferCapacity = 4;
     [Header("Product")]
-    [Tooltip("Product this grill is set to cook. Must be chosen in Manage mode.")]
+    [Tooltip("Output this grill produces. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
     [FormerlySerializedAs("cookTimeSeconds")]
@@ -20,6 +21,11 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     [SerializeField, Min(0)] int pattyUnits;
     float cookTimer;
     CustomerOrder bufferedOrder;
+    Transform itemDisplayRoot;
+    readonly List<Transform> itemSpawnMarkers = new List<Transform>();
+    int displayedUnits = -1;
+    bool displayedCooked;
+    ItemDefinition displayedProduct;
 
     public bool HasProductSelected => selectedProduct != null;
     public bool HasPattyOnGrill => pattyUnits > 0;
@@ -29,12 +35,20 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public int InputSlotCapacity => BufferCapacity;
     public int OutputSlotCapacity => BufferCapacity;
 
+    void OnEnable()
+    {
+        StationConfigurationCaution.Ensure(gameObject);
+        NormalizeLegacySelection();
+        StationItemVisualUtility.FindMarkers(transform, itemSpawnMarkers);
+        RefreshItemDisplay(force: true);
+    }
+
     public int GetInputCount(ItemDefinition item) =>
-        CanProcess(item) && IsCookingPatty ? pattyUnits : 0;
+        IsRawPatty(item) && IsCookingPatty ? pattyUnits : 0;
     public int GetOutputCount(ItemDefinition item) =>
-        CanProcess(item) && IsCooked() ? pattyUnits : 0;
+        IsCookedPatty(item) && IsCooked() ? pattyUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && CanProcess(item) && pattyUnits == 0 && amount <= BufferCapacity;
+        amount > 0 && IsRawPatty(item) && pattyUnits == 0 && amount <= BufferCapacity;
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;
@@ -45,7 +59,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     }
     public int TakeOutput(ItemDefinition item, int amount)
     {
-        if (amount <= 0 || !CanProcess(item) || !IsCooked()) return 0;
+        if (amount <= 0 || !IsCookedPatty(item) || !IsCooked()) return 0;
         int taken = Mathf.Min(amount, pattyUnits);
         pattyUnits -= taken;
         if (pattyUnits <= 0)
@@ -59,11 +73,60 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public bool CanProcess(ItemDefinition product)
     {
+        NormalizeLegacySelection();
         if (product == null || selectedProduct == null) return false;
-        if (product == selectedProduct) return true;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
-        return config != null && config.IsBurger(product) && config.IsBurger(selectedProduct);
+        if (config == null) return product == selectedProduct;
+        return selectedProduct == config.cookedPattyIngredient
+            && (config.IsBurger(product) || product == config.rawPattyIngredient
+                || product == config.cookedPattyIngredient);
+    }
+
+    public ItemDefinition GetSelectedOutput()
+    {
+        NormalizeLegacySelection();
+        return selectedProduct;
+    }
+
+    public void SetRecipeOutput(ItemDefinition output)
+    {
+        NormalizeLegacySelection();
+        if (selectedProduct != output)
+        {
+            pattyUnits = 0;
+            cookTimer = 0f;
+            bufferedOrder = null;
+        }
+        selectedProduct = output;
+        GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+        RefreshItemDisplay(force: true);
+    }
+
+    bool IsRawPatty(ItemDefinition item)
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        return config != null ? item == config.rawPattyIngredient : item == selectedProduct;
+    }
+
+    bool IsCookedPatty(ItemDefinition item)
+    {
+        NormalizeLegacySelection();
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        return item != null && (item == selectedProduct
+            || (config != null && (item == config.cookedPattyIngredient
+                || config.IsBurger(item))));
+    }
+
+    void NormalizeLegacySelection()
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config != null && config.IsBurger(selectedProduct)
+            && config.cookedPattyIngredient != null)
+            selectedProduct = config.cookedPattyIngredient;
     }
 
     public bool IsHoldingOrder(CustomerOrder order) =>
@@ -83,7 +146,9 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public void PlacePatty()
     {
-        StoreInput(selectedProduct, 1);
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        StoreInput(config != null ? config.rawPattyIngredient : selectedProduct, 1);
     }
 
     public int PlacePatties(ItemDefinition item, int amount)
@@ -104,7 +169,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public bool TakeCookedPatty()
     {
-        return TakeOutput(selectedProduct, 1) == 1;
+        return TakeOutput(GetSelectedOutput(), 1) == 1;
     }
 
     public int TakeCookedPatties(ItemDefinition item, int amount)
@@ -115,6 +180,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public void RestoreBufferedState(ItemDefinition product, int units, float progressSeconds)
     {
         selectedProduct = product;
+        NormalizeLegacySelection();
         pattyUnits = Mathf.Clamp(units, 0, BufferCapacity);
         cookTimer = pattyUnits > 0
             ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
@@ -125,5 +191,38 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     void Update()
     {
         UpdateCooking(Time.deltaTime);
+        RefreshItemDisplay(force: false);
+    }
+
+    void RefreshItemDisplay(bool force)
+    {
+        bool cooked = IsCooked();
+        if (!force && displayedUnits == pattyUnits && displayedCooked == cooked
+            && displayedProduct == selectedProduct) return;
+
+        if (itemSpawnMarkers.Count == 0)
+            StationItemVisualUtility.FindMarkers(transform, itemSpawnMarkers);
+        if (itemDisplayRoot == null)
+            itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "GrillItemDisplay");
+        StationItemVisualUtility.ClearChildren(itemDisplayRoot);
+
+        displayedUnits = pattyUnits;
+        displayedCooked = cooked;
+        displayedProduct = selectedProduct;
+        if (pattyUnits <= 0) return;
+
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig
+            : null;
+        ItemDefinition visualItem = cooked
+            ? (config != null ? config.cookedPattyIngredient : selectedProduct)
+            : (config != null ? config.rawPattyIngredient : selectedProduct);
+        GameObject prefab = visualItem != null ? visualItem.prefab : null;
+        if (prefab == null) return;
+
+        int visibleCount = Mathf.Min(pattyUnits, itemSpawnMarkers.Count);
+        for (int i = 0; i < visibleCount; i++)
+            StationItemVisualUtility.SpawnAtMarker(prefab, itemSpawnMarkers[i], itemDisplayRoot,
+                (cooked ? "CookedPatty_" : "RawPatty_") + i);
     }
 }

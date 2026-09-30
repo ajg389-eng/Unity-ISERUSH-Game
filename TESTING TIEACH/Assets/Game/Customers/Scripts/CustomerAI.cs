@@ -201,6 +201,7 @@ public class CustomerAI : MonoBehaviour
         if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
         if (orderLabel != null)
         {
+            orderLabel.ClearDisplay();
             orderLabel.EnsureHierarchy();
             if (orderLabel.labelRoot != null) orderLabel.labelRoot.SetActive(false);
         }
@@ -212,6 +213,16 @@ public class CustomerAI : MonoBehaviour
         if (!order.TryRemoveOne(item)) return false;
         RefreshOrderLabel();
         return true;
+    }
+
+    /// <summary>
+    /// Replaces this item's base contribution with the value calculated from its
+    /// individual pickup-station age. This supports mixed-freshness orders.
+    /// </summary>
+    public void ApplyPickupSaleValue(ItemDefinition item, int adjustedValue)
+    {
+        if (item == null) return;
+        salePrice = Mathf.Max(0, salePrice - Mathf.Max(0, item.price) + Mathf.Max(0, adjustedValue));
     }
 
     void RefreshOrderLabel()
@@ -591,8 +602,10 @@ public class CustomerAI : MonoBehaviour
         if (HorizontalDist(transform.position, queuedSlotPos) > 0.85f) return;
 
         if (!HeatLampStation.TryCustomerTakeAvailableItem(
-                this, pickupStation, order, out ItemDefinition item)) return;
+                this, pickupStation, order, out ItemDefinition item,
+                out int adjustedSaleValue)) return;
         if (!order.TryRemoveOne(item)) return;
+        ApplyPickupSaleValue(item, adjustedSaleValue);
 
         RefreshOrderLabel();
         Sfx.Play(SfxId.ItemDelivered);

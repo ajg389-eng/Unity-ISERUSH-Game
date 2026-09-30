@@ -230,6 +230,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     void OnEnable()
     {
+        StationConfigurationCaution.Ensure(gameObject);
         bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, IngredientCapacity);
         bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, IngredientCapacity);
         bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputCapacity);

@@ -131,6 +131,16 @@ public class MissionListUI : MonoBehaviour
         SelectTab(SideTab.Progression);
     }
 
+    public void ToggleTasksTab()
+    {
+        ToggleTopTab(SideTab.Tasks);
+    }
+
+    public void ToggleProgressionTab()
+    {
+        ToggleTopTab(SideTab.Progression);
+    }
+
     public void SetVisible(bool visible)
     {
         EnsureUI();

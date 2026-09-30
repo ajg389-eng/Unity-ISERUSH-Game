@@ -18,6 +18,11 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
     public int InputSlotCapacity => 0;
     public int OutputSlotCapacity => int.MaxValue;
 
+    void OnEnable()
+    {
+        StationConfigurationCaution.Ensure(gameObject);
+    }
+
     public int GetInputCount(ItemDefinition item) => 0;
     public int GetOutputCount(ItemDefinition item)
     {

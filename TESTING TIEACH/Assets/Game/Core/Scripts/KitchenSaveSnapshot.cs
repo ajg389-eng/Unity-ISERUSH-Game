@@ -64,10 +64,12 @@ public class KitchenSaveSnapshot
                     var assembly = go.GetComponent<AssemblyStation>();
                     var freezer = go.GetComponent<FreezerStation>();
                     var pantry = go.GetComponent<PantryStation>();
+                    var cutting = go.GetComponent<CuttingStation>();
                     ItemDefinition product = assembly != null ? assembly.selectedProduct
                         : grill != null ? grill.selectedProduct
                         : freezer != null ? freezer.selectedItem
-                        : pantry != null ? pantry.selectedItem : null;
+                        : pantry != null ? pantry.selectedItem
+                        : cutting != null ? cutting.selectedProduct : null;
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
                         slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
                         processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
@@ -142,6 +144,7 @@ public class KitchenSaveSnapshot
             var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
             var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) pantry.SetStoredItem(product);
+            var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.SetRecipe(pm.orderConfig != null ? pm.orderConfig.GetCuttingRecipe(product) : null);
             if(e.slot>=0) {
                 CounterSurface closest=null; float best=float.PositiveInfinity;
                 foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }

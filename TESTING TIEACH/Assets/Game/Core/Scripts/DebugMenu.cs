@@ -242,6 +242,7 @@ public class DebugMenu : MonoBehaviour
         });
 
         Transform kitchenRowTwo = CreateButtonRow(actionContent, "KitchenRowTwo");
+        CreateButton(kitchenRowTwo, "Reset Stations + Workers", ResetStationsAndWorkers);
         CreateButton(kitchenRowTwo, "Clear All Stations", ClearAllEquipment);
 
         CreateSectionHeader(actionContent, "TIME");
@@ -433,6 +434,82 @@ public class DebugMenu : MonoBehaviour
 
         Toast("Now on " + label);
         RefreshStatus();
+    }
+
+    void ResetStationsAndWorkers()
+    {
+        ResetStationsAndWorkersRuntime(out int stationCount, out int workerCount);
+        Toast($"Reset {stationCount} stations and {workerCount} workers");
+        RefreshStatus();
+    }
+
+    /// <summary>
+    /// Clears transient production, station buffers, and active worker tasks while
+    /// preserving placement, configuration, assignments, upgrades, and inventory.
+    /// Shared by the debug action and save loading so both reset identically.
+    /// </summary>
+    public static void ResetStationsAndWorkersRuntime(out int stationCount, out int workerCount)
+    {
+        var production = ProductionManager.Instance ?? FindFirstObjectByType<ProductionManager>();
+
+        workerCount = 0;
+        foreach (KitchenEmployee worker in FindObjectsByType<KitchenEmployee>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (worker == null) continue;
+            worker.AbortCurrentWork();
+            workerCount++;
+        }
+
+        // Abort workers first so they can release their current reservations,
+        // then discard any remaining queued or orphaned production work.
+        production?.ResetTransientProductionState();
+
+        stationCount = 0;
+        foreach (GrillStation station in FindObjectsByType<GrillStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            station.RestoreBufferedState(station.selectedProduct, 0, 0f);
+            stationCount++;
+        }
+        foreach (FryerStation station in FindObjectsByType<FryerStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            station.ResetRuntimeState();
+            stationCount++;
+        }
+        foreach (AssemblyStation station in FindObjectsByType<AssemblyStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            station.RestoreBufferedState(station.selectedProduct, 0, 0, 0);
+            stationCount++;
+        }
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            station.ResetRuntimeState();
+            stationCount++;
+        }
+        foreach (Register station in FindObjectsByType<Register>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            station.ResetRuntimeState();
+            stationCount++;
+        }
+
+        // Stateless source and processing stations still count toward the
+        // feedback total even though no buffer needs clearing.
+        stationCount += FindObjectsByType<FreezerStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        stationCount += FindObjectsByType<PantryStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        stationCount += FindObjectsByType<CuttingStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+        stationCount += FindObjectsByType<DrinkStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
+
+        production?.RequestImmediateProduction();
+        FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Include)?.Refresh();
     }
 
     static Transform CreateScrollContent(Transform parent)

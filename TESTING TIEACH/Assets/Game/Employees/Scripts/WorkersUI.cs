@@ -319,7 +319,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV4") == null)
+        if (existing != null && existing.Find("LayoutV5") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -362,7 +362,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV4", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV5", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -385,7 +385,10 @@ public class WorkersUI : MonoBehaviour
         BuildFlowHeader();
 
         flowListRow = MakeRow(flowPanel, "FlowListRow", 28);
-        stepRow = MakeRow(flowPanel, "StepRow", 28);
+        // The route already appears in-world when the flow is selected. Repeating
+        // every station connection here consumes most of the card without adding
+        // another decision, so keep the panel focused on staffing and economics.
+        stepRow = null;
         workerRow = MakeRow(flowPanel, "WorkerRow", 28);
         BuildEconomicsPanel(flowPanel);
 
@@ -765,6 +768,8 @@ public class WorkersUI : MonoBehaviour
                 if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
                     return;
                 production.SelectProductionFlow(index);
+                if (ManagementModeController.Instance != null)
+                    ManagementModeController.Instance.SelectFlow(flow);
                 var cameraController = FindObjectOfType<PlayerCameraController>();
                 if (cameraController != null)
                     cameraController.PanTo(flow);
@@ -924,7 +929,12 @@ public class WorkersUI : MonoBehaviour
             var economics = WorkflowAnalysis.AnalyzeFlow(flow);
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(economics.summary))
-                sb.Append(economics.summary);
+            {
+                int detailStart = economics.summary.IndexOf('\n');
+                sb.Append(detailStart >= 0
+                    ? economics.summary.Substring(0, detailStart)
+                    : economics.summary);
+            }
             for (int i = 0; i < economics.lines.Count; i++)
             {
                 if (sb.Length > 0) sb.Append('\n');

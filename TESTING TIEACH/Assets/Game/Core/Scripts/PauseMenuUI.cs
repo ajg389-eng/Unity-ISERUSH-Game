@@ -716,8 +716,8 @@ public class PauseMenuUI : MonoBehaviour
         CreateKeybindRow(content.transform, "Zoom camera", "Mouse Wheel");
 
         CreateKeybindSection(content.transform, "Menus");
-        CreateKeybindRow(content.transform, "Open / close restaurant panel", "Q");
-        CreateKeybindRow(content.transform, "Build / Staff / Business", "1 / 2 / 3");
+        CreateKeybindRow(content.transform, "Build / Business / Tasks / Progression", "1 / 2 / 3 / 4");
+        CreateKeybindRow(content.transform, "Previous / next submenu", "Q / E");
         CreateKeybindRow(content.transform, "Progression", "J");
         CreateKeybindRow(content.transform, "Pause / back / cancel", "Esc");
 

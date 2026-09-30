@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using TMPro;
 using UnityEngine.UI;
 
@@ -26,10 +27,16 @@ public class CustomerOrderLabel : MonoBehaviour
     public GameObject labelRoot;
     public TextMeshProUGUI labelText;
 
+    [Header("3D order preview")]
+    [Min(0f)] public float modelSpacing = 0.42f;
+    [Min(0f)] public float modelClearance = 0.32f;
+
     Canvas canvas;
     [System.NonSerialized] RectTransform iconsRow;
     [System.NonSerialized] Image panelImage;
     [System.NonSerialized] List<Image> iconSlots = new List<Image>();
+    Transform modelRoot;
+    readonly List<GameObject> orderModels = new List<GameObject>();
 
     static readonly Dictionary<string, Sprite> iconCache = new Dictionary<string, Sprite>();
     static Sprite panelSprite;
@@ -121,13 +128,13 @@ public class CustomerOrderLabel : MonoBehaviour
 
         if (isComplete)
         {
-            SetText("Done!");
+            ClearDisplay();
             return;
         }
 
         if (order == null || order.lines == null)
         {
-            SetText("No order");
+            ClearDisplay();
             return;
         }
 
@@ -143,11 +150,116 @@ public class CustomerOrderLabel : MonoBehaviour
 
         if (items.Count == 0)
         {
-            SetText("No order");
+            ClearDisplay();
             return;
         }
 
-        ShowIcons(items);
+        ShowModels(items);
+    }
+
+    public void ClearDisplay()
+    {
+        HideIcons();
+        if (labelRoot != null) labelRoot.SetActive(false);
+        ClearModels();
+    }
+
+    void ShowModels(List<ItemDefinition> items)
+    {
+        EnsureModelRoot();
+        ClearModels();
+        if (modelRoot == null) return;
+
+        if (labelRoot != null) labelRoot.SetActive(false);
+        int count = items.Count;
+        for (int i = 0; i < count; i++)
+        {
+            ItemDefinition item = items[i];
+            GameObject prefab = item != null ? item.prefab : null;
+            if (prefab == null) continue;
+
+            var slot = new GameObject("OrderItem_" + (i + 1));
+            slot.transform.SetParent(modelRoot, false);
+            slot.transform.localPosition = new Vector3(
+                (i - (count - 1) * 0.5f) * modelSpacing, 0f, 0f);
+
+            GameObject model = Instantiate(prefab, slot.transform);
+            model.name = prefab.name + "_OrderPreview";
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = prefab.transform.localRotation;
+            SetNativeWorldScale(model.transform, prefab.transform.localScale);
+            PreparePreviewModel(model);
+            CenterModel(model, slot.transform);
+            orderModels.Add(slot);
+        }
+
+        modelRoot.gameObject.SetActive(orderModels.Count > 0);
+    }
+
+    void EnsureModelRoot()
+    {
+        if (modelRoot != null) return;
+        Transform existing = transform.Find("OrderModelPreview");
+        if (existing != null)
+        {
+            modelRoot = existing;
+            return;
+        }
+
+        var root = new GameObject("OrderModelPreview");
+        root.transform.SetParent(transform, false);
+        modelRoot = root.transform;
+        modelRoot.gameObject.SetActive(false);
+    }
+
+    void ClearModels()
+    {
+        if (modelRoot == null) return;
+        for (int i = modelRoot.childCount - 1; i >= 0; i--)
+        {
+            GameObject child = modelRoot.GetChild(i).gameObject;
+            child.SetActive(false);
+            Destroy(child);
+        }
+        orderModels.Clear();
+        modelRoot.gameObject.SetActive(false);
+    }
+
+    static void PreparePreviewModel(GameObject model)
+    {
+        foreach (Collider collider in model.GetComponentsInChildren<Collider>(true))
+            collider.enabled = false;
+        foreach (Rigidbody body in model.GetComponentsInChildren<Rigidbody>(true))
+        {
+            body.isKinematic = true;
+            body.detectCollisions = false;
+        }
+        foreach (Canvas childCanvas in model.GetComponentsInChildren<Canvas>(true))
+            childCanvas.enabled = false;
+        foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+    }
+
+    static void SetNativeWorldScale(Transform target, Vector3 sourceScale)
+    {
+        Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
+        target.localScale = new Vector3(
+            sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
+    static void CenterModel(GameObject model, Transform slot)
+    {
+        Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+        model.transform.position += slot.position - bounds.center;
     }
 
     public void SetText(string orderText)
@@ -500,11 +612,8 @@ public class CustomerOrderLabel : MonoBehaviour
     {
         if (canvas == null && labelRoot != null)
             canvas = labelRoot.GetComponent<Canvas>();
-        if (canvas == null || Camera.main == null)
+        if (Camera.main == null)
             return;
-
-        Transform canvasTf = canvas.transform;
-        canvasTf.forward = Camera.main.transform.forward;
 
         float ringRadius = 0.4f;
         var patience = GetComponent<CustomerPatienceMeter>();
@@ -515,11 +624,25 @@ public class CustomerOrderLabel : MonoBehaviour
         if (meter != null && meter.gameObject.activeInHierarchy)
             meterPos = meter.position;
 
-        var canvasRt = canvasTf as RectTransform;
+        var canvasRt = canvas != null ? canvas.transform as RectTransform : null;
         float iconHalf = 0.2f;
         if (canvasRt != null)
             iconHalf = canvasRt.sizeDelta.y * 0.5f * Mathf.Abs(canvasRt.lossyScale.y);
 
-        canvasTf.position = meterPos + Camera.main.transform.up * (ringRadius + iconHalf + MeterClearance);
+        if (canvas != null)
+        {
+            Transform canvasTf = canvas.transform;
+            canvasTf.forward = Camera.main.transform.forward;
+            canvasTf.position = meterPos + Camera.main.transform.up
+                * (ringRadius + iconHalf + MeterClearance);
+        }
+
+        if (modelRoot != null && modelRoot.gameObject.activeSelf)
+        {
+            modelRoot.position = meterPos + Vector3.up * (ringRadius + modelClearance);
+            Vector3 cameraForward = Vector3.ProjectOnPlane(Camera.main.transform.forward, Vector3.up);
+            if (cameraForward.sqrMagnitude > 0.001f)
+                modelRoot.rotation = Quaternion.LookRotation(cameraForward.normalized, Vector3.up);
+        }
     }
 }

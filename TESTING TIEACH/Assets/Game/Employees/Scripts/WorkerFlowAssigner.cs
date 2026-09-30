@@ -341,6 +341,9 @@ public static class WorkerFlowAssigner
     static void ConfigureProducts(KitchenFlowKind kind, List<GameObject> nodes)
     {
         // Wire burger product onto grill/assembly whenever those stations are on the route.
+        var grillOutput = ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null
+            ? ProductionManager.Instance.orderConfig.cookedPattyIngredient
+            : null;
         var burgerItem = ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null
             ? ProductionManager.Instance.orderConfig.burgerBase
             : null;
@@ -350,7 +353,8 @@ public static class WorkerFlowAssigner
         {
             if (go == null) continue;
             var grill = go.GetComponent<GrillStation>();
-            if (grill != null && grill.selectedProduct == null) grill.selectedProduct = burgerItem;
+            if (grill != null && !grill.HasProductSelected && grillOutput != null)
+                grill.SetRecipeOutput(grillOutput);
             var assembly = go.GetComponent<AssemblyStation>();
             if (assembly != null && !assembly.HasProductSelected)
                 assembly.SetRecipe(ProductionManager.Instance.orderConfig.GetAssemblyRecipe(burgerItem));
@@ -1023,6 +1027,7 @@ public static class WorkflowAnalysis
             && FlowHas(flow, "Grill", typeof(GrillStation))
             && FlowHas(flow, "Assembly", typeof(AssemblyStation));
         bool canFries = FlowHas(flow, "Pantry", typeof(PantryStation))
+            && FlowHas(flow, "Cutting", typeof(CuttingStation))
             && FlowHas(flow, "Fryer", typeof(FryerStation));
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         var inventory = Object.FindFirstObjectByType<KitchenInventory>();
@@ -1051,6 +1056,12 @@ public static class WorkflowAnalysis
         if (canBurger && config != null && config.cheeseburgerItem != null
             && assemblyCount >= config.GetAssemblyChain(config.cheeseburgerItem).Count)
             products.Add(config.cheeseburgerItem);
+        if (canBurger && config != null && config.clBurgerItem != null
+            && assemblyCount >= config.GetAssemblyChain(config.clBurgerItem).Count)
+            products.Add(config.clBurgerItem);
+        if (canBurger && config != null && config.cltBurgerItem != null
+            && assemblyCount >= config.GetAssemblyChain(config.cltBurgerItem).Count)
+            products.Add(config.cltBurgerItem);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
         if (hasDrink && config != null && config.drinkItem != null)

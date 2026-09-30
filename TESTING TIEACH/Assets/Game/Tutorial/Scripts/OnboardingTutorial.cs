@@ -159,7 +159,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Fryer",
             "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "The fries flow is Pantry > Fryer > Pickup Station, starting with potatoes from the pantry.\n\nPlace one to continue.",
+            "The fries flow is Pantry > Cutting Station > Fryer > Pickup Station. Potatoes must be sliced before frying.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
@@ -214,7 +214,7 @@ public class OnboardingTutorial : MonoBehaviour
             "One customer loop",
             "Here is the basic service loop:\n\n" +
             "1. Customer arrives and orders at the register.\n" +
-            "2. Workers follow the flow you built — freezer → grill → assembly for burgers, fryer for fries, drinks for drinks.\n" +
+            "2. Workers follow the flow you built: freezer > grill > assembly for burgers, pantry > cutting > fryer for fries, and the drink station for drinks.\n" +
             "3. Finished items wait at the Pickup Station.\n" +
             "4. Food is handed off and the customer leaves.",
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),

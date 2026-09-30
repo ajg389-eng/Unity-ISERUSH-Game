@@ -74,11 +74,11 @@ public static class GuidebookPages
             "<b>Freezer</b> — raw burger patties pulled from kitchen stock.\n" +
             "<b>Grill</b> — cooks those patties.\n" +
             "<b>Cutting Station</b> — supports future recipes that need prepared ingredients.\n" +
-            "<b>Fryer</b> — cooks potatoes collected from the pantry into fries.\n" +
+            "<b>Fryer</b> cooks potato slices from a Cutting Station into fries.\n" +
             "<b>Assembly</b> — combines two recipe inputs into one finished item. The Burger recipe uses a cooked patty and bun.\n" +
             "<b>Pickup Station</b> — holds any finished product until pickup, including food, drinks, and future menu items. Products can expire if they sit too long.\n" +
             "<b>Pantry</b> — supplies burger ingredients and raw potatoes for fries.\n\n" +
-            "Burger patties run freezer → grill → assembly → Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry → fryer → Pickup Station."),
+            "Burger patties run freezer > grill > assembly > Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry > cutting > fryer > Pickup Station."),
         new Page(
             "Management",
             "Management",

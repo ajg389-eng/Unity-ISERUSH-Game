@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CustomerOrderConfig
   burgerBase: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
   cheeseburgerItem: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
+  clBurgerItem: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
+  cltBurgerItem: {fileID: 11400000, guid: c1110000000000000000000000000004, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
   friesIngredient: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
+  slicedPotatoIngredient: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
   rawPattyIngredient: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
   cookedPattyIngredient: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   assemblyRecipes:
@@ -43,10 +46,41 @@ MonoBehaviour:
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
+  - recipeName: CL Burger
+    output: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
+    processedInput: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
+    processedInputName: C Burger
+    processedInputAmount: 1
+    pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
+  - recipeName: CLT Burger
+    output: {fileID: 11400000, guid: c1110000000000000000000000000004, type: 2}
+    processedInput: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
+    processedInputName: CL Burger
+    processedInputAmount: 1
+    pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
   lettuceIngredient: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
   cheeseIngredient: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
   slicedCheeseIngredient: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
+  slicedLettuceIngredient: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
   tomatoIngredient: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
+  slicedTomatoIngredient: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
+  cuttingRecipes:
+  - recipeName: Sliced Cheese
+    input: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
+    output: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
+  - recipeName: Lettuce Slice
+    input: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
+    output: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
+  - recipeName: Tomato Slice
+    input: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
+    output: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
+  - recipeName: Potato Slices
+    input: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
+    output: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
   drinkItem: {fileID: 0}
   burgerChance: 0.7
   friesChance: 0.7
