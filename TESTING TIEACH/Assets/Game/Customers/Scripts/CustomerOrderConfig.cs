@@ -182,6 +182,30 @@ public class CustomerOrderConfig : ScriptableObject
         if (burgerBase != null) yield return burgerBase;
     }
 
+    /// <summary>Raw ingredients a Freezer may be configured to dispense.</summary>
+    public IEnumerable<ItemDefinition> GetFreezerIngredients()
+    {
+        if (rawPattyIngredient != null) yield return rawPattyIngredient;
+    }
+
+    /// <summary>Raw ingredients a Pantry may be configured to dispense.</summary>
+    public IEnumerable<ItemDefinition> GetPantryIngredients()
+    {
+        var yielded = new HashSet<ItemDefinition>();
+        if (assemblyRecipes != null)
+        {
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                ItemDefinition source = GetAssemblySupplySource(recipe);
+                if (source != null && yielded.Add(source)) yield return source;
+            }
+        }
+        if (friesIngredient != null && yielded.Add(friesIngredient)) yield return friesIngredient;
+        if (cheeseIngredient != null && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
+        if (lettuceIngredient != null && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
+        if (tomatoIngredient != null && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
+    }
+
     /// <summary>Products the assembly station can be set to make (burgers only).</summary>
     public IEnumerable<ItemDefinition> GetAssemblyProducts()
     {
@@ -325,19 +349,12 @@ public class CustomerOrderConfig : ScriptableObject
 
     public IEnumerable<ItemDefinition> GetIngredientItems()
     {
-        if (burgerBase != null) yield return burgerBase;
-        if (assemblyRecipes != null)
-        {
-            var yieldedRecipeInputs = new HashSet<ItemDefinition>();
-            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            {
-                ItemDefinition source = GetAssemblySupplySource(recipe);
-                if (source != null && yieldedRecipeInputs.Add(source))
-                    yield return source;
-            }
-        }
-        if (friesIngredient != null) yield return friesIngredient;
-        else if (friesItem != null) yield return friesItem;
-        if (drinkItem != null) yield return drinkItem;
+        var yielded = new HashSet<ItemDefinition>();
+        ItemDefinition frozen = rawPattyIngredient != null ? rawPattyIngredient : burgerBase;
+        if (frozen != null && yielded.Add(frozen)) yield return frozen;
+        foreach (ItemDefinition pantryItem in GetPantryIngredients())
+            if (pantryItem != null && yielded.Add(pantryItem)) yield return pantryItem;
+        if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
+        if (drinkItem != null && yielded.Add(drinkItem)) yield return drinkItem;
     }
 }

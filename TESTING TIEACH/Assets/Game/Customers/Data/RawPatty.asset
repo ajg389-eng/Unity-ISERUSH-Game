@@ -15,6 +15,6 @@ MonoBehaviour:
   itemName: Raw Patty
   prefab: {fileID: 6808599801469802662, guid: 9a410000000000000000000000000005, type: 3}
   price: 0
-  startingQuantity: 0
-  orderPackSize: 0
-  orderPackPrice: 0
+  startingQuantity: 12
+  orderPackSize: 10
+  orderPackPrice: 20

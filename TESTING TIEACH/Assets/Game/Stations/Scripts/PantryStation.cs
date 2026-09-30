@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -13,8 +12,9 @@ public class PantryStation : MonoBehaviour
         RestaurantDetails.StockPantry(transform);
     }
 
-    [Tooltip("Ingredients this pantry can dispense (must also have stock in KitchenInventory)")]
-    public List<ItemDefinition> stockedItems = new List<ItemDefinition>();
+    [Header("Stored ingredient")]
+    [Tooltip("The only ingredient this pantry can dispense. Choose it in Management mode.")]
+    public ItemDefinition selectedItem;
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one pantry operation.")]
     [Min(0f)] public float processTimeSeconds = 0.5f;
@@ -52,14 +52,13 @@ public class PantryStation : MonoBehaviour
         return inv.TryConsume(item, amount);
     }
 
-    /// <summary>
-    /// Empty stockedItems = dispense any kitchen stock item (fries, drink, etc.).
-    /// Otherwise only listed items.
-    /// </summary>
-    bool CanDispense(ItemDefinition item)
+    public bool HasItemSelected => selectedItem != null;
+
+    public void SetStoredItem(ItemDefinition item)
     {
-        if (stockedItems == null || stockedItems.Count == 0)
-            return true;
-        return stockedItems.Contains(item);
+        selectedItem = item;
+        GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
     }
+
+    public bool CanDispense(ItemDefinition item) => item != null && item == selectedItem;
 }

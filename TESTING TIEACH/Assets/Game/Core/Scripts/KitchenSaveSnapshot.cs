@@ -62,7 +62,12 @@ public class KitchenSaveSnapshot
                     objects.Add(go);
                     var grill = go.GetComponent<GrillStation>();
                     var assembly = go.GetComponent<AssemblyStation>();
-                    ItemDefinition product = assembly != null ? assembly.selectedProduct : grill != null ? grill.selectedProduct : null;
+                    var freezer = go.GetComponent<FreezerStation>();
+                    var pantry = go.GetComponent<PantryStation>();
+                    ItemDefinition product = assembly != null ? assembly.selectedProduct
+                        : grill != null ? grill.selectedProduct
+                        : freezer != null ? freezer.selectedItem
+                        : pantry != null ? pantry.selectedItem : null;
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
                         slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
                         processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
@@ -135,6 +140,8 @@ public class KitchenSaveSnapshot
             ItemDefinition product = !string.IsNullOrEmpty(e.product) && definitions.TryGetValue(e.product,out var savedProduct) ? savedProduct : null;
             var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
             var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
+            var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
+            var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) pantry.SetStoredItem(product);
             if(e.slot>=0) {
                 CounterSurface closest=null; float best=float.PositiveInfinity;
                 foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }

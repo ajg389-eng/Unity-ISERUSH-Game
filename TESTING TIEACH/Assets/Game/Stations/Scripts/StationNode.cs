@@ -92,17 +92,25 @@ public class StationNode : MonoBehaviour
         else if (cutting != null)
             SetIo(RateForCycle(cutting.processTimeSeconds, batchSize), RateForCycle(cutting.processTimeSeconds, batchSize), "raw cheese", "sliced cheese");
         else if (freezer != null)
-            SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-", "patties");
+            SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-",
+                ItemLabel(freezer.selectedItem, "select ingredient"));
         else if (fryer != null)
             SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potatoes", "fries");
         else if (drink != null)
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
         else if (pantry != null)
-            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "stock", "potatoes / ingredients");
+            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "-",
+                ItemLabel(pantry.selectedItem, "select ingredient"));
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
         else
             SetIo(0f, 10f, "-", "items");
+    }
+
+    static string ItemLabel(ItemDefinition item, string fallback)
+    {
+        if (item == null) return fallback;
+        return !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
     }
 
     int GetActiveBatchSize()
@@ -401,10 +409,14 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         FreezerStation freezer = GetComponent<FreezerStation>();
         if (freezer != null)
         {
-            ProductionManager manager = ProductionManager.Instance;
-            if (manager != null && manager.PattyItem != null && !freezer.HasPatty(manager.PattyItem))
+            if (!freezer.HasItemSelected || freezer.GetOutputCount(freezer.selectedItem) <= 0)
                 return StationRuntimeState.Starved;
         }
+
+
+        PantryStation pantry = GetComponent<PantryStation>();
+        if (pantry != null && (!pantry.HasItemSelected || !pantry.HasItem(pantry.selectedItem)))
+            return StationRuntimeState.Starved;
 
         return StationRuntimeState.Idle;
     }

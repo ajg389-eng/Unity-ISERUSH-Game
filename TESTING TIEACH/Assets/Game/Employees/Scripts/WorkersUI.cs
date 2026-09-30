@@ -61,6 +61,9 @@ public class WorkersUI : MonoBehaviour
     {
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
+        // Leaving the Workers/Flows UI is an explicit flow deselection. Ordinary
+        // world clicks are handled separately and keep the selected route pinned.
+        WorkerAssignmentLinkVisuals.ClearFocusedFlow();
     }
 
     void EnsureRefs()

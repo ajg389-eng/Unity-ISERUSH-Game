@@ -148,8 +148,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
             "Freezer",
-            "Buy and place a <b>freezer</b>. It holds raw burger patties. A cook walks here first when a burger is ordered, then carries a patty to the grill.\n\n" +
-            "If the freezer is missing or empty, burgers never start.\n\nPlace one to continue.",
+            "Buy and place a <b>freezer</b>. Each freezer stores one ingredient. Select it in Management and choose <b>Raw Patty</b>. A cook carries those patties to the grill.\n\n" +
+            "If the freezer is unconfigured or empty, burgers never start.\n\nPlace one to continue.",
             "Next", Highlight.Freezer, openInventory: true, requirePlaced: true),
         new Step(
             "Grill",
@@ -163,8 +163,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
-            "Buy and place a <b>pantry</b>. It supplies buns for burgers and potatoes for fries.\n\n" +
-            "For a burger, the worker carries the cooked patty here, adds a bun, then continues to assembly.\n\nPlace one to continue.",
+            "Buy and place a <b>pantry</b>. Each pantry stores exactly one ingredient. Select it in Management and choose <b>Bun</b> for this burger line.\n\n" +
+            "Later, use separate pantries for potatoes, raw cheese, lettuce, or tomatoes.\n\nPlace one to continue.",
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly",
@@ -178,13 +178,13 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly recipe",
-            "Select the assembly station in Management to choose its recipe. Burger is the first recipe available, and more recipes can be added later.\n\n" +
-            "The station panel shows both required inputs and the single finished output.",
+            "Select stations in Management to configure them. Set the <b>Freezer to Raw Patty</b>, the <b>Pantry to Bun</b>, and the Assembly recipe to <b>Burger</b>.\n\n" +
+            "Each source station can supply only the ingredient shown on its card.",
             "Next", Highlight.Management),
         new Step(
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press Q then 3), then <b>Menu & Supply</b>.\n\n" +
-            "Buy Burger patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
+            "Buy Raw Patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
@@ -238,8 +238,8 @@ public class OnboardingTutorial : MonoBehaviour
         "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
         "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
 
-        "Let's start the burger process. Buy and place a <b>freezer</b>. It stores raw patties, so this is the first stop for every burger.\n\n" +
-        "If it is missing or empty, burger production cannot begin.",
+        "Let's start the burger process. Buy and place a <b>freezer</b>. Each freezer stores one ingredient, so select it in Management and choose <b>Raw Patty</b>.\n\n" +
+        "If it is unconfigured or empty, burger production cannot begin.",
 
         "Next, buy and place a <b>grill</b>. Workers carry raw patties here from the freezer to cook them.\n\n" +
         "Distance matters because every extra tile adds travel time. Put it somewhere sensible and we will connect its output later.",
@@ -247,8 +247,8 @@ public class OnboardingTutorial : MonoBehaviour
         "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
         "Its output should eventually lead to a Pickup Station so customers can collect the finished fries.",
 
-        "Place a <b>pantry</b> so the burger line can collect buns. The same pantry supplies potatoes to a fries line.\n\n" +
-        "Route burgers from the grill to the pantry, then assembly.",
+        "Place a <b>pantry</b> for the burger line. Each pantry stores one ingredient, so select it in Management and choose <b>Bun</b>.\n\n" +
+        "A fries line needs a separate pantry configured for potatoes.",
 
         "Place an <b>assembly</b> table. Workers combine one cooked patty with one bun here to finish a burger.\n\n" +
         "The burger route should move from grill to pantry to assembly, then from assembly to a Pickup Station.",
@@ -256,11 +256,11 @@ public class OnboardingTutorial : MonoBehaviour
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
 
-        "Buy and place a <b>pantry</b>. It supplies toppings and other ingredients workers need at assembly.\n\n" +
-        "Try placing it nearby. I do not want workers crossing the entire kitchen every time they need one ingredient.",
+        "Select the source stations in Management. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Burger recipe at Assembly.\n\n" +
+        "One source stores one ingredient, so later recipes may need extra pantries.",
 
         "The equipment is useless without material to process. Open <b>Business</b>, or press <b>Q</b> then <b>3</b>, and choose <b>Menu & Supply</b>.\n\n" +
-        "Order at least one pack of <b>Burger patties</b>, <b>Buns</b>, and <b>Potatoes</b>. A delivery person will bring the combined order through the front door.",
+        "Order at least one pack of <b>Raw Patties</b>, <b>Buns</b>, and <b>Potatoes</b>. A delivery person will bring the combined order through the front door.",
 
         "Now we need someone to run the process. Open <b>Staff</b>, or press <b>Q</b> then <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
