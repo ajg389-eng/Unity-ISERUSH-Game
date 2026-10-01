@@ -37,8 +37,6 @@ public class ProductionJob
     public ProductionTaskPhase taskPhase;
     [System.NonSerialized] public GameObject taskSourceStation;
     public KitchenEmployee assignedTo;
-    [System.NonSerialized] public KitchenEmployee lastTaskWorker;
-    [System.NonSerialized] public float lastTaskReleasedAt;
     public bool hasPatty;
     /// <summary>Batch size carried between stations (upgraded workers hold more).</summary>
     public int heldUnits;
@@ -168,7 +166,6 @@ public class ProductionManager : MonoBehaviour
     [HideInInspector] public List<string> hireFlowSteps = new List<string>();
 
     readonly List<ProductionJob> pendingJobs = new List<ProductionJob>();
-    readonly List<ProductionJob> assignmentCandidates = new List<ProductionJob>();
     readonly Dictionary<GameObject, ProductionJob> stationWorkReservations =
         new Dictionary<GameObject, ProductionJob>();
     readonly HashSet<ProductionJob> jobsWithReservations = new HashSet<ProductionJob>();
@@ -189,7 +186,6 @@ public class ProductionManager : MonoBehaviour
     }
     readonly List<TimedFlowOutput> completedFlowHistory = new List<TimedFlowOutput>();
     const float ThroughputWindowSeconds = 60f;
-    const float SameWorkerTaskHandoffDelay = 0.2f;
     MoneyManager moneyManager;
     [Header("Production scheduling")]
     [Tooltip("How often the manager rescans stations and plans new work. Active workers still update every frame.")]
@@ -716,7 +712,7 @@ public class ProductionManager : MonoBehaviour
             ? job.assemblyStageProducts[assemblyIndex] : null;
     }
 
-    ItemDefinition GetBranchTransferItem(ProductionJob job)
+    public ItemDefinition GetBranchTransferItem(ProductionJob job)
     {
         if (job == null) return null;
         if (job.isAssemblySupply && job.assemblySupplyTarget != null)
@@ -985,6 +981,13 @@ public class ProductionManager : MonoBehaviour
             KitchenEmployee owner = job.assignedTo;
             if (owner != null && !owner.IsWorkingOn(job))
                 job.assignedTo = null;
+
+            // Reservations are meaningful only while a worker owns the task.
+            // A task released by a recovery path must not leave a station or
+            // destination permanently unavailable to the rest of the flow.
+            if (job.assignedTo == null && (job.reservedWorkStation != null
+                || job.reservedSourceStation != null || job.reservedDestinationStation != null))
+                ReleaseReservations(job);
 
             // Only remove jobs that no worker is structurally capable of continuing.
             // Missing ingredients and full downstream buffers are temporary
@@ -1508,79 +1511,65 @@ public class ProductionManager : MonoBehaviour
     void AssignJobsToEmployees()
     {
         foreach (var e in employees)
-            // Let each worker inspect real station buffers before taking a new
-            // ingredient-fetch task. Manager-driven assignment handles only
-            // finished-output collection and immediately processable work.
-            TryAssignJobTo(e, 2, true);
+        {
+            if (e == null) continue;
+            e.QueueRecoverableFlowTasks();
+            TryAssignHighestPriorityTask(e);
+        }
     }
 
-    /// <summary>Assign the next suitable pending job to an idle cook, if any.</summary>
+    /// <summary>
+    /// Gives the worker the first runnable step queued for their assigned flow.
+    /// Blocked steps are skipped and retried on the next planning pass. This is
+    /// deliberately FIFO: workers follow flow work instead of scoring, jumping,
+    /// or inventing priorities that can strand an intermediate item.
+    /// </summary>
+    public bool TryAssignHighestPriorityTask(KitchenEmployee employee)
+    {
+        if (employee == null || employee.HasJob || !employee.CanTakeJobs) return false;
+        if (employee.IsWaitingToReevaluateTasks || employee.ShouldDeliverInsteadOfCook()) return false;
+
+        ProductionFlowPlan flow = GetFlowForWorker(employee);
+        if (flow?.stations == null || flow.stations.Count == 0) return false;
+
+        if (TryAssignFirstRunnableFlowStep(employee, flow))
+            return true;
+
+        // If this flow has no queued work, create one compatible production
+        // cycle and immediately try it. Nothing else is inferred or reordered.
+        if (TryQueueCompatibleStockJob(employee, true) != null)
+            return TryAssignFirstRunnableFlowStep(employee, flow);
+
+        return false;
+    }
+
+    bool TryAssignFirstRunnableFlowStep(KitchenEmployee employee, ProductionFlowPlan flow)
+    {
+        foreach (ProductionJob job in pendingJobs)
+        {
+            if (job == null || job.assignedTo != null) continue;
+            GameObject station = employee.FindStationForJob(job, true, true);
+            if (station == null || !flow.stations.Contains(station)) continue;
+            if (!TryReserveCurrentStation(job, employee, true)) continue;
+
+            if (job.assignedTo != null)
+            {
+                ReleaseReservations(job);
+                continue;
+            }
+
+            job.assignedTo = employee;
+            employee.AssignJob(job);
+            return employee.ActiveJob == job;
+        }
+        return false;
+    }
+
+    /// <summary>Compatibility wrapper for older callers.</summary>
     public bool TryAssignJobTo(KitchenEmployee employee, int minimumPriority = 1,
         bool searchEntireFlow = false)
     {
-        if (employee == null || employee.HasJob || !employee.CanTakeJobs) return false;
-        if (employee.IsWaitingToReevaluateTasks) return false;
-        if (employee.ShouldDeliverInsteadOfCook()) return false;
-
-        ProductionJob bestJob = null;
-        assignmentCandidates.Clear();
-        foreach (var job in pendingJobs)
-        {
-            if (job == null || job.assignedTo != null) continue;
-            if (job.lastTaskWorker == employee
-                && Time.time - job.lastTaskReleasedAt < SameWorkerTaskHandoffDelay)
-                continue;
-            if (GetTaskPriority(job) < minimumPriority) continue;
-            if (!employee.CanTakeJobStep(job, searchEntireFlow)) continue;
-            assignmentCandidates.Add(job);
-        }
-
-        // Explicit pull priority: move finished output first, process buffered
-        // ingredients second, and only then release more raw ingredients.
-        assignmentCandidates.Sort((a, b) =>
-        {
-            int priority = GetTaskPriority(b).CompareTo(GetTaskPriority(a));
-            return priority != 0 ? priority : b.currentStepIndex.CompareTo(a.currentStepIndex);
-        });
-        foreach (ProductionJob candidate in assignmentCandidates)
-        {
-            if (!TryReserveCurrentStation(candidate, employee, searchEntireFlow)) continue;
-            bestJob = candidate;
-            break;
-        }
-
-        if (bestJob == null && minimumPriority <= 1)
-            bestJob = TryQueueCompatibleStockJob(employee, searchEntireFlow);
-        if (bestJob == null) return false;
-        if (bestJob.reservedWorkStation == null
-            && !TryReserveCurrentStation(bestJob, employee, searchEntireFlow))
-            return false;
-        bestJob.assignedTo = employee;
-        employee.AssignJob(bestJob);
-        return true;
-    }
-
-    static int GetTaskPriority(ProductionJob job)
-    {
-        if (job == null) return 0;
-        if (job.taskPhase == ProductionTaskPhase.CollectOutput) return 3;
-
-        StationType? station = job.CurrentStationType;
-        if (!station.HasValue) return 0;
-        switch (station.Value)
-        {
-            case StationType.Grill:
-            case StationType.Assembly:
-            case StationType.Fryer:
-            case StationType.Drink:
-            case StationType.Cutting:
-                return 2;
-            case StationType.Freezer:
-            case StationType.Pantry:
-                return 1;
-            default:
-                return 0;
-        }
+        return TryAssignHighestPriorityTask(employee);
     }
 
     ProductionJob TryQueueCompatibleStockJob(KitchenEmployee employee,
@@ -1620,15 +1609,6 @@ public class ProductionManager : MonoBehaviour
         job.assignedTo = null;
     }
 
-    public void ReleaseTaskForHandoff(ProductionJob job, KitchenEmployee worker)
-    {
-        if (job == null) return;
-        ReleaseReservations(job);
-        job.assignedTo = null;
-        job.lastTaskWorker = worker;
-        job.lastTaskReleasedAt = Time.time;
-    }
-
     public bool HasPendingCollectionTask(GameObject source, ItemDefinition item)
     {
         if (source == null || item == null) return false;
@@ -1636,6 +1616,22 @@ public class ProductionManager : MonoBehaviour
             if (job != null && job.taskPhase == ProductionTaskPhase.CollectOutput
                 && job.taskSourceStation == source && job.CurrentWorkProduct == item)
                 return true;
+        return false;
+    }
+
+    public bool HasPendingAssemblyWorkTask(GameObject station, ItemDefinition item)
+    {
+        if (station == null || item == null) return false;
+        foreach (ProductionJob job in pendingJobs)
+        {
+            if (job == null || job.taskPhase != ProductionTaskPhase.Work
+                || job.CurrentStationType != StationType.Assembly
+                || job.CurrentWorkProduct != item)
+                continue;
+            if (job.taskSourceStation == null || job.taskSourceStation == station
+                || job.reservedWorkStation == station)
+                return true;
+        }
         return false;
     }
 
@@ -1697,6 +1693,23 @@ public class ProductionManager : MonoBehaviour
                 desiredBatch = Mathf.Min(desiredBatch, AssemblyStation.IngredientCapacity);
             if (destination == null || !IsStationInWorkerFlow(employee, destination) || freezerOutput == null
                 || !TryReserveDestination(job, destination, freezerOutput, desiredBatch))
+            {
+                ReleaseWorkReservation(job);
+                return false;
+            }
+        }
+        else if (job.CurrentStationType.Value == StationType.Pantry)
+        {
+            // Pantry output is picked up immediately. Claim its actual downstream
+            // buffer first so a worker never ends up idling with an undeliverable bun.
+            GameObject destination = GetFlowOutput(employee, station, job);
+            ItemDefinition pantryOutput = GetBranchTransferItem(job);
+            int desiredBatch = Mathf.Clamp(
+                job.requestedSupplyUnits > 0 ? job.requestedSupplyUnits : employee.CarryCapacity,
+                1, employee.CarryCapacity);
+            if (destination == null || !IsStationInWorkerFlow(employee, destination)
+                || pantryOutput == null
+                || !TryReserveDestination(job, destination, pantryOutput, desiredBatch))
             {
                 ReleaseWorkReservation(job);
                 return false;
