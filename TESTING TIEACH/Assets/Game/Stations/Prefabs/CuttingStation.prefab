@@ -117,7 +117,7 @@ GameObject:
   - component: {fileID: -7273179158514941842}
   - component: {fileID: 3487152934761447334}
   m_Layer: 0
-  m_Name: DrinkFountain
+  m_Name: CuttingStation
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
