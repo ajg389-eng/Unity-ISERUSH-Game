@@ -19,7 +19,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public Color endColor = new Color(1f, 0.25f, 0.2f, 0.95f);
     public Color routeOutlineColor = new Color(0.035f, 0.08f, 0.11f, 0.82f);
     public float lineWidth = 0.11f;
-    public float lineOutlineWidth = 0.07f;
+    public float lineOutlineWidth = 0.09f;
     public float floorOffset = 0.08f;
     [Range(0.2f, 0.9f)] public float markerTileScale = 0.42f;
     [Range(0.1f, 0.5f)] public float arrowTileScale = 0.24f;
@@ -30,6 +30,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     readonly List<LineRenderer> lines = new List<LineRenderer>();
     readonly List<TextMeshPro> labels = new List<TextMeshPro>();
+    readonly List<Transform> recipePreviewBadges = new List<Transform>();
     readonly List<Mesh> generatedMeshes = new List<Mesh>();
     readonly List<WorkerHoverHighlight> flowWorkerHighlights = new List<WorkerHoverHighlight>();
     Material lineMaterial;
@@ -41,6 +42,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     Material startMaterial;
     Material stopMaterial;
     Material endMaterial;
+    Texture2D circleTexture;
+    Sprite circleSprite;
     Transform visualsRoot;
     bool visible;
     KitchenEmployee focusedWorker;
@@ -53,6 +56,16 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         new Color(1f, 0.55f, 0.18f, 0.95f),
         new Color(0.72f, 0.4f, 1f, 0.95f),
         new Color(0.25f, 1f, 0.45f, 0.95f)
+    };
+
+    static readonly Color[] FlowBranchColors =
+    {
+        new Color(0.18f, 0.72f, 0.79f, 0.96f),
+        new Color(0.25f, 0.60f, 0.76f, 0.96f),
+        new Color(0.23f, 0.67f, 0.62f, 0.96f),
+        new Color(0.37f, 0.55f, 0.72f, 0.96f),
+        new Color(0.31f, 0.66f, 0.72f, 0.96f),
+        new Color(0.36f, 0.62f, 0.58f, 0.96f)
     };
 
     public static bool HasFocusedWorker => Instance != null && Instance.focusedWorker != null;
@@ -79,6 +92,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         DestroyMaterial(startMaterial);
         DestroyMaterial(stopMaterial);
         DestroyMaterial(endMaterial);
+        if (circleSprite != null) Destroy(circleSprite);
+        if (circleTexture != null) Destroy(circleTexture);
     }
 
     void Update()
@@ -94,6 +109,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         }
 
         FaceLabelsTowardCamera();
+        FaceRecipePreviewsTowardCamera();
     }
 
     public static void NotifyLinksChanged()
@@ -265,6 +281,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             bool merge = incomingCount.TryGetValue(station, out int sources) && sources > 1;
             string role = root ? "START" : end ? "END" : split ? "SPLIT" : merge ? "MERGE" : "STOP";
             CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
+            CreateSelectedItemPreview(station);
         }
 
         int edgeIndex = 0;
@@ -276,8 +293,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
             AppendGridLeg(points, grid, from, to);
             if (points.Count >= 2)
+            {
+                Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
                 CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
-                    + "_Branch_" + edgeIndex++, routeColor);
+                    + "_Branch_" + edgeIndex, branchColor);
+            }
+            edgeIndex++;
         }
     }
 
@@ -694,6 +715,148 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         return lineMaterial;
     }
 
+    void CreateSelectedItemPreview(GameObject station)
+    {
+        ItemDefinition item = GetSelectedStationItem(station);
+        if (item == null || item.prefab == null || visualsRoot == null) return;
+
+        Texture thumbnail = ItemPreviewThumbnails.Get(item);
+        if (thumbnail == null) return;
+
+        var badge = new GameObject("FlowRecipePreview_" + station.name + "_" + item.name,
+            typeof(RectTransform), typeof(Canvas));
+        badge.transform.SetParent(visualsRoot, false);
+        Canvas canvas = badge.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 30;
+        RectTransform badgeRect = badge.GetComponent<RectTransform>();
+        badgeRect.sizeDelta = new Vector2(96f, 96f);
+        badgeRect.localScale = Vector3.one * 0.006f;
+
+        var borderObject = new GameObject("CircularBorder", typeof(RectTransform),
+            typeof(UnityEngine.UI.Image));
+        borderObject.transform.SetParent(badge.transform, false);
+        RectTransform borderRect = borderObject.GetComponent<RectTransform>();
+        borderRect.anchorMin = borderRect.anchorMax = new Vector2(0.5f, 0.5f);
+        borderRect.sizeDelta = new Vector2(96f, 96f);
+        UnityEngine.UI.Image border = borderObject.GetComponent<UnityEngine.UI.Image>();
+        border.sprite = GetCircleSprite();
+        border.color = new Color(0.36f, 0.78f, 0.58f, 1f);
+        border.raycastTarget = false;
+
+        var maskObject = new GameObject("CircularPreview", typeof(RectTransform),
+            typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Mask));
+        maskObject.transform.SetParent(borderObject.transform, false);
+        RectTransform maskRect = maskObject.GetComponent<RectTransform>();
+        maskRect.anchorMin = maskRect.anchorMax = new Vector2(0.5f, 0.5f);
+        maskRect.sizeDelta = new Vector2(84f, 84f);
+        UnityEngine.UI.Image maskImage = maskObject.GetComponent<UnityEngine.UI.Image>();
+        maskImage.sprite = GetCircleSprite();
+        maskImage.color = ItemPreviewThumbnails.BackgroundColor;
+        maskImage.raycastTarget = false;
+        maskObject.GetComponent<UnityEngine.UI.Mask>().showMaskGraphic = true;
+
+        var imageObject = new GameObject("RecipeThumbnail", typeof(RectTransform),
+            typeof(UnityEngine.UI.RawImage));
+        imageObject.transform.SetParent(maskObject.transform, false);
+        RectTransform imageRect = imageObject.GetComponent<RectTransform>();
+        imageRect.anchorMin = Vector2.zero;
+        imageRect.anchorMax = Vector2.one;
+        imageRect.offsetMin = Vector2.zero;
+        imageRect.offsetMax = Vector2.zero;
+        UnityEngine.UI.RawImage image = imageObject.GetComponent<UnityEngine.UI.RawImage>();
+        image.texture = thumbnail;
+        image.color = Color.white;
+        image.raycastTarget = false;
+
+        Bounds stationBounds = GetBounds(station);
+        badgeRect.position = new Vector3(stationBounds.center.x,
+            stationBounds.max.y + 0.75f, stationBounds.center.z);
+        recipePreviewBadges.Add(badge.transform);
+    }
+
+    void FaceRecipePreviewsTowardCamera()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        for (int i = recipePreviewBadges.Count - 1; i >= 0; i--)
+        {
+            Transform badge = recipePreviewBadges[i];
+            if (badge == null)
+            {
+                recipePreviewBadges.RemoveAt(i);
+                continue;
+            }
+            badge.rotation = Quaternion.LookRotation(badge.position - cam.transform.position,
+                cam.transform.up);
+        }
+    }
+
+    Sprite GetCircleSprite()
+    {
+        if (circleSprite != null) return circleSprite;
+        const int size = 64;
+        circleTexture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "FlowRecipeCircle",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        var pixels = new Color32[size * size];
+        float center = (size - 1) * 0.5f;
+        float radius = center - 0.5f;
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float distance = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                byte alpha = (byte)Mathf.RoundToInt(Mathf.Clamp01(radius + 1f - distance) * 255f);
+                pixels[y * size + x] = new Color32(255, 255, 255, alpha);
+            }
+        circleTexture.SetPixels32(pixels);
+        circleTexture.Apply(false, true);
+        circleSprite = Sprite.Create(circleTexture, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), 100f);
+        circleSprite.name = "FlowRecipeCircleSprite";
+        return circleSprite;
+    }
+
+    static ItemDefinition GetSelectedStationItem(GameObject station)
+    {
+        if (station == null) return null;
+
+        PantryStation pantry = station.GetComponent<PantryStation>();
+        if (pantry != null) return pantry.selectedItem;
+
+        FreezerStation freezer = station.GetComponent<FreezerStation>();
+        if (freezer != null) return freezer.selectedItem;
+
+        GrillStation grill = station.GetComponent<GrillStation>();
+        if (grill != null) return grill.GetSelectedOutput();
+
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            return recipe != null ? recipe.output : cutting.selectedProduct;
+        }
+
+        AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+        if (assembly != null)
+        {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            return recipe != null ? recipe.output : assembly.selectedProduct;
+        }
+
+        ProductionManager production = ProductionManager.Instance;
+        if (station.GetComponent<FryerStation>() != null)
+            return production != null ? production.FriesItem : null;
+        if (station.GetComponent<DrinkStation>() != null)
+            return production != null && production.orderConfig != null
+                ? production.orderConfig.drinkItem : null;
+        return null;
+    }
+
     Material GetLineOutlineMaterial()
     {
         if (lineOutlineMaterial == null)
@@ -761,6 +924,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     {
         lines.Clear();
         labels.Clear();
+        recipePreviewBadges.Clear();
         for (int i = 0; i < generatedMeshes.Count; i++)
             if (generatedMeshes[i] != null) Destroy(generatedMeshes[i]);
         generatedMeshes.Clear();

@@ -1985,6 +1985,7 @@ public class ManagementModeController : MonoBehaviour
         {
             grill.SetRecipeOutput(item);
             RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Grill recipe set to " + DisplayItemName(item));
             return;
@@ -1994,6 +1995,7 @@ public class ManagementModeController : MonoBehaviour
         {
             freezer.SetStoredItem(item);
             RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Freezer set to store " + DisplayItemName(item));
             return;
@@ -2003,6 +2005,7 @@ public class ManagementModeController : MonoBehaviour
         {
             pantry.SetStoredItem(item);
             RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Pantry set to store " + DisplayItemName(item));
             return;
@@ -2014,6 +2017,7 @@ public class ManagementModeController : MonoBehaviour
             var config = manager != null ? manager.orderConfig : null;
             cutting.SetRecipe(config != null ? config.GetCuttingRecipe(item) : null);
             RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Cutting recipe set to " + DisplayItemName(item));
             return;
@@ -2025,6 +2029,7 @@ public class ManagementModeController : MonoBehaviour
             var config = manager != null ? manager.orderConfig : null;
             assembly.SetRecipe(config != null ? config.GetAssemblyRecipe(item) : null);
             RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Assembly set to produce " + (item.itemName ?? item.name));
         }
@@ -2037,6 +2042,7 @@ public class ManagementModeController : MonoBehaviour
         if (assembly == null) return;
         assembly.SetRecipe(recipe);
         RevalidateSelectedStationOutput();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
         RefreshPopup();
         SetStatus("Assembly recipe set to " + recipe.DisplayName);
     }

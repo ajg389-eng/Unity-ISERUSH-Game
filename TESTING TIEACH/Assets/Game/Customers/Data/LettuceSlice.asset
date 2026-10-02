@@ -13,8 +13,20 @@ MonoBehaviour:
   m_Name: LettuceSlice
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Lettuce Slice
-  prefab: {fileID: 3750165873757496358, guid: 3797e2a185913ab47a316d080d691f1a, type: 3}
+  prefab: {fileID: 4596691420503330492, guid: 3797e2a185913ab47a316d080d691f1a, type: 3}
   price: 0
   startingQuantity: 0
+  placementSurface: 0
+  footprintX: 1
+  footprintY: 1
+  placementScale: {x: 1, y: 1, z: 1}
+  placementEuler: {x: 0, y: 0, z: 0}
+  counterEmbedDepth: 0
+  counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 0
+  fixedCounterY: 0
+  counterSlotSpan: 1
+  buildFunction: 0
+  previewIcon: {fileID: 0}
   orderPackSize: 0
   orderPackPrice: 0

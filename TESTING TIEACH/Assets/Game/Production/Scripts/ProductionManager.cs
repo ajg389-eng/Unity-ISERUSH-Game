@@ -1702,8 +1702,6 @@ public class ProductionManager : MonoBehaviour
         {
             // Pantry output is picked up immediately. Claim its actual downstream
             // buffer first so a worker never ends up idling with undeliverable stock.
-            // Cutting stations process inventory carried by the worker and therefore
-            // intentionally have no IStationBuffer to reserve.
             GameObject destination = GetFlowOutput(employee, station, job);
             ItemDefinition pantryOutput = GetBranchTransferItem(job);
             int desiredBatch = Mathf.Clamp(
@@ -1712,13 +1710,8 @@ public class ProductionManager : MonoBehaviour
             bool validDestination = destination != null
                 && IsStationInWorkerFlow(employee, destination)
                 && pantryOutput != null;
-            CuttingStation cutting = validDestination
-                ? destination.GetComponent<CuttingStation>()
-                : null;
-            bool destinationReady = cutting != null
-                ? cutting.CanProcess(pantryOutput)
-                : validDestination
-                    && TryReserveDestination(job, destination, pantryOutput, desiredBatch);
+            bool destinationReady = validDestination
+                && TryReserveDestination(job, destination, pantryOutput, desiredBatch);
             if (!validDestination || !destinationReady)
             {
                 ReleaseWorkReservation(job);

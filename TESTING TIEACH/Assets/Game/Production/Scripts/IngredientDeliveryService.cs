@@ -259,7 +259,10 @@ public class IngredientDeliveryService : MonoBehaviour
         shipment.dispatched = true;
         Vector3 stall;
         Quaternion facing;
-        if (!ParkingLotDressing.TryClaimRandomStall(out int stallId, out stall, out facing))
+        int stallId = -1;
+        bool useExactTruckSpot = TryGetDeliveryTruckSpot(out stall, out facing);
+        if (!useExactTruckSpot &&
+            !ParkingLotDressing.TryClaimRandomStall(out stallId, out stall, out facing))
         {
             shipment.dispatched = false;
             return;
@@ -286,8 +289,29 @@ public class IngredientDeliveryService : MonoBehaviour
 
         var van = vanGo.AddComponent<DeliveryVan>();
         van.StallId = stallId;
-        van.Arrive(stall, facing, () => SpawnDriver(shipment, van));
+        van.Arrive(stall, facing, () => SpawnDriver(shipment, van), useExactTruckSpot);
         shipment.van = van;
+    }
+
+    static bool TryGetDeliveryTruckSpot(out Vector3 position, out Quaternion rotation)
+    {
+        Transform[] transforms = FindObjectsByType<Transform>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate == null || !string.Equals(candidate.name, "DeliveryTruckSpot",
+                System.StringComparison.Ordinal))
+                continue;
+
+            position = candidate.position;
+            rotation = candidate.rotation;
+            return true;
+        }
+
+        position = default;
+        rotation = Quaternion.identity;
+        return false;
     }
 
     void SpawnDriver(Shipment shipment, DeliveryVan van)

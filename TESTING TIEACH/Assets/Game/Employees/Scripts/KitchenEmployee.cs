@@ -629,7 +629,10 @@ public class KitchenEmployee : MonoBehaviour
                 if (requireReady)
                 {
                     int requiredUnits = Mathf.Max(1, job.heldUnits);
-                    if (!ContainsItemCount(job.ingredientsHeld, requiredInput, requiredUnits)) continue;
+                    bool carriedInput = ContainsItemCount(job.ingredientsHeld, requiredInput, requiredUnits);
+                    bool bufferedInput = cutting.GetInputCount(requiredInput) > 0;
+                    bool bufferedOutput = cutting.GetOutputCount(requiredOutput) > 0;
+                    if (!carriedInput && !bufferedInput && !bufferedOutput) continue;
                 }
             }
             else if (stationType == StationType.Fryer && requireReady)
@@ -2899,15 +2902,38 @@ public class KitchenEmployee : MonoBehaviour
                     if (cutting == null) break;
                     if (MoveToward(cutting.GetInteractionPosition()))
                     {
-                        bool hasIngredients = cutting.HasCarriedSupply(
-                            manager.orderConfig, ingredientsHeld, Mathf.Max(1, heldUnits));
-                        if (manager.orderConfig == null || !hasIngredients)
+                        CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+                        int carriedAmount = Mathf.Max(0, heldUnits);
+                        if (recipe != null && carriedAmount > 0
+                            && cutting.HasCarriedSupply(manager.orderConfig, ingredientsHeld, carriedAmount))
+                        {
+                            int stored = cutting.StoreInput(recipe.input, carriedAmount,
+                                currentJob != null ? currentJob.order : null);
+                            if (stored == carriedAmount)
+                            {
+                                int remaining = stored;
+                                for (int i = ingredientsHeld.Count - 1; i >= 0 && remaining > 0; i--)
+                                {
+                                    if (ingredientsHeld[i] != recipe.input) continue;
+                                    ingredientsHeld.RemoveAt(i);
+                                    remaining--;
+                                }
+                                heldUnits = 0;
+                                SyncHasPattyFlag();
+                            }
+                        }
+
+                        bool hasBufferedWork = recipe != null
+                            && (cutting.GetInputCount(recipe.input) > 0
+                                || cutting.GetOutputCount(recipe.output) > 0);
+                        if (manager.orderConfig == null || !hasBufferedWork)
                         {
                             RewindInvalidCuttingTask();
                             break;
                         }
                         step = Step.AtCutting;
-                        stateTimer = 0f;
+                        stateTimer = cutting.GetOutputCount(recipe.output) > 0
+                            ? cutting.processTimeSeconds : 0f;
                     }
                     break;
                 }
@@ -2927,13 +2953,37 @@ public class KitchenEmployee : MonoBehaviour
                     TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, cutting.processTimeSeconds));
                     if (stateTimer >= cutting.processTimeSeconds)
                     {
-                        bool processed = cutting.TryProcessCarried(
-                            manager.orderConfig, ingredientsHeld, Mathf.Max(1, heldUnits));
-                        if (!processed)
+                        CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+                        if (recipe == null)
                         {
                             RewindInvalidCuttingTask();
                             break;
                         }
+
+                        int availableOutput = cutting.GetOutputCount(recipe.output);
+                        if (availableOutput <= 0)
+                            availableOutput = cutting.ProcessBuffered(CarryCapacity);
+                        if (availableOutput <= 0)
+                        {
+                            RewindInvalidCuttingTask();
+                            break;
+                        }
+
+                        int transferCapacity = EnsureNextDestinationReservation(
+                            Mathf.Min(CarryCapacity, availableOutput));
+                        if (transferCapacity <= 0)
+                        {
+                            YieldBlockedOutputStep();
+                            break;
+                        }
+
+                        int taken = cutting.TakeOutput(recipe.output, transferCapacity);
+                        if (taken <= 0) break;
+                        manager.ConsumeOutputReservation(currentJob, taken);
+                        heldUnits = taken;
+                        ingredientsHeld.Clear();
+                        for (int i = 0; i < taken; i++) ingredientsHeld.Add(recipe.output);
+                        SyncHasPattyFlag();
                         FinishStepAndHandoff();
                     }
                     break;

@@ -2,19 +2,34 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>Processes raw burger toppings into slices ready for assembly.</summary>
-public class CuttingStation : MonoBehaviour
+public class CuttingStation : MonoBehaviour, IStationBuffer
 {
+    public const int BufferCapacity = 2;
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
     [Min(0f)] public float processTimeSeconds = 4f;
     public Vector3 interactionOffset = Vector3.zero;
 
+    [SerializeField, Min(0)] int inputUnits;
+    [SerializeField, Min(0)] int outputUnits;
+    CustomerOrder bufferedOrder;
+    Transform itemDisplayRoot;
+    readonly List<Transform> inputMarkers = new List<Transform>();
+    readonly List<Transform> outputMarkers = new List<Transform>();
+    int displayedInput = -1;
+    int displayedOutput = -1;
+    ItemDefinition displayedRecipeOutput;
+
     public bool HasRecipeSelected => GetSelectedRecipe() != null;
+    public int InputSlotCapacity => BufferCapacity;
+    public int OutputSlotCapacity => BufferCapacity;
 
     void OnEnable()
     {
         StationConfigurationCaution.Ensure(gameObject);
+        FindBufferMarkers();
+        RefreshItemDisplay(true);
     }
 
     public CuttingRecipeDefinition GetSelectedRecipe()
@@ -26,8 +41,68 @@ public class CuttingStation : MonoBehaviour
 
     public void SetRecipe(CuttingRecipeDefinition recipe)
     {
+        if (selectedProduct != (recipe != null ? recipe.output : null))
+        {
+            inputUnits = 0;
+            outputUnits = 0;
+            bufferedOrder = null;
+        }
         selectedProduct = recipe != null ? recipe.output : null;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+        RefreshItemDisplay(true);
+    }
+
+    public int GetInputCount(ItemDefinition item)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && item == recipe.input ? inputUnits : 0;
+    }
+
+    public int GetOutputCount(ItemDefinition item)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && item == recipe.output ? outputUnits : 0;
+    }
+
+    public bool CanAcceptInput(ItemDefinition item, int amount)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && item == recipe.input && amount > 0
+            && inputUnits + amount <= BufferCapacity;
+    }
+
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        if (!CanAcceptInput(item, amount)) return 0;
+        inputUnits += amount;
+        bufferedOrder = sourceOrder;
+        RefreshItemDisplay(true);
+        return amount;
+    }
+
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item != recipe.output || amount <= 0) return 0;
+        int taken = Mathf.Min(amount, outputUnits);
+        outputUnits -= taken;
+        if (inputUnits == 0 && outputUnits == 0) bufferedOrder = null;
+        RefreshItemDisplay(true);
+        return taken;
+    }
+
+    public bool IsHoldingOrder(CustomerOrder order) =>
+        inputUnits + outputUnits == 0 || bufferedOrder == null || order == null || bufferedOrder == order;
+
+    public int ProcessBuffered(int amount)
+    {
+        amount = Mathf.Max(1, amount);
+        int processed = Mathf.Min(amount, inputUnits, BufferCapacity - outputUnits);
+        if (processed <= 0) return 0;
+        inputUnits -= processed;
+        outputUnits += processed;
+        RefreshItemDisplay(true);
+        return processed;
     }
 
     public bool CanProcess(ItemDefinition input, ItemDefinition output = null)
@@ -97,4 +172,59 @@ public class CuttingStation : MonoBehaviour
 
     public bool TrySliceCheese(CustomerOrderConfig config, List<ItemDefinition> carried, int amount = 1) =>
         TryProcessCarried(config, carried, amount);
+
+    void Update()
+    {
+        RefreshItemDisplay(false);
+    }
+
+    void FindBufferMarkers()
+    {
+        inputMarkers.Clear();
+        outputMarkers.Clear();
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            Transform marker = children[i];
+            if (marker == transform) continue;
+            if (marker.name == "InputBuffer" || marker.name.StartsWith("InputBuffer ("))
+                inputMarkers.Add(marker);
+            else if (marker.name == "OutputBuffer" || marker.name.StartsWith("OutputBuffer ("))
+                outputMarkers.Add(marker);
+            else
+                continue;
+
+            foreach (Renderer renderer in marker.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+            foreach (Collider collider in marker.GetComponentsInChildren<Collider>(true))
+                collider.enabled = false;
+        }
+        inputMarkers.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+        outputMarkers.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+    }
+
+    void RefreshItemDisplay(bool force)
+    {
+        if (!force && displayedInput == inputUnits && displayedOutput == outputUnits
+            && displayedRecipeOutput == selectedProduct) return;
+        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
+        if (itemDisplayRoot == null)
+            itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "CuttingItemDisplay");
+        StationItemVisualUtility.ClearChildren(itemDisplayRoot);
+
+        displayedInput = inputUnits;
+        displayedOutput = outputUnits;
+        displayedRecipeOutput = selectedProduct;
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null) return;
+
+        GameObject inputPrefab = recipe.input != null ? recipe.input.prefab : null;
+        GameObject outputPrefab = recipe.output != null ? recipe.output.prefab : null;
+        for (int i = 0; inputPrefab != null && i < Mathf.Min(inputUnits, inputMarkers.Count); i++)
+            StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[i], itemDisplayRoot,
+                "CuttingInput_" + i);
+        for (int i = 0; outputPrefab != null && i < Mathf.Min(outputUnits, outputMarkers.Count); i++)
+            StationItemVisualUtility.SpawnAtMarker(outputPrefab, outputMarkers[i], itemDisplayRoot,
+                "CuttingOutput_" + i);
+    }
 }
