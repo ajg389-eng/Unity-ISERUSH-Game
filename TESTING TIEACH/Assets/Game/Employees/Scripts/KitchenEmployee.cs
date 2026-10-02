@@ -606,7 +606,7 @@ public class KitchenEmployee : MonoBehaviour
                 if (requireReady)
                 {
                     int units = Mathf.Clamp(job.heldUnits > 0 ? job.heldUnits : 1, 1,
-                        Mathf.Min(CarryCapacity, AssemblyStation.IngredientCapacity));
+                        Mathf.Min(CarryCapacity, assembly.MaxProcessBatch));
                     bool canDeliverStoredOutput = HasRoutableStoredAssemblyOutput(
                         assembly, job.CurrentWorkProduct, job);
                     if (!canDeliverStoredOutput && !assembly.HasRequiredInputs(
@@ -1080,6 +1080,12 @@ public class KitchenEmployee : MonoBehaviour
         awaitingOutputDelivery = false;
     }
 
+    void ReturnExcessToKitchenStock(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0 || KitchenInventory.Instance == null) return;
+        KitchenInventory.Instance.AddStock(item, amount);
+    }
+
     void Start()
     {
         if (operatedStations == null) operatedStations = new List<GameObject>();
@@ -1238,8 +1244,10 @@ public class KitchenEmployee : MonoBehaviour
             int requested = currentJob != null && currentJob.heldUnits > 0
                 ? currentJob.heldUnits
                 : (heldUnits > 0 ? heldUnits : 1);
-            return Mathf.Clamp(requested, 1,
-                Mathf.Min(CarryCapacity, AssemblyStation.IngredientCapacity));
+            AssemblyStation assembly = GetAssemblyStation(
+                currentJob != null ? currentJob.CurrentWorkProduct : null);
+            int stationBatch = assembly != null ? assembly.MaxProcessBatch : 1;
+            return Mathf.Clamp(requested, 1, Mathf.Min(CarryCapacity, stationBatch));
         }
     }
 
@@ -1251,7 +1259,10 @@ public class KitchenEmployee : MonoBehaviour
             {
                 for (int i = 0; i < currentJob.pipeline.Length; i++)
                     if (currentJob.pipeline[i] == StationType.Assembly)
-                        return Mathf.Min(CarryCapacity, AssemblyStation.IngredientCapacity);
+                    {
+                        AssemblyStation assembly = GetAssemblyStation(currentJob.CurrentWorkProduct);
+                        return Mathf.Min(CarryCapacity, assembly != null ? assembly.MaxProcessBatch : 1);
+                    }
             }
             return CarryCapacity;
         }
@@ -1383,6 +1394,9 @@ public class KitchenEmployee : MonoBehaviour
         if (currentJob.CurrentStationType == StationType.Cutting
             && manager.orderConfig != null && manager.orderConfig.IsFries(currentJob.product))
             return manager.SlicedPotatoItem;
+        if (currentJob.CurrentStationType == StationType.Fryer
+            && manager.orderConfig != null && manager.orderConfig.IsFries(currentJob.product))
+            return manager.CookedPotatoItem;
         if (currentJob.CurrentStationType == StationType.Freezer && manager.orderConfig != null)
             return manager.orderConfig.rawPattyIngredient;
         if (currentJob.CurrentStationType == StationType.Grill && manager.orderConfig != null)
@@ -1883,16 +1897,30 @@ public class KitchenEmployee : MonoBehaviour
         if (destinationBuffer != null)
         {
             int carried = Mathf.Max(1, heldUnits);
-            if (!destinationBuffer.CanAcceptInput(heldDeliveryItem, carried))
+            int reserved = manager.GetReservedInputUnits(currentJob);
+            if (reserved <= 0)
+            {
+                manager.TryReserveDestination(currentJob, deliverTarget,
+                    heldDeliveryItem, carried);
+                reserved = manager.GetReservedInputUnits(currentJob);
+            }
+            int transferUnits = reserved > 0 ? Mathf.Min(carried, reserved) : carried;
+            if (!destinationBuffer.CanAcceptInput(heldDeliveryItem, transferUnits))
             {
                 ShowTaskBar = true;
                 TaskProgress = 1f;
                 return;
             }
-            if (destinationBuffer.StoreInput(heldDeliveryItem, carried, currentJob.order) != carried)
+            if (destinationBuffer.StoreInput(heldDeliveryItem, transferUnits,
+                    currentJob.order) != transferUnits)
                 return;
-            manager.ConsumeInputReservation(currentJob, carried);
-            depositedUnits = carried;
+            manager.ConsumeInputReservation(currentJob, transferUnits);
+            depositedUnits = transferUnits;
+
+            // Jobs created before destination-aware batching may already carry
+            // more than an MK1 station can hold. Preserve that excess in stock
+            // instead of deadlocking the worker or deleting it.
+            ReturnExcessToKitchenStock(heldDeliveryItem, carried - transferUnits);
 
             // The destination owns the WIP now. The next compatible worker claims
             // the next station task from the shared flow queue.
@@ -2806,15 +2834,21 @@ public class KitchenEmployee : MonoBehaviour
                             }
                         }
 
+                        int grillLoad = grill != null
+                            ? Mathf.Min(heldUnits, grill.InputSlotCapacity) : heldUnits;
                         int placed = heldUnits > 0
                             ? manager.PlacePattiesOnGrill(this,
                                 currentJob != null ? currentJob.product : manager.PattyItem,
-                                heldUnits)
+                                grillLoad)
                             : 0;
                         if (placed > 0)
                         {
                             manager.ConsumeInputReservation(currentJob, placed);
                             heldUnits = Mathf.Max(0, heldUnits - placed);
+                            ReturnExcessToKitchenStock(manager.orderConfig != null
+                                ? manager.orderConfig.rawPattyIngredient : manager.PattyItem,
+                                heldUnits);
+                            heldUnits = 0;
                             SyncHasPattyFlag();
                             step = Step.AtGrill;
                             stateTimer = 0f;
@@ -2907,9 +2941,14 @@ public class KitchenEmployee : MonoBehaviour
                         if (recipe != null && carriedAmount > 0
                             && cutting.HasCarriedSupply(manager.orderConfig, ingredientsHeld, carriedAmount))
                         {
-                            int stored = cutting.StoreInput(recipe.input, carriedAmount,
+                            int openSlots = Mathf.Max(0, cutting.InputSlotCapacity
+                                - cutting.GetInputCount(recipe.input));
+                            int storeAmount = Mathf.Min(carriedAmount, openSlots);
+                            int reserved = manager.GetReservedInputUnits(currentJob);
+                            if (reserved > 0) storeAmount = Mathf.Min(storeAmount, reserved);
+                            int stored = cutting.StoreInput(recipe.input, storeAmount,
                                 currentJob != null ? currentJob.order : null);
-                            if (stored == carriedAmount)
+                            if (stored > 0)
                             {
                                 int remaining = stored;
                                 for (int i = ingredientsHeld.Count - 1; i >= 0 && remaining > 0; i--)
@@ -2918,6 +2957,9 @@ public class KitchenEmployee : MonoBehaviour
                                     ingredientsHeld.RemoveAt(i);
                                     remaining--;
                                 }
+                                int excess = Mathf.Max(0, carriedAmount - stored);
+                                ReturnExcessToKitchenStock(recipe.input, excess);
+                                ingredientsHeld.Clear();
                                 heldUnits = 0;
                                 SyncHasPattyFlag();
                             }
@@ -3150,9 +3192,12 @@ public class KitchenEmployee : MonoBehaviour
                         }
 
                         int collected = 0;
-                        int collectionLimit = currentJob != null && manager.orderConfig != null
-                            && manager.orderConfig.IsFries(currentJob.product)
-                            ? 1 : CarryCapacity;
+                        int collectionLimit = EnsureNextDestinationReservation(CarryCapacity);
+                        if (collectionLimit <= 0)
+                        {
+                            TaskProgress = 1f;
+                            break;
+                        }
                         while (collected < collectionLimit && pantry.TakeItem(pantryItem))
                         {
                             ingredientsHeld.Add(pantryItem);
@@ -3181,14 +3226,26 @@ public class KitchenEmployee : MonoBehaviour
                             step = Step.AtFryer;
                             stateTimer = 0f;
                         }
-                        else if (manager.TryLoadFryer(this))
+                        else
                         {
-                            heldUnits = 0;
-                            SyncHasPattyFlag();
-                            step = Step.AtFryer;
-                            stateTimer = 0f;
+                            int fryerLoad = fryer != null
+                                ? Mathf.Min(heldUnits, fryer.InputSlotCapacity) : heldUnits;
+                            int placed = heldUnits > 0
+                                ? manager.TryLoadFryer(this, fryerLoad,
+                                    currentJob != null ? currentJob.order : null)
+                                : 0;
+                            if (placed > 0)
+                            {
+                                manager.ConsumeInputReservation(currentJob, placed);
+                                heldUnits = Mathf.Max(0, heldUnits - placed);
+                                ReturnExcessToKitchenStock(manager.SlicedPotatoItem, heldUnits);
+                                heldUnits = 0;
+                                SyncHasPattyFlag();
+                                step = Step.AtFryer;
+                                stateTimer = 0f;
+                            }
+                            else { path.Clear(); pathDestination = Vector3.zero; }
                         }
-                        else { path.Clear(); pathDestination = Vector3.zero; }
                     }
                     else { path.Clear(); pathDestination = Vector3.zero; }
                 }
@@ -3209,14 +3266,19 @@ public class KitchenEmployee : MonoBehaviour
                 if (currentJob != null && currentJob.taskPhase == ProductionTaskPhase.CollectOutput
                     && fryerAtTask != null && fryerAtTask.IsCooked())
                 {
-                    if (EnsureNextDestinationReservation(1) <= 0)
+                    int available = fryerAtTask.GetOutputCount(manager.CookedPotatoItem);
+                    int transferCapacity = EnsureNextDestinationReservation(
+                        Mathf.Min(CarryCapacity, available));
+                    if (transferCapacity <= 0)
                     {
                         YieldBlockedOutputStep();
                         break;
                     }
-                    if (manager.TakeFromFryer(this))
+                    int taken = manager.TakeFromFryer(this, transferCapacity);
+                    if (taken > 0)
                     {
-                        heldUnits = 1;
+                        manager.ConsumeOutputReservation(currentJob, taken);
+                        heldUnits = taken;
                         SyncHasPattyFlag();
                         FinishStepAndHandoff();
                     }
@@ -3235,16 +3297,21 @@ public class KitchenEmployee : MonoBehaviour
                         break;
                     }
                     FryerStation activeFryer = manager.GetFryerFor(this);
+                    int available = activeFryer != null
+                        ? activeFryer.GetOutputCount(manager.CookedPotatoItem) : 0;
+                    int transferCapacity = EnsureNextDestinationReservation(
+                        Mathf.Min(CarryCapacity, available));
                     if (activeFryer != null && activeFryer.IsCooked()
-                        && EnsureNextDestinationReservation(1) <= 0)
+                        && transferCapacity <= 0)
                     {
                         YieldBlockedOutputStep();
                         break;
                     }
-                    if (manager.TakeFromFryer(this))
+                    int taken = manager.TakeFromFryer(this, transferCapacity);
+                    if (taken > 0)
                     {
-                        if (heldUnits <= 0)
-                            heldUnits = 1;
+                        manager.ConsumeOutputReservation(currentJob, taken);
+                        heldUnits = taken;
                         SyncHasPattyFlag();
                         FinishStepAndHandoff();
                     }

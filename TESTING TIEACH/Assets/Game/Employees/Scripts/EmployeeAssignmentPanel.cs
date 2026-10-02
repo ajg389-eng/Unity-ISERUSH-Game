@@ -201,8 +201,8 @@ public class EmployeeAssignmentPanel : MonoBehaviour
         if (station == null) { label.text = "Empty"; return; }
         var reg = station.GetComponent<Register>();
         if (reg != null) { label.text = station.name; return; }
-        var t = KitchenEmployee.GetStationTypeFrom(station);
-        label.text = t.HasValue ? t.Value.ToString() : station.name;
+        var node = StationNode.EnsureOn(station);
+        label.text = node != null ? node.DisplayName : station.name;
     }
 
     void OnSlotClicked(int rowIndex, int slotIndex)

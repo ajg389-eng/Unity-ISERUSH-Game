@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -291,13 +292,21 @@ public class InventoryUI : MonoBehaviour
             DestroyObject(child.gameObject);
         }
 
+        bool squareCards = useSquareCards || rowPrefab == null
+            || rowPrefab.GetComponent<InventoryItemCardUI>() != null;
+        var shownFamilies = new HashSet<string>();
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
             if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
                 continue;
 
-            if (useSquareCards || rowPrefab == null || rowPrefab.GetComponent<InventoryItemCardUI>() != null)
+            if (squareCards && item.IsTieredStation)
+            {
+                if (!shownFamilies.Add(item.stationFamily)) continue;
+                CreateStationFamilyCard(item.stationFamily);
+            }
+            else if (squareCards)
                 CreateSquareCard(item);
             else
                 CreateLegacyRow(item);
@@ -530,6 +539,63 @@ public class InventoryUI : MonoBehaviour
             inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
         card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(captured));
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
+            card.transform.SetAsFirstSibling();
+    }
+
+    void CreateStationFamilyCard(string family)
+    {
+        ItemDefinition mk1 = null;
+        ItemDefinition mk2 = null;
+        foreach (ItemDefinition candidate in inventory.allItems)
+        {
+            if (candidate == null || !candidate.IsTieredStation
+                || candidate.stationFamily != family) continue;
+            if (candidate.stationMark == 1) mk1 = candidate;
+            else if (candidate.stationMark == 2) mk2 = candidate;
+        }
+        if (mk1 == null && mk2 == null) return;
+
+        InventoryItemCardUI card = rowPrefab != null
+            && rowPrefab.GetComponent<InventoryItemCardUI>() != null
+            ? Object.Instantiate(rowPrefab, contentParent).GetComponent<InventoryItemCardUI>()
+            : InventoryItemCardBuilder.Create(contentParent);
+        card.gameObject.SetActive(true);
+
+        ItemDefinition selected = mk1 != null ? mk1 : mk2;
+        System.Action refresh = null;
+        refresh = () =>
+        {
+            ItemDefinition active = selected;
+            card.SetTutorialLocked(false);
+            card.Bind(active, inventory.GetAcquiredCount(active),
+                onSelect: () => BeginItemPlacement(active),
+                onBuy: () =>
+                {
+                    if (!inventory.PurchaseOne(active))
+                    {
+                        Sfx.Play(SfxId.UiError);
+                        return;
+                    }
+                    Sfx.Play(SfxId.Purchase);
+                    refresh();
+                    BeginItemPlacement(active);
+                },
+                displayPrice: inventory.GetPurchasePrice(active));
+            card.SetDisplayName(family);
+            card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
+                inventory.GetStationCapacity(active));
+            card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
+                inventory.GetCount(active), inventory.GetAcquiredCount(active));
+            card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(active));
+            card.ConfigureMarkSelector(mk1 != null, mk2 != null, active.stationMark, mark =>
+            {
+                selected = mark == 2 ? mk2 : mk1;
+                if (selected != null) refresh();
+            });
+        };
+        refresh();
+
+        if (OnboardingTutorial.ShouldHighlightInventoryItem(selected))
             card.transform.SetAsFirstSibling();
     }
 

@@ -133,8 +133,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void Awake()
     {
-        maxCapacity = FixedCapacity;
         StationItemVisualUtility.FindMarkers(transform, foodDisplaySlots);
+        maxCapacity = foodDisplaySlots.Count > 0 ? foodDisplaySlots.Count : FixedCapacity;
         if (Instance != null && Instance != this)
         {
             Debug.LogWarning("Multiple HeatLampStation objects; using the newest.", this);
@@ -178,7 +178,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         EnsureFoodDisplayRoot();
         ClearFoodDisplay();
 
-        int visibleCount = Mathf.Min(meals.Count, FixedCapacity);
+        int visibleCount = Mathf.Min(meals.Count, maxCapacity);
         for (int i = 0; i < visibleCount; i++)
         {
             ItemDefinition item = meals[i]?.order?.PrimaryItem;
@@ -958,8 +958,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             if (burger != null)
                 found.Add(burger);
 
-            if (station.GetComponent<FryerStation>() != null && config != null && config.friesItem != null)
-                found.Add(config.friesItem);
             if (station.GetComponent<DrinkStation>() != null && config != null && config.drinkItem != null)
                 found.Add(config.drinkItem);
         }

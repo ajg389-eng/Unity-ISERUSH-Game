@@ -17,6 +17,58 @@ public interface IStationBuffer
     int TakeOutput(ItemDefinition item, int amount);
 }
 
+/// <summary>Discovers the authored Input*/Output* buffer markers on station prefabs.</summary>
+public static class StationBufferLayout
+{
+    public static void FindMarkers(Transform station, List<Transform> inputs, List<Transform> outputs)
+    {
+        inputs?.Clear();
+        outputs?.Clear();
+        if (station == null) return;
+
+        Transform[] children = station.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            Transform marker = children[i];
+            if (marker == station) continue;
+            if (IsMarker(marker.name, "Input")) inputs?.Add(marker);
+            else if (IsMarker(marker.name, "Output")) outputs?.Add(marker);
+        }
+
+        inputs?.Sort(CompareMarkers);
+        outputs?.Sort(CompareMarkers);
+        HideMarkers(inputs);
+        HideMarkers(outputs);
+    }
+
+    static bool IsMarker(string value, string prefix)
+    {
+        if (string.IsNullOrEmpty(value) || !value.StartsWith(prefix,
+                System.StringComparison.OrdinalIgnoreCase)) return false;
+        if (value.Length == prefix.Length) return true;
+        char next = value[prefix.Length];
+        return char.IsDigit(next) || char.IsWhiteSpace(next) || next == '(';
+    }
+
+    static int CompareMarkers(Transform a, Transform b) =>
+        string.Compare(a != null ? a.name : string.Empty, b != null ? b.name : string.Empty,
+            System.StringComparison.OrdinalIgnoreCase);
+
+    static void HideMarkers(List<Transform> markers)
+    {
+        if (markers == null) return;
+        for (int i = 0; i < markers.Count; i++)
+        {
+            Transform marker = markers[i];
+            if (marker == null) continue;
+            foreach (Renderer renderer in marker.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+            foreach (Collider collider in marker.GetComponentsInChildren<Collider>(true))
+                collider.enabled = false;
+        }
+    }
+}
+
 /// <summary>
 /// Attach to kitchen stations. Tracks which worker operates this station
 /// and legacy station output data. Active worker routing is owned by production flows.
@@ -72,11 +124,16 @@ public class StationNode : MonoBehaviour
         DrinkStation drink = GetComponent<DrinkStation>();
         PantryStation pantry = GetComponent<PantryStation>();
         if (grill != null)
-            SetIo(RateForCycle(grill.processTimeSeconds, batchSize), RateForCycle(grill.processTimeSeconds, batchSize), "patties", "cooked patties");
+        {
+            int stationBatch = Mathf.Min(batchSize, grill.InputSlotCapacity, grill.OutputSlotCapacity);
+            SetIo(RateForCycle(grill.processTimeSeconds, stationBatch),
+                RateForCycle(grill.processTimeSeconds, stationBatch), "patties", "cooked patties");
+        }
         else if (assembly != null)
         {
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-            float outputRate = RateForCycle(assembly.processTimeSeconds, batchSize);
+            float outputRate = RateForCycle(assembly.processTimeSeconds,
+                Mathf.Min(batchSize, assembly.MaxProcessBatch));
             int processedAmount = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
             int pantryAmount = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
             string processedName = recipe != null && !string.IsNullOrWhiteSpace(recipe.processedInputName)
@@ -92,8 +149,9 @@ public class StationNode : MonoBehaviour
         else if (cutting != null)
         {
             CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
-            SetIo(RateForCycle(cutting.processTimeSeconds, batchSize),
-                RateForCycle(cutting.processTimeSeconds, batchSize),
+            int stationBatch = Mathf.Min(batchSize, cutting.InputSlotCapacity, cutting.OutputSlotCapacity);
+            SetIo(RateForCycle(cutting.processTimeSeconds, stationBatch),
+                RateForCycle(cutting.processTimeSeconds, stationBatch),
                 ItemLabel(recipe != null ? recipe.input : null, "select ingredient"),
                 ItemLabel(recipe != null ? recipe.output : null, "select recipe"));
         }
@@ -101,7 +159,12 @@ public class StationNode : MonoBehaviour
             SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-",
                 ItemLabel(freezer.selectedItem, "select ingredient"));
         else if (fryer != null)
-            SetIo(RateForCycle(fryer.processTimeSeconds, batchSize), RateForCycle(fryer.processTimeSeconds, batchSize), "potato slices", "fries");
+        {
+            int stationBatch = Mathf.Min(batchSize, fryer.InputSlotCapacity, fryer.OutputSlotCapacity);
+            SetIo(RateForCycle(fryer.processTimeSeconds, stationBatch),
+                RateForCycle(fryer.processTimeSeconds, stationBatch),
+                "potato slices", "cooked potato slices");
+        }
         else if (drink != null)
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
         else if (pantry != null)
@@ -159,9 +222,31 @@ public class StationNode : MonoBehaviour
         get
         {
             var t = KitchenEmployee.GetStationTypeFrom(gameObject);
+            if (GetComponent<AssemblyStation>() != null) return "Assembly Station MK" + StationMark;
+            if (GetComponent<CuttingStation>() != null) return "Cutting Station MK" + StationMark;
+            if (GetComponent<GrillStation>() != null) return "Grill MK" + StationMark;
+            if (GetComponent<FryerStation>() != null) return "Fryer MK" + StationMark;
+            if (GetComponent<HeatLampStation>() != null) return "Pickup Station MK" + StationMark;
             if (t.HasValue) return t.Value.ToString();
-            if (GetComponent<HeatLampStation>() != null) return "Pickup Station";
             return gameObject.name;
+        }
+    }
+
+    public int StationMark
+    {
+        get
+        {
+            var assembly = GetComponent<AssemblyStation>();
+            if (assembly != null) return assembly.InputSlotCapacity >= 4 ? 2 : 1;
+            var cutting = GetComponent<CuttingStation>();
+            if (cutting != null) return cutting.InputSlotCapacity >= 4 ? 2 : 1;
+            var grill = GetComponent<GrillStation>();
+            if (grill != null) return grill.InputSlotCapacity >= 4 ? 2 : 1;
+            var fryer = GetComponent<FryerStation>();
+            if (fryer != null) return fryer.InputSlotCapacity >= 4 ? 2 : 1;
+            var pickup = GetComponent<HeatLampStation>();
+            if (pickup != null) return pickup.InputSlotCapacity >= 4 ? 2 : 1;
+            return 0;
         }
     }
 
@@ -392,7 +477,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         AssemblyStation assembly = GetComponent<AssemblyStation>();
         if (assembly != null)
         {
-            if (assembly.BufferedOutputCount >= AssemblyStation.OutputCapacity)
+            if (assembly.BufferedOutputCount >= assembly.OutputSlotCapacity)
                 return StationRuntimeState.Blocked;
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
             if (recipe != null && (assembly.BufferedProcessedInputCount < Mathf.Max(1, recipe.processedInputAmount)

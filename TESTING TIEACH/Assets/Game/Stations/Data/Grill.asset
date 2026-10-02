@@ -10,18 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Grill
+  m_Name: Grill MK1
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Grill
-  prefab: {fileID: 4852931242462775543, guid: 618b71b9892fddd4c872d77cfe05da6f, type: 3}
+  itemName: Grill MK1
+  prefab: {fileID: 4852931242462775543, guid: 418d9b80a4ed016439c080f473956529, type: 3}
   price: 150
   startingQuantity: 0
+  stationFamily: Grill
+  stationMark: 1
   placementSurface: 0
-  footprintX: 2
+  footprintX: 1
   footprintY: 1
-  placementScale: {x: 2, y: 1, z: 1}
+  placementScale: {x: 1, y: 1, z: 1}
   placementEuler: {x: 0, y: 0, z: 0}
   counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 0
+  fixedCounterY: 0
   counterSlotSpan: 1
   buildFunction: 0
+  previewIcon: {fileID: 0}
+  orderPackSize: 10
+  orderPackPrice: 15

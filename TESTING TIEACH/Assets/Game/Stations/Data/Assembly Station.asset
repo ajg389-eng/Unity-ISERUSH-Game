@@ -10,20 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Assembly Station
+  m_Name: Assembly Station MK1
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Assembly Station
-  prefab: {fileID: 7020022477330457741, guid: 6696c4841b719a049bedef89c7e9985e, type: 3}
+  itemName: Assembly Station MK1
+  prefab: {fileID: 7020022477330457741, guid: cc6866a5b6a151b4497f3e4af1f18f73, type: 3}
   price: 120
   startingQuantity: 0
+  stationFamily: Assembly Station
+  stationMark: 1
   placementSurface: 0
-  footprintX: 2
+  footprintX: 1
   footprintY: 1
-  placementScale: {x: 2, y: 1, z: 1}
+  placementScale: {x: 1, y: 1, z: 1}
   placementEuler: {x: 0, y: 0, z: 0}
   counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 0
+  fixedCounterY: 0
   counterSlotSpan: 1
   buildFunction: 0
+  previewIcon: {fileID: 0}
   orderPackSize: 10
   orderPackPrice: 15

@@ -8,8 +8,8 @@ using UnityEngine.Serialization;
 /// </summary>
 public class AssemblyStation : MonoBehaviour, IStationBuffer
 {
-    public const int IngredientCapacity = 2;
-    public const int OutputCapacity = 2;
+    const int DefaultInputCapacity = 2;
+    const int DefaultOutputCapacity = 2;
 
     [Header("Product")]
     [Tooltip("Recipe output this station assembles. Must be chosen in Manage mode.")]
@@ -37,12 +37,27 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public Transform[] outputDisplaySlots = new Transform[2];
 
     Transform tableDisplayRoot;
+    readonly List<Transform> inputMarkers = new List<Transform>();
+    readonly List<Transform> outputMarkers = new List<Transform>();
+    bool layoutReady;
 
     public int BufferedProcessedInputCount => bufferedProcessedInputs;
     public int BufferedPantryInputCount => bufferedPantryInputs;
     public int BufferedOutputCount => bufferedOutputs;
-    public int InputSlotCapacity => IngredientCapacity * 2;
-    public int OutputSlotCapacity => OutputCapacity;
+    public int InputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultInputCapacity, inputMarkers.Count); } }
+    public int OutputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultOutputCapacity, outputMarkers.Count); } }
+    public int IngredientCapacity => Mathf.Max(1, InputSlotCapacity / 2);
+    public int MaxProcessBatch
+    {
+        get
+        {
+            AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+            int processedPerUnit = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
+            int pantryPerUnit = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
+            return Mathf.Max(1, Mathf.Min(OutputSlotCapacity,
+                IngredientCapacity / processedPerUnit, IngredientCapacity / pantryPerUnit));
+        }
+    }
 
     public int GetInputCount(ItemDefinition item)
     {
@@ -150,7 +165,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     public bool CanStoreOutput(int amount)
     {
-        return amount > 0 && bufferedOutputs + amount <= OutputCapacity;
+        return amount > 0 && bufferedOutputs + amount <= OutputSlotCapacity;
     }
 
     public bool HasRequiredInputs(ItemDefinition product, IReadOnlyList<ItemDefinition> pantryMaterials, int units)
@@ -194,7 +209,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (consume != 0) return false;
 
         bufferedProcessedInputs = Mathf.Max(0, bufferedProcessedInputs - processedConsume);
-        bufferedOutputs = Mathf.Min(OutputCapacity, bufferedOutputs + units);
+        bufferedOutputs = Mathf.Min(OutputSlotCapacity, bufferedOutputs + units);
         RefreshTableDisplay();
         return true;
     }
@@ -217,7 +232,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         selectedRecipe = config != null ? config.GetAssemblyRecipe(product) : null;
         bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, IngredientCapacity);
         bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, IngredientCapacity);
-        bufferedOutputs = Mathf.Clamp(outputs, 0, OutputCapacity);
+        bufferedOutputs = Mathf.Clamp(outputs, 0, OutputSlotCapacity);
         RefreshTableDisplay();
     }
 
@@ -231,9 +246,10 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     void OnEnable()
     {
         StationConfigurationCaution.Ensure(gameObject);
+        EnsureBufferLayout(true);
         bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, IngredientCapacity);
         bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, IngredientCapacity);
-        bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputCapacity);
+        bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputSlotCapacity);
         HideSlotMarkers();
         RefreshTableDisplay();
     }
@@ -256,8 +272,33 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             processedInputDisplaySlots, "ProcessedInput");
         SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, IngredientCapacity),
             pantryInputDisplaySlots, "PantryInput");
-        SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputCapacity),
+        SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputSlotCapacity),
             outputDisplaySlots, "Output");
+    }
+
+    void EnsureBufferLayout(bool force = false)
+    {
+        if (layoutReady && !force) return;
+        StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+        if (inputMarkers.Count > 0)
+        {
+            var processed = new List<Transform>();
+            var pantry = new List<Transform>();
+            for (int i = 0; i < inputMarkers.Count; i++)
+            {
+                Transform marker = inputMarkers[i];
+                string markerName = marker.name.ToLowerInvariant();
+                if (markerName.EndsWith("b")) pantry.Add(marker);
+                else if (markerName.EndsWith("a")) processed.Add(marker);
+                else if ((i & 1) == 0) processed.Add(marker);
+                else pantry.Add(marker);
+            }
+            processedInputDisplaySlots = processed.ToArray();
+            pantryInputDisplaySlots = pantry.ToArray();
+        }
+        if (outputMarkers.Count > 0)
+            outputDisplaySlots = outputMarkers.ToArray();
+        layoutReady = true;
     }
 
     void EnsureTableDisplayRoot()

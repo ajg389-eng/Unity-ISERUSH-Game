@@ -111,7 +111,17 @@ public class KitchenSaveSnapshot
         if(version<1 || version>6 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
-        foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
+        foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
+            definitions[item.name]=item;
+            // Saves created before station tiers used the original asset names.
+            // Keep those keys pointed at MK1 so existing kitchens still load.
+            if(item.IsTieredStation && item.stationMark==1) {
+                string legacyName=item.stationFamily;
+                if(item.stationFamily=="Cutting Station") legacyName="CuttingStation";
+                else if(item.stationFamily=="Pickup Station") legacyName="PickupStation";
+                definitions[legacyName]=item;
+            }
+        }
         foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
         if(workers.Count>0 && pm.employeePrefab==null) return false;
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
@@ -132,7 +142,11 @@ public class KitchenSaveSnapshot
         if(grid!=null) { grid.ResyncOccupancyFromScene(); grid.TryExpand(Mathf.Max(0,width-grid.Width),Mathf.Max(0,height-grid.Height)); }
         var objects=new List<GameObject>();
         foreach(var e in equipment) {
-            var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation); go.transform.localScale=e.scale;
+            var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation);
+            // Tiered stations use the current authored prefab dimensions. Older
+            // saves may contain scale values from the station models they replace.
+            go.transform.localScale=item.IsTieredStation && item.prefab!=null
+                ? item.prefab.transform.localScale : e.scale;
             BuildPlacer.ConfigurePlacedObject(go,item);
             var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
             objects.Add(go);

@@ -283,7 +283,15 @@ internal static class StationItemVisualUtility
     }
 
     static bool IsMarkerName(string value) =>
-        value == "ItemSpawn" || value.StartsWith("ItemSpawn (");
+        value == "ItemSpawn" || value.StartsWith("ItemSpawn (")
+        || IsNumberedInput(value);
+
+    static bool IsNumberedInput(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !value.StartsWith("Input",
+                System.StringComparison.OrdinalIgnoreCase) || value.Length <= 5) return false;
+        return char.IsDigit(value[5]);
+    }
 
     static int MarkerIndex(string value)
     {

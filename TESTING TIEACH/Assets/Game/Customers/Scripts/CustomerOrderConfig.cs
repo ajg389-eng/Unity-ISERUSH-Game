@@ -46,6 +46,10 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition friesIngredient;
     [Tooltip("Potato slices produced by a Cutting Station and consumed by the Fryer")]
     public ItemDefinition slicedPotatoIngredient;
+    [Tooltip("Cooked potato slices produced by the Fryer and consumed by the Fries assembly recipe")]
+    public ItemDefinition cookedPotatoIngredient;
+    [Tooltip("Empty fry container supplied by a Pantry for final Fries assembly")]
+    public ItemDefinition fryContainerIngredient;
     [Header("Production stage items")]
     [Tooltip("Raw patty produced by the Freezer and carried to the Grill.")]
     public ItemDefinition rawPattyIngredient;
@@ -168,7 +172,7 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>
     /// Production pipeline for a single menu item (not including heat lamp delivery).
     /// Burger main line: Freezer → Grill → Assembly. Pantry supplies buns in parallel.
-    /// Fries: Pantry → Cutting → Fryer
+    /// Fries: Potato Pantry → Cutting → Fryer → Assembly. A Fry Container Pantry supplies Assembly.
     /// Drink: Drink Fountain
     /// </summary>
     public StationType[] GetPipeline(ItemDefinition item)
@@ -185,7 +189,8 @@ public class CustomerOrderConfig : ScriptableObject
                     pipeline[2 + i] = StationType.Assembly;
                 return pipeline;
             case ProductKind.Fries:
-                return new[] { StationType.Pantry, StationType.Cutting, StationType.Fryer };
+                return new[] { StationType.Pantry, StationType.Cutting,
+                    StationType.Fryer, StationType.Assembly };
             case ProductKind.Drink:
                 return new[] { StationType.Drink };
             default:

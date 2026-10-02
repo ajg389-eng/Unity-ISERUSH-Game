@@ -161,7 +161,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Fryer",
             "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "The fries flow is Pantry > Cutting Station > Fryer > Pickup Station. Potatoes must be sliced before frying.\n\nPlace one to continue.",
+            "The fries flow is Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, then Assembly combines them with a fry container from a second Pantry.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
@@ -247,10 +247,10 @@ public class OnboardingTutorial : MonoBehaviour
         "Distance matters because every extra tile adds travel time. Put it somewhere sensible and we will connect its output later.",
 
         "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
-        "Fries now need sliced potatoes: Pantry > Cutting Station > Fryer > Pickup Station. We will practice a basic burger first; no cutting station is required for it.",
+        "Fries use Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, and Assembly combines them with a fry container supplied by a second Pantry. We will practice a basic burger first; no cutting station is required for it.",
 
         "Place a <b>pantry</b> for the burger line. Each pantry stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Bun</b>.\n\n" +
-        "A fries line needs a separate pantry configured for potatoes.",
+        "A fries line needs one pantry configured for potatoes and another configured for fry containers.",
 
         "Place an <b>assembly</b> table. Workers combine one cooked patty with one bun here to finish a burger.\n\n" +
         "Connect Grill > Assembly for cooked patties and Pantry > Assembly for buns, then Assembly > Pickup Station. Both input branches belong in the same flow.",

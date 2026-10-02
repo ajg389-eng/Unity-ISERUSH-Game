@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>Processes raw burger toppings into slices ready for assembly.</summary>
 public class CuttingStation : MonoBehaviour, IStationBuffer
 {
-    public const int BufferCapacity = 2;
+    const int DefaultBufferCapacity = 2;
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
@@ -22,13 +22,15 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     ItemDefinition displayedRecipeOutput;
 
     public bool HasRecipeSelected => GetSelectedRecipe() != null;
-    public int InputSlotCapacity => BufferCapacity;
-    public int OutputSlotCapacity => BufferCapacity;
+    public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
+    public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
 
     void OnEnable()
     {
         StationConfigurationCaution.Ensure(gameObject);
         FindBufferMarkers();
+        inputUnits = Mathf.Clamp(inputUnits, 0, InputSlotCapacity);
+        outputUnits = Mathf.Clamp(outputUnits, 0, OutputSlotCapacity);
         RefreshItemDisplay(true);
     }
 
@@ -68,7 +70,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         return recipe != null && item == recipe.input && amount > 0
-            && inputUnits + amount <= BufferCapacity;
+            && inputUnits + amount <= InputSlotCapacity;
     }
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
@@ -97,7 +99,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     public int ProcessBuffered(int amount)
     {
         amount = Mathf.Max(1, amount);
-        int processed = Mathf.Min(amount, inputUnits, BufferCapacity - outputUnits);
+        int processed = Mathf.Min(amount, inputUnits, OutputSlotCapacity - outputUnits);
         if (processed <= 0) return 0;
         inputUnits -= processed;
         outputUnits += processed;
@@ -180,27 +182,12 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     void FindBufferMarkers()
     {
-        inputMarkers.Clear();
-        outputMarkers.Clear();
-        Transform[] children = GetComponentsInChildren<Transform>(true);
-        for (int i = 0; i < children.Length; i++)
-        {
-            Transform marker = children[i];
-            if (marker == transform) continue;
-            if (marker.name == "InputBuffer" || marker.name.StartsWith("InputBuffer ("))
-                inputMarkers.Add(marker);
-            else if (marker.name == "OutputBuffer" || marker.name.StartsWith("OutputBuffer ("))
-                outputMarkers.Add(marker);
-            else
-                continue;
+        StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+    }
 
-            foreach (Renderer renderer in marker.GetComponentsInChildren<Renderer>(true))
-                renderer.enabled = false;
-            foreach (Collider collider in marker.GetComponentsInChildren<Collider>(true))
-                collider.enabled = false;
-        }
-        inputMarkers.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
-        outputMarkers.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+    void EnsureBufferMarkers()
+    {
+        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
     }
 
     void RefreshItemDisplay(bool force)

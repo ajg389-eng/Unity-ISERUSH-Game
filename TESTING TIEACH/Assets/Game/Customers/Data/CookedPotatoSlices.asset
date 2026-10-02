@@ -10,25 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Pickup Station MK1
+  m_Name: CookedPotatoSlices
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Pickup Station MK1
-  prefab: {fileID: 4852931242462775543, guid: ea68b4e77c24581449ae6775a50ef0de, type: 3}
-  price: 50
+  itemName: Cooked Potato Slices
+  prefab: {fileID: 8540346786976737586, guid: cb8b0bc286e7a0f44821c1112434773e, type: 3}
+  price: 0
   startingQuantity: 0
-  stationFamily: Pickup Station
-  stationMark: 1
-  placementSurface: 1
+  stationFamily: 
+  stationMark: 0
+  placementSurface: 0
   footprintX: 1
   footprintY: 1
-  placementScale: {x: 1, y: 1, z: 1}
-  placementEuler: {x: 0, y: -90, z: 0}
-  counterEmbedDepth: 0.9
+  placementScale: {x: 0.3, y: 0.3, z: 0.3}
+  placementEuler: {x: 0, y: 0, z: 0}
+  counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}
-  useFixedCounterY: 1
-  fixedCounterY: 0.51
+  useFixedCounterY: 0
+  fixedCounterY: 0
   counterSlotSpan: 1
   buildFunction: 0
   previewIcon: {fileID: 0}
-  orderPackSize: 10
-  orderPackPrice: 15
+  orderPackSize: 0
+  orderPackPrice: 0

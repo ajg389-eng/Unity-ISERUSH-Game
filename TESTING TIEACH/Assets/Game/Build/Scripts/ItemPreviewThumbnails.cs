@@ -7,8 +7,9 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 7;
+    const int CacheVersion = 10;
     const string RootName = "__ItemPreviewThumbnails";
+    const int PreviewLayer = 31;
 
     // Shared with the inventory preview frame so fitted square thumbnails do not
     // reveal a second background shade around their edges.
@@ -63,7 +64,11 @@ public static class ItemPreviewThumbnails
             StripPreviewHelpers(instance);
 
             instance.transform.localPosition = Vector3.zero;
-            instance.transform.localRotation = Quaternion.Euler(15f, 150f, 0f);
+            // Assembly prefabs are authored with their working side opposite the
+            // standard shop camera, so turn only their thumbnail around.
+            bool assemblyPreview = instance.GetComponentInChildren<AssemblyStation>(true) != null;
+            instance.transform.localRotation = Quaternion.Euler(assemblyPreview ? -15f : 15f,
+                assemblyPreview ? 330f : 150f, 0f);
             // Match the same non-uniform scale used by the placed item. Uniform scale is
             // handled by camera framing, but preserving the proportions prevents compact
             // counter stations from appearing squeezed in their inventory cards.
@@ -114,9 +119,16 @@ public static class ItemPreviewThumbnails
             var stageGo = new GameObject("Stage");
             stageGo.transform.SetParent(root.transform, false);
             stageGo.transform.position = new Vector3(0f, -5000f, 0f);
-            stageGo.layer = 31;
+            stageGo.layer = PreviewLayer;
             stage = stageGo.transform;
         }
+
+        // Remove the short-lived isolated-lighting experiment if its hidden
+        // preview root survived a script reload.
+        Transform keyLight = root.transform.Find("KeyLight");
+        if (keyLight != null) Object.DestroyImmediate(keyLight.gameObject);
+        Transform fillLight = root.transform.Find("FillLight");
+        if (fillLight != null) Object.DestroyImmediate(fillLight.gameObject);
 
         var camT = root.transform.Find("PreviewCamera");
         if (camT == null)
@@ -129,7 +141,7 @@ public static class ItemPreviewThumbnails
         previewCamera = camT.GetComponent<Camera>();
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
         previewCamera.backgroundColor = BackgroundColor;
-        previewCamera.cullingMask = 1 << 31;
+        previewCamera.cullingMask = 1 << PreviewLayer;
         previewCamera.enabled = false;
         previewCamera.nearClipPlane = 0.05f;
         previewCamera.farClipPlane = 50f;
@@ -139,6 +151,20 @@ public static class ItemPreviewThumbnails
 
     static void StripPreviewHelpers(GameObject instance)
     {
+        // The authored interaction highlight is intentionally part of the station
+        // prefab for build mode. Exclude its exact referenced object from thumbnails,
+        // regardless of whether the artist named it Quad or InteractionHighlight.
+        StationInteractionTiles[] interactionTiles =
+            instance.GetComponentsInChildren<StationInteractionTiles>(true);
+        for (int i = 0; i < interactionTiles.Length; i++)
+        {
+            StationInteractionTiles tiles = interactionTiles[i];
+            if (tiles == null || tiles.buildModeHighlight == null) continue;
+            GameObject highlight = tiles.buildModeHighlight;
+            tiles.buildModeHighlight = null;
+            Object.DestroyImmediate(highlight);
+        }
+
         Transform[] parts = instance.GetComponentsInChildren<Transform>(true);
         for (int i = 0; i < parts.Length; i++)
         {

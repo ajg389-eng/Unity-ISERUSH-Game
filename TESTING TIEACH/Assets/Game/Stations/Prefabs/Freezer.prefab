@@ -229,7 +229,7 @@ GameObject:
   - component: {fileID: 5075803326445885385}
   - component: {fileID: -4817066388479428243}
   m_Layer: 0
-  m_Name: Freezer 1
+  m_Name: Freezer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

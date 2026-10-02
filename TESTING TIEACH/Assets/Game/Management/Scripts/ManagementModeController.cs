@@ -686,7 +686,7 @@ public class ManagementModeController : MonoBehaviour
         if (station.GetComponent<GrillStation>() != null) return config.cookedPattyIngredient;
         CuttingStation cutting = station.GetComponent<CuttingStation>();
         if (cutting != null) return cutting.GetSelectedRecipe()?.output;
-        if (station.GetComponent<FryerStation>() != null) return config.friesItem;
+        if (station.GetComponent<FryerStation>() != null) return config.cookedPotatoIngredient;
         if (station.GetComponent<DrinkStation>() != null) return config.drinkItem;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
         return assembly != null ? assembly.GetSelectedRecipe()?.output : null;
@@ -1036,14 +1036,14 @@ public class ManagementModeController : MonoBehaviour
         if (node == null) return "Buffer unavailable";
         AssemblyStation assembly = node.GetComponent<AssemblyStation>();
         if (assembly != null)
-            return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + AssemblyStation.IngredientCapacity
-                + "  |  input B " + assembly.BufferedPantryInputCount + "/" + AssemblyStation.IngredientCapacity
-                + "  |  output " + assembly.BufferedOutputCount + "/" + AssemblyStation.OutputCapacity
+            return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + assembly.IngredientCapacity
+                + "  |  input B " + assembly.BufferedPantryInputCount + "/" + assembly.IngredientCapacity
+                + "  |  output " + assembly.BufferedOutputCount + "/" + assembly.OutputSlotCapacity
                 + "  |  reserved in " + incoming + ", out " + outgoing;
 
         GrillStation grill = node.GetComponent<GrillStation>();
         if (grill != null)
-            return "Buffer: " + grill.BufferedPattyCount + "/" + GrillStation.BufferCapacity
+            return "Buffer: " + grill.BufferedPattyCount + "/" + grill.InputSlotCapacity
                 + (grill.IsCooked() ? " ready" : (grill.IsCookingPatty ? " cooking" : " empty"))
                 + "  |  reserved in " + incoming + ", out " + outgoing;
 
@@ -1313,13 +1313,13 @@ public class ManagementModeController : MonoBehaviour
         else if (fryer != null)
         {
             ItemDefinition fryerInput = modelConfig != null ? modelConfig.slicedPotatoIngredient : null;
-            ItemDefinition fryerOutput = modelConfig != null ? modelConfig.friesItem : null;
+            ItemDefinition fryerOutput = modelConfig != null ? modelConfig.cookedPotatoIngredient : null;
             inputPrefab = fryerInput != null && fryerInput.prefab != null
                 ? fryerInput.prefab : rawFriesPreviewPrefab;
             outputPrefab = fryerOutput != null && fryerOutput.prefab != null
                 ? fryerOutput.prefab : cookedFriesPreviewPrefab;
             inputName = fryerInput != null ? DisplayItemName(fryerInput) : "Potato slices";
-            outputName = "Fries";
+            outputName = fryerOutput != null ? DisplayItemName(fryerOutput) : "Cooked Potato Slices";
             cycleSeconds = fryer.processTimeSeconds;
         }
         else if (drink != null)

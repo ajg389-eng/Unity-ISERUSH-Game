@@ -20,6 +20,10 @@ public class InventoryManager : MonoBehaviour
 
     void Awake()
     {
+        foreach (ItemDefinition stationVariant in Resources.LoadAll<ItemDefinition>("Stations"))
+            if (stationVariant != null && !allItems.Contains(stationVariant))
+                allItems.Add(stationVariant);
+
         foreach (var item in allItems)
         {
             if (item == null) continue;
@@ -42,6 +46,17 @@ public class InventoryManager : MonoBehaviour
         return acquired.TryGetValue(item, out int c) ? c : 0;
     }
 
+    public int GetStationFamilyAcquiredCount(ItemDefinition item)
+    {
+        if (item == null || !item.IsTieredStation) return GetAcquiredCount(item);
+        int total = 0;
+        foreach (var pair in acquired)
+            if (pair.Key != null && pair.Key.IsTieredStation
+                && pair.Key.stationFamily == item.stationFamily)
+                total += pair.Value;
+        return total;
+    }
+
     public const int DoorPurchaseCap = 1;
 
     /// <summary>Total owned capacity for one station type, including milestone rewards.</summary>
@@ -60,14 +75,16 @@ public class InventoryManager : MonoBehaviour
 
     public bool IsAtStationCapacity(ItemDefinition item)
     {
-        return item == null || GetAcquiredCount(item) >= GetStationCapacity(item);
+        return item == null || GetStationFamilyAcquiredCount(item) >= GetStationCapacity(item);
     }
 
     /// <summary>Shop price: first unit of each station/item is free.</summary>
     public int GetPurchasePrice(ItemDefinition item)
     {
         if (item == null) return 0;
-        return GetAcquiredCount(item) <= 0 ? 0 : Mathf.Max(0, item.price);
+        // The first station in a family is free. Switching to MK2 must not grant
+        // a second free station for the same kind of equipment.
+        return GetStationFamilyAcquiredCount(item) <= 0 ? 0 : Mathf.Max(0, item.price);
     }
 
     public void SelectItem(ItemDefinition item)
@@ -136,7 +153,7 @@ public class InventoryManager : MonoBehaviour
                 || prefab.GetComponentInChildren<FryerStation>(true) != null
                 || prefab.GetComponentInChildren<DrinkStation>(true) != null
                 || prefab.GetComponentInChildren<AssemblyStation>(true) != null
-                || item.itemName == "Cutting Station"
+                || prefab.GetComponentInChildren<CuttingStation>(true) != null
                 || prefab.GetComponentInChildren<HeatLampStation>(true) != null
                 || prefab.GetComponentInChildren<PantryStation>(true) != null;
             if (!equipment) continue;

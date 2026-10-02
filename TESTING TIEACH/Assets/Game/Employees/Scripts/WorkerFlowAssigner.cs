@@ -1028,7 +1028,8 @@ public static class WorkflowAnalysis
             && FlowHas(flow, "Assembly", typeof(AssemblyStation));
         bool canFries = FlowHas(flow, "Pantry", typeof(PantryStation))
             && FlowHas(flow, "Cutting", typeof(CuttingStation))
-            && FlowHas(flow, "Fryer", typeof(FryerStation));
+            && FlowHas(flow, "Fryer", typeof(FryerStation))
+            && FlowHas(flow, "Assembly", typeof(AssemblyStation));
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         var inventory = Object.FindFirstObjectByType<KitchenInventory>();
 

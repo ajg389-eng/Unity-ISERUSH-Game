@@ -8,7 +8,7 @@ using UnityEngine.Serialization;
 /// </summary>
 public class GrillStation : MonoBehaviour, IStationBuffer
 {
-    public const int BufferCapacity = 4;
+    const int DefaultBufferCapacity = 2;
     [Header("Product")]
     [Tooltip("Output this grill produces. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
@@ -22,7 +22,8 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     float cookTimer;
     CustomerOrder bufferedOrder;
     Transform itemDisplayRoot;
-    readonly List<Transform> itemSpawnMarkers = new List<Transform>();
+    readonly List<Transform> inputMarkers = new List<Transform>();
+    readonly List<Transform> outputMarkers = new List<Transform>();
     int displayedUnits = -1;
     bool displayedCooked;
     ItemDefinition displayedProduct;
@@ -32,14 +33,15 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public bool IsCookingPatty => pattyUnits > 0 && cookTimer < processTimeSeconds;
     public int BufferedPattyCount => pattyUnits;
     public float CookProgressSeconds => cookTimer;
-    public int InputSlotCapacity => BufferCapacity;
-    public int OutputSlotCapacity => BufferCapacity;
+    public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
+    public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
 
     void OnEnable()
     {
         StationConfigurationCaution.Ensure(gameObject);
         NormalizeLegacySelection();
-        StationItemVisualUtility.FindMarkers(transform, itemSpawnMarkers);
+        FindBufferMarkers();
+        pattyUnits = Mathf.Clamp(pattyUnits, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
         RefreshItemDisplay(force: true);
     }
 
@@ -48,7 +50,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public int GetOutputCount(ItemDefinition item) =>
         IsCookedPatty(item) && IsCooked() ? pattyUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && IsRawPatty(item) && pattyUnits == 0 && amount <= BufferCapacity;
+        amount > 0 && IsRawPatty(item) && pattyUnits == 0 && amount <= InputSlotCapacity;
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;
@@ -181,7 +183,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     {
         selectedProduct = product;
         NormalizeLegacySelection();
-        pattyUnits = Mathf.Clamp(units, 0, BufferCapacity);
+        pattyUnits = Mathf.Clamp(units, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
         cookTimer = pattyUnits > 0
             ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
             : 0f;
@@ -200,8 +202,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         if (!force && displayedUnits == pattyUnits && displayedCooked == cooked
             && displayedProduct == selectedProduct) return;
 
-        if (itemSpawnMarkers.Count == 0)
-            StationItemVisualUtility.FindMarkers(transform, itemSpawnMarkers);
+        EnsureBufferMarkers();
         if (itemDisplayRoot == null)
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "GrillItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
@@ -220,9 +221,20 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         GameObject prefab = visualItem != null ? visualItem.prefab : null;
         if (prefab == null) return;
 
-        int visibleCount = Mathf.Min(pattyUnits, itemSpawnMarkers.Count);
+        List<Transform> activeMarkers = cooked ? outputMarkers : inputMarkers;
+        int visibleCount = Mathf.Min(pattyUnits, activeMarkers.Count);
         for (int i = 0; i < visibleCount; i++)
-            StationItemVisualUtility.SpawnAtMarker(prefab, itemSpawnMarkers[i], itemDisplayRoot,
+            StationItemVisualUtility.SpawnAtMarker(prefab, activeMarkers[i], itemDisplayRoot,
                 (cooked ? "CookedPatty_" : "RawPatty_") + i);
+    }
+
+    void FindBufferMarkers()
+    {
+        StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+    }
+
+    void EnsureBufferMarkers()
+    {
+        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
     }
 }

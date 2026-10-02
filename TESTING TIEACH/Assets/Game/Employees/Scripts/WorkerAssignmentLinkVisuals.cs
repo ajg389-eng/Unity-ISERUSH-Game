@@ -850,7 +850,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
         ProductionManager production = ProductionManager.Instance;
         if (station.GetComponent<FryerStation>() != null)
-            return production != null ? production.FriesItem : null;
+            return production != null ? production.CookedPotatoItem : null;
         if (station.GetComponent<DrinkStation>() != null)
             return production != null && production.orderConfig != null
                 ? production.orderConfig.drinkItem : null;
