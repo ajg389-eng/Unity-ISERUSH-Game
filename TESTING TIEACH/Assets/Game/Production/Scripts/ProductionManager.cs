@@ -137,10 +137,19 @@ public class ProductionJob
 /// </summary>
 public class ProductionManager : MonoBehaviour
 {
+    [System.Serializable]
+    public class ProductionTarget
+    {
+        public ItemDefinition item;
+        [Min(0)] public int quantity = 2;
+    }
+
     public static ProductionManager Instance { get; private set; }
 
     [Header("Order config")]
     public CustomerOrderConfig orderConfig;
+    [Header("Ready-stock targets")]
+    public List<ProductionTarget> productionTargets = new List<ProductionTarget>();
 
     [Header("Registers")]
     public List<Register> registers = new List<Register>();
@@ -233,6 +242,30 @@ public class ProductionManager : MonoBehaviour
     public ItemDefinition DrinkItem => orderConfig != null ? orderConfig.drinkItem : null;
     public HeatLampStation HeatLamp => heatLamp;
     public int PendingJobCount => pendingJobs.Count;
+
+    public int GetProductionTarget(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        foreach (ProductionTarget entry in productionTargets)
+            if (entry != null && entry.item == item)
+                return Mathf.Max(0, entry.quantity);
+        return 2;
+    }
+
+    public void SetProductionTarget(ItemDefinition item, int quantity)
+    {
+        if (item == null) return;
+        quantity = Mathf.Clamp(quantity, 0, 20);
+        foreach (ProductionTarget entry in productionTargets)
+            if (entry != null && entry.item == item)
+            {
+                entry.quantity = quantity;
+                RequestImmediateProduction();
+                return;
+            }
+        productionTargets.Add(new ProductionTarget { item = item, quantity = quantity });
+        RequestImmediateProduction();
+    }
 
     /// <summary>Per-item demand vs ready stock / cooking — used by the Customers management tab.</summary>
     public struct ItemOutputNeed
@@ -627,7 +660,36 @@ public class ProductionManager : MonoBehaviour
         if (flow?.stations == null || station == null || !flow.stations.Contains(station)) return null;
         List<GameObject> outgoing = flow.GetOutgoing(station);
         outgoing.RemoveAll(candidate => candidate == null || !flow.stations.Contains(candidate));
-        if (outgoing.Count == 0) return null;
+        if (outgoing.Count == 0)
+        {
+            // A Pickup Station is the terminal sink of a production flow. Players
+            // commonly add it as a separate start node because it has no recipe
+            // input selector. Final products must still be able to leave the last
+            // work station, while intermediate items continue to require explicit
+            // directed links.
+            bool finalProduct = job != null
+                ? !GetRequiredNextStationType(job).HasValue
+                : producedItem != null && orderConfig != null
+                    && orderConfig.GetProductKind(producedItem) != CustomerOrderConfig.ProductKind.None;
+            if (finalProduct)
+            {
+                GameObject nearestPickup = null;
+                float nearestDistance = float.MaxValue;
+                foreach (GameObject candidate in flow.stations)
+                {
+                    HeatLampStation pickup = candidate != null
+                        ? candidate.GetComponent<HeatLampStation>() : null;
+                    if (pickup == null || !pickup.isActiveAndEnabled) continue;
+                    float distance = Vector3.SqrMagnitude(
+                        candidate.transform.position - station.transform.position);
+                    if (distance >= nearestDistance) continue;
+                    nearestDistance = distance;
+                    nearestPickup = candidate;
+                }
+                return nearestPickup;
+            }
+            return null;
+        }
 
         job ??= worker != null ? worker.ActiveJob : null;
         if (job == null)
@@ -1056,13 +1118,10 @@ public class ProductionManager : MonoBehaviour
 
         // Pickup stations are four-unit WIP buffers. Keep every slot filled or
         // reserved so a carry upgrade cannot stop after one partial batch.
-        int target = totalCapacity;
-
         int inFlight = heldCount + MenuJobCount();
         int openSlots = totalCapacity - inFlight;
 
         // Always keep stock up — kitchen produces without waiting for customers.
-        target = Mathf.Clamp(target, 1, totalCapacity);
         var cookable = GetCookableMenuItems();
         if (cookable.Count == 0) return;
 
@@ -1070,23 +1129,22 @@ public class ProductionManager : MonoBehaviour
 
         // Keep assigned cooks cycling: if someone is idle and can cook, raise the
         // production target so they immediately start another flow loop.
-        int idleCookSlots = CountIdleCookSlots(cookable);
-        if (idleCookSlots > 0)
-        {
-            target = Mathf.Min(totalCapacity, Mathf.Max(target, heldCount + MenuJobCount() + idleCookSlots));
-            // Drink (and other specialist) cooks still need a job when the pass is full
-            // of other items — they will wait at delivery if there is no space yet.
-            openSlots = Mathf.Max(openSlots, idleCookSlots);
-        }
-
         if (openSlots <= 0) return;
 
         // Prefer matching pending jobs to the cooks who can run them.
-        EnsurePendingJobsForIdleCooks(cookable, stockCounts, ref openSlots);
-
-        while (openSlots > 0 && heldCount + MenuJobCount() < target)
+        while (openSlots > 0)
         {
-            ItemDefinition item = PickLeastStockedItem(cookable, stockCounts);
+            ItemDefinition item = null;
+            int greatestDeficit = 0;
+            foreach (ItemDefinition candidate in cookable)
+            {
+                if (candidate == null) continue;
+                int current = stockCounts.TryGetValue(candidate, out int count) ? count : 0;
+                int deficit = GetProductionTarget(candidate) - current;
+                if (deficit <= greatestDeficit) continue;
+                item = candidate;
+                greatestDeficit = deficit;
+            }
             if (item == null) break;
             var job = CreateJob(CustomerOrder.FromItem(item, 1));
             if (job == null) break;
@@ -1589,22 +1647,30 @@ public class ProductionManager : MonoBehaviour
         if (employee == null || orderConfig == null) return null;
 
         int heldCount = 0;
-        int target = 0;
+        int capacity = 0;
         HeatLampStation[] lamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (lamps == null || lamps.Length == 0) return null;
         foreach (HeatLampStation lamp in lamps)
         {
             if (lamp == null) continue;
             heldCount += lamp.Count;
-            target += Mathf.Max(0, lamp.maxCapacity);
+            capacity += Mathf.Max(0, lamp.maxCapacity);
         }
 
         // Do not overproduce. This fallback only repairs a missing compatible job while the
         // configured ready-stock target still has an open slot.
-        if (heldCount + MenuJobCount() >= target) return null;
+        if (heldCount + MenuJobCount() >= capacity) return null;
 
         List<ItemDefinition> cookable = GetCookableMenuItems();
-        ItemDefinition item = PickItemWorkerCanCook(employee, cookable, searchEntireFlow);
+        Dictionary<ItemDefinition, int> stockCounts = CountInFlightByItem();
+        List<ItemDefinition> needed = new List<ItemDefinition>();
+        foreach (ItemDefinition candidate in cookable)
+        {
+            if (candidate == null) continue;
+            int current = stockCounts.TryGetValue(candidate, out int count) ? count : 0;
+            if (current < GetProductionTarget(candidate)) needed.Add(candidate);
+        }
+        ItemDefinition item = PickItemWorkerCanCook(employee, needed, searchEntireFlow);
         if (item == null) return null;
 
         ProductionJob job = CreateJob(CustomerOrder.FromItem(item, 1));
@@ -1627,6 +1693,22 @@ public class ProductionManager : MonoBehaviour
             if (job != null && job.taskPhase == ProductionTaskPhase.CollectOutput
                 && job.taskSourceStation == source && job.CurrentWorkProduct == item)
                 return true;
+        return false;
+    }
+
+    public bool HasPendingFryerTask(GameObject fryerStation)
+    {
+        if (fryerStation == null) return false;
+        foreach (ProductionJob job in pendingJobs)
+        {
+            if (job == null || job.isAssemblySupply || orderConfig == null
+                || !orderConfig.IsFries(job.product)
+                || job.CurrentStationType != StationType.Fryer)
+                continue;
+            if (job.taskSourceStation == null || job.taskSourceStation == fryerStation
+                || job.reservedWorkStation == fryerStation)
+                return true;
+        }
         return false;
     }
 
@@ -1725,6 +1807,27 @@ public class ProductionManager : MonoBehaviour
                 && pantryOutput != null;
             bool destinationReady = validDestination
                 && TryReserveDestination(job, destination, pantryOutput, desiredBatch);
+            if (!validDestination || !destinationReady)
+            {
+                ReleaseWorkReservation(job);
+                return false;
+            }
+        }
+        else if (job.CurrentStationType.Value == StationType.Cutting)
+        {
+            // Cutting creates physical output immediately after processing. Reserve
+            // its downstream buffer before allowing the task to start so another
+            // worker cannot slice stock that has nowhere to go.
+            GameObject destination = GetFlowOutput(employee, station, job);
+            ItemDefinition cuttingOutput = GetBranchTransferItem(job);
+            int desiredBatch = Mathf.Clamp(
+                job.heldUnits > 0 ? job.heldUnits : employee.CarryCapacity,
+                1, employee.CarryCapacity);
+            bool validDestination = destination != null
+                && IsStationInWorkerFlow(employee, destination)
+                && cuttingOutput != null;
+            bool destinationReady = validDestination
+                && TryReserveDestination(job, destination, cuttingOutput, desiredBatch);
             if (!validDestination || !destinationReady)
             {
                 ReleaseWorkReservation(job);

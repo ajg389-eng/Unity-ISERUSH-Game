@@ -254,6 +254,41 @@ public class IngredientsOrderUI : MonoBehaviour
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
+        ProductionManager production = ProductionManager.Instance != null
+            ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
+        ItemDefinition captured = item;
+        Button targetMinus = CreateCartButton(header.transform, "TargetMinus", "-", 28f,
+            new Color(0.32f, 0.33f, 0.4f, 1f), out _);
+        var targetGo = new GameObject("ProductionTarget", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
+        targetGo.transform.SetParent(header.transform, false);
+        var targetLe = targetGo.GetComponent<LayoutElement>();
+        targetLe.minWidth = 66f;
+        targetLe.preferredWidth = 66f;
+        var targetLabel = targetGo.GetComponent<TextMeshProUGUI>();
+        targetLabel.fontSize = 11f;
+        targetLabel.fontStyle = FontStyles.Bold;
+        targetLabel.color = new Color(0.85f, 0.9f, 1f, 1f);
+        targetLabel.alignment = TextAlignmentOptions.Center;
+        targetLabel.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) targetLabel.font = TMP_Settings.defaultFontAsset;
+        System.Action refreshTarget = () => targetLabel.text = "TARGET " +
+            (production != null ? production.GetProductionTarget(captured) : 0);
+        Button targetPlus = CreateCartButton(header.transform, "TargetPlus", "+", 28f,
+            new Color(0.27f, 0.62f, 0.4f, 1f), out _);
+        targetMinus.onClick.AddListener(() =>
+        {
+            if (production != null) production.SetProductionTarget(captured,
+                production.GetProductionTarget(captured) - 1);
+            refreshTarget();
+        });
+        targetPlus.onClick.AddListener(() =>
+        {
+            if (production != null) production.SetProductionTarget(captured,
+                production.GetProductionTarget(captured) + 1);
+            refreshTarget();
+        });
+        refreshTarget();
+
         var chevronGo = new GameObject("Chevron", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         chevronGo.transform.SetParent(header.transform, false);
         var chevronLe = chevronGo.GetComponent<LayoutElement>();
@@ -270,7 +305,6 @@ public class IngredientsOrderUI : MonoBehaviour
 
         Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
-        ItemDefinition captured = item;
         toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));

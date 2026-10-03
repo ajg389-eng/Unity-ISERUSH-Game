@@ -314,7 +314,10 @@ public class KitchenEmployee : MonoBehaviour
             case Step.GoToAssembly: return FormatTask("Walking to Assembly", product);
             case Step.AtAssembly: return FormatTask("Assembling order", product);
             case Step.GoToCutting: return FormatTask("Walking to Cutting Station", product);
-            case Step.AtCutting: return FormatTask("Slicing burger toppings", product);
+            case Step.AtCutting:
+                return FormatTask(manager != null && manager.orderConfig != null
+                    && manager.orderConfig.IsFries(currentJob != null ? currentJob.product : null)
+                        ? "Slicing potatoes" : "Slicing recipe ingredients", product);
             case Step.GoToPantry: return FormatTask("Walking to Pantry for ingredients", product);
             case Step.AtPantry: return FormatTask("Collecting recipe ingredients", product);
             case Step.GoToFryer: return FormatTask("Walking to Fryer", product);
@@ -2126,10 +2129,36 @@ public class KitchenEmployee : MonoBehaviour
         foreach (GameObject stationObject in GetTaskStations(true))
         {
             if (stationObject == null) continue;
+            FryerStation fryer = stationObject.GetComponent<FryerStation>();
+            QueueCookedFryerOutputTask(fryer);
             AssemblyStation station = stationObject.GetComponent<AssemblyStation>();
             QueueStoredAssemblyOutputTask(station);
         }
         QueueReadyAssemblyProductionTasks();
+    }
+
+    void QueueCookedFryerOutputTask(FryerStation fryer)
+    {
+        if (manager == null || fryer == null || !fryer.IsCooked()
+            || fryer.GetOutputCount(manager.CookedPotatoItem) <= 0
+            || manager.FriesItem == null || manager.HasPendingFryerTask(fryer.gameObject))
+            return;
+
+        GameObject output = manager.GetFlowOutput(this, fryer.gameObject, null,
+            manager.FriesItem);
+        AssemblyStation assembly = output != null ? output.GetComponent<AssemblyStation>() : null;
+        if (assembly == null || !assembly.CanProcess(manager.FriesItem)
+            || !assembly.CanAcceptInput(manager.CookedPotatoItem, 1))
+            return;
+
+        var recovery = new ProductionJob(CustomerOrder.FromItem(manager.FriesItem, 1),
+            new[] { StationType.Fryer, StationType.Assembly },
+            new[] { manager.FriesItem })
+        {
+            taskPhase = ProductionTaskPhase.CollectOutput,
+            taskSourceStation = fryer.gameObject
+        };
+        manager.QueueRecoveryJob(recovery);
     }
 
     List<GameObject> GetTaskStations(bool searchEntireFlow)
@@ -3148,8 +3177,6 @@ public class KitchenEmployee : MonoBehaviour
                     ItemDefinition pantryItem = currentJob != null && currentJob.isAssemblySupply
                         ? manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget)
                         : manager.GetPantryItemForProduct(currentJob != null ? currentJob.product : null);
-                    AssemblyRecipeDefinition recipe = manager.GetAssemblyRecipe(
-                        currentJob != null ? currentJob.product : null);
                     if (pantryItem == null)
                     {
                         TaskProgress = 0f;
@@ -3162,14 +3189,8 @@ public class KitchenEmployee : MonoBehaviour
                     TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, pantry.processTimeSeconds));
                     if (stateTimer >= pantry.processTimeSeconds)
                     {
-                        if (recipe != null)
+                        if (currentJob != null && currentJob.isAssemblySupply)
                         {
-                            if (currentJob == null || !currentJob.isAssemblySupply)
-                            {
-                                TaskProgress = 0f;
-                                break;
-                            }
-
                             int wanted = Mathf.Clamp(currentJob.requestedSupplyUnits, 1, CarryCapacity);
                             int reservedCapacity = manager.GetReservedInputUnits(currentJob);
                             if (reservedCapacity > 0)

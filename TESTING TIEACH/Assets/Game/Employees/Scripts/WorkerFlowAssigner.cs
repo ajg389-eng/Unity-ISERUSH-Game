@@ -1068,6 +1068,11 @@ public static class WorkflowAnalysis
         if (hasDrink && config != null && config.drinkItem != null)
             products.Add(config.drinkItem);
 
+        // Report actual configured outputs, not every recipe this collection of
+        // station types could theoretically make. The producer must be selected
+        // for the exact product and its output must terminate at Pickup.
+        products.RemoveAll(product => !IsProductDeliveredToPickup(flow, product, config));
+
         if (products.Count == 0)
         {
             result.summary = "Cycle " + cycleLabel + " — no cookable menu item detected on this route.";
@@ -1150,6 +1155,37 @@ public static class WorkflowAnalysis
         {
             if (station != null && station.GetComponent(componentType) != null)
                 return true;
+        }
+        return false;
+    }
+
+    static bool IsProductDeliveredToPickup(ProductionFlowPlan flow, ItemDefinition product,
+        CustomerOrderConfig config)
+    {
+        if (flow?.stations == null || product == null) return false;
+        foreach (GameObject station in flow.stations)
+        {
+            if (station == null) continue;
+            bool produces = false;
+            AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+            if (assembly != null)
+            {
+                AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+                produces = recipe != null && recipe.output == product;
+            }
+            else if (station.GetComponent<DrinkStation>() != null)
+            {
+                produces = config != null && product == config.drinkItem;
+            }
+            if (!produces) continue;
+
+            // Only the product made at the terminal production station counts.
+            // If it feeds another processing station, it is an ingredient rather
+            // than a product delivered by this flow.
+            foreach (GameObject next in flow.GetOutgoing(station))
+                if (next != null && flow.stations.Contains(next)
+                    && next.GetComponent<HeatLampStation>() != null)
+                    return true;
         }
         return false;
     }

@@ -284,7 +284,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             CreateSelectedItemPreview(station);
         }
 
-        int edgeIndex = 0;
+        var edgePaths = new List<List<Vector3>>();
         foreach (ProductionFlowConnection connection in flow.connections)
         {
             if (connection == null || connection.from == null || connection.to == null) continue;
@@ -292,14 +292,253 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             Vector3 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.from));
             Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
             AppendGridLeg(points, grid, from, to);
-            if (points.Count >= 2)
-            {
-                Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
-                CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
-                    + "_Branch_" + edgeIndex, branchColor);
-            }
-            edgeIndex++;
+            if (points.Count >= 2) edgePaths.Add(points);
         }
+
+        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(edgePaths, grid.cellSize);
+        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
+        for (int edgeIndex = 0; edgeIndex < edgePaths.Count; edgeIndex++)
+        {
+            List<Vector3> points = ApplySharedLaneOffsets(edgePaths[edgeIndex], edgeIndex,
+                overlapGroups, grid.cellSize, laneSpacing);
+            Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
+            CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
+                + "_Branch_" + edgeIndex, branchColor);
+        }
+    }
+
+    static Dictionary<int, List<int>> BuildPathOverlapGroups(List<List<Vector3>> paths,
+        float cellSize)
+    {
+        var adjacent = new List<HashSet<int>>(paths.Count);
+        for (int i = 0; i < paths.Count; i++) adjacent.Add(new HashSet<int>());
+        float corridorTolerance = Mathf.Max(0.01f, cellSize * 0.04f);
+        float minimumSharedLength = Mathf.Max(0.04f, cellSize * 0.12f);
+        for (int first = 0; first < paths.Count; first++)
+            for (int second = first + 1; second < paths.Count; second++)
+                if (PathsShareCorridor(paths[first], paths[second], corridorTolerance,
+                        minimumSharedLength))
+                {
+                    adjacent[first].Add(second);
+                    adjacent[second].Add(first);
+                }
+
+        var groups = new Dictionary<int, List<int>>();
+        var visited = new HashSet<int>();
+        for (int start = 0; start < paths.Count; start++)
+        {
+            if (!visited.Add(start)) continue;
+            var group = new List<int>();
+            var open = new Stack<int>();
+            open.Push(start);
+            while (open.Count > 0)
+            {
+                int current = open.Pop();
+                group.Add(current);
+                foreach (int next in adjacent[current])
+                    if (visited.Add(next)) open.Push(next);
+            }
+            group.Sort();
+            foreach (int member in group) groups[member] = group;
+        }
+        return groups;
+    }
+
+    static bool PathsShareCorridor(List<Vector3> first, List<Vector3> second,
+        float tolerance, float minimumSharedLength)
+    {
+        if (first == null || second == null) return false;
+        for (int a = 1; a < first.Count; a++)
+            for (int b = 1; b < second.Count; b++)
+                if (SegmentsShareCorridor(first[a - 1], first[a], second[b - 1], second[b],
+                        tolerance, minimumSharedLength))
+                    return true;
+        return false;
+    }
+
+    static bool SegmentsShareCorridor(Vector3 a0, Vector3 a1, Vector3 b0, Vector3 b1,
+        float tolerance, float minimumSharedLength)
+    {
+        Vector2 aStart = new Vector2(a0.x, a0.z);
+        Vector2 aEnd = new Vector2(a1.x, a1.z);
+        Vector2 bStart = new Vector2(b0.x, b0.z);
+        Vector2 bEnd = new Vector2(b1.x, b1.z);
+        Vector2 aDelta = aEnd - aStart;
+        Vector2 bDelta = bEnd - bStart;
+        float aLength = aDelta.magnitude;
+        float bLength = bDelta.magnitude;
+        if (aLength <= 0.001f || bLength <= 0.001f) return false;
+
+        Vector2 aDirection = aDelta / aLength;
+        Vector2 bDirection = bDelta / bLength;
+        if (Mathf.Abs(Vector2.Dot(aDirection, bDirection)) < 0.999f) return false;
+
+        Vector2 normal = new Vector2(-aDirection.y, aDirection.x);
+        if (Mathf.Abs(Vector2.Dot(bStart - aStart, normal)) > tolerance
+            || Mathf.Abs(Vector2.Dot(bEnd - aStart, normal)) > tolerance)
+            return false;
+
+        float bProjection0 = Vector2.Dot(bStart - aStart, aDirection);
+        float bProjection1 = Vector2.Dot(bEnd - aStart, aDirection);
+        float bMin = Mathf.Min(bProjection0, bProjection1);
+        float bMax = Mathf.Max(bProjection0, bProjection1);
+        float overlap = Mathf.Min(aLength, bMax) - Mathf.Max(0f, bMin);
+        return overlap >= minimumSharedLength;
+    }
+
+    static List<Vector3> ApplySharedLaneOffsets(List<Vector3> source, int pathIndex,
+        Dictionary<int, List<int>> overlapGroups, float cellSize, float spacing)
+    {
+        float laneDistance = GetPathLaneDistance(pathIndex, overlapGroups, spacing);
+        var result = new List<Vector3>(source.Count);
+        for (int i = 0; i < source.Count; i++)
+        {
+            if (Mathf.Abs(laneDistance) <= 0.000001f)
+            {
+                result.Add(source[i]);
+                continue;
+            }
+            Vector3 previousOffset = Vector3.zero;
+            Vector3 nextOffset = Vector3.zero;
+            if (i > 0)
+                previousOffset = GetConsistentLaneOffset(
+                    source[i - 1], source[i], cellSize, laneDistance);
+            if (i + 1 < source.Count)
+                nextOffset = GetConsistentLaneOffset(
+                    source[i], source[i + 1], cellSize, laneDistance);
+
+            Vector3 offset;
+            if (previousOffset.sqrMagnitude <= 0.000001f) offset = nextOffset;
+            else if (nextOffset.sqrMagnitude <= 0.000001f) offset = previousOffset;
+            else if (Vector3.Dot(previousOffset.normalized, nextOffset.normalized) > 0.999f)
+                offset = (previousOffset + nextOffset) * 0.5f;
+            else
+                // The intersection of two perpendicular offset grid segments is
+                // the sum of their normals. Averaging here creates off-angle kinks.
+                offset = previousOffset + nextOffset;
+            result.Add(source[i] + offset);
+        }
+        // Lane separation is corridor-only. Every edge must still originate and
+        // terminate at the exact center of its station marker.
+        result[0] = source[0];
+        result[result.Count - 1] = source[source.Count - 1];
+        return PolishRoute(CardinalizePolyline(result), cellSize);
+    }
+
+    static List<Vector3> PolishRoute(List<Vector3> source, float cellSize)
+    {
+        if (source == null || source.Count < 2) return source;
+        var simplified = new List<Vector3>();
+        foreach (Vector3 point in source)
+        {
+            AddPointIfDistinct(simplified, point);
+            while (simplified.Count >= 3)
+            {
+                int last = simplified.Count - 1;
+                Vector3 before = simplified[last - 1] - simplified[last - 2];
+                Vector3 after = simplified[last] - simplified[last - 1];
+                before.y = 0f;
+                after.y = 0f;
+                if (before.sqrMagnitude <= 0.000001f || after.sqrMagnitude <= 0.000001f
+                    || Vector3.Dot(before.normalized, after.normalized) < 0.9999f)
+                    break;
+                Vector3 end = simplified[last];
+                simplified.RemoveAt(last);
+                simplified[last - 1] = end;
+            }
+        }
+        if (simplified.Count < 3) return simplified;
+
+        float standardChamfer = Mathf.Max(0.04f, cellSize * 0.16f);
+        var polished = new List<Vector3> { simplified[0] };
+        for (int i = 1; i < simplified.Count - 1; i++)
+        {
+            Vector3 previous = simplified[i - 1];
+            Vector3 corner = simplified[i];
+            Vector3 next = simplified[i + 1];
+            Vector3 incoming = corner - previous;
+            Vector3 outgoing = next - corner;
+            incoming.y = 0f;
+            outgoing.y = 0f;
+            float incomingLength = incoming.magnitude;
+            float outgoingLength = outgoing.magnitude;
+            if (incomingLength <= 0.001f || outgoingLength <= 0.001f
+                || Mathf.Abs(Vector3.Dot(incoming.normalized, outgoing.normalized)) > 0.999f
+                || !IsCardinalDirection(incoming) || !IsCardinalDirection(outgoing))
+            {
+                AddPointIfDistinct(polished, corner);
+                continue;
+            }
+
+            float chamfer = Mathf.Min(standardChamfer,
+                incomingLength * 0.35f, outgoingLength * 0.35f);
+            AddPointIfDistinct(polished, corner - incoming.normalized * chamfer);
+            AddPointIfDistinct(polished, corner + outgoing.normalized * chamfer);
+        }
+        AddPointIfDistinct(polished, simplified[simplified.Count - 1]);
+        return polished;
+    }
+
+    static bool IsCardinalDirection(Vector3 direction)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.000001f) return false;
+        direction.Normalize();
+        return Mathf.Abs(direction.x) < 0.001f || Mathf.Abs(direction.z) < 0.001f;
+    }
+
+    static float GetPathLaneDistance(int pathIndex,
+        Dictionary<int, List<int>> overlapGroups, float spacing)
+    {
+        if (!overlapGroups.TryGetValue(pathIndex, out List<int> group) || group.Count < 2)
+            return 0f;
+        int lane = group.IndexOf(pathIndex);
+        if (lane < 0) return 0f;
+        return (lane - (group.Count - 1) * 0.5f) * spacing;
+    }
+
+    static Vector3 GetConsistentLaneOffset(Vector3 a, Vector3 b, float cellSize,
+        float laneDistance)
+    {
+        Vector3 direction = CanonicalSegmentDirection(a, b, cellSize);
+        return new Vector3(-direction.z, 0f, direction.x).normalized * laneDistance;
+    }
+
+    static List<Vector3> CardinalizePolyline(List<Vector3> source)
+    {
+        if (source == null || source.Count < 2) return source;
+        var result = new List<Vector3> { source[0] };
+        const float epsilon = 0.001f;
+        for (int i = 1; i < source.Count; i++)
+        {
+            Vector3 from = result[result.Count - 1];
+            Vector3 to = source[i];
+            float dx = to.x - from.x;
+            float dz = to.z - from.z;
+            float ax = Mathf.Abs(dx);
+            float az = Mathf.Abs(dz);
+            if (ax > epsilon && az > epsilon && Mathf.Abs(ax - az) > epsilon)
+            {
+                float diagonal = Mathf.Min(ax, az);
+                Vector3 bend = new Vector3(from.x + Mathf.Sign(dx) * diagonal,
+                    Mathf.Lerp(from.y, to.y, 0.5f),
+                    from.z + Mathf.Sign(dz) * diagonal);
+                AddPointIfDistinct(result, bend);
+            }
+            AddPointIfDistinct(result, to);
+        }
+        return result;
+    }
+
+    static Vector3 CanonicalSegmentDirection(Vector3 a, Vector3 b, float cellSize)
+    {
+        float scale = Mathf.Max(0.01f, cellSize);
+        var first = new Vector2Int(Mathf.RoundToInt(a.x / scale), Mathf.RoundToInt(a.z / scale));
+        var second = new Vector2Int(Mathf.RoundToInt(b.x / scale), Mathf.RoundToInt(b.z / scale));
+        bool reverse = first.x > second.x || (first.x == second.x && first.y > second.y);
+        Vector3 direction = reverse ? a - b : b - a;
+        direction.y = 0f;
+        return direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
     }
 
     static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)
@@ -316,6 +555,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
 
         List<List<GameObject>> chains = BuildFlowChains(worker);
+        var workerPaths = new List<List<Vector3>>();
         for (int chainIndex = 0; chainIndex < chains.Count; chainIndex++)
         {
             List<GameObject> chain = chains[chainIndex];
@@ -341,8 +581,16 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 AppendGridLeg(routePoints, grid, previous, stopPosition);
             }
 
-            if (routePoints.Count >= 2)
-                CreateGridLine(routePoints, worker.employeeName + "_Flow_" + chainIndex, workerColor);
+            if (routePoints.Count >= 2) workerPaths.Add(routePoints);
+        }
+
+        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(workerPaths, grid.cellSize);
+        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
+        for (int pathIndex = 0; pathIndex < workerPaths.Count; pathIndex++)
+        {
+            List<Vector3> points = ApplySharedLaneOffsets(workerPaths[pathIndex], pathIndex,
+                overlapGroups, grid.cellSize, laneSpacing);
+            CreateGridLine(points, worker.employeeName + "_Flow_" + pathIndex, workerColor);
         }
     }
 
@@ -482,25 +730,26 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             totalLength += Vector3.Distance(points[i - 1], points[i]);
         if (totalLength < 0.2f) return;
 
-        float targetDistance = totalLength * 0.58f;
-        float travelled = 0f;
-        Vector3 position = points[0];
-        Vector3 direction = Vector3.forward;
+        int bestSegment = 1;
+        float bestScore = -1f;
         for (int i = 1; i < points.Count; i++)
         {
             Vector3 segment = points[i] - points[i - 1];
             segment.y = 0f;
             float length = segment.magnitude;
             if (length < 0.01f) continue;
-            if (travelled + length >= targetDistance)
+            float endpointPenalty = i == 1 || i == points.Count - 1 ? 0.72f : 1f;
+            float score = length * endpointPenalty;
+            if (score > bestScore)
             {
-                float t = Mathf.Clamp01((targetDistance - travelled) / length);
-                position = Vector3.Lerp(points[i - 1], points[i], t);
-                direction = segment / length;
-                break;
+                bestScore = score;
+                bestSegment = i;
             }
-            travelled += length;
         }
+        Vector3 position = Vector3.Lerp(points[bestSegment - 1], points[bestSegment], 0.5f);
+        Vector3 direction = points[bestSegment] - points[bestSegment - 1];
+        direction.y = 0f;
+        direction = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
 
         float cellSize = GridManager.Instance != null ? GridManager.Instance.cellSize : 1f;
         CreateArrowMesh(arrowName + "_Outline", position + Vector3.up * 0.004f, direction,
@@ -539,13 +788,17 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         var marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         marker.name = "FlowMarker_" + role + "_" + stationName.Replace("\n", "_");
         marker.transform.SetParent(visualsRoot, true);
-        marker.transform.position = position;
+        marker.transform.position = position + Vector3.up * 0.035f;
         float diameter = Mathf.Max(0.18f, cellSize * markerTileScale);
         marker.transform.localScale = new Vector3(diameter, 0.018f, diameter);
         var collider = marker.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
         var renderer = marker.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = GetMarkerMaterial(color);
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = GetMarkerMaterial(color);
+            renderer.sortingOrder = 20;
+        }
 
         var center = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         center.name = "Center";
@@ -555,7 +808,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         var centerCollider = center.GetComponent<Collider>();
         if (centerCollider != null) Destroy(centerCollider);
         var centerRenderer = center.GetComponent<Renderer>();
-        if (centerRenderer != null) centerRenderer.sharedMaterial = GetMarkerCenterMaterial();
+        if (centerRenderer != null)
+        {
+            centerRenderer.sharedMaterial = GetMarkerCenterMaterial();
+            centerRenderer.sortingOrder = 21;
+        }
 
         var labelObject = new GameObject("Label", typeof(RectTransform));
         labelObject.transform.SetParent(visualsRoot, false);
@@ -572,7 +829,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         label.outlineColor = new Color32(8, 12, 18, 235);
         label.outlineWidth = 0.24f;
         label.rectTransform.sizeDelta = new Vector2(4.2f, 0.65f);
-        label.sortingOrder = 12;
+        label.sortingOrder = 42;
 
         var background = new GameObject("LabelBackground", typeof(MeshFilter), typeof(MeshRenderer));
         background.name = "LabelBackground";
@@ -589,7 +846,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             backgroundRenderer.sharedMaterial = GetLabelBackgroundMaterial();
             backgroundRenderer.shadowCastingMode = ShadowCastingMode.Off;
             backgroundRenderer.receiveShadows = false;
-            backgroundRenderer.sortingOrder = 11;
+            backgroundRenderer.sortingOrder = 41;
         }
         labels.Add(label);
     }
