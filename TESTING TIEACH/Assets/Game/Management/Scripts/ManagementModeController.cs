@@ -49,6 +49,8 @@ public class ManagementModeController : MonoBehaviour
     public GameObject cookedFriesPreviewPrefab;
     public GameObject burgerPreviewPrefab;
     public GameObject drinkPreviewPrefab;
+    public Texture2D timeToCompleteIcon;
+    public Texture2D efficiencyIcon;
 
     GameObject productionDiagramRoot;
     GameObject productionInputCard;
@@ -65,6 +67,8 @@ public class ManagementModeController : MonoBehaviour
     TextMeshProUGUI productionOutputName;
     TextMeshProUGUI productionOutputRate;
     TextMeshProUGUI productionCycleText;
+    TextMeshProUGUI productionEfficiencyText;
+    TextMeshProUGUI productionArrowText;
     GameObject stationDiagnosticsRoot;
     TextMeshProUGUI stationDiagnosticsText;
     GameObject pickupInventoryRoot;
@@ -1016,6 +1020,9 @@ public class ManagementModeController : MonoBehaviour
 
         StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(selectedStation.gameObject);
         string state = metrics != null ? metrics.CurrentState.ToString() : "Idle";
+        if (productionEfficiencyText != null)
+            productionEfficiencyText.text = metrics != null && metrics.TotalSeconds >= 1f
+                ? metrics.WorkingPercent.ToString("0") + "%" : "0%";
         string utilization = metrics != null && metrics.TotalSeconds >= 1f
             ? "Working " + metrics.WorkingPercent.ToString("0") + "%  |  Blocked "
                 + metrics.BlockedPercent.ToString("0") + "%  |  Starved "
@@ -1152,17 +1159,21 @@ public class ManagementModeController : MonoBehaviour
         centerSize.preferredWidth = 42f;
         centerSize.flexibleWidth = 0f;
 
-        TextMeshProUGUI arrow = CreateDiagramText(productionConversionRoot.transform, "Arrow", ">", 30f, 40f);
-        arrow.color = new Color(0.3f, 0.9f, 1f, 1f);
-        productionCycleText = CreateDiagramText(productionConversionRoot.transform, "CycleTime", "0s\ncycle", 11f, 38f);
+        productionArrowText = CreateDiagramText(productionConversionRoot.transform, "Arrow", ">", 30f, 40f);
+        productionArrowText.color = new Color(0.3f, 0.9f, 1f, 1f);
+        productionCycleText = CreateIconMetric(productionConversionRoot.transform, "CycleTime",
+            timeToCompleteIcon, "0s", 44f, vertical: true);
         productionCycleText.color = new Color(1f, 0.78f, 0.32f, 1f);
+        productionEfficiencyText = CreateIconMetric(productionConversionRoot.transform, "Efficiency",
+            efficiencyIcon, "0%", 44f, vertical: true);
+        productionEfficiencyText.color = new Color(1f, 0.78f, 0.32f, 1f);
 
         productionOutputCard = CreateProductionCard(productionDiagramRoot.transform, "Output", out productionOutputPreview,
             out productionOutputName, out productionOutputRate);
         productionDiagramRoot.SetActive(false);
     }
 
-    static GameObject CreateProductionCard(Transform parent, string heading, out RawImage preview,
+    GameObject CreateProductionCard(Transform parent, string heading, out RawImage preview,
         out TextMeshProUGUI itemName, out TextMeshProUGUI rate)
     {
         var card = new GameObject(heading + "Card", typeof(RectTransform), typeof(Image),
@@ -1189,7 +1200,7 @@ public class ManagementModeController : MonoBehaviour
         var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         previewFrame.transform.SetParent(card.transform, false);
         // Match ItemPreviewThumbnails' camera background so the frame and texture read as one surface.
-        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        previewFrame.GetComponent<Image>().color = ItemPreviewThumbnails.BackgroundColor;
         var previewSize = previewFrame.GetComponent<LayoutElement>();
         previewSize.minHeight = 68f;
         previewSize.preferredHeight = 68f;
@@ -1209,9 +1220,58 @@ public class ManagementModeController : MonoBehaviour
         itemName.enableAutoSizing = true;
         itemName.fontSizeMin = 8f;
         itemName.fontSizeMax = 11f;
-        rate = CreateDiagramText(card.transform, "Rate", "0 / min", 12f, 20f);
+        rate = CreateDiagramText(card.transform, "Rate", "0/min", 12f, 20f);
         rate.color = new Color(1f, 0.78f, 0.32f, 1f);
         return card;
+    }
+
+    static TextMeshProUGUI CreateIconMetric(Transform parent, string objectName, Texture icon,
+        string value, float height, bool vertical)
+    {
+        var root = new GameObject(objectName, typeof(RectTransform), typeof(LayoutElement));
+        root.transform.SetParent(parent, false);
+        var rootSize = root.GetComponent<LayoutElement>();
+        rootSize.minHeight = height;
+        rootSize.preferredHeight = height;
+        rootSize.flexibleHeight = 0f;
+
+        if (vertical)
+        {
+            var layout = root.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 1f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+        }
+        else
+        {
+            var layout = root.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 4f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+        }
+
+        var iconObject = new GameObject("Icon", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
+        iconObject.transform.SetParent(root.transform, false);
+        var image = iconObject.GetComponent<RawImage>();
+        image.texture = icon;
+        image.uvRect = new Rect(0.18f, 0.18f, 0.64f, 0.64f);
+        image.color = Color.white;
+        image.raycastTarget = false;
+        var iconSize = iconObject.GetComponent<LayoutElement>();
+        iconSize.minWidth = vertical ? 24f : 18f;
+        iconSize.preferredWidth = vertical ? 24f : 18f;
+        iconSize.minHeight = vertical ? 24f : 18f;
+        iconSize.preferredHeight = vertical ? 24f : 18f;
+
+        TextMeshProUGUI text = CreateDiagramText(root.transform, "Value", value, 11f,
+            vertical ? 18f : height);
+        return text;
     }
 
     static TextMeshProUGUI CreateDiagramText(Transform parent, string objectName, string value,
@@ -1354,17 +1414,16 @@ public class ManagementModeController : MonoBehaviour
         if (!outputOnly)
         {
             productionInputName.text = inputName;
-            productionInputRate.text = FormatPerMinute(inputRate) + " / min";
+            productionInputRate.text = FormatPerMinute(inputRate) + "/min";
         }
         if (hasTwoInputs)
         {
             productionSecondInputName.text = secondInputName;
-            productionSecondInputRate.text = FormatPerMinute(secondInputRate) + " / min";
+            productionSecondInputRate.text = FormatPerMinute(secondInputRate) + "/min";
         }
         productionOutputName.text = outputName;
-        productionOutputRate.text = FormatPerMinute(node.outputAmountPerMinute) + " / min";
-        if (!outputOnly)
-            productionCycleText.text = FormatSeconds(cycleSeconds) + "s\ncycle";
+        productionOutputRate.text = FormatPerMinute(node.outputAmountPerMinute) + "/min";
+        productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
     }
 
     void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false)
@@ -1380,7 +1439,8 @@ public class ManagementModeController : MonoBehaviour
 
         if (productionInputCard != null) productionInputCard.SetActive(!outputOnly);
         if (productionSecondInputCard != null) productionSecondInputCard.SetActive(!outputOnly && twoInputs);
-        if (productionConversionRoot != null) productionConversionRoot.SetActive(!outputOnly);
+        if (productionConversionRoot != null) productionConversionRoot.SetActive(true);
+        if (productionArrowText != null) productionArrowText.gameObject.SetActive(!outputOnly);
         if (productionOutputCard == null) return;
 
         var outputSize = productionOutputCard.GetComponent<LayoutElement>();
@@ -1692,7 +1752,7 @@ public class ManagementModeController : MonoBehaviour
         var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image),
             typeof(LayoutElement));
         previewFrame.transform.SetParent(slot.transform, false);
-        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        previewFrame.GetComponent<Image>().color = ItemPreviewThumbnails.BackgroundColor;
         var frameSize = previewFrame.GetComponent<LayoutElement>();
         frameSize.minHeight = 52f;
         frameSize.preferredHeight = 52f;
@@ -1952,7 +2012,7 @@ public class ManagementModeController : MonoBehaviour
         var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image),
             typeof(LayoutElement));
         previewFrame.transform.SetParent(card.transform, false);
-        previewFrame.GetComponent<Image>().color = new Color(0.16f, 0.17f, 0.2f, 1f);
+        previewFrame.GetComponent<Image>().color = ItemPreviewThumbnails.BackgroundColor;
         var previewSize = previewFrame.GetComponent<LayoutElement>();
         previewSize.minHeight = 70f;
         previewSize.preferredHeight = 70f;

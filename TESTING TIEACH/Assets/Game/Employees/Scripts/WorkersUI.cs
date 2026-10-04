@@ -319,7 +319,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV5") == null)
+        if (existing != null && existing.Find("LayoutV6") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -337,7 +337,7 @@ public class WorkersUI : MonoBehaviour
             flowPanel = existing;
             flowListRow = existing.Find("FlowListRow");
             stepRow = existing.Find("StepRow");
-            workerRow = existing.Find("WorkerRow");
+            workerRow = null;
             flowNameInput = existing.Find("FlowHeader/FlowName")?.GetComponent<TMP_InputField>()
                 ?? existing.Find("NameRow/FlowName")?.GetComponent<TMP_InputField>();
             if (flowNameInput != null)
@@ -362,7 +362,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV5", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV6", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -387,9 +387,9 @@ public class WorkersUI : MonoBehaviour
         flowListRow = MakeRow(flowPanel, "FlowListRow", 28);
         // The route already appears in-world when the flow is selected. Repeating
         // every station connection here consumes most of the card without adding
-        // another decision, so keep the panel focused on staffing and economics.
+        // another decision, so keep the panel focused on flow selection and economics.
         stepRow = null;
-        workerRow = MakeRow(flowPanel, "WorkerRow", 28);
+        workerRow = null;
         BuildEconomicsPanel(flowPanel);
 
         LayoutFlowPanel();
@@ -774,8 +774,6 @@ public class WorkersUI : MonoBehaviour
                 if (cameraController != null)
                     cameraController.PanTo(flow);
                 RefreshFlowSection();
-                if (flowNameInput != null)
-                    flowNameInput.ActivateInputField();
             });
             var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
             dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
@@ -906,8 +904,6 @@ public class WorkersUI : MonoBehaviour
 
             RebuildFlowListRow();
             RebuildStepRow();
-            RebuildWorkerRow(flow);
-
             if (flowNameInput != null && !flowNameInput.isFocused)
                 flowNameInput.SetTextWithoutNotify(flow.flowName);
             WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);

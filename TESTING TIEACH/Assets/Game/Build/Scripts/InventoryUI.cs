@@ -34,7 +34,7 @@ public class InventoryUI : MonoBehaviour
     public bool useSquareCards = true;
     [Tooltip("When true, GridLayoutGroup cell size/spacing on Content are left alone for scene editing.")]
     public bool useSceneGridLayout = true;
-    public Vector2 cardCellSize = new Vector2(230f, 250f);
+    public Vector2 cardCellSize = new Vector2(170f, 250f);
     public Vector2 cardSpacing = new Vector2(12f, 12f);
 
     [Header("Tabs (scene)")]
@@ -52,11 +52,8 @@ public class InventoryUI : MonoBehaviour
     public int expandHeight = 1;
 
     Button expandButton;
-    Button undoExpandButton;
     TextMeshProUGUI expandLabel;
-    TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
-    PurchaseUndoFooter stationUndoFooter;
     int displayedStationUnlockProgress = int.MinValue;
     bool expandUiBuilt;
     Transform floorContentParent;
@@ -257,10 +254,7 @@ public class InventoryUI : MonoBehaviour
         EnsureTabInfo();
         if (tabInfoUI != null)
             tabInfoUI.SetTab(tabPanels[activeTab]);
-        if (stationUndoFooter == null)
-            EnsureUndoFooter();
-        if (stationUndoFooter != null)
-            stationUndoFooter.gameObject.SetActive(activeTab == 0);
+        EnsureUndoFooter();
 
         if (activeTab == 0)
             RefreshAll();
@@ -334,7 +328,7 @@ public class InventoryUI : MonoBehaviour
         SelectTab(0);
     }
 
-    /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
+    /// <summary>Editor / runtime: configure the stations Content as a 3-column grid.</summary>
     public void SetupStationsGrid(bool forceDefaultLayout = true)
     {
         EnsureStationsScrollSetup();
@@ -458,12 +452,14 @@ public class InventoryUI : MonoBehaviour
         if (scrollRect != null && scrollRect.viewport != null)
             viewportWidth = Mathf.Max(120f, scrollRect.viewport.rect.width);
 
-        // Fit two columns inside the viewport with padding/spacing.
+        // Fit three columns inside the viewport with padding and two gaps.
         float pad = 24f;
         float gap = cardSpacing.x;
-        float cellW = Mathf.Floor((viewportWidth - pad - gap) * 0.5f);
-        cellW = Mathf.Clamp(cellW, 120f, 280f);
-        float cellH = cellW + 30f;
+        float cellW = Mathf.Floor((viewportWidth - pad - gap * 2f) / 3f);
+        cellW = Mathf.Clamp(cellW, 100f, 190f);
+        // Three columns reduce width, but the title, optional MK selector, preview,
+        // and footer still need the original vertical space.
+        float cellH = 250f;
 
         if (forceDefaultLayout || !useSceneGridLayout || created)
         {
@@ -473,17 +469,16 @@ public class InventoryUI : MonoBehaviour
             grid.startAxis = GridLayoutGroup.Axis.Horizontal;
             grid.childAlignment = TextAnchor.UpperCenter;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
+            grid.constraintCount = 3;
             grid.padding = new RectOffset(12, 12, 12, 12);
             cardCellSize = grid.cellSize;
         }
         else
         {
-            // Keep scene-tuned height, but always fit two columns to the viewport width.
-            float height = grid.cellSize.y > 1f ? grid.cellSize.y : cellH;
-            grid.cellSize = new Vector2(cellW, height);
+            // Preserve the card proportions while always fitting three columns.
+            grid.cellSize = new Vector2(cellW, cellH);
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
+            grid.constraintCount = 3;
         }
 
         var fitter = contentParent.GetComponent<ContentSizeFitter>();
@@ -1086,34 +1081,9 @@ public class InventoryUI : MonoBehaviour
         expandButton.onClick.RemoveListener(OnExpandClicked);
         expandButton.onClick.AddListener(OnExpandClicked);
 
-        undoExpandButton = barGo.transform.Find("UndoExpandButton")?.GetComponent<Button>();
-        if (undoExpandButton == null)
-        {
-            var undoGo = new GameObject("UndoExpandButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            undoGo.transform.SetParent(barGo.transform, false);
-            var undoImg = undoGo.GetComponent<Image>();
-            undoImg.color = new Color(0.28f, 0.32f, 0.42f, 1f);
-            undoExpandButton = undoGo.GetComponent<Button>();
-            var undoLe = undoGo.AddComponent<LayoutElement>();
-            undoLe.preferredHeight = 44f;
-
-            var undoLabelGo = new GameObject("Label", typeof(RectTransform));
-            undoLabelGo.transform.SetParent(undoGo.transform, false);
-            StretchFull((RectTransform)undoLabelGo.transform);
-            undoExpandLabel = undoLabelGo.AddComponent<TextMeshProUGUI>();
-            undoExpandLabel.fontSize = 16;
-            undoExpandLabel.alignment = TextAlignmentOptions.Center;
-            undoExpandLabel.color = Color.white;
-            if (TMP_Settings.defaultFontAsset != null)
-                undoExpandLabel.font = TMP_Settings.defaultFontAsset;
-        }
-        else
-        {
-            undoExpandLabel = undoExpandButton.GetComponentInChildren<TextMeshProUGUI>(true);
-        }
-
-        undoExpandButton.onClick.RemoveListener(OnUndoFloorClicked);
-        undoExpandButton.onClick.AddListener(OnUndoFloorClicked);
+        var obsoleteUndo = barGo.transform.Find("UndoExpandButton");
+        if (obsoleteUndo != null)
+            DestroyObject(obsoleteUndo.gameObject);
 
         expandUiBuilt = true;
         RefreshExpandButton();
@@ -1122,42 +1092,13 @@ public class InventoryUI : MonoBehaviour
     void EnsureUndoFooter()
     {
         if (panel == null) return;
+        foreach (PurchaseUndoFooter footer in panel.GetComponentsInChildren<PurchaseUndoFooter>(true))
+            if (footer != null)
+                DestroyObject(footer.gameObject);
 
-        var contentBox = panel.transform.Find(ContentBoxName);
-        var scroll = contentBox != null
-            ? contentBox.Find(StationsPanelName + "/Scroll View") as RectTransform
-            : panel.transform.Find("Scroll View") as RectTransform;
-
-        // Older versions parented this footer to the station scroll area, which
-        // left it floating above the bottom of the screen. Remove that copy.
-        if (scroll != null && scroll.parent != null && scroll.parent != panel.transform)
-        {
-            var oldFooter = scroll.parent.Find(PurchaseUndoFooter.ObjectName);
-            if (oldFooter != null)
-                DestroyObject(oldFooter.gameObject);
-        }
-
-        // Match the content column horizontally, but parent to the full-screen
-        // inventory panel so y = 0 is the actual bottom edge of the screen.
-        if (contentBox is RectTransform contentBoxRt)
-        {
-            stationUndoFooter = PurchaseUndoFooter.EnsureMatching(contentBoxRt);
-        }
-        else
-        {
-            stationUndoFooter = PurchaseUndoFooter.EnsureOnPanel(panel.transform);
-        }
-
-        if (stationUndoFooter != null)
-            stationUndoFooter.gameObject.SetActive(activeTab == 0);
-
-        var floorPanel = contentBox != null ? contentBox.Find(FloorPanelName) : null;
-        if (floorPanel != null)
-        {
-            var leftover = floorPanel.Find(PurchaseUndoFooter.ObjectName);
-            if (leftover != null)
-                DestroyObject(leftover.gameObject);
-        }
+        Transform floorUndo = panel.transform.Find(ContentBoxName + "/" + FloorPanelName + "/ExpandFloorRow/UndoExpandButton");
+        if (floorUndo != null)
+            DestroyObject(floorUndo.gameObject);
     }
 
     void RefreshExpandButton()
@@ -1188,20 +1129,6 @@ public class InventoryUI : MonoBehaviour
         if (expandButton != null)
             expandButton.interactable = can;
 
-        var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
-        bool canUndoFloor = undo != null && undo.CanUndoFloor;
-        if (undoExpandLabel != null)
-            undoExpandLabel.text = canUndoFloor ? undo.PeekFloorLabel : "Undo Floor";
-        if (undoExpandButton != null)
-            undoExpandButton.interactable = canUndoFloor;
-    }
-
-    void OnUndoFloorClicked()
-    {
-        var undo = PurchaseUndoManager.Ensure();
-        if (undo != null)
-            undo.TryUndoLastFloor();
-        RefreshExpandButton();
     }
 
     void OnExpandClicked()

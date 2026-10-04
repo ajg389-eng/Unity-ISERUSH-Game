@@ -14,6 +14,8 @@ public class PantryStation : MonoBehaviour
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one pantry operation.")]
     [Min(0f)] public float processTimeSeconds = 0.5f;
+    [Tooltip("Show a caution sign when the assigned ingredient reaches this stock level or lower.")]
+    [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
 
     Transform itemDisplayRoot;
@@ -71,6 +73,15 @@ public class PantryStation : MonoBehaviour
 
     public bool HasItemSelected => selectedItem != null;
 
+    public bool IsAssignedIngredientLow
+    {
+        get
+        {
+            if (selectedItem == null || KitchenInventory.Instance == null) return false;
+            return KitchenInventory.Instance.GetCount(selectedItem) <= Mathf.Max(0, lowStockWarningThreshold);
+        }
+    }
+
     public void SetStoredItem(ItemDefinition item)
     {
         selectedItem = item;
@@ -106,7 +117,7 @@ public class PantryStation : MonoBehaviour
 
 /// <summary>
 /// Displays the same world-space caution icon used by pickup stations whenever a
-/// player-configurable station has no item or recipe selected.
+/// configurable station has no selection, or a pantry's assigned stock is low.
 /// </summary>
 internal sealed class StationConfigurationCaution : MonoBehaviour
 {
@@ -150,7 +161,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     void RefreshVisibility()
     {
-        bool show = !HasConfiguration();
+        bool show = !HasConfiguration() || HasLowPantryStock();
         if (show && indicator == null)
             indicator = CreateIndicator();
         if (indicator == null) return;
@@ -177,6 +188,12 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         if (freezer != null) return freezer.HasItemSelected;
 
         return true;
+    }
+
+    bool HasLowPantryStock()
+    {
+        var pantry = GetComponent<PantryStation>();
+        return pantry != null && pantry.HasItemSelected && pantry.IsAssignedIngredientLow;
     }
 
     GameObject CreateIndicator()

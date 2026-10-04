@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 /// <summary>
 /// In-game clock and Sims-style speed control.
@@ -354,8 +356,19 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     float nextEnvironmentRefresh;
     Light daylightSource;
     float originalSunIntensity;
+    Color originalSunColor;
+    Quaternion originalSunRotation;
+    LightShadows originalSunShadows;
+    float originalShadowStrength;
     float originalAmbientIntensity;
     float originalReflectionIntensity;
+    AmbientMode originalAmbientMode;
+    Color originalAmbientSky;
+    Color originalAmbientEquator;
+    Color originalAmbientGround;
+    ColorAdjustments colorAdjustments;
+    WhiteBalance whiteBalance;
+    Vignette vignette;
     bool lightingCaptured;
 
     public static void EnsureOn(GameObject host)
@@ -391,11 +404,51 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
                     daylightSource = candidate;
             }
         }
-        if (daylightSource != null) originalSunIntensity = daylightSource.intensity;
+        if (daylightSource != null)
+        {
+            originalSunIntensity = daylightSource.intensity;
+            originalSunColor = daylightSource.color;
+            originalSunRotation = daylightSource.transform.rotation;
+            originalSunShadows = daylightSource.shadows;
+            originalShadowStrength = daylightSource.shadowStrength;
+            daylightSource.shadows = LightShadows.Soft;
+        }
         originalAmbientIntensity = RenderSettings.ambientIntensity;
         originalReflectionIntensity = RenderSettings.reflectionIntensity;
+        originalAmbientMode = RenderSettings.ambientMode;
+        originalAmbientSky = RenderSettings.ambientSkyColor;
+        originalAmbientEquator = RenderSettings.ambientEquatorColor;
+        originalAmbientGround = RenderSettings.ambientGroundColor;
+        ConfigurePostProcessing();
         lightingCaptured = true;
         ApplySky(forceEnvironmentRefresh: true);
+    }
+
+    void ConfigurePostProcessing()
+    {
+        Volume selected = null;
+        foreach (Volume candidate in FindObjectsByType<Volume>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (candidate == null || !candidate.isGlobal || candidate.sharedProfile == null) continue;
+            if (selected == null || candidate.priority > selected.priority)
+                selected = candidate;
+        }
+        if (selected == null) return;
+
+        VolumeProfile profile = selected.profile;
+        if (!profile.TryGet(out colorAdjustments))
+            colorAdjustments = profile.Add<ColorAdjustments>(true);
+        if (!profile.TryGet(out whiteBalance))
+            whiteBalance = profile.Add<WhiteBalance>(true);
+        profile.TryGet(out vignette);
+
+        colorAdjustments.postExposure.overrideState = true;
+        colorAdjustments.contrast.overrideState = true;
+        colorAdjustments.saturation.overrideState = true;
+        whiteBalance.temperature.overrideState = true;
+        whiteBalance.tint.overrideState = true;
+        if (vignette != null)
+            vignette.intensity.overrideState = true;
     }
 
     void Update()
@@ -430,12 +483,39 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         float cloudVisibility = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 9f, hour))
             * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(16f, 18f, hour)));
         runtimeSkybox.SetFloat("_CloudVisibility", cloudVisibility);
-        // Keep night visibly darker than day without obscuring stations, workers,
-        // floor markings, or customer queues.
+        float sunsetWarmth = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(15.5f, 18f, hour))
+            * (1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(18.5f, 20.5f, hour)));
+        float night = 1f - daylight;
+
+        // Match the key light to the visible sun or moon. At night the moon becomes
+        // a soft fill light, keeping the kitchen readable without looking like noon.
         if (daylightSource != null)
-            daylightSource.intensity = originalSunIntensity * Mathf.Lerp(0.30f, 1f, daylight);
-        RenderSettings.ambientIntensity = originalAmbientIntensity * Mathf.Lerp(0.55f, 1f, daylight);
-        RenderSettings.reflectionIntensity = originalReflectionIntensity * Mathf.Lerp(0.45f, 1f, daylight);
+        {
+            float phase = ((hour - 6f) / 14f) * Mathf.PI;
+            Vector3 sunDirection = new Vector3(-Mathf.Cos(phase), Mathf.Sin(phase), 0.28f).normalized;
+            Vector3 keyDirection = sunDirection.y > -0.04f ? sunDirection : -sunDirection;
+            daylightSource.transform.rotation = Quaternion.LookRotation(-keyDirection, Vector3.up);
+            Color warm = new Color(1f, 0.72f, 0.48f, 1f);
+            Color moon = new Color(0.60f, 0.72f, 1f, 1f);
+            daylightSource.color = Color.Lerp(Color.Lerp(originalSunColor, warm, sunsetWarmth), moon, night * 0.72f);
+            daylightSource.intensity = originalSunIntensity * Mathf.Lerp(0.62f, 1f, daylight);
+            daylightSource.shadowStrength = Mathf.Lerp(0.38f, Mathf.Min(originalShadowStrength, 0.82f), daylight);
+        }
+        // The night sky is intentionally dark, so use a low-contrast ambient fill
+        // instead of spawning visible fixtures on the restaurant walls.
+        RenderSettings.ambientMode = AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = Color.Lerp(
+            new Color(0.24f, 0.30f, 0.42f, 1f),
+            new Color(0.62f, 0.69f, 0.78f, 1f), daylight);
+        RenderSettings.ambientEquatorColor = Color.Lerp(
+            new Color(0.17f, 0.21f, 0.29f, 1f),
+            new Color(0.40f, 0.43f, 0.48f, 1f), daylight);
+        RenderSettings.ambientGroundColor = Color.Lerp(
+            new Color(0.10f, 0.12f, 0.17f, 1f),
+            new Color(0.23f, 0.22f, 0.20f, 1f), daylight);
+        RenderSettings.ambientIntensity = originalAmbientIntensity * Mathf.Lerp(0.92f, 1f, daylight);
+        RenderSettings.reflectionIntensity = originalReflectionIntensity * Mathf.Lerp(0.72f, 1f, daylight);
+        ApplyPostProcessing(daylight, sunsetWarmth);
         runtimeSkybox.SetFloat("_WeatherTime", minutes * 0.008f);
         runtimeSkybox.SetFloat("_ConstellationIndex", (clock.CurrentDay - 1) % 3);
         lastAppliedMinutes = minutes;
@@ -445,6 +525,24 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
             DynamicGI.UpdateEnvironment();
             nextEnvironmentRefresh = Time.unscaledTime + 0.5f;
         }
+    }
+
+    void ApplyPostProcessing(float daylight, float sunsetWarmth)
+    {
+        float night = 1f - daylight;
+        if (colorAdjustments != null)
+        {
+            colorAdjustments.postExposure.value = Mathf.Lerp(0.42f, 0f, daylight) + sunsetWarmth * 0.04f;
+            colorAdjustments.contrast.value = Mathf.Lerp(4f, 3f, daylight);
+            colorAdjustments.saturation.value = Mathf.Lerp(-1f, 2f, daylight);
+        }
+        if (whiteBalance != null)
+        {
+            whiteBalance.temperature.value = sunsetWarmth * 11f - night * 6f;
+            whiteBalance.tint.value = sunsetWarmth * 2f;
+        }
+        if (vignette != null)
+            vignette.intensity.value = Mathf.Lerp(0.10f, 0.16f, daylight);
     }
 
     void SetPreset(SkyPreset value)
@@ -490,9 +588,20 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
             RenderSettings.skybox = originalSkybox;
         if (lightingCaptured)
         {
-            if (daylightSource != null) daylightSource.intensity = originalSunIntensity;
+            if (daylightSource != null)
+            {
+                daylightSource.intensity = originalSunIntensity;
+                daylightSource.color = originalSunColor;
+                daylightSource.transform.rotation = originalSunRotation;
+                daylightSource.shadows = originalSunShadows;
+                daylightSource.shadowStrength = originalShadowStrength;
+            }
             RenderSettings.ambientIntensity = originalAmbientIntensity;
             RenderSettings.reflectionIntensity = originalReflectionIntensity;
+            RenderSettings.ambientMode = originalAmbientMode;
+            RenderSettings.ambientSkyColor = originalAmbientSky;
+            RenderSettings.ambientEquatorColor = originalAmbientEquator;
+            RenderSettings.ambientGroundColor = originalAmbientGround;
         }
         if (runtimeSkybox != null)
             Destroy(runtimeSkybox);

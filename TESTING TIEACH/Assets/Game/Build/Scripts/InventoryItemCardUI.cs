@@ -31,7 +31,48 @@ public class InventoryItemCardUI : MonoBehaviour
 
     void Awake()
     {
+        ApplyCompactLayout();
         ApplyPalette();
+    }
+
+    void ApplyCompactLayout()
+    {
+        var vertical = GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+        if (vertical != null)
+        {
+            vertical.padding = new RectOffset(6, 6, 6, 6);
+            vertical.spacing = 4f;
+        }
+
+        ConfigureResponsiveText(nameText, 10f, 16f);
+        ConfigureResponsiveText(qtyText, 10f, 14f);
+        ConfigureResponsiveText(priceText, 9f, 14f);
+
+        Transform footer = qtyText != null && qtyText.transform.parent != null
+            ? qtyText.transform.parent.parent : null;
+        var footerLayout = footer != null
+            ? footer.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>() : null;
+        if (footerLayout != null)
+            footerLayout.spacing = 3f;
+
+        var buyLayout = buyButton != null
+            ? buyButton.GetComponent<UnityEngine.UI.LayoutElement>() : null;
+        if (buyLayout != null)
+        {
+            buyLayout.minWidth = 34f;
+            buyLayout.preferredWidth = 36f;
+            buyLayout.flexibleWidth = 0f;
+        }
+    }
+
+    static void ConfigureResponsiveText(TextMeshProUGUI text, float minimum, float maximum)
+    {
+        if (text == null) return;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Ellipsis;
     }
 
     public void Bind(
@@ -42,6 +83,7 @@ public class InventoryItemCardUI : MonoBehaviour
         int? displayPrice = null)
     {
         if (item == null) return;
+        ApplyCompactLayout();
         ApplyPalette();
         boundItem = item;
 
@@ -177,9 +219,9 @@ public class InventoryItemCardUI : MonoBehaviour
             typeof(UnityEngine.UI.HorizontalLayoutGroup), typeof(UnityEngine.UI.LayoutElement));
         row.transform.SetParent(transform, false);
         row.transform.SetSiblingIndex(Mathf.Min(1, transform.childCount - 1));
-        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 28f;
+        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 24f;
         var layout = row.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
-        layout.spacing = 6f;
+        layout.spacing = 4f;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;

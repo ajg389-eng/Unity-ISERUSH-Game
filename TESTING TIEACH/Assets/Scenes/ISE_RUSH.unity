@@ -5093,7 +5093,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &389270261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9483,6 +9483,8 @@ MonoBehaviour:
   cookedFriesPreviewPrefab: {fileID: 5513790519829109655, guid: 9a410000000000000000000000000002, type: 3}
   burgerPreviewPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   drinkPreviewPrefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
+  timeToCompleteIcon: {fileID: 2800000, guid: 9eb7aa2c669ee464fbc5a4332ab3b55b, type: 3}
+  efficiencyIcon: {fileID: 2800000, guid: 5f6a273b10819244486d0fe58210a10b, type: 3}
 --- !u!1001 &803279901
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -17508,7 +17510,7 @@ MonoBehaviour:
   rowPrefab: {fileID: 7962281375400951076, guid: bbb70778a6aeba04096c47feb73e8a3a, type: 3}
   useSquareCards: 1
   useSceneGridLayout: 1
-  cardCellSize: {x: 230, y: 250}
+  cardCellSize: {x: 170, y: 250}
   cardSpacing: {x: 12, y: 12}
   useSceneLayout: 1
   tabButtons:
@@ -18294,10 +18296,10 @@ MonoBehaviour:
   m_ChildAlignment: 1
   m_StartCorner: 0
   m_StartAxis: 0
-  m_CellSize: {x: 230, y: 250}
+  m_CellSize: {x: 170, y: 250}
   m_Spacing: {x: 12, y: 12}
   m_Constraint: 1
-  m_ConstraintCount: 2
+  m_ConstraintCount: 3
 --- !u!1 &1518709665
 GameObject:
   m_ObjectHideFlags: 0
@@ -18987,7 +18989,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &1570867470
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19308,7 +19310,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &1584365195
 MonoBehaviour:
   m_ObjectHideFlags: 0

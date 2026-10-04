@@ -20,7 +20,7 @@ public class CameraOcclusionWall : MonoBehaviour
     [Min(0.2f)] public float cutawayHeight = 0.8f;
 
     [Tooltip("Move this object down instead of shader-clipping it (used for doors).")]
-    public bool duckByLowering;
+    public bool duckByLowering = true;
 
     float cutawayAmount;
     Vector3 restPosition;
@@ -118,6 +118,15 @@ public class CameraOcclusionWall : MonoBehaviour
     public void CaptureRestPose()
     {
         if (wasLowered) return;
+        restPosition = transform.position;
+        hasRestPose = true;
+        CacheRenderers();
+        restVisualHeight = Mathf.Max(0.2f, visualTop - visualBottom);
+    }
+
+    public void RecaptureRestPose()
+    {
+        wasLowered = false;
         restPosition = transform.position;
         hasRestPose = true;
         CacheRenderers();
@@ -236,6 +245,12 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void ApplyLowering(float amount)
     {
+        // Lowering must preserve the authored wall appearance. If this wall was
+        // previously using shader clipping, restore its exact original materials first.
+        if (usingCutawayMaterials)
+            RestoreOriginalRendering();
+        HideCutawayCaps();
+
         if (amount <= 0.001f)
         {
             if (hasRestPose)

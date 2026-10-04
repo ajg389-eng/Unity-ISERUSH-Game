@@ -25,8 +25,8 @@ public static class InventoryItemCardBuilder
         cardLe.preferredHeight = 240f;
 
         var vlg = cardGo.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(10, 10, 10, 10);
-        vlg.spacing = 6f;
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.spacing = 4f;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -91,7 +91,7 @@ public static class InventoryItemCardBuilder
         footer.transform.SetParent(cardGo.transform, false);
         footer.GetComponent<LayoutElement>().preferredHeight = 40f;
         var hlg = footer.GetComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 6f;
+        hlg.spacing = 3f;
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
@@ -124,9 +124,9 @@ public static class InventoryItemCardBuilder
         var img = go.GetComponent<Image>();
         img.color = new Color(0.28f, 0.62f, 0.42f, 1f);
         var le = go.GetComponent<LayoutElement>();
-        le.preferredWidth = 44f;
+        le.preferredWidth = 36f;
         le.flexibleWidth = 0f;
-        le.minWidth = 40f;
+        le.minWidth = 34f;
 
         var btn = go.GetComponent<Button>();
         btn.targetGraphic = img;
@@ -150,6 +150,9 @@ public static class InventoryItemCardBuilder
         tmp.raycastTarget = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
         tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = 10f;
+        tmp.fontSizeMax = size;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
         return tmp;

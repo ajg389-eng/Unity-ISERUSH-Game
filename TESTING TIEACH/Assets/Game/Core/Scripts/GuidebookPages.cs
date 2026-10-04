@@ -48,7 +48,7 @@ public static class GuidebookPages
             "• <b>Stations</b> — catalog of equipment\n" +
             "• <b>Floor</b> — spend money to grow the walkable kitchen\n\n" +
             "The <b>first copy of each station type is free</b>. Extra copies stay locked until <b>Milestone 2</b>, then cost cash.\n\n" +
-            "Undo under the list reverses a buy or a floor expand. Close Inventory when you are done so you return to Play."),
+            "Close Inventory when you are done so you return to Play."),
         new Page(
             "Inventory",
             "Stations",
@@ -65,7 +65,6 @@ public static class GuidebookPages
             "Floor",
             "The Floor tab grows the kitchen grid.\n\n" +
             "Expand when stations no longer fit or queues block walkways. The button shows current size and the next size. If it says the floor is maxed, you cannot grow further.\n\n" +
-            "<b>Undo Floor</b> sits under Expand and reverses the last expand.\n\n" +
             "Extra floor does nothing by itself. Fill it with a clearer path from prep to the Pickup Station."),
         new Page(
             "Kitchen",

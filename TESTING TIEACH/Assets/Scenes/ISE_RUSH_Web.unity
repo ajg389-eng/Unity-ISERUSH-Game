@@ -4193,7 +4193,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &389270261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14580,7 +14580,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &1570867470
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14890,7 +14890,7 @@ MonoBehaviour:
   fadeRenderers: 1
   occludedAlpha: 0.18
   cutawayHeight: 0.8
-  duckByLowering: 0
+  duckByLowering: 1
 --- !u!114 &1584365195
 MonoBehaviour:
   m_ObjectHideFlags: 0
