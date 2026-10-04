@@ -971,7 +971,7 @@ public class WorkersUI : MonoBehaviour
             if (config.IsBurger(resource)) return "Patty";
             if (resource == config.friesIngredient) return "Potatoes";
             if (config.IsFries(resource)) return "Potatoes";
-            if (config.IsDrink(resource)) return "Drink Stock";
+            if (config.IsDrink(resource)) return "Shake";
         }
 
         return KitchenInventory.Instance != null

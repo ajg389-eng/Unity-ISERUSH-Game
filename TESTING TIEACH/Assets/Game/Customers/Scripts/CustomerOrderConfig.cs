@@ -12,6 +12,10 @@ public class AssemblyRecipeDefinition
     public ItemDefinition processedInput;
     public string processedInputName = "Cooked patty";
     [Min(1)] public int processedInputAmount = 1;
+    [Tooltip("When enabled, Input 1 is stocked directly from a Pantry instead of arriving from an earlier production step.")]
+    public bool processedInputFromPantry;
+    [Tooltip("When enabled, Input 1 is stocked directly from a Freezer instead of arriving from an earlier production step.")]
+    public bool processedInputFromFreezer;
 
     [Header("Input 2: pantry material")]
     public ItemDefinition pantryInput;
@@ -27,7 +31,7 @@ public class AssemblyRecipeDefinition
 }
 
 /// <summary>
-/// Config for generating customer orders: any combination of burger, fries, and drink.
+/// Config for generating customer orders: any combination of burger, fries, and shake.
 /// Create via Assets > Create > FactoryGame > Customer Order Config.
 /// </summary>
 [CreateAssetMenu(menuName = "FactoryGame/Customer Order Config", fileName = "CustomerOrderConfig")]
@@ -68,7 +72,7 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition slicedTomatoIngredient;
     [Header("Cutting recipes")]
     public List<CuttingRecipeDefinition> cuttingRecipes = new List<CuttingRecipeDefinition>();
-    [Tooltip("Drink")]
+    [Tooltip("Shake")]
     public ItemDefinition drinkItem;
 
     [Header("Order chances (each item rolled independently)")]
@@ -79,7 +83,7 @@ public class CustomerOrderConfig : ScriptableObject
     [Tooltip("Chance the customer wants fries")]
     public float friesChance = 0.7f;
     [Range(0f, 1f)]
-    [Tooltip("Chance the customer wants a drink")]
+    [Tooltip("Chance the customer wants a shake")]
     public float drinkChance = 0.7f;
 
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
@@ -162,7 +166,8 @@ public class CustomerOrderConfig : ScriptableObject
         if (label.IndexOf("fries", System.StringComparison.OrdinalIgnoreCase) >= 0
             || label.IndexOf("fry", System.StringComparison.OrdinalIgnoreCase) >= 0)
             return ProductKind.Fries;
-        if (label.IndexOf("drink", System.StringComparison.OrdinalIgnoreCase) >= 0
+        if (label.IndexOf("shake", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("drink", System.StringComparison.OrdinalIgnoreCase) >= 0
             || label.IndexOf("soda", System.StringComparison.OrdinalIgnoreCase) >= 0
             || label.IndexOf("cola", System.StringComparison.OrdinalIgnoreCase) >= 0)
             return ProductKind.Drink;
@@ -173,7 +178,7 @@ public class CustomerOrderConfig : ScriptableObject
     /// Production pipeline for a single menu item (not including heat lamp delivery).
     /// Burger main line: Freezer → Grill → Assembly. Pantry supplies buns in parallel.
     /// Fries: Potato Pantry → Cutting → Fryer → Assembly. A Fry Container Pantry supplies Assembly.
-    /// Drink: Drink Fountain
+    /// Shake: two Pantry ingredients assembled at a Shake Station.
     /// </summary>
     public StationType[] GetPipeline(ItemDefinition item)
     {
@@ -192,7 +197,9 @@ public class CustomerOrderConfig : ScriptableObject
                 return new[] { StationType.Pantry, StationType.Cutting,
                     StationType.Fryer, StationType.Assembly };
             case ProductKind.Drink:
-                return new[] { StationType.Drink };
+                return GetAssemblyRecipe(item) != null
+                    ? new[] { StationType.Assembly }
+                    : new[] { StationType.Drink };
             default:
                 return System.Array.Empty<StationType>();
         }
@@ -207,7 +214,15 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>Raw ingredients a Freezer may be configured to dispense.</summary>
     public IEnumerable<ItemDefinition> GetFreezerIngredients()
     {
-        if (rawPattyIngredient != null) yield return rawPattyIngredient;
+        var yielded = new HashSet<ItemDefinition>();
+        if (rawPattyIngredient != null && yielded.Add(rawPattyIngredient)) yield return rawPattyIngredient;
+        if (lettuceIngredient != null && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
+        if (tomatoIngredient != null && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
+        if (assemblyRecipes != null)
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+                if (recipe != null && recipe.processedInputFromFreezer
+                    && recipe.processedInput != null && yielded.Add(recipe.processedInput))
+                    yield return recipe.processedInput;
     }
 
     /// <summary>Raw ingredients a Pantry may be configured to dispense.</summary>
@@ -219,13 +234,25 @@ public class CustomerOrderConfig : ScriptableObject
             foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             {
                 ItemDefinition source = GetAssemblySupplySource(recipe);
-                if (source != null && yielded.Add(source)) yield return source;
+                if (source != null && !IsFreezerIngredient(source) && yielded.Add(source)) yield return source;
+                if (recipe != null && recipe.processedInputFromPantry
+                    && recipe.processedInput != null && yielded.Add(recipe.processedInput))
+                    yield return recipe.processedInput;
             }
         }
         if (friesIngredient != null && yielded.Add(friesIngredient)) yield return friesIngredient;
         if (cheeseIngredient != null && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
-        if (lettuceIngredient != null && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
-        if (tomatoIngredient != null && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
+    }
+
+    public bool IsFreezerIngredient(ItemDefinition item)
+    {
+        if (item == null) return false;
+        if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient) return true;
+        if (assemblyRecipes == null) return false;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)
+                return true;
+        return false;
     }
 
     /// <summary>Products the assembly station can be set to make (burgers only).</summary>
@@ -408,7 +435,6 @@ public class CustomerOrderConfig : ScriptableObject
         foreach (ItemDefinition pantryItem in GetPantryIngredients())
             if (pantryItem != null && yielded.Add(pantryItem)) yield return pantryItem;
         if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
-        if (drinkItem != null && yielded.Add(drinkItem)) yield return drinkItem;
     }
 }
 

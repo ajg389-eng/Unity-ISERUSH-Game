@@ -89,7 +89,13 @@ public class PantryStation : MonoBehaviour
         RefreshItemDisplay(force: true);
     }
 
-    public bool CanDispense(ItemDefinition item) => item != null && item == selectedItem;
+    public bool CanDispense(ItemDefinition item)
+    {
+        if (item == null || item != selectedItem) return false;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        return config == null || !config.IsFreezerIngredient(item);
+    }
 
     void RefreshItemDisplay(bool force)
     {

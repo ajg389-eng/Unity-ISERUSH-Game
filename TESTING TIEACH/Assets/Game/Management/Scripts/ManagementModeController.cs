@@ -724,7 +724,8 @@ public class ManagementModeController : MonoBehaviour
 
         AssemblyStation assembly = target.GetComponent<AssemblyStation>();
         AssemblyRecipeDefinition recipe = assembly != null ? assembly.GetSelectedRecipe() : null;
-        if (recipe != null && recipe.pantryInput == stored && recipe.rawPantryInput == null)
+        if (recipe != null && ((recipe.pantryInput == stored && recipe.rawPantryInput == null)
+            || (recipe.processedInputFromPantry && recipe.processedInput == stored)))
             return true;
 
         reason = recipe != null && recipe.rawPantryInput != null
@@ -1062,9 +1063,8 @@ public class ManagementModeController : MonoBehaviour
         FreezerStation freezer = node.GetComponent<FreezerStation>();
         if (freezer != null)
         {
-            ProductionManager manager = ProductionManager.Instance;
-            int stock = manager != null && manager.PattyItem != null
-                ? freezer.GetOutputCount(manager.PattyItem) : 0;
+            int stock = freezer.selectedItem != null
+                ? freezer.GetOutputCount(freezer.selectedItem) : 0;
             return "Output stock: " + stock + "  |  reserved out " + outgoing;
         }
 
@@ -1852,9 +1852,12 @@ public class ManagementModeController : MonoBehaviour
             int recipeCount = 0;
             int recipeRows = 0;
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
+            bool shakeStation = assembly.GetComponent<ShakeStation>() != null;
             foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
             {
                 if (recipe == null) continue;
+                bool shakeRecipe = config.IsDrink(recipe.output);
+                if (shakeStation != shakeRecipe) continue;
                 if (recipeCount % 3 == 0)
                 {
                     recipeRow = CreateRecipeRow();

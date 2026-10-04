@@ -29,6 +29,7 @@ MonoBehaviour:
     processedInput: {fileID: 0}
     processedInputName: Cooked patty
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
@@ -37,6 +38,7 @@ MonoBehaviour:
     processedInput: {fileID: 0}
     processedInputName: Cooked patty
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
@@ -45,6 +47,7 @@ MonoBehaviour:
     processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
     processedInputName: Cheese patty
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
@@ -53,6 +56,7 @@ MonoBehaviour:
     processedInput: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
     processedInputName: C Burger
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
@@ -61,6 +65,7 @@ MonoBehaviour:
     processedInput: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
     processedInputName: CL Burger
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
@@ -69,7 +74,18 @@ MonoBehaviour:
     processedInput: {fileID: 11400000, guid: 0751b0a0296e2194d87f5a36ac2663a0, type: 2}
     processedInputName: Cooked potato slices
     processedInputAmount: 1
+    processedInputFromPantry: 0
     pantryInput: {fileID: 11400000, guid: 7a9587f25865e714690a5cbf4a8f692e, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 0}
+  - recipeName: Shake
+    output: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
+    processedInput: {fileID: 11400000, guid: f7a17e9a936db4546b74e51b950c0a0e, type: 2}
+    processedInputName: Milk
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 1
+    pantryInput: {fileID: 11400000, guid: d267362eb326b534b86d2126391638f6, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
   lettuceIngredient: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
@@ -91,7 +107,7 @@ MonoBehaviour:
   - recipeName: Potato Slices
     input: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
     output: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
-  drinkItem: {fileID: 0}
+  drinkItem: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
   burgerChance: 0.7
   friesChance: 0.7
   drinkChance: 0.7

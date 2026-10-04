@@ -44,6 +44,10 @@ public class ProductionJob
     /// <summary>Parallel Pantry task that stocks an Assembly Station with its second input.</summary>
     public bool isAssemblySupply;
     public AssemblyStation assemblySupplyTarget;
+    /// <summary>The pantry item collected for this exact assembly input.</summary>
+    public ItemDefinition assemblySupplySourceItem;
+    /// <summary>The item delivered to the assembly station after optional processing.</summary>
+    public ItemDefinition assemblySupplyOutputItem;
     public int requestedSupplyUnits;
     /// <summary>Heat lamp this job must deliver to (from the last station's Assign Output link).</summary>
     public HeatLampStation deliveryHeatLamp;
@@ -251,6 +255,14 @@ public class ProductionManager : MonoBehaviour
                 return Mathf.Max(0, entry.quantity);
         return 2;
     }
+    public ItemDefinition GetAssemblySupplySource(ProductionJob job) =>
+        job != null && job.assemblySupplySourceItem != null
+            ? job.assemblySupplySourceItem
+            : GetAssemblySupplySource(job != null ? job.assemblySupplyTarget : null);
+    public ItemDefinition GetAssemblySupplyOutput(ProductionJob job) =>
+        job != null && job.assemblySupplyOutputItem != null
+            ? job.assemblySupplyOutputItem
+            : GetAssemblySupplyOutput(job != null ? job.assemblySupplyTarget : null);
 
     public void SetProductionTarget(ItemDefinition item, int quantity)
     {
@@ -757,8 +769,7 @@ public class ProductionManager : MonoBehaviour
         if (job == null || !job.isAssemblySupply || job.assemblySupplyTarget == null) return null;
         if (source != null && source.GetComponent<CuttingStation>() != null)
             return job.assemblySupplyTarget.gameObject;
-        bool needsCutting = orderConfig != null
-            && orderConfig.AssemblySupplyRequiresCutting(job.assemblySupplyTarget.GetSelectedRecipe());
+        bool needsCutting = job.FindNextPipelineIndex(StationType.Cutting) >= 0;
         return needsCutting ? null : job.assemblySupplyTarget.gameObject;
     }
 
@@ -784,8 +795,8 @@ public class ProductionManager : MonoBehaviour
         if (job == null) return null;
         if (job.isAssemblySupply && job.assemblySupplyTarget != null)
             return job.CurrentStationType == StationType.Cutting
-                ? GetAssemblySupplyOutput(job.assemblySupplyTarget)
-                : GetAssemblySupplySource(job.assemblySupplyTarget);
+                ? GetAssemblySupplyOutput(job)
+                : GetAssemblySupplySource(job);
         if (job.CurrentStationType == StationType.Pantry && orderConfig != null && orderConfig.IsFries(job.product))
             return PotatoItem;
         if (job.CurrentStationType == StationType.Cutting && orderConfig != null && orderConfig.IsFries(job.product))
@@ -999,32 +1010,47 @@ public class ProductionManager : MonoBehaviour
         {
             if (station == null) continue;
             AssemblyRecipeDefinition recipe = station.GetSelectedRecipe();
-            if (recipe == null || recipe.output == null || recipe.pantryInput == null) continue;
-
-            int target = station.IngredientCapacity;
-            int reserved = station.BufferedPantryInputCount;
-            bool alreadyQueued = false;
-            foreach (ProductionJob queued in pendingJobs)
-            {
-                if (queued == null || !queued.isAssemblySupply || queued.assemblySupplyTarget != station) continue;
-                reserved += Mathf.Max(1, queued.requestedSupplyUnits);
-                alreadyQueued = true;
-            }
-            if (reserved >= target || alreadyQueued) continue;
-
-            bool requiresCutting = orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe);
-            var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1),
-                requiresCutting
-                    ? new[] { StationType.Pantry, StationType.Cutting }
-                    : new[] { StationType.Pantry })
-            {
-                isAssemblySupply = true,
-                assemblySupplyTarget = station,
-                requestedSupplyUnits = target - reserved
-            };
-            if (CanAnyWorkerContinue(supply))
-                pendingJobs.Add(supply);
+            if (recipe == null || recipe.output == null) continue;
+            if (recipe.pantryInput != null)
+                EnsureAssemblyIngredientSupplyJob(station, recipe,
+                    orderConfig != null ? orderConfig.GetAssemblySupplySource(recipe) : recipe.pantryInput,
+                    recipe.pantryInput, station.BufferedPantryInputCount,
+                    orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe));
+            if ((recipe.processedInputFromPantry || recipe.processedInputFromFreezer)
+                && recipe.processedInput != null)
+                EnsureAssemblyIngredientSupplyJob(station, recipe, recipe.processedInput,
+                    recipe.processedInput, station.BufferedProcessedInputCount, false);
         }
+    }
+
+    void EnsureAssemblyIngredientSupplyJob(AssemblyStation station, AssemblyRecipeDefinition recipe,
+        ItemDefinition sourceItem, ItemDefinition outputItem, int buffered, bool requiresCutting)
+    {
+        if (station == null || recipe == null || sourceItem == null || outputItem == null) return;
+        int target = station.IngredientCapacity;
+        int reserved = buffered;
+        bool alreadyQueued = false;
+        foreach (ProductionJob queued in pendingJobs)
+        {
+            if (queued == null || !queued.isAssemblySupply || queued.assemblySupplyTarget != station
+                || queued.assemblySupplyOutputItem != outputItem) continue;
+            reserved += Mathf.Max(1, queued.requestedSupplyUnits);
+            alreadyQueued = true;
+        }
+        if (reserved >= target || alreadyQueued) return;
+        StationType sourceType = orderConfig != null && orderConfig.IsFreezerIngredient(sourceItem)
+            ? StationType.Freezer : StationType.Pantry;
+        var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1),
+            requiresCutting ? new[] { sourceType, StationType.Cutting }
+                : new[] { sourceType })
+        {
+            isAssemblySupply = true,
+            assemblySupplyTarget = station,
+            assemblySupplySourceItem = sourceItem,
+            assemblySupplyOutputItem = outputItem,
+            requestedSupplyUnits = target - reserved
+        };
+        if (CanAnyWorkerContinue(supply)) pendingJobs.Add(supply);
     }
 
     int MenuJobCount()
@@ -1199,7 +1225,7 @@ public class ProductionManager : MonoBehaviour
 
         bool canBurger = false;
         bool canFries = false;
-        bool canDrink = false;
+        bool canShake = false;
         bool hasConfiguredFlow = false;
         if (productionFlows != null)
         {
@@ -1228,7 +1254,7 @@ public class ProductionManager : MonoBehaviour
                         if (id == "Cutting") flowHasPotatoCutting = true;
                         if (id == "Assembly") flowHasAssembly = true;
                         if (id == "Fryer") flowHasFryer = true;
-                        if (id == "Drink") canDrink = true;
+                        if (id == "Shake") canShake = true;
                     }
                 }
                 if (flow.stations != null)
@@ -1248,7 +1274,7 @@ public class ProductionManager : MonoBehaviour
                             flowHasPotatoCutting = true;
                         if (station.GetComponent<AssemblyStation>() != null) flowHasAssembly = true;
                         if (station.GetComponent<FryerStation>() != null) flowHasFryer = true;
-                        if (station.GetComponent<DrinkStation>() != null) canDrink = true;
+                        if (station.GetComponent<ShakeStation>() != null) canShake = true;
                     }
                 }
                 if (flowHasFreezer && flowHasGrill && flowHasAssembly)
@@ -1269,7 +1295,7 @@ public class ProductionManager : MonoBehaviour
                 && HasCuttingSupplyPath(PotatoItem, SlicedPotatoItem, false)
                 && HasAssemblyChainAvailable(FriesItem, false)
                 && HasAssemblyPantrySupplies(FriesItem, false);
-            canDrink = drinkStation != null || FindObjectOfType<DrinkStation>() != null;
+            canShake = FindObjectOfType<ShakeStation>() != null;
         }
 
         if (canBurger && HasConfiguredFreezer())
@@ -1294,7 +1320,9 @@ public class ProductionManager : MonoBehaviour
             && HasAssemblyPantrySupplies(FriesItem, hasConfiguredFlow)
             && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
             list.Add(orderConfig.friesItem);
-        if (canDrink && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
+        if (canShake && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem)
+            && HasAssemblyChainAvailable(orderConfig.drinkItem, hasConfiguredFlow)
+            && HasAssemblyPantrySupplies(orderConfig.drinkItem, hasConfiguredFlow))
             list.Add(orderConfig.drinkItem);
         return list;
     }
@@ -1318,7 +1346,13 @@ public class ProductionManager : MonoBehaviour
         {
             AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(stage);
             ItemDefinition source = orderConfig.GetAssemblySupplySource(recipe);
-            if (source != null && !HasPantrySelection(source, useFlows)) return false;
+            if (source != null && !HasIngredientSourceSelection(source, useFlows)) return false;
+            if (recipe != null && recipe.processedInputFromPantry
+                && recipe.processedInput != null
+                && !HasPantrySelection(recipe.processedInput, useFlows)) return false;
+            if (recipe != null && recipe.processedInputFromFreezer
+                && recipe.processedInput != null
+                && !HasFreezerSelection(recipe.processedInput, useFlows)) return false;
         }
         return true;
     }
@@ -1402,7 +1436,7 @@ public class ProductionManager : MonoBehaviour
         if (requiredRaw == null || requiredOutput == null) return false;
         if (!useFlows)
         {
-            if (!HasPantrySelection(requiredRaw, false)) return false;
+            if (!HasIngredientSourceSelection(requiredRaw, false)) return false;
             foreach (CuttingStation cutting in FindObjectsByType<CuttingStation>(
                 FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                 if (cutting != null && cutting.CanProcess(requiredRaw, requiredOutput)) return true;
@@ -1412,13 +1446,16 @@ public class ProductionManager : MonoBehaviour
         foreach (ProductionFlowPlan flow in productionFlows)
         {
             if (flow?.stations == null) continue;
-            bool foundPantry = false;
+            bool foundSource = false;
             foreach (GameObject station in flow.stations)
             {
                 if (station == null) continue;
                 PantryStation pantry = station.GetComponent<PantryStation>();
-                if (pantry != null && pantry.CanDispense(requiredRaw)) foundPantry = true;
-                else if (foundPantry)
+                FreezerStation freezerStation = station.GetComponent<FreezerStation>();
+                if ((pantry != null && pantry.CanDispense(requiredRaw))
+                    || (freezerStation != null && freezerStation.CanSupply(requiredRaw)))
+                    foundSource = true;
+                else if (foundSource)
                 {
                     CuttingStation cutting = station.GetComponent<CuttingStation>();
                     if (cutting != null && cutting.CanProcess(requiredRaw, requiredOutput)) return true;
@@ -1694,6 +1731,35 @@ public class ProductionManager : MonoBehaviour
                 && job.taskSourceStation == source && job.CurrentWorkProduct == item)
                 return true;
         return false;
+    }
+
+    bool HasFreezerSelection(ItemDefinition ingredient, bool useFlows)
+    {
+        if (ingredient == null) return false;
+        if (useFlows && productionFlows != null)
+        {
+            foreach (ProductionFlowPlan flow in productionFlows)
+            {
+                if (flow?.stations == null) continue;
+                foreach (GameObject station in flow.stations)
+                {
+                    FreezerStation freezerStation = station != null ? station.GetComponent<FreezerStation>() : null;
+                    if (freezerStation != null && freezerStation.CanSupply(ingredient)) return true;
+                }
+            }
+            return false;
+        }
+        foreach (FreezerStation freezerStation in FindObjectsByType<FreezerStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            if (freezerStation != null && freezerStation.CanSupply(ingredient)) return true;
+        return false;
+    }
+
+    bool HasIngredientSourceSelection(ItemDefinition ingredient, bool useFlows)
+    {
+        return orderConfig != null && orderConfig.IsFreezerIngredient(ingredient)
+            ? HasFreezerSelection(ingredient, useFlows)
+            : HasPantrySelection(ingredient, useFlows);
     }
 
     public bool HasPendingFryerTask(GameObject fryerStation)

@@ -391,7 +391,8 @@ public class KitchenEmployee : MonoBehaviour
 
         if (step == Step.AtFreezer)
         {
-            if (heldUnits <= 0 && !manager.HasPattyInStock(this)) return "Raw patties are out of stock";
+            if (heldUnits <= 0 && !manager.HasPattyInStock(this))
+                return FormatItemName(GetCurrentTransferItem()) + " is out of stock";
             if (heldUnits > 0 && manager.GetReservedInputUnits(currentJob) <= 0)
                 return "Grill cannot accept the carried batch";
         }
@@ -415,7 +416,7 @@ public class KitchenEmployee : MonoBehaviour
         {
             PantryStation pantry = GetPantryStation();
             ItemDefinition required = currentJob.isAssemblySupply
-                ? manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget)
+                ? manager.GetAssemblySupplySource(currentJob)
                 : manager.GetPantryItemForProduct(currentJob.product);
             if (pantry != null && required != null && !pantry.HasItem(required))
                 return FormatItemName(required) + " is out of stock";
@@ -597,7 +598,7 @@ public class KitchenEmployee : MonoBehaviour
             {
                 PantryStation pantry = candidate.GetComponent<PantryStation>();
                 ItemDefinition required = job.isAssemblySupply
-                    ? production?.GetAssemblySupplySource(job.assemblySupplyTarget)
+                    ? production?.GetAssemblySupplySource(job)
                     : production?.GetPantryItemForProduct(job.product);
                 if (pantry == null || required == null || !pantry.CanDispense(required)) continue;
                 if (requireReady && !pantry.HasItem(required)) continue;
@@ -623,10 +624,10 @@ public class KitchenEmployee : MonoBehaviour
                 bool friesJob = production?.orderConfig != null
                     && production.orderConfig.IsFries(job.product);
                 ItemDefinition requiredInput = job.isAssemblySupply
-                    ? production?.GetAssemblySupplySource(job.assemblySupplyTarget)
+                    ? production?.GetAssemblySupplySource(job)
                     : (friesJob ? production?.PotatoItem : null);
                 ItemDefinition requiredOutput = job.isAssemblySupply
-                    ? production?.GetAssemblySupplyOutput(job.assemblySupplyTarget)
+                    ? production?.GetAssemblySupplyOutput(job)
                     : (friesJob ? production?.SlicedPotatoItem : null);
                 if (cutting == null || !cutting.CanProcess(requiredInput, requiredOutput)) continue;
                 if (requireReady)
@@ -1388,8 +1389,8 @@ public class KitchenEmployee : MonoBehaviour
         if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null)
         {
             if (currentJob.CurrentStationType == StationType.Cutting)
-                return manager.GetAssemblySupplyOutput(currentJob.assemblySupplyTarget);
-            return manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget);
+                return manager.GetAssemblySupplyOutput(currentJob);
+            return manager.GetAssemblySupplySource(currentJob);
         }
         if (currentJob.CurrentStationType == StationType.Pantry
             && manager.orderConfig != null && manager.orderConfig.IsFries(currentJob.product))
@@ -1438,7 +1439,8 @@ public class KitchenEmployee : MonoBehaviour
         currentJob.ingredientsHeld.AddRange(ingredientsHeld);
 
         if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null
-            && (currentJob.CurrentStationType == StationType.Pantry
+            && (currentJob.CurrentStationType == StationType.Freezer
+                || currentJob.CurrentStationType == StationType.Pantry
                 || currentJob.CurrentStationType == StationType.Cutting))
         {
             bool cuttingStepExists = currentJob.FindNextPipelineIndex(StationType.Cutting) >= 0;
@@ -1448,7 +1450,7 @@ public class KitchenEmployee : MonoBehaviour
             {
                 GameObject source = GetOperatedStationObject(currentJob.CurrentStationType.Value);
                 deliverTarget = source != null ? manager.GetFlowOutput(this, source, currentJob) : null;
-                heldDeliveryItem = manager.GetAssemblySupplyOutput(currentJob.assemblySupplyTarget);
+                heldDeliveryItem = manager.GetAssemblySupplyOutput(currentJob);
                 if (deliverTarget != currentJob.assemblySupplyTarget.gameObject
                     || !manager.IsStationInWorkerFlow(this, deliverTarget)
                     || (manager.GetReservedInputUnits(currentJob) <= 0
@@ -1462,11 +1464,11 @@ public class KitchenEmployee : MonoBehaviour
             }
             else
             {
-                GameObject pantryObject = GetOperatedStationObject(StationType.Pantry);
-                deliverTarget = pantryObject != null
-                    ? manager.GetFlowOutput(this, pantryObject, currentJob)
+                GameObject sourceObject = GetOperatedStationObject(currentJob.CurrentStationType.Value);
+                deliverTarget = sourceObject != null
+                    ? manager.GetFlowOutput(this, sourceObject, currentJob)
                     : null;
-                heldDeliveryItem = manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget);
+                heldDeliveryItem = manager.GetAssemblySupplySource(currentJob);
                 if (deliverTarget == null || deliverTarget.GetComponent<CuttingStation>() == null)
                 {
                     ShowTaskBar = true;
@@ -1850,9 +1852,9 @@ public class KitchenEmployee : MonoBehaviour
                 return;
             }
 
-            ItemDefinition suppliedItem = manager.GetAssemblySupplyOutput(targetAssembly);
+            ItemDefinition suppliedItem = manager.GetAssemblySupplyOutput(currentJob);
             int carried = Mathf.Max(0, heldUnits);
-            int accepted = targetAssembly.ReceivePantryInput(suppliedItem, carried);
+            int accepted = targetAssembly.StoreInput(suppliedItem, carried);
             manager.ConsumeInputReservation(currentJob, accepted);
             if (accepted < carried && KitchenInventory.Instance != null && suppliedItem != null)
                 KitchenInventory.Instance.AddStock(suppliedItem, carried - accepted);
@@ -2340,7 +2342,7 @@ public class KitchenEmployee : MonoBehaviour
         {
             PantryStation pantry = GetPantryStation();
             ItemDefinition required = currentJob.isAssemblySupply
-                ? manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget)
+                ? manager.GetAssemblySupplySource(currentJob)
                 : manager.GetPantryItemForProduct(currentJob.product);
             if (pantry != null && required != null && !pantry.HasItem(required))
                 return true;
@@ -3149,7 +3151,7 @@ public class KitchenEmployee : MonoBehaviour
                     var pantry = GetPantryStation();
                     if (pantry == null) break;
                     ItemDefinition pantryItem = currentJob != null && currentJob.isAssemblySupply
-                        ? manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget)
+                        ? manager.GetAssemblySupplySource(currentJob)
                         : manager.GetPantryItemForProduct(currentJob != null ? currentJob.product : null);
                     if (MoveToward(pantry.GetInteractionPosition()))
                     {
@@ -3175,7 +3177,7 @@ public class KitchenEmployee : MonoBehaviour
                         break;
                     }
                     ItemDefinition pantryItem = currentJob != null && currentJob.isAssemblySupply
-                        ? manager.GetAssemblySupplySource(currentJob.assemblySupplyTarget)
+                        ? manager.GetAssemblySupplySource(currentJob)
                         : manager.GetPantryItemForProduct(currentJob != null ? currentJob.product : null);
                     if (pantryItem == null)
                     {

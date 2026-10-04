@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
+  m_Name: Shake
+  m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
+  itemName: Shake
+  prefab: {fileID: 7268922663748963708, guid: cf4c9a248f937ff4c9b548674e6cf9a7, type: 3}
+  price: 9
+  startingQuantity: 0
+  stationFamily: 
+  stationMark: 0
+  placementSurface: 0
+  footprintX: 1
+  footprintY: 1
+  placementScale: {x: 1, y: 1, z: 1}
+  placementEuler: {x: 0, y: 0, z: 0}
+  counterEmbedDepth: 0
+  counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 0
+  fixedCounterY: 0
+  counterSlotSpan: 1
+  buildFunction: 0
+  previewIcon: {fileID: 0}
+  orderPackSize: 10
+  orderPackPrice: 0

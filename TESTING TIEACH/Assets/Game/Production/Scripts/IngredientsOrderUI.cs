@@ -422,7 +422,8 @@ public class IngredientsOrderUI : MonoBehaviour
                 + arrow + Step("Pickup Station", "Fries");
 
         if (menu.IsDrink(item))
-            return label + Step("Drink Fountain", "Drink stock") + arrow + Step("Pickup Station", "Filled drink");
+            return label + Step("Milk Freezer", "Milk") + arrow + Step("Cup Pantry", "Empty Cup")
+                + arrow + Step("Shake Station", "Shake") + arrow + Step("Pickup Station", "Finished shake");
 
         return label + "No workflow configured";
     }

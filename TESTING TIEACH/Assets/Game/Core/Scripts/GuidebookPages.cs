@@ -52,7 +52,7 @@ public static class GuidebookPages
         new Page(
             "Inventory",
             "Stations",
-            "The Stations tab is the catalog: freezer, grill, fryer, drinks, assembly, Pickup Station, pantry, and more. The register is already in the lobby — you do not buy it.\n\n" +
+            "The Stations tab is the catalog: freezer, grill, fryer, shake station, assembly, Pickup Station, pantry, and more. The register is already in the lobby.\n\n" +
             "<b>How to place</b>\n" +
             "1. Buy the card (first copy is FREE).\n" +
             "2. Click the card so a ghost follows the mouse.\n" +
@@ -75,7 +75,7 @@ public static class GuidebookPages
             "<b>Cutting Station</b> — supports future recipes that need prepared ingredients.\n" +
             "<b>Fryer</b> cooks potato slices from a Cutting Station into fries.\n" +
             "<b>Assembly</b> — combines two recipe inputs into one finished item. The Burger recipe uses a cooked patty and bun.\n" +
-            "<b>Pickup Station</b> — holds any finished product until pickup, including food, drinks, and future menu items. Products can expire if they sit too long.\n" +
+            "<b>Pickup Station</b> holds any finished product until pickup, including food, shakes, and future menu items. Products can expire if they sit too long.\n" +
             "<b>Pantry</b> — supplies burger ingredients and raw potatoes for fries.\n\n" +
             "Burger patties run freezer > grill > assembly > Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry > cutting > fryer > Pickup Station."),
         new Page(
@@ -106,7 +106,7 @@ public static class GuidebookPages
             "3. Press on a station, drag to the next station, and release to create a path.\n" +
             "4. Drag from the same station to another destination to split the flow. Drag onto an existing node to merge paths. Click selects a node and Ctrl-click removes it.\n" +
             "5. Confirm when the graph looks right. Esc cancels a new capture.\n\n" +
-            "Branches let one flow contain burger, fries, drinks, and ingredient-supply paths. Jobs choose the branch matching their next recipe step."),
+            "Branches let one flow contain burgers, fries, shakes, and ingredient-supply paths. Jobs choose the branch matching their next recipe step."),
         new Page(
             "Management",
             "Edit and assign",
@@ -153,9 +153,9 @@ public static class GuidebookPages
         new Page(
             "Guide",
             "A good first shift",
-            "1. Inventory → Stations: place freezer, grill, fryer, drinks, assembly, Pickup Station, and pantry. First copy of each is free.\n" +
+            "1. Inventory → Stations: place a freezer, grill, fryer, shake station, assembly station, Pickup Station, and pantries. First copy of each is free.\n" +
             "2. Inventory → Floor: expand if you have no walking room.\n" +
-            "3. Management → Food: buy burger, fries, and drink packs.\n" +
+            "3. Management → Food: buy raw ingredients, including milk and empty cups for shakes.\n" +
             "4. Management → Workers: hire at least one person (first hire free).\n" +
             "5. Create Flow and click stations in order toward the Pickup Station.\n" +
             "6. Assign that worker to the flow.\n" +

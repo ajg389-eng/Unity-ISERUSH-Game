@@ -222,6 +222,7 @@ public class StationNode : MonoBehaviour
         get
         {
             var t = KitchenEmployee.GetStationTypeFrom(gameObject);
+            if (GetComponent<ShakeStation>() != null) return "Shake Station MK" + StationMark;
             if (GetComponent<AssemblyStation>() != null) return "Assembly Station MK" + StationMark;
             if (GetComponent<CuttingStation>() != null) return "Cutting Station MK" + StationMark;
             if (GetComponent<GrillStation>() != null) return "Grill MK" + StationMark;

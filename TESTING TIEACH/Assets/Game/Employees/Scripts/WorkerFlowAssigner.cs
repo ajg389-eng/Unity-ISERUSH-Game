@@ -137,10 +137,10 @@ public static class WorkerFlowAssigner
     {
         new FlowStationDef("Freezer", "Freezer", typeof(FreezerStation)),
         new FlowStationDef("Grill", "Grill", typeof(GrillStation)),
+        new FlowStationDef("Shake", "Shake Station", typeof(ShakeStation)),
         new FlowStationDef("Assembly", "Assembly", typeof(AssemblyStation)),
         new FlowStationDef("Cutting", "Cutting Station", typeof(CuttingStation)),
         new FlowStationDef("Fryer", "Fryer", typeof(FryerStation)),
-        new FlowStationDef("Drink", "Drink", typeof(DrinkStation)),
         new FlowStationDef("Register", "Register", typeof(Register)),
         new FlowStationDef("HeatLamp", "Pickup Station", typeof(HeatLampStation)),
         new FlowStationDef("Pantry", "Pantry", typeof(PantryStation))
@@ -1022,7 +1022,7 @@ public static class WorkflowAnalysis
         }
 
         bool hasRegister = FlowHas(flow, "Register", typeof(Register));
-        bool hasDrink = FlowHas(flow, "Drink", typeof(DrinkStation));
+        bool hasShake = FlowHas(flow, "Shake", typeof(ShakeStation));
         bool canBurger = FlowHas(flow, "Freezer", typeof(FreezerStation))
             && FlowHas(flow, "Grill", typeof(GrillStation))
             && FlowHas(flow, "Assembly", typeof(AssemblyStation));
@@ -1035,10 +1035,10 @@ public static class WorkflowAnalysis
 
         if (hasRegister && !canBurger && !canFries)
         {
-            result.summary = hasDrink
-                ? "Service flow — serves full orders (food + drinks) to customers."
+            result.summary = hasShake
+                ? "Service flow serves completed food and shakes to customers."
                 : "Service flow — register hands finished food to customers.";
-            if (hasDrink && config != null && config.drinkItem != null)
+            if (hasShake && config != null && config.drinkItem != null)
                 result.requiredResources.Add(config.drinkItem);
             return result;
         }
@@ -1065,7 +1065,7 @@ public static class WorkflowAnalysis
             products.Add(config.cltBurgerItem);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
-        if (hasDrink && config != null && config.drinkItem != null)
+        if (hasShake && config != null && config.drinkItem != null)
             products.Add(config.drinkItem);
 
         // Report actual configured outputs, not every recipe this collection of
