@@ -50,6 +50,19 @@ public class CustomerSpawner : MonoBehaviour
     /// </summary>
     public float CustomersPerMinute => MeanCustomersPerMinute();
 
+    /// <summary>Configured mean arrivals for a one-game-hour bucket at the supplied hour.</summary>
+    public float ExpectedCustomersPerGameHour(int hour24)
+    {
+        int stage = MilestoneFeatures.HighestReachedNumberedStage();
+        int stepsPastFirst = Mathf.Max(0, stage - 1);
+        float rate = milestoneOneCustomersPerMinute + stepsPastFirst * extraCustomersPerMinutePerMilestone;
+        hour24 = ((hour24 % 24) + 24) % 24;
+        bool rush = MilestoneFeatures.RushHourUnlocked
+            && ((hour24 >= 12 && hour24 < 14) || (hour24 >= 17 && hour24 < 19));
+        if (rush) rate *= rushArrivalMultiplier;
+        return Mathf.Max(0.05f, rate);
+    }
+
     float MeanCustomersPerMinute()
     {
         int stage = MilestoneFeatures.HighestReachedNumberedStage();
