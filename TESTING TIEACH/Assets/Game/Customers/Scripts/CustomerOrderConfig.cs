@@ -27,11 +27,20 @@ public class AssemblyRecipeDefinition
     [Tooltip("Item carried after each station in Supply Pipeline.")]
     public ItemDefinition[] supplyStageOutputs;
 
+    [Header("MK2 third input")]
+    [Tooltip("Required only by Assembly Station MK2 recipes. MK1 cannot process recipes with this input.")]
+    public ItemDefinition thirdInput;
+    [Min(1)] public int thirdInputAmount = 1;
+    public ItemDefinition rawThirdInput;
+    public StationType[] thirdSupplyPipeline;
+    public ItemDefinition[] thirdSupplyStageOutputs;
+
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
         ? recipeName
         : (output != null && !string.IsNullOrWhiteSpace(output.itemName) ? output.itemName : "Recipe");
 
     public bool Produces(ItemDefinition item) => item != null && output == item;
+    public bool RequiresMk2 => thirdInput != null;
 
 }
 
@@ -66,6 +75,8 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition cheeseBaconLettuceOnionTomatoEggBurgerItem;
     [Tooltip("Fries side")]
     public ItemDefinition friesItem;
+    public ItemDefinition cheeseFriesItem;
+    public ItemDefinition cheeseBaconFriesItem;
     [Tooltip("Raw potatoes consumed at the pantry before fries are cooked")]
     public ItemDefinition friesIngredient;
     [Tooltip("Potato slices produced by a Cutting Station and consumed by the Fryer")]
@@ -104,6 +115,11 @@ public class CustomerOrderConfig : ScriptableObject
     public List<CuttingRecipeDefinition> cuttingRecipes = new List<CuttingRecipeDefinition>();
     [Tooltip("Shake")]
     public ItemDefinition drinkItem;
+    public ItemDefinition whippedCreamShakeItem;
+    public ItemDefinition whippedCreamSprinkleShakeItem;
+    public ItemDefinition cheeseSauceIngredient;
+    public ItemDefinition whippedCreamIngredient;
+    public ItemDefinition sprinklesIngredient;
 
     [Header("Order chances (each item rolled independently)")]
     [Range(0f, 1f)]
@@ -131,8 +147,8 @@ public class CustomerOrderConfig : ScriptableObject
         || item == cheeseBaconLettuceOnionTomatoBurgerItem
         || item == cheeseBaconLettuceOnionTomatoEggBurgerItem);
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
-    public bool IsFries(ItemDefinition item) => item != null && item == friesItem;
-    public bool IsDrink(ItemDefinition item) => item != null && item == drinkItem;
+    public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
+    public bool IsDrink(ItemDefinition item) => item != null && (item == drinkItem || item == whippedCreamShakeItem || item == whippedCreamSprinkleShakeItem);
 
     public bool IsItemEnabled(ItemDefinition item)
     {
@@ -235,12 +251,16 @@ public class CustomerOrderConfig : ScriptableObject
                     pipeline[2 + i] = StationType.Assembly;
                 return pipeline;
             case ProductKind.Fries:
-                return new[] { StationType.Pantry, StationType.Cutting,
-                    StationType.Fryer, StationType.Assembly };
+                int friesAssemblyCount = Mathf.Max(1, GetAssemblyChain(item).Count);
+                var friesPipeline = new StationType[3 + friesAssemblyCount];
+                friesPipeline[0] = StationType.Pantry; friesPipeline[1] = StationType.Cutting; friesPipeline[2] = StationType.Fryer;
+                for (int i = 0; i < friesAssemblyCount; i++) friesPipeline[3 + i] = StationType.Assembly;
+                return friesPipeline;
             case ProductKind.Drink:
-                return GetAssemblyRecipe(item) != null
-                    ? new[] { StationType.Assembly }
-                    : new[] { StationType.Drink };
+                int shakeAssemblyCount = Mathf.Max(1, GetAssemblyChain(item).Count);
+                var shakePipeline = new StationType[shakeAssemblyCount];
+                for (int i = 0; i < shakeAssemblyCount; i++) shakePipeline[i] = StationType.Assembly;
+                return shakePipeline;
             default:
                 return System.Array.Empty<StationType>();
         }
@@ -303,13 +323,14 @@ public class CustomerOrderConfig : ScriptableObject
         }
         if (friesIngredient != null && yielded.Add(friesIngredient)) yield return friesIngredient;
         if (cheeseIngredient != null && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
+        if (sprinklesIngredient != null && yielded.Add(sprinklesIngredient)) yield return sprinklesIngredient;
     }
 
     public bool IsFreezerIngredient(ItemDefinition item)
     {
         if (item == null) return false;
         if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
-            || item == rawBaconIngredient || item == onionIngredient || item == eggIngredient) return true;
+            || item == rawBaconIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient) return true;
         if (assemblyRecipes == null) return false;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)
@@ -476,7 +497,11 @@ public class CustomerOrderConfig : ScriptableObject
         if (cheeseBaconLettuceOnionTomatoBurgerItem != null) yield return cheeseBaconLettuceOnionTomatoBurgerItem;
         if (cheeseBaconLettuceOnionTomatoEggBurgerItem != null) yield return cheeseBaconLettuceOnionTomatoEggBurgerItem;
         if (friesItem != null) yield return friesItem;
+        if (cheeseFriesItem != null) yield return cheeseFriesItem;
+        if (cheeseBaconFriesItem != null) yield return cheeseBaconFriesItem;
         if (drinkItem != null) yield return drinkItem;
+        if (whippedCreamShakeItem != null) yield return whippedCreamShakeItem;
+        if (whippedCreamSprinkleShakeItem != null) yield return whippedCreamSprinkleShakeItem;
     }
 
     public IEnumerable<ItemDefinition> GetEnabledMenuItems()

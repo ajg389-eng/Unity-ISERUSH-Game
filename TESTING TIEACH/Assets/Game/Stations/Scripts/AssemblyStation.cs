@@ -22,6 +22,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public Vector3 interactionOffset = Vector3.zero;
     [SerializeField, Min(0)] int bufferedProcessedInputs;
     [SerializeField, Min(0)] int bufferedPantryInputs;
+    [SerializeField, Min(0)] int bufferedThirdInputs;
     [SerializeField, Min(0)] int bufferedOutputs;
 
     [Header("Table display")]
@@ -33,6 +34,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public Transform[] processedInputDisplaySlots = new Transform[2];
     [Tooltip("Two tabletop markers for the pantry ingredient.")]
     public Transform[] pantryInputDisplaySlots = new Transform[2];
+    public Transform[] thirdInputDisplaySlots = new Transform[2];
     [Tooltip("Two tabletop markers for completed outputs.")]
     public Transform[] outputDisplaySlots = new Transform[2];
 
@@ -43,6 +45,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     public int BufferedProcessedInputCount => bufferedProcessedInputs;
     public int BufferedPantryInputCount => bufferedPantryInputs;
+    public int BufferedThirdInputCount => bufferedThirdInputs;
+    public bool IsMk2 { get { EnsureBufferLayout(); return inputMarkers.Count >= 6; } }
     public int BufferedOutputCount => bufferedOutputs;
     public int InputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultInputCapacity, inputMarkers.Count); } }
     public int OutputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultOutputCapacity, outputMarkers.Count); } }
@@ -118,6 +122,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         {
             bufferedProcessedInputs = 0;
             bufferedPantryInputs = 0;
+            bufferedThirdInputs = 0;
             bufferedOutputs = 0;
         }
         selectedRecipe = recipe;
@@ -128,7 +133,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public bool CanProcess(ItemDefinition product)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
-        return product != null && recipe != null && recipe.Produces(product);
+        return product != null && recipe != null && recipe.Produces(product) && recipe.RequiresMk2 == IsMk2;
     }
 
     public ItemDefinition GetPantryInput(ItemDefinition product)
@@ -249,6 +254,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         EnsureBufferLayout(true);
         bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, IngredientCapacity);
         bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, IngredientCapacity);
+        bufferedThirdInputs = Mathf.Clamp(bufferedThirdInputs, 0, IngredientCapacity);
         bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputSlotCapacity);
         HideSlotMarkers();
         RefreshTableDisplay();
@@ -346,6 +352,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     {
         HideSlotMarkers(processedInputDisplaySlots);
         HideSlotMarkers(pantryInputDisplaySlots);
+        HideSlotMarkers(thirdInputDisplaySlots);
         HideSlotMarkers(outputDisplaySlots);
     }
 

@@ -22,6 +22,8 @@ MonoBehaviour:
   cheeseBaconLettuceOnionTomatoBurgerItem: {fileID: 11400000, guid: 630a7c589ed298343bfefbf9d64da898, type: 2}
   cheeseBaconLettuceOnionTomatoEggBurgerItem: {fileID: 11400000, guid: 08611b6abdd72644da29ae1211acdbc3, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
+  cheeseFriesItem: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
+  cheeseBaconFriesItem: {fileID: 11400000, guid: 8ff4b007de730b947a71007696e5897b, type: 2}
   friesIngredient: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
   slicedPotatoIngredient: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
   cookedPotatoIngredient: {fileID: 11400000, guid: 0751b0a0296e2194d87f5a36ac2663a0, type: 2}
@@ -39,7 +41,7 @@ MonoBehaviour:
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
-    supplyPipeline:
+    supplyPipeline: 
     supplyStageOutputs: []
   - recipeName: Cheese Patty
     output: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
@@ -65,7 +67,7 @@ MonoBehaviour:
     pantryInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
-    supplyPipeline:
+    supplyPipeline: 
     supplyStageOutputs: []
   - recipeName: Cheese Bacon Burger
     output: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
@@ -148,7 +150,7 @@ MonoBehaviour:
     pantryInput: {fileID: 11400000, guid: 7a9587f25865e714690a5cbf4a8f692e, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
-    supplyPipeline:
+    supplyPipeline: 
     supplyStageOutputs: []
   - recipeName: Shake
     output: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
@@ -160,7 +162,71 @@ MonoBehaviour:
     pantryInput: {fileID: 11400000, guid: d267362eb326b534b86d2126391638f6, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
-    supplyPipeline:
+    supplyPipeline: 
+    supplyStageOutputs: []
+  - recipeName: Cheese Sauce
+    output: {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
+    processedInput: {fileID: 0}
+    processedInputName: 
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 0
+    pantryInput: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
+    supplyPipeline: 0200000001000000
+    supplyStageOutputs:
+    - {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
+    - {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
+  - recipeName: Cheese Fries
+    output: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
+    processedInput: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
+    processedInputName: Fries
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 0
+    pantryInput: {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 0}
+    supplyPipeline: 
+    supplyStageOutputs: []
+  - recipeName: Cheese Bacon Fries
+    output: {fileID: 11400000, guid: 8ff4b007de730b947a71007696e5897b, type: 2}
+    processedInput: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
+    processedInputName: Cheese Fries
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 0
+    pantryInput: {fileID: 11400000, guid: 04d306ef11534d249a61f3fcc795c0cf, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 11400000, guid: 73163869681dd054a8e5ed64a8fa8453, type: 2}
+    supplyPipeline: 0000000001000000
+    supplyStageOutputs:
+    - {fileID: 11400000, guid: 73163869681dd054a8e5ed64a8fa8453, type: 2}
+    - {fileID: 11400000, guid: 04d306ef11534d249a61f3fcc795c0cf, type: 2}
+  - recipeName: Whipped Cream Shake
+    output: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
+    processedInput: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
+    processedInputName: Shake
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 1
+    pantryInput: {fileID: 11400000, guid: dca8c0cc17d036647a59ae63254eb34e, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 0}
+    supplyPipeline: 
+    supplyStageOutputs: []
+  - recipeName: Whipped Cream Sprinkle Shake
+    output: {fileID: 11400000, guid: a3bdaf8885c359245a823625c462ad68, type: 2}
+    processedInput: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
+    processedInputName: Whipped Cream Shake
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 0
+    pantryInput: {fileID: 11400000, guid: 9961c010613c86f4ca82c988859e3954, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 0}
+    supplyPipeline: 
     supplyStageOutputs: []
   lettuceIngredient: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
   cheeseIngredient: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
@@ -209,6 +275,11 @@ MonoBehaviour:
     input: {fileID: 11400000, guid: d1d6f3572f3e19e4e8ce2ee16de2adf7, type: 2}
     output: {fileID: 11400000, guid: e98c12eea6c888145a87ba87b8a1d3ff, type: 2}
   drinkItem: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
+  whippedCreamShakeItem: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
+  whippedCreamSprinkleShakeItem: {fileID: 11400000, guid: a3bdaf8885c359245a823625c462ad68, type: 2}
+  cheeseSauceIngredient: {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
+  whippedCreamIngredient: {fileID: 11400000, guid: dca8c0cc17d036647a59ae63254eb34e, type: 2}
+  sprinklesIngredient: {fileID: 11400000, guid: 9961c010613c86f4ca82c988859e3954, type: 2}
   burgerChance: 0.7
   friesChance: 0.7
   drinkChance: 0.7
