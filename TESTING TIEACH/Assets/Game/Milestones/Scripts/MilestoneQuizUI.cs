@@ -285,6 +285,7 @@ public class MilestoneQuizUI : MonoBehaviour
         scrollGo.AddComponent<LayoutElement>().minHeight = 280;
         scrollGo.GetComponent<LayoutElement>().flexibleHeight = 1;
         var scroll = scrollGo.AddComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll);
         scroll.horizontal = false;
         scroll.vertical = true;
 

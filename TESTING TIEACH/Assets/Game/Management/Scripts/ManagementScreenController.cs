@@ -194,10 +194,30 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
+        int demandIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<CustomersUI>(true) != null);
+        if (staffIndex >= 0 && demandIndex >= 0 && staffIndex != demandIndex)
+        {
+            if (index == demandIndex) index = staffIndex;
+            var upper = (RectTransform)tabPanels[staffIndex].transform;
+            upper.anchorMin = new Vector2(0, 0.38f);
+            upper.anchorMax = Vector2.one;
+            upper.offsetMin = new Vector2(12, 8);
+            upper.offsetMax = new Vector2(-12, -86);
+            var lower = (RectTransform)tabPanels[demandIndex].transform;
+            lower.anchorMin = Vector2.zero;
+            lower.anchorMax = new Vector2(1, 0.38f);
+            // The visit chart ends 270 pixels below the panel top.
+            // Keep the backdrop at least 16 pixels below it on shorter layouts.
+            float parentHeight = ((RectTransform)lower.parent).rect.height;
+            float bottomInset = Mathf.Min(56f, parentHeight * 0.38f - 286f);
+            lower.offsetMin = new Vector2(12, bottomInset);
+            lower.offsetMax = new Vector2(-12, 0);
+        }
         for (int i = 0; i < tabPanels.Length; i++)
         {
             if (tabPanels[i] != null)
-                tabPanels[i].SetActive(i == index);
+                tabPanels[i].SetActive(i == index || (i == demandIndex && index == staffIndex));
         }
         if (tabButtons != null)
         {
@@ -385,7 +405,8 @@ public class ManagementScreenController : MonoBehaviour
             bool customers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null;
             if (label != null)
-                label.text = workers ? "Staff" : customers ? "Demand" : "Menu & Supply";
+                label.text = workers ? "Staff and Demand" : customers ? "Demand" : "Menu & Supply";
+            if (customers && !workers) tabButtons[i].gameObject.SetActive(false);
         }
 
         if (tabBar != null)

@@ -222,7 +222,7 @@ public class WorkersUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(scroll);
         workerCardsScroll = scroll;
 
         var scrollBg = scrollGo.AddComponent<Image>();
@@ -275,7 +275,9 @@ public class WorkersUI : MonoBehaviour
         workerCardsScroll.horizontal = false;
         workerCardsScroll.vertical = true;
         workerCardsScroll.movementType = ScrollRect.MovementType.Clamped;
-        workerCardsScroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(workerCardsScroll);
+        workerCardsScroll.inertia = true;
+        workerCardsScroll.decelerationRate = 0.135f;
     }
 
     void FitScrollArea()

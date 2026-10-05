@@ -24,10 +24,16 @@ public class IngredientsOrderUI : MonoBehaviour
     public float refreshInterval = 0.35f;
     float nextRefresh;
     bool built;
+    bool showMenu;
+    GameObject navigation;
+    readonly List<GameObject> menuRows = new List<GameObject>();
+    readonly List<GameObject> supplyRows = new List<GameObject>();
+    Button suppliesTab, menuTab;
     readonly Dictionary<ItemDefinition, int> cartPacks = new Dictionary<ItemDefinition, int>();
     TextMeshProUGUI deliveryStatusText;
     TextMeshProUGUI cartSummaryText;
     Button clearCartButton;
+    Button addAllButton;
     Button placeOrderButton;
     TextMeshProUGUI placeOrderLabel;
     GameObject expandedMenuRow;
@@ -63,7 +69,8 @@ public class IngredientsOrderUI : MonoBehaviour
             var t = transform.Find("Title");
             if (t != null) headerText = t.GetComponent<TextMeshProUGUI>();
         }
-        if (headerText != null) headerText.text = "Food";
+        if (headerText != null) headerText.gameObject.SetActive(false);
+        if (moneyHintText != null) moneyHintText.gameObject.SetActive(false); // Cash remains visible in the main HUD.
     }
 
     void EnsureList()
@@ -79,8 +86,8 @@ public class IngredientsOrderUI : MonoBehaviour
         var scrollRt = (RectTransform)scrollGo.transform;
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = Vector2.one;
-        scrollRt.offsetMin = new Vector2(12, 56);
-        scrollRt.offsetMax = new Vector2(-12, -48);
+        scrollRt.offsetMin = new Vector2(12, showMenu ? 56 : 164);
+        scrollRt.offsetMax = new Vector2(-12, -62);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         scroll.horizontal = false;
@@ -127,10 +134,17 @@ public class IngredientsOrderUI : MonoBehaviour
             if (sr != null) scrollRt = sr.transform as RectTransform;
         }
         if (scrollRt == null) return;
+        var fastScroll = scrollRt.GetComponent<ScrollRect>();
+        if (fastScroll != null)
+        {
+            GameUITheme.ConfigureScroll(fastScroll);
+            fastScroll.inertia = true;
+            fastScroll.decelerationRate = 0.135f;
+        }
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = Vector2.one;
-        scrollRt.offsetMin = new Vector2(12, 56);
-        scrollRt.offsetMax = new Vector2(-12, -48);
+        scrollRt.offsetMin = new Vector2(12, 164);
+        scrollRt.offsetMax = new Vector2(-12, -100);
     }
 
     void RebuildRows()
@@ -140,7 +154,11 @@ public class IngredientsOrderUI : MonoBehaviour
         if (listContainer == null) return;
 
         for (int i = listContainer.childCount - 1; i >= 0; i--)
-            Destroy(listContainer.GetChild(i).gameObject);
+        { var old = listContainer.GetChild(i).gameObject; old.SetActive(false); Destroy(old); }
+        menuRows.Clear();
+        supplyRows.Clear();
+        if (deliveryStatusText != null) { var old = deliveryStatusText.transform.parent.gameObject; old.SetActive(false); Destroy(old); }
+        if (placeOrderButton != null) { var old = placeOrderButton.transform.parent.gameObject; old.SetActive(false); Destroy(old); }
         deliveryStatusText = null;
         cartSummaryText = null;
         clearCartButton = null;
@@ -161,19 +179,25 @@ public class IngredientsOrderUI : MonoBehaviour
         CustomerOrderConfig menu = inventory.orderConfig;
         if (menu != null)
         {
+            int firstMenuRow = listContainer.childCount;
             CreateSectionHeader("Items to sell");
-            CreateRecipesButton(menu);
+
             foreach (var item in menu.GetMenuItems())
                 if (item != null) CreateMenuToggleRow(menu, item);
+            for (int i = firstMenuRow; i < listContainer.childCount; i++) menuRows.Add(listContainer.GetChild(i).gameObject);
         }
 
-        CreateSectionHeader("Buy ingredients");
+        int firstSupplyRow = listContainer.childCount;
+        CreateSectionHeader("Order ingredient packs");
         foreach (var item in inventory.GetOrderableItems())
         {
             if (item == null) continue;
             CreateOrderRow(item);
         }
+        for (int i = firstSupplyRow; i < listContainer.childCount; i++) supplyRows.Add(listContainer.GetChild(i).gameObject);
         CreateCartFooter();
+        BuildNavigation(menu);
+        SelectSection(showMenu);
 
         built = true;
     }
@@ -183,6 +207,55 @@ public class IngredientsOrderUI : MonoBehaviour
         if (recipesOverlay != null) recipesOverlay.SetActive(false);
     }
 
+    static void PinFooter(RectTransform rect, float bottom, float height)
+    {
+        rect.anchorMin = new Vector2(0, 0);
+        rect.anchorMax = new Vector2(1, 0);
+        rect.pivot = new Vector2(0.5f, 0);
+        rect.offsetMin = new Vector2(12, bottom);
+        rect.offsetMax = new Vector2(-12, bottom + height);
+        var layout = rect.GetComponent<LayoutElement>();
+        if (layout != null) layout.ignoreLayout = true;
+    }
+
+    void BuildNavigation(CustomerOrderConfig menu)
+    {
+        if (navigation != null) { navigation.SetActive(false); Destroy(navigation); }
+        navigation = new GameObject("MenuSupplyNavigation", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        navigation.transform.SetParent(transform, false);
+        var rt = (RectTransform)navigation.transform;
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = new Vector2(12, -56);
+        rt.offsetMax = new Vector2(-12, -12);
+        var layout = navigation.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 6;
+        layout.childControlWidth = layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        TextMeshProUGUI label;
+        suppliesTab = CreateCartButton(navigation.transform, "SuppliesTab", "Supplies", 90, new Color(0.2f,0.3f,0.4f), out label);
+        suppliesTab.onClick.AddListener(() => SelectSection(false));
+        menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 80, new Color(0.2f,0.3f,0.4f), out label);
+        menuTab.onClick.AddListener(() => SelectSection(true));
+        var recipes = CreateCartButton(navigation.transform, "RecipesTab", "Recipes", 90, new Color(0.24f,0.48f,0.58f), out label);
+        recipes.interactable = menu != null;
+        recipes.onClick.AddListener(() => OpenRecipes(menu));
+    }
+
+    void SelectSection(bool menu)
+    {
+        showMenu = menu;
+        foreach (var row in menuRows) if (row != null) row.SetActive(menu);
+        foreach (var row in supplyRows) if (row != null) row.SetActive(!menu);
+        if (suppliesTab != null) suppliesTab.GetComponent<Image>().color = !menu ? new Color(0.68f,0.49f,0.19f) : new Color(0.49f,0.37f,0.18f);
+        if (menuTab != null) menuTab.GetComponent<Image>().color = menu ? new Color(0.27f,0.62f,0.4f) : new Color(0.23f,0.48f,0.33f);
+        if (placeOrderButton != null) placeOrderButton.transform.parent.gameObject.SetActive(!menu);
+        if (deliveryStatusText != null) deliveryStatusText.transform.parent.gameObject.SetActive(!menu);
+        PadListForUndoFooter();
+        Canvas.ForceUpdateCanvases();
+        var scroll = listContainer.GetComponentInParent<ScrollRect>();
+        if (scroll != null) { scroll.StopMovement(); scroll.verticalNormalizedPosition = 1f; }
+    }
     void CreateRecipesButton(CustomerOrderConfig menu)
     {
         var row = new GameObject("RecipesButtonRow", typeof(RectTransform), typeof(LayoutElement),
@@ -711,7 +784,7 @@ public class IngredientsOrderUI : MonoBehaviour
             ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
         ItemDefinition captured = item;
         Button targetMinus = CreateCartButton(header.transform, "TargetMinus", "-", 28f,
-            new Color(0.32f, 0.33f, 0.4f, 1f), out _);
+            GameUITheme.Danger, out _);
         var targetGo = new GameObject("ProductionTarget", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         targetGo.transform.SetParent(header.transform, false);
         var targetLe = targetGo.GetComponent<LayoutElement>();
@@ -975,7 +1048,7 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI removeLabel;
-        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 36f, new Color(0.32f, 0.33f, 0.4f, 1f), out removeLabel);
+        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 36f, GameUITheme.Danger, out removeLabel);
 
         var countGo = new GameObject("CartCount", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         countGo.transform.SetParent(row.transform, false);
@@ -1043,7 +1116,8 @@ public class IngredientsOrderUI : MonoBehaviour
     void CreateCartFooter()
     {
         var statusGo = new GameObject("DeliveryStatus", typeof(RectTransform), typeof(LayoutElement), typeof(Image));
-        statusGo.transform.SetParent(listContainer, false);
+        statusGo.transform.SetParent(transform, false);
+        PinFooter((RectTransform)statusGo.transform, 112f, 42f);
         var statusLe = statusGo.GetComponent<LayoutElement>();
         statusLe.minHeight = 38f;
         statusLe.preferredHeight = 38f;
@@ -1062,7 +1136,8 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) deliveryStatusText.font = TMP_Settings.defaultFontAsset;
 
         var footer = new GameObject("CartCheckout", typeof(RectTransform), typeof(LayoutElement), typeof(Image), typeof(HorizontalLayoutGroup));
-        footer.transform.SetParent(listContainer, false);
+        footer.transform.SetParent(transform, false);
+        PinFooter((RectTransform)footer.transform, 56f, 52f);
         var footerLe = footer.GetComponent<LayoutElement>();
         footerLe.minHeight = 52f;
         footerLe.preferredHeight = 52f;
@@ -1084,8 +1159,19 @@ public class IngredientsOrderUI : MonoBehaviour
         cartSummaryText.color = Color.white;
         if (TMP_Settings.defaultFontAsset != null) cartSummaryText.font = TMP_Settings.defaultFontAsset;
 
+        TextMeshProUGUI addAllLabel;
+        addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All\n(+1 each)", 90, new Color(0.27f,0.48f,0.36f), out addAllLabel);
+        addAllLabel.fontSize = 12;
+        addAllButton.onClick.AddListener(() =>
+        {
+            if (inventory == null || (IngredientDeliveryService.Instance != null && IngredientDeliveryService.Instance.HasPending)) return;
+            foreach (var item in inventory.GetOrderableItems())
+                if (item != null) SetCartPacks(item, GetCartPacks(item) + 1);
+            SelectSection(false);
+            RefreshAll();
+        });
         TextMeshProUGUI clearLabel;
-        clearCartButton = CreateCartButton(footer.transform, "ClearCart", "Clear", 62f, new Color(0.34f, 0.35f, 0.42f, 1f), out clearLabel);
+        clearCartButton = CreateCartButton(footer.transform, "ClearCart", "Clear", 62f, GameUITheme.Danger, out clearLabel);
         clearLabel.fontSize = 12f;
         clearCartButton.onClick.AddListener(() =>
         {
@@ -1096,6 +1182,7 @@ public class IngredientsOrderUI : MonoBehaviour
         placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, new Color(0.27f, 0.62f, 0.4f, 1f), out placeOrderLabel);
         placeOrderLabel.fontSize = 12f;
         placeOrderButton.onClick.AddListener(SubmitCart);
+        clearCartButton.transform.SetAsLastSibling();
     }
 
     int GetCartPacks(ItemDefinition item)
@@ -1112,6 +1199,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void SubmitCart()
     {
+        if (showMenu) return;
         if (inventory == null || cartPacks.Count == 0) return;
         if (inventory.TryOrderCart(cartPacks))
         {
@@ -1133,10 +1221,12 @@ public class IngredientsOrderUI : MonoBehaviour
         if (listContainer == null || inventory == null) return;
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
+        if (addAllButton != null) addAllButton.interactable = !deliveryActive;
         int cartTotal = 0;
         int cartPackCount = 0;
-        foreach (Transform child in listContainer)
+        foreach (GameObject child in supplyRows)
         {
+            if (child == null) continue;
             var row = child.GetComponent<IngredientOrderRow>();
             if (row == null || row.item == null) continue;
 

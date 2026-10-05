@@ -781,7 +781,7 @@ public class MissionListUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(scroll);
 
         var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
         viewport.transform.SetParent(scrollGo.transform, false);

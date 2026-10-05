@@ -559,7 +559,7 @@ public class DebugMenu : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(scroll);
         return content.transform;
     }
 

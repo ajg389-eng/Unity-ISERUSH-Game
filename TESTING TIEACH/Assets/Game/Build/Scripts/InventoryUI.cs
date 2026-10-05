@@ -239,6 +239,24 @@ public class InventoryUI : MonoBehaviour
         if (tabPanels == null || tabPanels.Length == 0) return;
 
         activeTab = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        int floorIndex = System.Array.FindIndex(tabPanels, p => p != null && p.name == FloorPanelName);
+        int customizeIndex = System.Array.FindIndex(tabPanels, p => p != null && p.name == CustomizePanelName);
+        if (floorIndex >= 0 && customizeIndex >= 0)
+        {
+            if (activeTab == floorIndex) activeTab = customizeIndex;
+            if (tabButtons != null && floorIndex < tabButtons.Length && tabButtons[floorIndex] != null)
+                tabButtons[floorIndex].gameObject.SetActive(false);
+            var upper = (RectTransform)tabPanels[customizeIndex].transform;
+            upper.anchorMin = Vector2.zero;
+            upper.anchorMax = Vector2.one;
+            upper.offsetMin = new Vector2(16, 60);
+            // Binding calculates the space needed by the actual tab bar.
+            // Preserve that inset when combining Customize and expansion controls.
+            upper.offsetMax = new Vector2(-16, upper.offsetMax.y);
+            var appearance = tabPanels[customizeIndex].GetComponent<StoreAppearanceUI>();
+            if (appearance != null && expandButton != null)
+                appearance.AppendOptions(expandButton.transform.parent);
+        }
         for (int i = 0; i < tabPanels.Length; i++)
         {
             if (tabPanels[i] != null)
@@ -420,7 +438,7 @@ public class InventoryUI : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 30f;
+        GameUITheme.ConfigureScroll(scrollRect);
 
         // Keep scroll view filling the stations panel.
         if (scroll.parent != null && scroll.parent.name == StationsPanelName)

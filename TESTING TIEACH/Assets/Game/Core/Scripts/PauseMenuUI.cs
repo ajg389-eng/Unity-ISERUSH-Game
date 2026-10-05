@@ -764,7 +764,7 @@ public class PauseMenuUI : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scrollRect);
         scrollRect.verticalScrollbar = scrollbar;
         scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
         return page;

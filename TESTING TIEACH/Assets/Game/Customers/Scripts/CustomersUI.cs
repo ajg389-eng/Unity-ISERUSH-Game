@@ -108,6 +108,9 @@ public class CustomersUI : MonoBehaviour
         scrollRt.offsetMax = new Vector2(-12, -318);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll);
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.135f;
         scroll.horizontal = false;
         scroll.vertical = true;
 

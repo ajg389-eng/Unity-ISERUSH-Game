@@ -265,6 +265,7 @@ public class TopHudUtilityControls : MonoBehaviour
         content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll);
         scroll.viewport = (RectTransform)viewport.transform;
         scroll.content = historyContent;
         scroll.horizontal = false;

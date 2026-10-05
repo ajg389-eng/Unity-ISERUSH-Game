@@ -15,6 +15,14 @@ public sealed class StoreAppearanceUI : MonoBehaviour
     Transform content;
     SurfaceControls[] controls;
 
+    public void AppendOptions(Transform options)
+    {
+        if (options == null) return;
+        BuildIfNeeded();
+        options.SetParent(content, false);
+        options.SetAsLastSibling();
+    }
+
     void OnEnable()
     {
         BuildIfNeeded();
@@ -53,6 +61,9 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         contentGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll);
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.135f;
         scroll.viewport = (RectTransform)viewport.transform;
         scroll.content = contentRt;
         scroll.horizontal = false;

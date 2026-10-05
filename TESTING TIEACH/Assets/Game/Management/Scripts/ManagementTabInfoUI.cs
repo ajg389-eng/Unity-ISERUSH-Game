@@ -180,7 +180,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scroll);
         scroll.viewport = viewportRt;
         scroll.content = textRt;
     }
