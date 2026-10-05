@@ -13,6 +13,7 @@ using TMPro;
 public class PauseMenuUI : MonoBehaviour
 {
     public const string PauseSource = GameTimeManager.PauseMenu;
+    const string FeedbackUrl = "https://forms.gle/pBXDWzbBJxpTxkPA7";
     const string PrefMaster = "PauseMenu.MasterVolume";
     const string PrefVoice = "PauseMenu.VoiceVolume";
     const string PrefMusic = "PauseMenu.MusicVolume";
@@ -54,6 +55,9 @@ public class PauseMenuUI : MonoBehaviour
     GameObject videoPage;
     GameObject graphicsPage;
     GameObject keybindsPage;
+    GameObject quitConfirmation;
+    TextMeshProUGUI quitConfirmationTitle;
+    TextMeshProUGUI quitConfirmationBody;
     Button audioTab;
     Button videoTab;
     Button graphicsTab;
@@ -90,6 +94,10 @@ public class PauseMenuUI : MonoBehaviour
     bool showingOptions;
     bool showingGuidebook;
     bool titleSettingsMode;
+    bool confirmationOwnsOverlay;
+    bool confirmationPausedGame;
+    bool allowApplicationQuit;
+    System.Action confirmedQuitAction;
     System.Action titleSettingsClosed;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -108,6 +116,7 @@ public class PauseMenuUI : MonoBehaviour
             return;
         }
         Instance = this;
+        Application.wantsToQuit += HandleApplicationQuitRequest;
         ApplySavedAudio();
         ApplySavedVideo(false);
         ApplySavedGraphics();
@@ -115,6 +124,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void OnDestroy()
     {
+        Application.wantsToQuit -= HandleApplicationQuitRequest;
         if (Instance == this)
             Instance = null;
     }
@@ -134,6 +144,12 @@ public class PauseMenuUI : MonoBehaviour
         }
 
         bool escape = !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape);
+        if (escape && quitConfirmation != null && quitConfirmation.activeSelf)
+        {
+            CloseQuitConfirmation();
+            EscapeHandledThisFrame = false;
+            return;
+        }
         if (escape && !EscapeHandledThisFrame && !IsTitleVisible())
         {
             if (!visible)
@@ -173,6 +189,18 @@ public class PauseMenuUI : MonoBehaviour
 
     public void Hide(bool playSound = true)
     {
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            else
+                Time.timeScale = 1f;
+        }
+        if (quitConfirmation != null)
+            quitConfirmation.SetActive(false);
+        confirmedQuitAction = null;
+        confirmationOwnsOverlay = false;
+        confirmationPausedGame = false;
         visible = false;
         showingOptions = false;
         showingGuidebook = false;
@@ -389,6 +417,8 @@ public class PauseMenuUI : MonoBehaviour
         optionsPage = BuildOptionsPage(overlay.transform);
         optionsPage.SetActive(false);
         guidebook = GuidebookUI.Create(overlay.transform);
+        quitConfirmation = BuildQuitConfirmation(overlay.transform);
+        quitConfirmation.SetActive(false);
 
         // This menu is created after the global theme's scene pass. Finalize it now so
         // it never renders one frame with the old gray controls or competing tints.
@@ -446,6 +476,9 @@ public class PauseMenuUI : MonoBehaviour
             Sfx.Play(SfxId.UiClick);
             ShowGuidebook();
         });
+
+        var feedback = CreateMenuButton(page.transform, "FeedbackButton", "Give Feedback", 54f, 360f, 22f, MainButtonColor);
+        feedback.onClick.AddListener(OpenFeedbackForm);
 
         var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
         quit.onClick.AddListener(OnQuitToMenu);
@@ -515,6 +548,64 @@ public class PauseMenuUI : MonoBehaviour
             ShowMain();
         });
         return card;
+    }
+
+    GameObject BuildQuitConfirmation(Transform parent)
+    {
+        var dim = new GameObject("QuitConfirmation", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        dim.transform.SetParent(parent, false);
+        Stretch((RectTransform)dim.transform);
+        var dimImage = dim.GetComponent<UnityEngine.UI.Image>();
+        dimImage.color = new Color(0f, 0f, 0f, 0.72f);
+        dimImage.raycastTarget = true;
+
+        var card = new GameObject("ConfirmationCard", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(UnityEngine.UI.VerticalLayoutGroup));
+        card.transform.SetParent(dim.transform, false);
+        var cardRt = (RectTransform)card.transform;
+        cardRt.anchorMin = new Vector2(0.5f, 0.5f);
+        cardRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRt.pivot = new Vector2(0.5f, 0.5f);
+        cardRt.sizeDelta = new Vector2(720f, 270f);
+        card.GetComponent<UnityEngine.UI.Image>().color = GameUITheme.Backdrop;
+        AddPanelChrome(card);
+
+        var vertical = card.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+        vertical.padding = new RectOffset(32, 32, 28, 28);
+        vertical.spacing = 18f;
+        vertical.childAlignment = TextAnchor.MiddleCenter;
+        vertical.childControlWidth = true;
+        vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true;
+        vertical.childForceExpandHeight = false;
+
+        quitConfirmationTitle = CreateLabel(card.transform, "Title", "Quit Game?", 28f, TextAlignmentOptions.Center);
+        quitConfirmationTitle.fontStyle = FontStyles.Bold;
+        quitConfirmationTitle.GetComponent<LayoutElement>().preferredHeight = 40f;
+
+        quitConfirmationBody = CreateLabel(card.transform, "Message", "Are you sure you want to quit?", 18f, TextAlignmentOptions.Center);
+        quitConfirmationBody.textWrappingMode = TextWrappingModes.Normal;
+        quitConfirmationBody.GetComponent<LayoutElement>().preferredHeight = 64f;
+
+        var actions = new GameObject("Actions", typeof(RectTransform), typeof(UnityEngine.UI.HorizontalLayoutGroup),
+            typeof(UnityEngine.UI.LayoutElement));
+        actions.transform.SetParent(card.transform, false);
+        actions.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 52f;
+        var horizontal = actions.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+        horizontal.spacing = 14f;
+        horizontal.childAlignment = TextAnchor.MiddleCenter;
+        horizontal.childControlWidth = true;
+        horizontal.childControlHeight = true;
+        horizontal.childForceExpandWidth = true;
+        horizontal.childForceExpandHeight = false;
+
+        var cancel = CreateMenuButton(actions.transform, "CancelButton", "Cancel", 52f, 200f, 19f, GameUITheme.Surface);
+        cancel.onClick.AddListener(CloseQuitConfirmation);
+        var feedback = CreateMenuButton(actions.transform, "FeedbackButton", "Give Feedback", 52f, 220f, 19f, GameUITheme.Positive);
+        feedback.onClick.AddListener(OpenFeedbackForm);
+        var confirm = CreateMenuButton(actions.transform, "ConfirmButton", "Quit", 52f, 200f, 19f, GameUITheme.Danger);
+        confirm.onClick.AddListener(ConfirmQuit);
+        return dim;
     }
 
     GameObject BuildAudioPage(Transform parent)
@@ -1019,7 +1110,21 @@ public class PauseMenuUI : MonoBehaviour
         Sfx.Play(SfxId.UiClick);
     }
 
+    void OpenFeedbackForm()
+    {
+        Sfx.Play(SfxId.UiClick);
+        Application.OpenURL(FeedbackUrl);
+    }
+
     void OnQuitToMenu()
+    {
+        ShowQuitConfirmation(
+            "Quit to Menu?",
+            "Your current game will be saved before returning to the title screen.",
+            QuitToMenuConfirmed);
+    }
+
+    void QuitToMenuConfirmed()
     {
         Sfx.Play(SfxId.UiClick);
         GameSaveSlots.SaveActiveSlot();
@@ -1032,6 +1137,82 @@ public class PauseMenuUI : MonoBehaviour
             SceneManager.LoadScene(activeScene.buildIndex);
         else
             SceneManager.LoadScene(activeScene.name);
+    }
+
+    public void ShowQuitConfirmation(string title, string message, System.Action onConfirm)
+    {
+        EnsureUi();
+        if (overlay == null || quitConfirmation == null) return;
+
+        confirmationOwnsOverlay = !overlay.activeSelf;
+        confirmationPausedGame = !visible && !IsTitleVisible();
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.RequestExternalPause(PauseSource);
+            else
+                Time.timeScale = 0f;
+        }
+        confirmedQuitAction = onConfirm;
+        if (quitConfirmationTitle != null) quitConfirmationTitle.text = title;
+        if (quitConfirmationBody != null) quitConfirmationBody.text = message;
+        overlay.SetActive(true);
+        quitConfirmation.SetActive(true);
+        quitConfirmation.transform.SetAsLastSibling();
+        Canvas.ForceUpdateCanvases();
+        GameUITheme.ApplyTo(quitConfirmation.transform);
+        Sfx.Play(SfxId.UiOpen);
+    }
+
+    bool HandleApplicationQuitRequest()
+    {
+#if UNITY_EDITOR
+        return true;
+#else
+        if (allowApplicationQuit) return true;
+        ShowQuitConfirmation(
+            "Quit Game?",
+            "Are you sure you want to exit the game?",
+            ConfirmApplicationQuit);
+        return false;
+#endif
+    }
+
+    public void ConfirmApplicationQuit()
+    {
+        allowApplicationQuit = true;
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    void CloseQuitConfirmation()
+    {
+        if (quitConfirmation != null) quitConfirmation.SetActive(false);
+        confirmedQuitAction = null;
+        if (confirmationOwnsOverlay && overlay != null)
+            overlay.SetActive(false);
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            else
+                Time.timeScale = 1f;
+        }
+        confirmationOwnsOverlay = false;
+        confirmationPausedGame = false;
+        Sfx.Play(SfxId.UiClose);
+    }
+
+    void ConfirmQuit()
+    {
+        System.Action action = confirmedQuitAction;
+        confirmedQuitAction = null;
+        if (quitConfirmation != null) quitConfirmation.SetActive(false);
+        confirmationOwnsOverlay = false;
+        action?.Invoke();
     }
 
     void RefreshAudioControls()

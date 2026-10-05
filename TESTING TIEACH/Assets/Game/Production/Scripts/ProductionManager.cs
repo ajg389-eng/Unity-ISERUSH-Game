@@ -211,6 +211,17 @@ public class ProductionManager : MonoBehaviour
     AssemblyStation assembly;
     FryerStation fryer;
     DrinkStation drinkStation;
+    HeatLampStation[] cachedHeatLamps = System.Array.Empty<HeatLampStation>();
+    AssemblyStation[] cachedAssemblyStations = System.Array.Empty<AssemblyStation>();
+    FreezerStation[] cachedFreezerStations = System.Array.Empty<FreezerStation>();
+    PantryStation[] cachedPantryStations = System.Array.Empty<PantryStation>();
+    CuttingStation[] cachedCuttingStations = System.Array.Empty<CuttingStation>();
+    GrillStation[] cachedGrillStations = System.Array.Empty<GrillStation>();
+    FryerStation[] cachedFryerStations = System.Array.Empty<FryerStation>();
+    DrinkStation[] cachedDrinkStations = System.Array.Empty<DrinkStation>();
+    ShakeStation[] cachedShakeStations = System.Array.Empty<ShakeStation>();
+    CustomerAI[] cachedCustomers = System.Array.Empty<CustomerAI>();
+    bool stationCacheInitialized;
 
     public ItemDefinition PattyItem => orderConfig != null ? orderConfig.burgerBase : null;
     public ItemDefinition FriesItem => orderConfig != null ? orderConfig.friesItem : null;
@@ -308,6 +319,7 @@ public class ProductionManager : MonoBehaviour
 
     public List<ItemOutputNeed> GetRequiredOutputByItem(bool includeDrinks = true)
     {
+        EnsureStationCache();
         var requested = new Dictionary<ItemDefinition, int>();
         foreach (var order in GetAllQueuedOrders())
         {
@@ -324,7 +336,7 @@ public class ProductionManager : MonoBehaviour
 
         var ready = new Dictionary<ItemDefinition, int>();
         var cooking = new Dictionary<ItemDefinition, int>();
-        foreach (HeatLampStation lamp in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        foreach (HeatLampStation lamp in cachedHeatLamps)
         {
             if (lamp == null) continue;
             foreach (var meal in lamp.Meals)
@@ -1023,8 +1035,7 @@ public class ProductionManager : MonoBehaviour
 
     void EnsureAssemblySupplyJobs()
     {
-        AssemblyStation[] stations = FindObjectsByType<AssemblyStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        foreach (AssemblyStation station in stations)
+        foreach (AssemblyStation station in cachedAssemblyStations)
         {
             if (station == null) continue;
             AssemblyRecipeDefinition recipe = station.GetSelectedRecipe();
@@ -1136,23 +1147,47 @@ public class ProductionManager : MonoBehaviour
 
     void RefreshStations()
     {
+        RefreshStationCache();
         registers.RemoveAll(r => r == null || !r.gameObject.activeInHierarchy);
         foreach (Register placed in FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
             if (placed != null && !registers.Contains(placed))
                 registers.Add(placed);
-        if (freezer == null) freezer = FindObjectOfType<FreezerStation>();
-        if (grill == null) grill = FindObjectOfType<GrillStation>();
-        if (assembly == null) assembly = FindObjectOfType<AssemblyStation>();
-        if (fryer == null) fryer = FindObjectOfType<FryerStation>();
-        if (drinkStation == null) drinkStation = FindObjectOfType<DrinkStation>();
-        if (heatLamp == null) heatLamp = HeatLampStation.Instance != null ? HeatLampStation.Instance : FindObjectOfType<HeatLampStation>();
+        if (freezer == null && cachedFreezerStations.Length > 0) freezer = cachedFreezerStations[0];
+        if (grill == null && cachedGrillStations.Length > 0) grill = cachedGrillStations[0];
+        if (assembly == null && cachedAssemblyStations.Length > 0) assembly = cachedAssemblyStations[0];
+        if (fryer == null && cachedFryerStations.Length > 0) fryer = cachedFryerStations[0];
+        if (drinkStation == null && cachedDrinkStations.Length > 0) drinkStation = cachedDrinkStations[0];
+        if (heatLamp == null)
+            heatLamp = HeatLampStation.Instance != null ? HeatLampStation.Instance
+                : (cachedHeatLamps.Length > 0 ? cachedHeatLamps[0] : null);
+    }
+
+    void EnsureStationCache()
+    {
+        if (!stationCacheInitialized)
+            RefreshStationCache();
+    }
+
+    void RefreshStationCache()
+    {
+        cachedHeatLamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedAssemblyStations = FindObjectsByType<AssemblyStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedFreezerStations = FindObjectsByType<FreezerStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedPantryStations = FindObjectsByType<PantryStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedCuttingStations = FindObjectsByType<CuttingStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedGrillStations = FindObjectsByType<GrillStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedFryerStations = FindObjectsByType<FryerStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedDrinkStations = FindObjectsByType<DrinkStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedShakeStations = FindObjectsByType<ShakeStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedCustomers = FindObjectsByType<CustomerAI>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        stationCacheInitialized = true;
     }
 
     void CollectProductionJobs()
     {
         if (orderConfig == null) return;
 
-        HeatLampStation[] lamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        HeatLampStation[] lamps = cachedHeatLamps;
         if (lamps == null || lamps.Length == 0) return;
 
         int heldCount = 0;
@@ -1242,6 +1277,7 @@ public class ProductionManager : MonoBehaviour
 
     List<ItemDefinition> GetCookableMenuItems()
     {
+        EnsureStationCache();
         var list = new List<ItemDefinition>();
         if (orderConfig == null) return list;
 
@@ -1310,14 +1346,14 @@ public class ProductionManager : MonoBehaviour
         if (!hasConfiguredFlow)
         {
             canBurger = HasConfiguredFreezer()
-                && (grill != null || FindObjectOfType<GrillStation>() != null)
-                && (assembly != null || FindObjectOfType<AssemblyStation>() != null);
-            canFries = (fryer != null || FindObjectOfType<FryerStation>() != null)
+                && (grill != null || cachedGrillStations.Length > 0)
+                && (assembly != null || cachedAssemblyStations.Length > 0);
+            canFries = (fryer != null || cachedFryerStations.Length > 0)
                 && HasPantrySelection(PotatoItem, false)
                 && HasCuttingSupplyPath(PotatoItem, SlicedPotatoItem, false)
                 && HasAssemblyChainAvailable(FriesItem, false)
                 && HasAssemblyPantrySupplies(FriesItem, false);
-            canShake = FindObjectOfType<ShakeStation>() != null;
+            canShake = cachedShakeStations.Length > 0;
         }
 
         if (canBurger && HasConfiguredFreezer())
@@ -1347,8 +1383,8 @@ public class ProductionManager : MonoBehaviour
     bool HasConfiguredFreezer()
     {
         if (orderConfig == null || orderConfig.burgerBase == null) return false;
-        foreach (FreezerStation candidate in FindObjectsByType<FreezerStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        EnsureStationCache();
+        foreach (FreezerStation candidate in cachedFreezerStations)
             if (candidate != null && candidate.CanSupply(orderConfig.burgerBase))
                 return true;
         return false;
@@ -1391,8 +1427,8 @@ public class ProductionManager : MonoBehaviour
             return false;
         }
 
-        foreach (PantryStation pantry in FindObjectsByType<PantryStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        EnsureStationCache();
+        foreach (PantryStation pantry in cachedPantryStations)
             if (pantry != null && pantry.CanDispense(ingredient)) return true;
         return false;
     }
@@ -1423,8 +1459,8 @@ public class ProductionManager : MonoBehaviour
         }
 
         var remaining = new HashSet<ItemDefinition>(chain);
-        foreach (AssemblyStation station in FindObjectsByType<AssemblyStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        EnsureStationCache();
+        foreach (AssemblyStation station in cachedAssemblyStations)
         {
             if (station == null) continue;
             foreach (ItemDefinition stageProduct in chain)
@@ -1456,8 +1492,8 @@ public class ProductionManager : MonoBehaviour
         if (!useFlows)
         {
             if (!HasIngredientSourceSelection(requiredRaw, false)) return false;
-            foreach (CuttingStation cutting in FindObjectsByType<CuttingStation>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            EnsureStationCache();
+            foreach (CuttingStation cutting in cachedCuttingStations)
                 if (cutting != null && cutting.CanProcess(requiredRaw, requiredOutput)) return true;
             return false;
         }
@@ -1558,7 +1594,8 @@ public class ProductionManager : MonoBehaviour
     Dictionary<ItemDefinition, int> CountInFlightByItem()
     {
         var counts = new Dictionary<ItemDefinition, int>();
-        foreach (HeatLampStation lamp in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        EnsureStationCache();
+        foreach (HeatLampStation lamp in cachedHeatLamps)
         {
             if (lamp == null) continue;
             foreach (var meal in lamp.Meals)
@@ -1610,9 +1647,8 @@ public class ProductionManager : MonoBehaviour
     List<CustomerOrder> GetAllQueuedOrders()
     {
         var list = new List<CustomerOrder>();
-        CustomerAI[] customers = FindObjectsByType<CustomerAI>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        foreach (CustomerAI customer in customers)
+        EnsureStationCache();
+        foreach (CustomerAI customer in cachedCustomers)
         {
             if (customer == null || customer.IsLeaving) continue;
             CustomerOrder order = customer.GetOrder();
@@ -1704,7 +1740,8 @@ public class ProductionManager : MonoBehaviour
 
         int heldCount = 0;
         int capacity = 0;
-        HeatLampStation[] lamps = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        EnsureStationCache();
+        HeatLampStation[] lamps = cachedHeatLamps;
         if (lamps == null || lamps.Length == 0) return null;
         foreach (HeatLampStation lamp in lamps)
         {
@@ -1768,8 +1805,8 @@ public class ProductionManager : MonoBehaviour
             }
             return false;
         }
-        foreach (FreezerStation freezerStation in FindObjectsByType<FreezerStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        EnsureStationCache();
+        foreach (FreezerStation freezerStation in cachedFreezerStations)
             if (freezerStation != null && freezerStation.CanSupply(ingredient)) return true;
         return false;
     }
@@ -2299,7 +2336,12 @@ public class ProductionManager : MonoBehaviour
     public bool HasPattyInStock(KitchenEmployee forEmployee = null)
     {
         var f = forEmployee != null ? forEmployee.GetFreezerStation() : null;
-        if (f == null) f = freezer != null ? freezer : FindObjectOfType<FreezerStation>();
+        if (f == null)
+        {
+            EnsureStationCache();
+            f = freezer != null ? freezer
+                : (cachedFreezerStations.Length > 0 ? cachedFreezerStations[0] : null);
+        }
         IStationBuffer buffer = f;
         ItemDefinition freezerOutput = f != null && f.selectedItem != null
             ? f.selectedItem

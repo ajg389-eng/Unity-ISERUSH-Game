@@ -968,6 +968,10 @@ public class KitchenEmployee : MonoBehaviour
     // production planner to miss short-lived station availability windows.
     const float TaskReevaluationDelay = 0.05f;
     float nextTaskEvaluationTime;
+    [Header("Performance")]
+    [Tooltip("How often an idle kitchen worker searches for new work. Movement and active jobs still update every frame.")]
+    [Min(0.02f)] public float idleTaskPlanningInterval = 0.1f;
+    float nextIdleTaskPlanningTime;
 
     public bool IsWaitingToReevaluateTasks =>
         currentJob == null && Time.time < nextTaskEvaluationTime;
@@ -2022,14 +2026,20 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        // All kitchen work is published to one flow-wide queue, ranked by how
-        // close its station is to the end of the graph, and claimed atomically.
-        QueueRecoverableFlowTasks();
-        if (manager != null && manager.TryAssignHighestPriorityTask(this))
+        // Active movement remains frame-based, but scanning every station and
+        // the flow queue every frame for every idle worker does not scale. A
+        // 100 ms planning cadence keeps handoffs responsive while spreading the
+        // expensive search work across time.
+        if (Time.time >= nextIdleTaskPlanningTime)
         {
-            RecoverWorkflowStep();
-            RunWorkflow();
-            return;
+            nextIdleTaskPlanningTime = Time.time + Mathf.Max(0.02f, idleTaskPlanningInterval);
+            QueueRecoverableFlowTasks();
+            if (manager != null && manager.TryAssignHighestPriorityTask(this))
+            {
+                RecoverWorkflowStep();
+                RunWorkflow();
+                return;
+            }
         }
 
         ReturnToFlowStart();
