@@ -20,12 +20,11 @@ public class StationOutputLinkVisuals : MonoBehaviour
     readonly List<LineRenderer> lines = new List<LineRenderer>();
     Material lineMaterial;
     Transform linesRoot;
-    bool visible;
 
     void Awake()
     {
         Instance = this;
-        if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        if (modeManager == null) modeManager = FindFirstObjectByType<GameModeManager>();
         EnsureRoot();
     }
 
@@ -34,16 +33,6 @@ public class StationOutputLinkVisuals : MonoBehaviour
         if (Instance == this) Instance = null;
         if (lineMaterial != null)
             Destroy(lineMaterial);
-    }
-
-    void Update()
-    {
-        // Output-link web removed — production flows already show station order.
-        if (visible)
-        {
-            visible = false;
-            SetLinesEnabled(false);
-        }
     }
 
     public static void NotifyLinksChanged()
@@ -55,14 +44,6 @@ public class StationOutputLinkVisuals : MonoBehaviour
     {
         EnsureRoot();
         ClearLines();
-        visible = false;
-    }
-
-    void RefreshPositionsOnly()
-    {
-        // Rebuild is cheap enough for station counts; keep simple
-        if (Time.frameCount % 15 == 0)
-            Refresh();
     }
 
     void CreateLink(GameObject from, GameObject to)
@@ -159,13 +140,4 @@ public class StationOutputLinkVisuals : MonoBehaviour
         }
     }
 
-    void SetLinesEnabled(bool enabled)
-    {
-        foreach (var lr in lines)
-        {
-            if (lr != null) lr.enabled = enabled;
-        }
-        if (!enabled)
-            ClearLines();
-    }
 }

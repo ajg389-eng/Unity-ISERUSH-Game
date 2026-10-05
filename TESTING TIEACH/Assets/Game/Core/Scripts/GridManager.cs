@@ -37,6 +37,14 @@ public class GridManager : MonoBehaviour
     public int BaselineWidth { get; private set; }
     public int BaselineHeight { get; private set; }
 
+    // Path searches run often for workers and customers. Reuse the search
+    // containers instead of allocating several collections for every request.
+    readonly List<(int x, int y, float g, float f)> pathOpen = new List<(int x, int y, float g, float f)>();
+    readonly HashSet<(int x, int y)> pathClosed = new HashSet<(int x, int y)>();
+    readonly Dictionary<(int x, int y), (int x, int y)> pathParent = new Dictionary<(int x, int y), (int x, int y)>();
+    readonly Dictionary<(int x, int y), float> pathBestG = new Dictionary<(int x, int y), float>();
+    readonly List<(int x, int y)> pathCells = new List<(int x, int y)>();
+
     /// <summary>Fired after Width/Height/Origin/Nodes change (e.g. expand).</summary>
     public event System.Action GridChanged;
 
@@ -717,18 +725,29 @@ public class GridManager : MonoBehaviour
             return result;
         }
 
-        var open = new List<(int x, int y, float g, float f)>();
-        var closed = new HashSet<(int, int)>();
-        var parent = new Dictionary<(int, int), (int, int)>();
-        var bestG = new Dictionary<(int, int), float>();
+        var open = pathOpen;
+        var closed = pathClosed;
+        var parent = pathParent;
+        var bestG = pathBestG;
+        open.Clear();
+        closed.Clear();
+        parent.Clear();
+        bestG.Clear();
         bestG[(sx, sy)] = 0f;
         open.Add((sx, sy, 0f, Heuristic(sx, sy, gx, gy)));
 
         while (open.Count > 0)
         {
-            open.Sort((a, b) => a.f.CompareTo(b.f));
-            var cur = open[0];
-            open.RemoveAt(0);
+            // A* repeatedly needs the lowest-f entry. Scanning this small grid
+            // frontier is faster than sorting the full list at every expansion.
+            int bestOpenIndex = 0;
+            for (int i = 1; i < open.Count; i++)
+                if (open[i].f < open[bestOpenIndex].f)
+                    bestOpenIndex = i;
+            var cur = open[bestOpenIndex];
+            int lastOpenIndex = open.Count - 1;
+            open[bestOpenIndex] = open[lastOpenIndex];
+            open.RemoveAt(lastOpenIndex);
             if (closed.Contains((cur.x, cur.y))) continue;
             if (bestG.TryGetValue((cur.x, cur.y), out float knownG) && cur.g > knownG + 0.0001f)
                 continue;
@@ -736,7 +755,8 @@ public class GridManager : MonoBehaviour
 
             if (cur.x == gx && cur.y == gy)
             {
-                var path = new List<(int, int)>();
+                var path = pathCells;
+                path.Clear();
                 var p = (cur.x, cur.y);
                 while (parent.TryGetValue(p, out var prev))
                 {
@@ -745,13 +765,24 @@ public class GridManager : MonoBehaviour
                 }
                 path.Add((sx, sy));
                 path.Reverse();
-                foreach (var c in SimplifyPath(path))
+                SimplifyPathInPlace(path);
+                foreach (var c in path)
                     result.Add(CellToWorld(c.Item1, c.Item2));
                 return result;
             }
 
-            foreach (var (nx, ny) in Neighbors(cur.x, cur.y))
+            // Iterate the fixed neighbor set directly. The previous iterator method
+            // allocated an enumerator for every node expanded by every path query.
+            for (int neighborIndex = 0; neighborIndex < 9; neighborIndex++)
             {
+                int dx = neighborIndex % 3 - 1;
+                int dy = neighborIndex / 3 - 1;
+                if (dx == 0 && dy == 0) continue;
+                int nx = cur.x + dx;
+                int ny = cur.y + dy;
+                if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
+                if (dx != 0 && dy != 0 && (!IsWalkable(cur.x + dx, cur.y) || !IsWalkable(cur.x, cur.y + dy)))
+                    continue;
                 if (!IsWalkable(nx, ny) || closed.Contains((nx, ny))) continue;
                 bool diagonal = nx != cur.x && ny != cur.y;
                 float g = cur.g + (diagonal ? 1.41421356f : 1f);
@@ -774,10 +805,10 @@ public class GridManager : MonoBehaviour
         return diagonal * 1.41421356f + Mathf.Abs(dx - dy);
     }
 
-    static List<(int x, int y)> SimplifyPath(List<(int x, int y)> path)
+    static void SimplifyPathInPlace(List<(int x, int y)> path)
     {
-        if (path == null || path.Count <= 2) return path;
-        var result = new List<(int x, int y)> { path[0] };
+        if (path == null || path.Count <= 2) return;
+        int writeIndex = 1;
         for (int i = 1; i < path.Count - 1; i++)
         {
             var a = path[i - 1];
@@ -787,28 +818,12 @@ public class GridManager : MonoBehaviour
             int abY = System.Math.Sign(b.y - a.y);
             int bcX = System.Math.Sign(c.x - b.x);
             int bcY = System.Math.Sign(c.y - b.y);
-            if (abX != bcX || abY != bcY) result.Add(b);
+            if (abX != bcX || abY != bcY)
+                path[writeIndex++] = b;
         }
-        result.Add(path[path.Count - 1]);
-        return result;
-    }
-
-    IEnumerable<(int x, int y)> Neighbors(int x, int y)
-    {
-        if (x > 0) yield return (x - 1, y);
-        if (x < Width - 1) yield return (x + 1, y);
-        if (y > 0) yield return (x, y - 1);
-        if (y < Height - 1) yield return (x, y + 1);
-        for (int dx = -1; dx <= 1; dx += 2)
-        for (int dy = -1; dy <= 1; dy += 2)
-        {
-            int nx = x + dx;
-            int ny = y + dy;
-            if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
-            // Do not squeeze diagonally between blocked corners.
-            if (!IsWalkable(x + dx, y) || !IsWalkable(x, y + dy)) continue;
-            yield return (nx, ny);
-        }
+        path[writeIndex++] = path[path.Count - 1];
+        if (writeIndex < path.Count)
+            path.RemoveRange(writeIndex, path.Count - writeIndex);
     }
 
     void OnDrawGizmos()

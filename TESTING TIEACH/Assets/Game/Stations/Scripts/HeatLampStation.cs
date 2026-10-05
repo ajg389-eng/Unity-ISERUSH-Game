@@ -92,6 +92,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     CanvasGroup cautionMessageGroup;
     float cautionMessageShownAt = float.NegativeInfinity;
     float nextCautionRefresh;
+    Camera mainCamera;
     bool productionShortfallWasActive;
     Transform foodDisplayRoot;
     readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
@@ -309,7 +310,9 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         indicator.position = transform.position + cautionIndicatorOffset;
         indicator.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
 
-        Camera cam = Camera.main;
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+        Camera cam = mainCamera;
         if (cam == null) return;
 
         Vector3 cameraToIndicator = indicator.position - cam.transform.position;
@@ -625,7 +628,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     Register FindNearestRegister()
     {
-        var registers = FindObjectsOfType<Register>();
+        var registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (registers == null || registers.Length == 0) return null;
 
         Register best = null;
