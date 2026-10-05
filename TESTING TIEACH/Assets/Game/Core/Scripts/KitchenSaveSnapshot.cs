@@ -110,7 +110,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>7 || inv==null || pm==null) return false;
+        if(version<1 || version>8 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {

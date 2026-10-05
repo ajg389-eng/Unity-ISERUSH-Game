@@ -7,6 +7,8 @@ using UnityEngine.Serialization;
 /// </summary>
 public class FryerStation : MonoBehaviour, IStationBuffer
 {
+    [Header("Product")]
+    public ItemDefinition selectedProduct;
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
     [Min(0f)] public float processTimeSeconds = 12f;
@@ -22,10 +24,32 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     int displayedUnits = -1;
     bool displayedCooked;
 
-    ItemDefinition RawItem => ProductionManager.Instance != null
-        ? ProductionManager.Instance.SlicedPotatoItem : null;
-    ItemDefinition CookedItem => ProductionManager.Instance != null
-        ? ProductionManager.Instance.CookedPotatoItem : null;
+    ItemDefinition CookedItem
+    {
+        get
+        {
+            if (selectedProduct != null) return selectedProduct;
+            return ProductionManager.Instance != null ? ProductionManager.Instance.CookedPotatoItem : null;
+        }
+    }
+    ItemDefinition RawItem
+    {
+        get
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+            StationProcessingRecipeDefinition recipe = config != null ? config.GetFryerRecipe(CookedItem) : null;
+            return recipe != null ? recipe.input
+                : (ProductionManager.Instance != null ? ProductionManager.Instance.SlicedPotatoItem : null);
+        }
+    }
+    public bool CanProcess(ItemDefinition output) => output != null && output == CookedItem;
+    public ItemDefinition GetSelectedOutput() => CookedItem;
+    public void SetRecipeOutput(ItemDefinition output)
+    {
+        if (selectedProduct != output) ResetRuntimeState();
+        selectedProduct = output;
+        GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+    }
 
     public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
     public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count > 0 ? outputMarkers.Count : inputMarkers.Count); } }

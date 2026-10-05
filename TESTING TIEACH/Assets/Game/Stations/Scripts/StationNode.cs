@@ -481,9 +481,12 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
             if (assembly.BufferedOutputCount >= assembly.OutputSlotCapacity)
                 return StationRuntimeState.Blocked;
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-            if (recipe != null && (assembly.BufferedProcessedInputCount < Mathf.Max(1, recipe.processedInputAmount)
-                || assembly.BufferedPantryInputCount < Mathf.Max(1, recipe.pantryInputAmount)))
-                return StationRuntimeState.Starved;
+            if (recipe != null)
+            {
+                if (assembly.BufferedProcessedInputCount < Mathf.Max(1, recipe.processedInputAmount)
+                    || assembly.BufferedPantryInputCount < Mathf.Max(1, recipe.pantryInputAmount))
+                    return StationRuntimeState.Starved;
+            }
         }
 
         GrillStation grill = GetComponent<GrillStation>();

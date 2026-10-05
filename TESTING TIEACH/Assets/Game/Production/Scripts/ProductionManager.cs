@@ -48,6 +48,7 @@ public class ProductionJob
     public ItemDefinition assemblySupplySourceItem;
     /// <summary>The item delivered to the assembly station after optional processing.</summary>
     public ItemDefinition assemblySupplyOutputItem;
+    public ItemDefinition[] assemblySupplyStageItems;
     public int requestedSupplyUnits;
     /// <summary>Heat lamp this job must deliver to (from the last station's Assign Output link).</summary>
     public HeatLampStation deliveryHeatLamp;
@@ -263,6 +264,15 @@ public class ProductionManager : MonoBehaviour
         job != null && job.assemblySupplyOutputItem != null
             ? job.assemblySupplyOutputItem
             : GetAssemblySupplyOutput(job != null ? job.assemblySupplyTarget : null);
+    public ItemDefinition GetAssemblySupplyStepInput(ProductionJob job)
+    {
+        if (job == null || job.currentStepIndex <= 0) return GetAssemblySupplySource(job);
+        return job.assemblySupplyStageItems != null
+            && job.currentStepIndex - 1 < job.assemblySupplyStageItems.Length
+            ? job.assemblySupplyStageItems[job.currentStepIndex - 1]
+            : GetAssemblySupplySource(job);
+    }
+    public ItemDefinition GetAssemblySupplyStepOutput(ProductionJob job) => GetBranchTransferItem(job);
 
     public void SetProductionTarget(ItemDefinition item, int quantity)
     {
@@ -489,10 +499,8 @@ public class ProductionManager : MonoBehaviour
         }
 
         var enabledBurgers = new List<ItemDefinition>();
-        if (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
-            enabledBurgers.Add(orderConfig.burgerBase);
-        if (orderConfig.cheeseburgerItem != null && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem))
-            enabledBurgers.Add(orderConfig.cheeseburgerItem);
+        foreach (ItemDefinition item in orderConfig.GetMenuItems())
+            if (orderConfig.IsBurger(item) && orderConfig.IsItemEnabled(item)) enabledBurgers.Add(item);
         if (enabledBurgers.Count > 0)
         {
             float perBurger = burgerP / enabledBurgers.Count;
@@ -767,7 +775,7 @@ public class ProductionManager : MonoBehaviour
     GameObject GetRequiredBranchTarget(ProductionJob job, GameObject source)
     {
         if (job == null || !job.isAssemblySupply || job.assemblySupplyTarget == null) return null;
-        if (source != null && source.GetComponent<CuttingStation>() != null)
+        if (job.currentStepIndex >= job.pipeline.Length - 1)
             return job.assemblySupplyTarget.gameObject;
         bool needsCutting = job.FindNextPipelineIndex(StationType.Cutting) >= 0;
         return needsCutting ? null : job.assemblySupplyTarget.gameObject;
@@ -794,9 +802,14 @@ public class ProductionManager : MonoBehaviour
     {
         if (job == null) return null;
         if (job.isAssemblySupply && job.assemblySupplyTarget != null)
-            return job.CurrentStationType == StationType.Cutting
-                ? GetAssemblySupplyOutput(job)
-                : GetAssemblySupplySource(job);
+        {
+            if (job.assemblySupplyStageItems != null && job.currentStepIndex >= 0
+                && job.currentStepIndex < job.assemblySupplyStageItems.Length
+                && job.assemblySupplyStageItems[job.currentStepIndex] != null)
+                return job.assemblySupplyStageItems[job.currentStepIndex];
+            return job.currentStepIndex >= job.pipeline.Length - 1
+                ? GetAssemblySupplyOutput(job) : GetAssemblySupplySource(job);
+        }
         if (job.CurrentStationType == StationType.Pantry && orderConfig != null && orderConfig.IsFries(job.product))
             return PotatoItem;
         if (job.CurrentStationType == StationType.Cutting && orderConfig != null && orderConfig.IsFries(job.product))
@@ -815,10 +828,16 @@ public class ProductionManager : MonoBehaviour
         if (target == null || item == null || orderConfig == null) return false;
         if (target.GetComponent<HeatLampStation>() != null)
             return orderConfig.IsBurger(item) || orderConfig.IsFries(item) || orderConfig.IsDrink(item);
-        if (target.GetComponent<GrillStation>() != null) return item == orderConfig.rawPattyIngredient;
+        GrillStation grill = target.GetComponent<GrillStation>();
+        if (grill != null) return item == grill.GetSelectedInput();
         CuttingStation cutting = target.GetComponent<CuttingStation>();
         if (cutting != null) return cutting.CanProcess(item);
-        if (target.GetComponent<FryerStation>() != null) return item == SlicedPotatoItem;
+        FryerStation fryer = target.GetComponent<FryerStation>();
+        if (fryer != null)
+        {
+            StationProcessingRecipeDefinition fryerRecipe = orderConfig.GetFryerRecipe(fryer.GetSelectedOutput());
+            return fryerRecipe != null && item == fryerRecipe.input;
+        }
         AssemblyStation assembly = target.GetComponent<AssemblyStation>();
         if (assembly == null) return false;
         AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
@@ -994,7 +1013,7 @@ public class ProductionManager : MonoBehaviour
             return;
         if (Time.unscaledTime < nextPlanningTime)
             return;
-        nextPlanningTime = Time.unscaledTime + Mathf.Max(0.05f, planningInterval);
+        nextPlanningTime = Time.unscaledTime + Mathf.Max(0.25f, planningInterval);
         RefreshStations();
         RecoverOrphanedJobAssignments();
         CollectProductionJobs();
@@ -1004,8 +1023,7 @@ public class ProductionManager : MonoBehaviour
 
     void EnsureAssemblySupplyJobs()
     {
-        AssemblyStation[] stations = FindObjectsByType<AssemblyStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        AssemblyStation[] stations = FindObjectsByType<AssemblyStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         foreach (AssemblyStation station in stations)
         {
             if (station == null) continue;
@@ -1015,16 +1033,18 @@ public class ProductionManager : MonoBehaviour
                 EnsureAssemblyIngredientSupplyJob(station, recipe,
                     orderConfig != null ? orderConfig.GetAssemblySupplySource(recipe) : recipe.pantryInput,
                     recipe.pantryInput, station.BufferedPantryInputCount,
-                    orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe));
+                    orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe),
+                    recipe.supplyPipeline, recipe.supplyStageOutputs);
             if ((recipe.processedInputFromPantry || recipe.processedInputFromFreezer)
                 && recipe.processedInput != null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe, recipe.processedInput,
-                    recipe.processedInput, station.BufferedProcessedInputCount, false);
+                    recipe.processedInput, station.BufferedProcessedInputCount, false, null, null);
         }
     }
 
     void EnsureAssemblyIngredientSupplyJob(AssemblyStation station, AssemblyRecipeDefinition recipe,
-        ItemDefinition sourceItem, ItemDefinition outputItem, int buffered, bool requiresCutting)
+        ItemDefinition sourceItem, ItemDefinition outputItem, int buffered, bool requiresCutting,
+        StationType[] pipelineOverride, ItemDefinition[] stageItems)
     {
         if (station == null || recipe == null || sourceItem == null || outputItem == null) return;
         int target = station.IngredientCapacity;
@@ -1040,14 +1060,16 @@ public class ProductionManager : MonoBehaviour
         if (reserved >= target || alreadyQueued) return;
         StationType sourceType = orderConfig != null && orderConfig.IsFreezerIngredient(sourceItem)
             ? StationType.Freezer : StationType.Pantry;
-        var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1),
-            requiresCutting ? new[] { sourceType, StationType.Cutting }
-                : new[] { sourceType })
+        StationType[] pipeline = pipelineOverride != null && pipelineOverride.Length > 0
+            ? pipelineOverride : (requiresCutting ? new[] { sourceType, StationType.Cutting }
+                : new[] { sourceType });
+        var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1), pipeline)
         {
             isAssemblySupply = true,
             assemblySupplyTarget = station,
             assemblySupplySourceItem = sourceItem,
             assemblySupplyOutputItem = outputItem,
+            assemblySupplyStageItems = stageItems,
             requestedSupplyUnits = target - reserved
         };
         if (CanAnyWorkerContinue(supply)) pendingJobs.Add(supply);
@@ -1300,14 +1322,9 @@ public class ProductionManager : MonoBehaviour
 
         if (canBurger && HasConfiguredFreezer())
         {
-            ItemDefinition[] burgers =
+            foreach (ItemDefinition burger in orderConfig.GetMenuItems())
             {
-                orderConfig.burgerBase, orderConfig.cheeseburgerItem,
-                orderConfig.clBurgerItem, orderConfig.cltBurgerItem
-            };
-            foreach (ItemDefinition burger in burgers)
-            {
-                if (burger != null && orderConfig.IsItemEnabled(burger)
+                if (burger != null && orderConfig.IsBurger(burger) && orderConfig.IsItemEnabled(burger)
                     && HasAssemblyChainAvailable(burger, hasConfiguredFlow)
                     && HasAssemblyPantrySupplies(burger, hasConfiguredFlow)
                     && HasRequiredCuttingSupplyAvailable(burger, hasConfiguredFlow))
@@ -1423,6 +1440,8 @@ public class ProductionManager : MonoBehaviour
         foreach (ItemDefinition stage in chain)
         {
             AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(stage);
+            if (recipe != null && recipe.supplyPipeline != null && recipe.supplyPipeline.Length > 0)
+                continue;
             if (!orderConfig.AssemblySupplyRequiresCutting(recipe)) continue;
             ItemDefinition requiredRaw = orderConfig.GetAssemblySupplySource(recipe);
             ItemDefinition requiredOutput = recipe.pantryInput;
@@ -2233,9 +2252,9 @@ public class ProductionManager : MonoBehaviour
 
     public int PlacePattiesOnGrill(KitchenEmployee forEmployee, ItemDefinition item, int amount)
     {
-        IStationBuffer buffer = GetGrillFor(forEmployee);
-        ItemDefinition input = orderConfig != null && orderConfig.rawPattyIngredient != null
-            ? orderConfig.rawPattyIngredient : item;
+        GrillStation grillStation = GetGrillFor(forEmployee);
+        IStationBuffer buffer = grillStation;
+        ItemDefinition input = grillStation != null ? grillStation.GetSelectedInput() : item;
         return buffer != null ? buffer.StoreInput(input, amount) : 0;
     }
 
@@ -2246,9 +2265,9 @@ public class ProductionManager : MonoBehaviour
 
     public int TakePattiesFromGrill(KitchenEmployee forEmployee, ItemDefinition item, int amount)
     {
-        IStationBuffer buffer = GetGrillFor(forEmployee);
-        ItemDefinition output = orderConfig != null && orderConfig.cookedPattyIngredient != null
-            ? orderConfig.cookedPattyIngredient : item;
+        GrillStation grillStation = GetGrillFor(forEmployee);
+        IStationBuffer buffer = grillStation;
+        ItemDefinition output = grillStation != null ? grillStation.GetSelectedOutput() : item;
         return buffer != null ? buffer.TakeOutput(output, amount) : 0;
     }
 
@@ -2339,6 +2358,12 @@ public class ProductionManager : MonoBehaviour
         if (f == null || SlicedPotatoItem == null) return 0;
         return f.TryLoad(SlicedPotatoItem, amount, sourceOrder);
     }
+    public int TryLoadFryer(KitchenEmployee forEmployee, ItemDefinition input, int amount,
+        CustomerOrder sourceOrder = null)
+    {
+        var f = GetFryerFor(forEmployee);
+        return f != null && input != null ? f.TryLoad(input, amount, sourceOrder) : 0;
+    }
 
     public bool TakeFromFryer(KitchenEmployee forEmployee = null)
     {
@@ -2349,6 +2374,11 @@ public class ProductionManager : MonoBehaviour
     {
         var f = GetFryerFor(forEmployee);
         return f != null ? f.TakeCooked(amount) : 0;
+    }
+    public int TakeFromFryer(KitchenEmployee forEmployee, ItemDefinition output, int amount)
+    {
+        var f = GetFryerFor(forEmployee);
+        return f != null && output != null ? f.TakeOutput(output, amount) : 0;
     }
 
     public float GetDrinkProcessTime(KitchenEmployee forEmployee = null)

@@ -738,12 +738,20 @@ public class ManagementModeController : MonoBehaviour
     {
         if (target == null || item == null || config == null) return false;
         if (target.GetComponent<GrillStation>() != null)
-            return item == config.rawPattyIngredient;
+        {
+            GrillStation grill = target.GetComponent<GrillStation>();
+            return grill != null && item == grill.GetSelectedInput();
+        }
         CuttingStation cutting = target.GetComponent<CuttingStation>();
         if (cutting != null)
             return cutting.CanProcess(item);
         if (target.GetComponent<FryerStation>() != null)
-            return item == config.slicedPotatoIngredient;
+        {
+            FryerStation fryer = target.GetComponent<FryerStation>();
+            StationProcessingRecipeDefinition fryerRecipe = fryer != null
+                ? config.GetFryerRecipe(fryer.GetSelectedOutput()) : null;
+            return fryerRecipe != null ? item == fryerRecipe.input : item == config.slicedPotatoIngredient;
+        }
 
         AssemblyStation assembly = target.GetComponent<AssemblyStation>();
         if (assembly != null)
@@ -1044,10 +1052,12 @@ public class ManagementModeController : MonoBehaviour
         if (node == null) return "Buffer unavailable";
         AssemblyStation assembly = node.GetComponent<AssemblyStation>();
         if (assembly != null)
+        {
             return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + assembly.IngredientCapacity
                 + "  |  input B " + assembly.BufferedPantryInputCount + "/" + assembly.IngredientCapacity
                 + "  |  output " + assembly.BufferedOutputCount + "/" + assembly.OutputSlotCapacity
                 + "  |  reserved in " + incoming + ", out " + outgoing;
+        }
 
         GrillStation grill = node.GetComponent<GrillStation>();
         if (grill != null)
@@ -1813,8 +1823,9 @@ public class ManagementModeController : MonoBehaviour
         var freezer = selectedStation != null ? selectedStation.GetComponent<FreezerStation>() : null;
         var pantry = selectedStation != null ? selectedStation.GetComponent<PantryStation>() : null;
         var cutting = selectedStation != null ? selectedStation.GetComponent<CuttingStation>() : null;
+        var fryer = selectedStation != null ? selectedStation.GetComponent<FryerStation>() : null;
         bool show = grill != null || assembly != null || freezer != null || pantry != null
-            || cutting != null;
+            || cutting != null || fryer != null;
 
         productInfoText.gameObject.SetActive(show);
         productListContainer.gameObject.SetActive(show);
@@ -1826,7 +1837,8 @@ public class ManagementModeController : MonoBehaviour
             : assembly != null ? assembly.selectedProduct
             : freezer != null ? freezer.selectedItem
             : pantry != null ? pantry.selectedItem
-            : cutting != null ? cutting.selectedProduct : null;
+            : cutting != null ? cutting.selectedProduct
+            : fryer != null ? fryer.GetSelectedOutput() : null;
 
         for (int i = productListContainer.childCount - 1; i >= 0; i--)
             Destroy(productListContainer.GetChild(i).gameObject);
@@ -1886,6 +1898,7 @@ public class ManagementModeController : MonoBehaviour
             ? config.GetFreezerIngredients()
             : pantry != null ? config.GetPantryIngredients()
             : cutting != null ? GetCuttingOutputs(config)
+            : fryer != null ? config.GetFryerProducts()
             : config.GetGrillProducts();
         Transform optionRow = null;
         int optionCount = 0;
@@ -2083,6 +2096,16 @@ public class ManagementModeController : MonoBehaviour
             WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
             SetStatus("Cutting recipe set to " + DisplayItemName(item));
+            return;
+        }
+        var fryer = selectedStation.GetComponent<FryerStation>();
+        if (fryer != null)
+        {
+            fryer.SetRecipeOutput(item);
+            RevalidateSelectedStationOutput();
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+            RefreshPopup();
+            SetStatus("Fryer recipe set to " + DisplayItemName(item));
             return;
         }
         var assembly = selectedStation.GetComponent<AssemblyStation>();

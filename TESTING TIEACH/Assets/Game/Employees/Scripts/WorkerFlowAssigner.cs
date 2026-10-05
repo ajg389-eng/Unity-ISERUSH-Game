@@ -1051,18 +1051,12 @@ public static class WorkflowAnalysis
             : "—";
 
         var products = new List<ItemDefinition>();
-        if (canBurger && config != null && config.burgerBase != null)
-            products.Add(config.burgerBase);
         int assemblyCount = CountStations(flow, typeof(AssemblyStation));
-        if (canBurger && config != null && config.cheeseburgerItem != null
-            && assemblyCount >= config.GetAssemblyChain(config.cheeseburgerItem).Count)
-            products.Add(config.cheeseburgerItem);
-        if (canBurger && config != null && config.clBurgerItem != null
-            && assemblyCount >= config.GetAssemblyChain(config.clBurgerItem).Count)
-            products.Add(config.clBurgerItem);
-        if (canBurger && config != null && config.cltBurgerItem != null
-            && assemblyCount >= config.GetAssemblyChain(config.cltBurgerItem).Count)
-            products.Add(config.cltBurgerItem);
+        if (canBurger && config != null)
+            foreach (ItemDefinition menuItem in config.GetMenuItems())
+                if (menuItem != null && config.IsBurger(menuItem)
+                    && assemblyCount >= config.GetAssemblyChain(menuItem).Count)
+                    products.Add(menuItem);
         if (canFries && config != null && config.friesItem != null)
             products.Add(config.friesItem);
         if (hasShake && config != null && config.drinkItem != null)
@@ -1083,7 +1077,7 @@ public static class WorkflowAnalysis
         {
             ItemDefinition resource = config != null && config.IsFries(product)
                 ? (config.friesIngredient != null ? config.friesIngredient : product)
-                : (config != null && config.IsBurger(product) ? config.burgerBase : product);
+                : (config != null && config.IsBurger(product) ? config.rawPattyIngredient : product);
             if (resource != null && !result.requiredResources.Contains(resource))
                 result.requiredResources.Add(resource);
             if (config != null)
@@ -1116,7 +1110,7 @@ public static class WorkflowAnalysis
                 : (!string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name);
             ItemDefinition resource = config != null && config.IsFries(item)
                 ? (config.friesIngredient != null ? config.friesIngredient : item)
-                : (config != null && config.IsBurger(item) ? config.burgerBase : item);
+                : (config != null && config.IsBurger(item) ? config.rawPattyIngredient : item);
             float unitCost = GetIngredientUnitCost(resource, inventory);
             if (config != null)
             {

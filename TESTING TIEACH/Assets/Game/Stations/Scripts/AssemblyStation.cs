@@ -376,4 +376,5 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         foreach (Collider collider in display.GetComponentsInChildren<Collider>(true))
             collider.enabled = false;
     }
+
 }

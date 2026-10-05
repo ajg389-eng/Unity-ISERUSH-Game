@@ -7533,6 +7533,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProductionManager
   orderConfig: {fileID: 11400000, guid: 9fb664fbbdd2ba84495002dcef899cf7, type: 2}
+  productionTargets: []
   registers:
   - {fileID: 1883022301}
   - {fileID: 1105242393}
@@ -7546,6 +7547,7 @@ MonoBehaviour:
   selectedFlowIndex: 0
   hireFlow: 1
   hireFlowSteps: []
+  planningInterval: 0.15
 --- !u!4 &599483240
 Transform:
   m_ObjectHideFlags: 0
@@ -9483,8 +9485,6 @@ MonoBehaviour:
   cookedFriesPreviewPrefab: {fileID: 5513790519829109655, guid: 9a410000000000000000000000000002, type: 3}
   burgerPreviewPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   drinkPreviewPrefab: {fileID: 2138174889334687165, guid: 9a410000000000000000000000000003, type: 3}
-  timeToCompleteIcon: {fileID: 2800000, guid: 9eb7aa2c669ee464fbc5a4332ab3b55b, type: 3}
-  efficiencyIcon: {fileID: 2800000, guid: 5f6a273b10819244486d0fe58210a10b, type: 3}
 --- !u!1001 &803279901
 PrefabInstance:
   m_ObjectHideFlags: 0

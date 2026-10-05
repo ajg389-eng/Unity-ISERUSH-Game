@@ -574,7 +574,9 @@ public class KitchenEmployee : MonoBehaviour
             if (stationType == StationType.Grill)
             {
                 GrillStation grill = candidate.GetComponent<GrillStation>();
-                if (grill == null || !grill.CanProcess(job.product)) continue;
+                ItemDefinition grillOutput = job.isAssemblySupply
+                    ? production.GetAssemblySupplyStepOutput(job) : job.product;
+                if (grill == null || !grill.CanProcess(grillOutput)) continue;
                 // Station contents are the source of truth. Jobs are rebuilt
                 // after loading and recovery, so object-reference order checks
                 // can reject a perfectly valid patty and leave every worker idle.
@@ -624,10 +626,10 @@ public class KitchenEmployee : MonoBehaviour
                 bool friesJob = production?.orderConfig != null
                     && production.orderConfig.IsFries(job.product);
                 ItemDefinition requiredInput = job.isAssemblySupply
-                    ? production?.GetAssemblySupplySource(job)
+                    ? production?.GetAssemblySupplyStepInput(job)
                     : (friesJob ? production?.PotatoItem : null);
                 ItemDefinition requiredOutput = job.isAssemblySupply
-                    ? production?.GetAssemblySupplyOutput(job)
+                    ? production?.GetAssemblySupplyStepOutput(job)
                     : (friesJob ? production?.SlicedPotatoItem : null);
                 if (cutting == null || !cutting.CanProcess(requiredInput, requiredOutput)) continue;
                 if (requireReady)
@@ -639,10 +641,13 @@ public class KitchenEmployee : MonoBehaviour
                     if (!carriedInput && !bufferedInput && !bufferedOutput) continue;
                 }
             }
-            else if (stationType == StationType.Fryer && requireReady)
+            else if (stationType == StationType.Fryer)
             {
                 FryerStation fryer = candidate.GetComponent<FryerStation>();
-                if (fryer == null || (!fryer.IsCooking && !fryer.IsCooked())) continue;
+                ItemDefinition fryerOutput = job.isAssemblySupply
+                    ? production.GetAssemblySupplyStepOutput(job) : production.CookedPotatoItem;
+                if (fryer == null || !fryer.CanProcess(fryerOutput)) continue;
+                if (requireReady && !fryer.IsCooking && !fryer.IsCooked()) continue;
                 if (fryer.IsCooked())
                 {
                     GameObject destination = production.GetFlowOutput(this, candidate, job);
@@ -1387,11 +1392,7 @@ public class KitchenEmployee : MonoBehaviour
     {
         if (currentJob == null) return null;
         if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null)
-        {
-            if (currentJob.CurrentStationType == StationType.Cutting)
-                return manager.GetAssemblySupplyOutput(currentJob);
-            return manager.GetAssemblySupplySource(currentJob);
-        }
+            return manager.GetAssemblySupplyStepOutput(currentJob);
         if (currentJob.CurrentStationType == StationType.Pantry
             && manager.orderConfig != null && manager.orderConfig.IsFries(currentJob.product))
             return manager.PotatoItem;
@@ -1441,10 +1442,11 @@ public class KitchenEmployee : MonoBehaviour
         if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null
             && (currentJob.CurrentStationType == StationType.Freezer
                 || currentJob.CurrentStationType == StationType.Pantry
-                || currentJob.CurrentStationType == StationType.Cutting))
+                || currentJob.CurrentStationType == StationType.Cutting
+                || currentJob.CurrentStationType == StationType.Grill
+                || currentJob.CurrentStationType == StationType.Fryer))
         {
-            bool cuttingStepExists = currentJob.FindNextPipelineIndex(StationType.Cutting) >= 0;
-            bool finalSupplyStep = currentJob.CurrentStationType == StationType.Cutting || !cuttingStepExists;
+            bool finalSupplyStep = currentJob.currentStepIndex >= currentJob.pipeline.Length - 1;
             awaitingOutputDelivery = true;
             if (finalSupplyStep)
             {
@@ -1468,8 +1470,10 @@ public class KitchenEmployee : MonoBehaviour
                 deliverTarget = sourceObject != null
                     ? manager.GetFlowOutput(this, sourceObject, currentJob)
                     : null;
-                heldDeliveryItem = manager.GetAssemblySupplySource(currentJob);
-                if (deliverTarget == null || deliverTarget.GetComponent<CuttingStation>() == null)
+                heldDeliveryItem = manager.GetAssemblySupplyStepOutput(currentJob);
+                StationType? nextType = currentJob.currentStepIndex + 1 < currentJob.pipeline.Length
+                    ? currentJob.pipeline[currentJob.currentStepIndex + 1] : (StationType?)null;
+                if (deliverTarget == null || KitchenEmployee.GetStationTypeFrom(deliverTarget) != nextType)
                 {
                     ShowTaskBar = true;
                     TaskProgress = 1f;
@@ -2835,7 +2839,10 @@ public class KitchenEmployee : MonoBehaviour
                     if (manager.IsEmployeeOnGrillTile(transform.position, this))
                     {
                         var grill = manager.GetGrillFor(this);
-                        if (grill != null && !grill.CanProcess(currentJob != null ? currentJob.product : null))
+                        ItemDefinition grillOutput = currentJob != null && currentJob.isAssemblySupply
+                            ? manager.GetAssemblySupplyStepOutput(currentJob)
+                            : (currentJob != null ? currentJob.product : null);
+                        if (grill != null && !grill.CanProcess(grillOutput))
                         {
                             // Wrong product selected — wait
                             FaceStationObject(grill.gameObject);
@@ -2853,9 +2860,11 @@ public class KitchenEmployee : MonoBehaviour
                                 YieldBlockedOutputStep();
                                 break;
                             }
-                            int cooked = manager.TakePattiesFromGrill(this,
-                                currentJob != null ? currentJob.product : manager.PattyItem,
-                                transferCapacity);
+                    int cooked = manager.TakePattiesFromGrill(this,
+                        currentJob != null && currentJob.isAssemblySupply
+                            ? manager.GetAssemblySupplyStepOutput(currentJob)
+                            : (currentJob != null ? currentJob.product : manager.PattyItem),
+                        transferCapacity);
                             if (cooked > 0)
                             {
                                 heldUnits = cooked;
@@ -2869,15 +2878,17 @@ public class KitchenEmployee : MonoBehaviour
                             ? Mathf.Min(heldUnits, grill.InputSlotCapacity) : heldUnits;
                         int placed = heldUnits > 0
                             ? manager.PlacePattiesOnGrill(this,
-                                currentJob != null ? currentJob.product : manager.PattyItem,
+                                grillOutput,
                                 grillLoad)
                             : 0;
                         if (placed > 0)
                         {
                             manager.ConsumeInputReservation(currentJob, placed);
                             heldUnits = Mathf.Max(0, heldUnits - placed);
-                            ReturnExcessToKitchenStock(manager.orderConfig != null
-                                ? manager.orderConfig.rawPattyIngredient : manager.PattyItem,
+                            ReturnExcessToKitchenStock(currentJob != null && currentJob.isAssemblySupply
+                                ? manager.GetAssemblySupplyStepInput(currentJob)
+                                : (manager.orderConfig != null
+                                    ? manager.orderConfig.rawPattyIngredient : manager.PattyItem),
                                 heldUnits);
                             heldUnits = 0;
                             SyncHasPattyFlag();
@@ -2945,7 +2956,9 @@ public class KitchenEmployee : MonoBehaviour
                         break;
                     }
                     int cooked = manager.TakePattiesFromGrill(this,
-                        currentJob != null ? currentJob.product : manager.PattyItem,
+                        currentJob != null && currentJob.isAssemblySupply
+                            ? manager.GetAssemblySupplyStepOutput(currentJob)
+                            : (currentJob != null ? currentJob.product : manager.PattyItem),
                         transferCapacity);
                     if (cooked > 0)
                     {
@@ -3254,14 +3267,19 @@ public class KitchenEmployee : MonoBehaviour
                             int fryerLoad = fryer != null
                                 ? Mathf.Min(heldUnits, fryer.InputSlotCapacity) : heldUnits;
                             int placed = heldUnits > 0
-                                ? manager.TryLoadFryer(this, fryerLoad,
+                                ? manager.TryLoadFryer(this,
+                                    currentJob != null && currentJob.isAssemblySupply
+                                        ? manager.GetAssemblySupplyStepInput(currentJob)
+                                        : manager.SlicedPotatoItem, fryerLoad,
                                     currentJob != null ? currentJob.order : null)
                                 : 0;
                             if (placed > 0)
                             {
                                 manager.ConsumeInputReservation(currentJob, placed);
                                 heldUnits = Mathf.Max(0, heldUnits - placed);
-                                ReturnExcessToKitchenStock(manager.SlicedPotatoItem, heldUnits);
+                                ReturnExcessToKitchenStock(currentJob != null && currentJob.isAssemblySupply
+                                    ? manager.GetAssemblySupplyStepInput(currentJob)
+                                    : manager.SlicedPotatoItem, heldUnits);
                                 heldUnits = 0;
                                 SyncHasPattyFlag();
                                 step = Step.AtFryer;
@@ -3289,7 +3307,9 @@ public class KitchenEmployee : MonoBehaviour
                 if (currentJob != null && currentJob.taskPhase == ProductionTaskPhase.CollectOutput
                     && fryerAtTask != null && fryerAtTask.IsCooked())
                 {
-                    int available = fryerAtTask.GetOutputCount(manager.CookedPotatoItem);
+                    ItemDefinition fryerOutput = currentJob != null && currentJob.isAssemblySupply
+                        ? manager.GetAssemblySupplyStepOutput(currentJob) : manager.CookedPotatoItem;
+                    int available = fryerAtTask.GetOutputCount(fryerOutput);
                     int transferCapacity = EnsureNextDestinationReservation(
                         Mathf.Min(CarryCapacity, available));
                     if (transferCapacity <= 0)
@@ -3297,7 +3317,7 @@ public class KitchenEmployee : MonoBehaviour
                         YieldBlockedOutputStep();
                         break;
                     }
-                    int taken = manager.TakeFromFryer(this, transferCapacity);
+                    int taken = manager.TakeFromFryer(this, fryerOutput, transferCapacity);
                     if (taken > 0)
                     {
                         manager.ConsumeOutputReservation(currentJob, taken);
@@ -3321,7 +3341,8 @@ public class KitchenEmployee : MonoBehaviour
                     }
                     FryerStation activeFryer = manager.GetFryerFor(this);
                     int available = activeFryer != null
-                        ? activeFryer.GetOutputCount(manager.CookedPotatoItem) : 0;
+                        ? activeFryer.GetOutputCount(currentJob != null && currentJob.isAssemblySupply
+                            ? manager.GetAssemblySupplyStepOutput(currentJob) : manager.CookedPotatoItem) : 0;
                     int transferCapacity = EnsureNextDestinationReservation(
                         Mathf.Min(CarryCapacity, available));
                     if (activeFryer != null && activeFryer.IsCooked()
@@ -3330,7 +3351,10 @@ public class KitchenEmployee : MonoBehaviour
                         YieldBlockedOutputStep();
                         break;
                     }
-                    int taken = manager.TakeFromFryer(this, transferCapacity);
+                    int taken = manager.TakeFromFryer(this,
+                        currentJob != null && currentJob.isAssemblySupply
+                            ? manager.GetAssemblySupplyStepOutput(currentJob) : manager.CookedPotatoItem,
+                        transferCapacity);
                     if (taken > 0)
                     {
                         manager.ConsumeOutputReservation(currentJob, taken);

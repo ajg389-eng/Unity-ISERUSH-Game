@@ -46,11 +46,11 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     }
 
     public int GetInputCount(ItemDefinition item) =>
-        IsRawPatty(item) && IsCookingPatty ? pattyUnits : 0;
+        IsSelectedInput(item) && IsCookingPatty ? pattyUnits : 0;
     public int GetOutputCount(ItemDefinition item) =>
-        IsCookedPatty(item) && IsCooked() ? pattyUnits : 0;
+        IsSelectedOutput(item) && IsCooked() ? pattyUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && IsRawPatty(item) && pattyUnits == 0 && amount <= InputSlotCapacity;
+        amount > 0 && IsSelectedInput(item) && pattyUnits == 0 && amount <= InputSlotCapacity;
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;
@@ -61,7 +61,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     }
     public int TakeOutput(ItemDefinition item, int amount)
     {
-        if (amount <= 0 || !IsCookedPatty(item) || !IsCooked()) return 0;
+        if (amount <= 0 || !IsSelectedOutput(item) || !IsCooked()) return 0;
         int taken = Mathf.Min(amount, pattyUnits);
         pattyUnits -= taken;
         if (pattyUnits <= 0)
@@ -79,10 +79,9 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         if (product == null || selectedProduct == null) return false;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
-        if (config == null) return product == selectedProduct;
-        return selectedProduct == config.cookedPattyIngredient
-            && (config.IsBurger(product) || product == config.rawPattyIngredient
-                || product == config.cookedPattyIngredient);
+        if (product == selectedProduct) return true;
+        return config != null && selectedProduct == config.cookedPattyIngredient
+            && config.IsBurger(product);
     }
 
     public ItemDefinition GetSelectedOutput()
@@ -90,6 +89,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         NormalizeLegacySelection();
         return selectedProduct;
     }
+    public ItemDefinition GetSelectedInput() => SelectedInput;
 
     public void SetRecipeOutput(ItemDefinition output)
     {
@@ -105,22 +105,18 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         RefreshItemDisplay(force: true);
     }
 
-    bool IsRawPatty(ItemDefinition item)
+    ItemDefinition SelectedInput
     {
-        CustomerOrderConfig config = ProductionManager.Instance != null
-            ? ProductionManager.Instance.orderConfig : null;
-        return config != null ? item == config.rawPattyIngredient : item == selectedProduct;
+        get
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            StationProcessingRecipeDefinition recipe = config != null ? config.GetGrillRecipe(selectedProduct) : null;
+            return recipe != null ? recipe.input : (config != null ? config.rawPattyIngredient : selectedProduct);
+        }
     }
-
-    bool IsCookedPatty(ItemDefinition item)
-    {
-        NormalizeLegacySelection();
-        CustomerOrderConfig config = ProductionManager.Instance != null
-            ? ProductionManager.Instance.orderConfig : null;
-        return item != null && (item == selectedProduct
-            || (config != null && (item == config.cookedPattyIngredient
-                || config.IsBurger(item))));
-    }
+    bool IsSelectedInput(ItemDefinition item) => item != null && item == SelectedInput;
+    bool IsSelectedOutput(ItemDefinition item) => item != null && item == selectedProduct;
 
     void NormalizeLegacySelection()
     {
@@ -215,9 +211,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig
             : null;
-        ItemDefinition visualItem = cooked
-            ? (config != null ? config.cookedPattyIngredient : selectedProduct)
-            : (config != null ? config.rawPattyIngredient : selectedProduct);
+        ItemDefinition visualItem = cooked ? selectedProduct : SelectedInput;
         GameObject prefab = visualItem != null ? visualItem.prefab : null;
         if (prefab == null) return;
 
