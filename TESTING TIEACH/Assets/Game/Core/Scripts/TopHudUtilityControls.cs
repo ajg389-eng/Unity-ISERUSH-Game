@@ -8,6 +8,7 @@ public class TopHudUtilityControls : MonoBehaviour
     public const string MusicSectionName = "MusicSection";
     public const string NotificationSectionName = "NotificationSection";
     const string PanelName = "NotificationHistoryPanel";
+    const string MusicPanelName = "MusicTrackPicker";
 
     static readonly Color Panel = new Color(0.075f, 0.08f, 0.12f, 0.98f);
     static readonly Color Control = new Color(0.18f, 0.20f, 0.28f, 1f);
@@ -21,6 +22,8 @@ public class TopHudUtilityControls : MonoBehaviour
     GameObject historyPanel;
     RectTransform historyContent;
     GameTimeManager boundTime;
+    GameObject musicPanel;
+    RectTransform musicList;
 
     void Awake() => EnsureLayout();
 
@@ -78,6 +81,7 @@ public class TopHudUtilityControls : MonoBehaviour
     public void EnsureLayout()
     {
         EnsureMusicSection();
+        EnsureMusicPanel();
         EnsureNotificationSection();
         EnsureHistoryPanel();
         var bar = GetComponent<TopHudBar>();
@@ -155,6 +159,13 @@ public class TopHudUtilityControls : MonoBehaviour
         trackText.overflowMode = TextOverflowModes.Ellipsis;
         trackText.enableWordWrapping = false;
         EnsureTrackBox(section.transform);
+        Button picker = trackText.transform.parent.GetComponent<Button>();
+        if (picker == null) picker = trackText.transform.parent.gameObject.AddComponent<Button>();
+        picker.onClick.RemoveAllListeners();
+        picker.onClick.AddListener(ToggleMusicPicker);
+        var pickerColors = picker.colors;
+        pickerColors.normalColor = Color.white;
+        picker.colors = pickerColors;
 
         Button pause = FindButton(section.transform, "MusicPauseButton");
         if (pause == null)
@@ -294,6 +305,109 @@ public class TopHudUtilityControls : MonoBehaviour
             trackText.text = music != null ? music.CurrentTrackName : "No music";
         if (playPauseText != null)
             playPauseText.text = music != null && music.IsPaused ? ">" : "||";
+        if (musicPanel != null && musicPanel.activeSelf) RebuildMusicList();
+    }
+
+    void EnsureMusicPanel()
+    {
+        if (musicPanel != null) return;
+        Transform canvas = GetComponentInParent<Canvas>()?.transform;
+        if (canvas == null) return;
+        Transform existing = canvas.Find(MusicPanelName);
+        musicPanel = existing != null ? existing.gameObject : new GameObject(MusicPanelName, typeof(RectTransform), typeof(Image));
+        musicPanel.transform.SetParent(canvas, false);
+        var rt = (RectTransform)musicPanel.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(1f, 1f);
+        rt.anchoredPosition = new Vector2(-216f, -62f);
+        rt.sizeDelta = new Vector2(300f, 310f);
+        musicPanel.GetComponent<Image>().color = Panel;
+        if (musicPanel.transform.childCount == 0) BuildMusicPanel(musicPanel.transform);
+        else musicList = musicPanel.transform.Find("Scroll View/Viewport/Content") as RectTransform;
+        musicPanel.SetActive(false);
+    }
+
+    void BuildMusicPanel(Transform root)
+    {
+        var heading = CreateLabel(root, "Heading", "NOW PLAYING", 11);
+        heading.color = new Color(0.42f, 0.86f, 0.62f, 1f);
+        heading.fontStyle = FontStyles.Bold;
+        SetRect(heading.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(14f, -34f), new Vector2(-14f, -8f));
+        var scrollGo = new GameObject("Scroll View", typeof(RectTransform), typeof(ScrollRect));
+        scrollGo.transform.SetParent(root, false);
+        SetRect((RectTransform)scrollGo.transform, Vector2.zero, Vector2.one, new Vector2(8f, 8f), new Vector2(-8f, -42f));
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
+        viewport.transform.SetParent(scrollGo.transform, false);
+        SetRect((RectTransform)viewport.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        viewport.GetComponent<Image>().color = new Color(0.04f, 0.045f, 0.07f, 0.45f);
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        musicList = (RectTransform)content.transform;
+        musicList.anchorMin = new Vector2(0f, 1f); musicList.anchorMax = new Vector2(1f, 1f);
+        musicList.pivot = new Vector2(0.5f, 1f); musicList.sizeDelta = Vector2.zero;
+        var vertical = content.GetComponent<VerticalLayoutGroup>();
+        vertical.padding = new RectOffset(4, 4, 4, 4); vertical.spacing = 3f;
+        vertical.childControlWidth = true; vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true; vertical.childForceExpandHeight = false;
+        content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var scroll = scrollGo.GetComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll); scroll.viewport = (RectTransform)viewport.transform;
+        scroll.content = musicList; scroll.horizontal = false; scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+    }
+
+    void ToggleMusicPicker()
+    {
+        Sfx.Play(SfxId.UiOpen);
+        EnsureMusicPanel();
+        if (musicPanel == null) return;
+        bool show = !musicPanel.activeSelf;
+        musicPanel.SetActive(show);
+        if (show)
+        {
+            musicPanel.transform.SetAsLastSibling();
+            BindMusic();
+            RebuildMusicList();
+        }
+    }
+
+    void RebuildMusicList()
+    {
+        if (musicList == null) return;
+        for (int i = musicList.childCount - 1; i >= 0; i--) Destroy(musicList.GetChild(i).gameObject);
+        if (music == null || music.TrackCount == 0)
+        {
+            var empty = CreateLabel(musicList, "Empty", "No tracks available", 13);
+            empty.color = new Color(0.65f, 0.68f, 0.75f, 1f);
+            empty.alignment = TextAlignmentOptions.Center;
+            empty.gameObject.AddComponent<LayoutElement>().preferredHeight = 48f;
+            return;
+        }
+        for (int i = 0; i < music.TrackCount; i++)
+        {
+            int trackIndex = i;
+            bool active = i == music.CurrentTrackIndex;
+            var row = new GameObject("Track " + i, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            row.transform.SetParent(musicList, false);
+            row.GetComponent<Image>().color = active ? new Color(0.12f, 0.28f, 0.21f, 1f) : new Color(0.10f, 0.12f, 0.17f, 0.9f);
+            row.GetComponent<LayoutElement>().preferredHeight = 46f;
+            var title = CreateLabel(row.transform, "Title", music.GetTrack(i).name, 13);
+            title.fontStyle = active ? FontStyles.Bold : FontStyles.Normal;
+            title.color = active ? new Color(0.48f, 0.91f, 0.66f, 1f) : Color.white;
+            title.alignment = TextAlignmentOptions.MidlineLeft;
+            title.overflowMode = TextOverflowModes.Ellipsis;
+            SetRect(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(12f, 2f), new Vector2(-34f, -2f));
+            if (active)
+            {
+                var playing = CreateLabel(row.transform, "Playing", "♫", 16);
+                playing.color = new Color(0.48f, 0.91f, 0.66f, 1f);
+                SetRect(playing.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-30f, 0f), new Vector2(-6f, 0f));
+                playing.alignment = TextAlignmentOptions.Center;
+            }
+            var button = row.GetComponent<Button>();
+            button.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.PlayTrack(trackIndex); musicPanel.SetActive(false); });
+            GameUITheme.ApplyCompactControlEffects(button);
+        }
     }
 
     void RefreshNotifications()
@@ -394,7 +508,7 @@ public class TopHudUtilityControls : MonoBehaviour
 
         var image = box.GetComponent<Image>() ?? box.AddComponent<Image>();
         image.color = GameUITheme.Surface;
-        image.raycastTarget = false;
+        image.raycastTarget = true;
 
         var outline = box.GetComponent<Outline>() ?? box.AddComponent<Outline>();
         outline.effectColor = GameUITheme.Edge;

@@ -56,9 +56,9 @@ public class CustomersUI : MonoBehaviour
 
         graphTitle = CreateLabel(transform, "GraphTitle",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -92), new Vector2(-28, 24),
-            15, TextAlignmentOptions.MidlineLeft);
-        graphTitle.text = "Visit trend (10 AM – 10 PM)";
+            new Vector2(0, -88), new Vector2(-28, 28),
+            17, TextAlignmentOptions.MidlineLeft);
+        graphTitle.text = "Customer visits by hour";
 
         var graphFrame = new GameObject("VisitGraph", typeof(RectTransform));
         graphFrame.transform.SetParent(transform, false);
@@ -66,8 +66,8 @@ public class CustomersUI : MonoBehaviour
         graphRt.anchorMin = new Vector2(0, 1);
         graphRt.anchorMax = new Vector2(1, 1);
         graphRt.pivot = new Vector2(0.5f, 1f);
-        graphRt.anchoredPosition = new Vector2(0, -120);
-        graphRt.sizeDelta = new Vector2(-28, 150);
+        graphRt.anchoredPosition = new Vector2(0, -122);
+        graphRt.sizeDelta = new Vector2(-28, 240);
         var frameImg = graphFrame.AddComponent<Image>();
         frameImg.color = new Color(0.12f, 0.13f, 0.16f, 0.95f);
 
@@ -76,7 +76,7 @@ public class CustomersUI : MonoBehaviour
         graphBarsRoot = (RectTransform)barsGo.transform;
         graphBarsRoot.anchorMin = Vector2.zero;
         graphBarsRoot.anchorMax = Vector2.one;
-        graphBarsRoot.offsetMin = new Vector2(8, 26);
+        graphBarsRoot.offsetMin = new Vector2(8, 34);
         graphBarsRoot.offsetMax = new Vector2(-8, -8);
         var hlg = barsGo.AddComponent<HorizontalLayoutGroup>();
         hlg.spacing = 3;
@@ -95,9 +95,9 @@ public class CustomersUI : MonoBehaviour
 
         demandTitle = CreateLabel(transform, "DemandTitle",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -286), new Vector2(-28, 24),
-            15, TextAlignmentOptions.MidlineLeft);
-        demandTitle.text = "Live demand and throughput (last 60 simulation seconds)";
+            new Vector2(0, -374), new Vector2(-28, 30),
+            18, TextAlignmentOptions.MidlineLeft);
+        demandTitle.text = "Demand";
 
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
@@ -105,7 +105,7 @@ public class CustomersUI : MonoBehaviour
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(12, 12);
-        scrollRt.offsetMax = new Vector2(-12, -318);
+        scrollRt.offsetMax = new Vector2(-12, -412);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         GameUITheme.ConfigureScroll(scroll);
@@ -190,11 +190,11 @@ public class CustomersUI : MonoBehaviour
         labelRt.offsetMin = Vector2.zero;
         labelRt.offsetMax = Vector2.zero;
         var label = labelGo.AddComponent<TextMeshProUGUI>();
-        label.fontSize = 9;
+        label.fontSize = 10;
         label.alignment = TextAlignmentOptions.Center;
         label.color = new Color(0.75f, 0.78f, 0.85f, 1f);
         label.text = "—";
-        label.enableWordWrapping = true;
+        label.enableWordWrapping = false;
         label.overflowMode = TextOverflowModes.Ellipsis;
         barLabels.Add(label);
     }
@@ -253,7 +253,7 @@ public class CustomersUI : MonoBehaviour
         int startH = stats.ShiftStartHour;
         int endH = stats.ShiftEndHour;
         if (graphTitle != null)
-            graphTitle.text = $"Visit trend ({FormatClockHour(startH)} – {FormatClockHour(endH)})";
+            graphTitle.text = $"Customer visits by hour  ·  {FormatClockHour(startH)}–{FormatClockHour(endH)}";
 
         int[] buckets = stats.GetVisitTrendBuckets();
         string[] hourLabels = stats.GetVisitHourLabels();
