@@ -60,9 +60,16 @@ public class InventoryUI : MonoBehaviour
     int activeTab;
     int displayedCapacityMilestoneCount = -1;
     ManagementTabInfoUI tabInfoUI;
+    MainHudTabs cachedHudTabs;
+    ManagementScreenController cachedManagementScreen;
+    float nextReferenceRefresh;
+    bool expansionStateKnown;
+    int displayedFloorWidth, displayedFloorHeight, displayedExpandWidth, displayedExpandHeight, displayedExpandCost;
+    bool displayedGridAvailable, displayedCanExpand;
 
     void Start()
     {
+        RefreshNavigationReferences();
         if (grid == null) grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
@@ -85,9 +92,12 @@ public class InventoryUI : MonoBehaviour
 
     void Update()
     {
+        // Retry missing/destroyed references without scanning the scene every frame.
+        if (Time.unscaledTime >= nextReferenceRefresh && (cachedHudTabs == null || cachedManagementScreen == null))
+            RefreshNavigationReferences();
         if (!UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen)
         {
-            bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+            bool unifiedNavigation = cachedHudTabs != null;
             if (!unifiedNavigation && Input.GetKeyDown(KeyCode.Q))
                 TogglePanel();
 
@@ -96,12 +106,22 @@ public class InventoryUI : MonoBehaviour
         }
 
         ApplyModeState();
-        RefreshExpandButton();
+        if (IsPanelOpen)
+            RefreshExpandButton();
 
         int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
         if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
+    }
+
+    void RefreshNavigationReferences()
+    {
+        nextReferenceRefresh = Time.unscaledTime + 0.5f;
+        if (cachedHudTabs == null)
+            cachedHudTabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        if (cachedManagementScreen == null)
+            cachedManagementScreen = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
     }
 
     void HandleNumberRowTabShortcut()
@@ -140,13 +160,15 @@ public class InventoryUI : MonoBehaviour
 
         if (panel.activeSelf)
         {
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt != null && mgmt.IsOpen) mgmt.Close();
             modeManager.SetMode(GameModeManager.Mode.Build);
         }
         else if (modeManager.CurrentMode == GameModeManager.Mode.Build)
         {
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt == null || !mgmt.IsOpen)
                 modeManager.SetMode(GameModeManager.Mode.Play);
         }
@@ -168,9 +190,11 @@ public class InventoryUI : MonoBehaviour
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            RefreshNavigationReferences();
             EnsurePanelClickBlocker();
             ApplyConnectedHudBackdrop();
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt != null && mgmt.IsOpen)
                 mgmt.Close();
             BindOrBuildTabs(forceDefaultLayout: false);
@@ -1104,6 +1128,7 @@ public class InventoryUI : MonoBehaviour
             DestroyObject(obsoleteUndo.gameObject);
 
         expandUiBuilt = true;
+        expansionStateKnown = false;
         RefreshExpandButton();
     }
 
@@ -1131,6 +1156,24 @@ public class InventoryUI : MonoBehaviour
         bool canPay = money != null && money.CanAfford(expandCost);
         bool can = canSize && canPay;
 
+        // Affordability remains live, but unchanged values do not dirty the UI.
+        if (expandButton != null && expandButton.interactable != can)
+            expandButton.interactable = can;
+        bool gridAvailable = grid != null;
+        if (expansionStateKnown && displayedFloorWidth == w && displayedFloorHeight == h
+            && displayedExpandWidth == expandWidth && displayedExpandHeight == expandHeight
+            && displayedExpandCost == expandCost && displayedGridAvailable == gridAvailable
+            && displayedCanExpand == canSize)
+            return;
+        expansionStateKnown = true;
+        displayedFloorWidth = w;
+        displayedFloorHeight = h;
+        displayedExpandWidth = expandWidth;
+        displayedExpandHeight = expandHeight;
+        displayedExpandCost = expandCost;
+        displayedGridAvailable = gridAvailable;
+        displayedCanExpand = canSize;
+
         if (expandStatusText != null)
         {
             if (grid == null)
@@ -1143,9 +1186,6 @@ public class InventoryUI : MonoBehaviour
 
         if (expandLabel != null)
             expandLabel.text = canSize ? $"Expand Floor  ${expandCost}" : "Floor Maxed";
-
-        if (expandButton != null)
-            expandButton.interactable = can;
 
     }
 

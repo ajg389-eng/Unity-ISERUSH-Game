@@ -377,6 +377,31 @@ public static class VehiclePathMotion
 {
     static readonly Dictionary<Transform, float> noseLengths = new Dictionary<Transform, float>();
     static int noseCacheFrame = -1;
+    static readonly List<Renderer> clearanceRenderers = new List<Renderer>();
+    static LotArrivalVehicle[] arrivalVehicles = System.Array.Empty<LotArrivalVehicle>();
+    static DeliveryVan[] deliveryVehicles = System.Array.Empty<DeliveryVan>();
+    static DrivingCar[] roadVehicles = System.Array.Empty<DrivingCar>();
+    static int vehicleCacheFrame = -1;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetClearanceCaches()
+    {
+        vehicleCacheFrame = noseCacheFrame = -1;
+        arrivalVehicles = System.Array.Empty<LotArrivalVehicle>();
+        deliveryVehicles = System.Array.Empty<DeliveryVan>();
+        roadVehicles = System.Array.Empty<DrivingCar>();
+        noseLengths.Clear();
+        clearanceRenderers.Clear();
+    }
+
+    static void RefreshVehicleSnapshot()
+    {
+        if (vehicleCacheFrame == Time.frameCount) return;
+        arrivalVehicles = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        deliveryVehicles = UnityEngine.Object.FindObjectsByType<DeliveryVan>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        roadVehicles = UnityEngine.Object.FindObjectsByType<DrivingCar>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        vehicleCacheFrame = Time.frameCount;
+    }
     public static void RoundCorners(List<Vector3> path, float radius)
     {
         if (path == null || path.Count < 3) return;
@@ -563,8 +588,8 @@ public static class VehiclePathMotion
 
     static bool DrivewayOccupied(Transform self, float aisleX)
     {
-        LotArrivalVehicle[] cars = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        RefreshVehicleSnapshot();
+        LotArrivalVehicle[] cars = arrivalVehicles;
         for (int i = 0; i < cars.Length; i++)
         {
             LotArrivalVehicle car = cars[i];
@@ -573,8 +598,7 @@ public static class VehiclePathMotion
                 return true;
         }
 
-        DeliveryVan[] vans = UnityEngine.Object.FindObjectsByType<DeliveryVan>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        DeliveryVan[] vans = deliveryVehicles;
         for (int i = 0; i < vans.Length; i++)
         {
             DeliveryVan van = vans[i];
@@ -594,8 +618,8 @@ public static class VehiclePathMotion
         float best = 80f;
         float nose = NoseLength(self);
 
-        LotArrivalVehicle[] cars = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        RefreshVehicleSnapshot();
+        LotArrivalVehicle[] cars = arrivalVehicles;
         for (int i = 0; i < cars.Length; i++)
         {
             LotArrivalVehicle car = cars[i];
@@ -603,8 +627,7 @@ public static class VehiclePathMotion
             NoteAhead(self, car.transform, forward, sideLimit, nose, ref best);
         }
 
-        DeliveryVan[] vans = UnityEngine.Object.FindObjectsByType<DeliveryVan>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        DeliveryVan[] vans = deliveryVehicles;
         for (int i = 0; i < vans.Length; i++)
         {
             DeliveryVan van = vans[i];
@@ -612,8 +635,7 @@ public static class VehiclePathMotion
             NoteAhead(self, van.transform, forward, sideLimit, nose, ref best);
         }
 
-        DrivingCar[] traffic = UnityEngine.Object.FindObjectsByType<DrivingCar>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        DrivingCar[] traffic = roadVehicles;
         for (int i = 0; i < traffic.Length; i++)
         {
             DrivingCar trafficCar = traffic[i];
@@ -649,19 +671,22 @@ public static class VehiclePathMotion
         if (noseLengths.TryGetValue(body, out float cached)) return cached;
         // The first renderer can be a wheel, which understates pedestrian clearance.
         float length = 1.2f;
-        foreach (Renderer renderer in body.GetComponentsInChildren<Renderer>())
+        body.GetComponentsInChildren<Renderer>(false, clearanceRenderers);
+        Vector3 forward = body.forward;
+        Vector3 origin = body.position;
+        foreach (Renderer renderer in clearanceRenderers)
         {
             Bounds bounds = renderer.localBounds;
-            for (int corner = 0; corner < 8; corner++)
-            {
-                Vector3 offset = Vector3.Scale(bounds.extents, new Vector3(
-                    (corner & 1) == 0 ? -1f : 1f,
-                    (corner & 2) == 0 ? -1f : 1f,
-                    (corner & 4) == 0 ? -1f : 1f));
-                Vector3 world = renderer.transform.TransformPoint(bounds.center + offset);
-                length = Mathf.Max(length, Mathf.Abs(Vector3.Dot(world - body.position, body.forward)));
-            }
+            Matrix4x4 matrix = renderer.localToWorldMatrix;
+            float center = Vector3.Dot(matrix.MultiplyPoint3x4(bounds.center) - origin, forward);
+            // Project the box axes: this gives the same maximum as all eight corners,
+            // including rotated children and non-uniform scale, with less work.
+            float extent = Mathf.Abs(Vector3.Dot(matrix.MultiplyVector(new Vector3(bounds.extents.x, 0f, 0f)), forward))
+                + Mathf.Abs(Vector3.Dot(matrix.MultiplyVector(new Vector3(0f, bounds.extents.y, 0f)), forward))
+                + Mathf.Abs(Vector3.Dot(matrix.MultiplyVector(new Vector3(0f, 0f, bounds.extents.z)), forward));
+            length = Mathf.Max(length, Mathf.Abs(center) + extent);
         }
+        clearanceRenderers.Clear();
         noseLengths[body] = length;
         return length;
     }
@@ -674,8 +699,8 @@ public static class VehiclePathMotion
     public static bool PathIsBlocked(Transform self, Vector3 from, Vector3 to, float clearance)
     {
         clearance = Mathf.Max(0.5f, clearance);
-        LotArrivalVehicle[] cars = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        RefreshVehicleSnapshot();
+        LotArrivalVehicle[] cars = arrivalVehicles;
         for (int i = 0; i < cars.Length; i++)
         {
             LotArrivalVehicle car = cars[i];
@@ -690,8 +715,7 @@ public static class VehiclePathMotion
                 return true;
         }
 
-        DeliveryVan[] vans = UnityEngine.Object.FindObjectsByType<DeliveryVan>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        DeliveryVan[] vans = deliveryVehicles;
         for (int i = 0; i < vans.Length; i++)
         {
             DeliveryVan van = vans[i];
@@ -732,14 +756,15 @@ public static class VehiclePathMotion
     static float NearestVehicle(Transform self, Vector3 world)
     {
         float best = 99f;
-        LotArrivalVehicle[] cars = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        RefreshVehicleSnapshot();
+        LotArrivalVehicle[] cars = arrivalVehicles;
         for (int i = 0; i < cars.Length; i++)
         {
             if (cars[i] == null || cars[i].transform == self) continue;
             float d = HorizontalDistance(world, cars[i].transform.position);
             if (d < best) best = d;
         }
-        DeliveryVan[] vans = UnityEngine.Object.FindObjectsByType<DeliveryVan>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        DeliveryVan[] vans = deliveryVehicles;
         for (int i = 0; i < vans.Length; i++)
         {
             if (vans[i] == null || vans[i].transform == self) continue;

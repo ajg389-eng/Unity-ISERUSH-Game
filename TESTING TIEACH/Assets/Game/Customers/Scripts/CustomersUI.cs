@@ -18,14 +18,16 @@ public class CustomersUI : MonoBehaviour
     readonly List<TextMeshProUGUI> metricValues = new List<TextMeshProUGUI>();
     RectTransform graphBarsRoot;
     Transform demandListRoot;
+    RectTransform demandViewport;
     readonly List<Image> barFills = new List<Image>();
     readonly List<Image> barTracks = new List<Image>();
     readonly List<Image> barRanges = new List<Image>();
     readonly List<Image> barMeans = new List<Image>();
     readonly List<TextMeshProUGUI> barValues = new List<TextMeshProUGUI>();
     readonly List<TextMeshProUGUI> barLabels = new List<TextMeshProUGUI>();
-    readonly List<TextMeshProUGUI> demandRows = new List<TextMeshProUGUI>();
+    readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
+    static readonly float[] demandColumnWidths = { 300f, 130f, 80f, 65f, 70f, 90f, 100f };
 
     void OnEnable()
     {
@@ -114,12 +116,13 @@ public class CustomersUI : MonoBehaviour
         GameUITheme.ConfigureScroll(scroll);
         scroll.inertia = true;
         scroll.decelerationRate = 0.135f;
-        scroll.horizontal = false;
+        scroll.horizontal = true;
         scroll.vertical = true;
 
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
         var vpRt = (RectTransform)viewport.transform;
+        demandViewport = vpRt;
         vpRt.anchorMin = Vector2.zero;
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
@@ -135,15 +138,28 @@ public class CustomersUI : MonoBehaviour
         contentRt.anchorMax = new Vector2(1, 1);
         contentRt.pivot = new Vector2(0.5f, 1f);
         contentRt.anchoredPosition = Vector2.zero;
-        contentRt.sizeDelta = new Vector2(0, 0);
+        // Preserve readable columns on narrow panels; wider panels stretch the item column.
+        contentRt.sizeDelta = Vector2.zero;
         var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 6;
+        vlg.spacing = 1;
         vlg.padding = new RectOffset(4, 4, 4, 4);
         vlg.childControlHeight = true;
         vlg.childControlWidth = true;
         vlg.childForceExpandHeight = false;
         vlg.childForceExpandWidth = true;
-        content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var header = CreateDemandTableRow("Header", 36f, out _);
+        string[] headings = { "Item", "Status", "Open\norders", "Ready", "Cooking", "Ordered\nlast min", "Completed\nlast min" };
+        for (int i = 0; i < headings.Length; i++)
+        {
+            header[i].text = headings[i];
+            header[i].fontStyle = FontStyles.Bold;
+            header[i].fontSize = 12f;
+            header[i].color = new Color(0.72f, 0.77f, 0.86f, 1f);
+        }
+        header[0].transform.parent.parent.GetComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
 
         scroll.viewport = vpRt;
         scroll.content = contentRt;
@@ -468,6 +484,10 @@ public class CustomersUI : MonoBehaviour
     void RefreshDemand()
     {
         if (demandListRoot == null) return;
+        float minimumWidth = 8f + demandColumnWidths.Length - 1;
+        foreach (float width in demandColumnWidths) minimumWidth += width;
+        var contentRect = (RectTransform)demandListRoot;
+        contentRect.sizeDelta = new Vector2(Mathf.Max(0f, minimumWidth - demandViewport.rect.width), contentRect.sizeDelta.y);
 
         var pm = ProductionManager.Instance != null
             ? ProductionManager.Instance
@@ -477,17 +497,21 @@ public class CustomersUI : MonoBehaviour
             : new List<ProductionManager.ItemOutputNeed>();
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
+        demandTitle.text = $"Live demand by item ({needs.Count} items)";
+
+        // Hide entire rows so inactive items leave no backgrounds or layout gaps.
+        for (int i = 0; i < demandRows.Count; i++)
+            demandRows[i][0].transform.parent.parent.gameObject.SetActive(i < Mathf.Max(1, needs.Count));
 
         if (needs.Count == 0)
         {
-            demandRows[0].text = "No cookable menu items yet.";
+            for (int column = 0; column < demandRows[0].Length; column++)
+                demandRows[0][column].text = column == 0 ? "No cookable menu items yet." : "";
             if (demandImages.Count > 0 && demandImages[0] != null)
             {
                 demandImages[0].texture = null;
                 demandImages[0].enabled = false;
             }
-            for (int i = 1; i < demandRows.Count; i++)
-                demandRows[i].gameObject.SetActive(false);
             return;
         }
 
@@ -495,11 +519,9 @@ public class CustomersUI : MonoBehaviour
         {
             if (i >= needs.Count)
             {
-                demandRows[i].gameObject.SetActive(false);
                 continue;
             }
 
-            demandRows[i].gameObject.SetActive(true);
             var row = needs[i];
             if (i < demandImages.Count && demandImages[i] != null)
             {
@@ -515,15 +537,21 @@ public class CustomersUI : MonoBehaviour
                 : row.requested > 0
                     ? "<color=#77D9AE><b>COVERED</b></color>"
                     : "<color=#9AA7B8>NO OPEN ORDERS</color>";
-            demandRows[i].text =
-                $"<b>{name}</b>  ·  {state}\n" +
-                $"Open orders <b>{row.requested}</b>    Ready {row.ready}    Cooking {row.cooking}\n" +
-                $"<size=85%>Last minute  ·  ordered {row.orderedLastMinute}    completed {row.completedLastMinute}</size>";
-            var rowImage = demandRows[i].transform.parent.GetComponent<Image>();
+            var cells = demandRows[i];
+            cells[0].text = name;
+            cells[1].text = state;
+            cells[2].text = row.requested.ToString();
+            cells[3].text = row.ready.ToString();
+            cells[4].text = row.cooking.ToString();
+            cells[5].text = row.orderedLastMinute.ToString();
+            cells[6].text = row.completedLastMinute.ToString();
+            var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
                 rowImage.color = row.requiredOutput > 0
                     ? new Color(0.22f, 0.14f, 0.15f, 0.98f)
-                    : new Color(0.13f, 0.16f, 0.20f, 0.98f);
+                    : i % 2 == 0
+                        ? new Color(0.13f, 0.16f, 0.20f, 0.98f)
+                        : new Color(0.11f, 0.14f, 0.18f, 0.98f);
         }
     }
 
@@ -531,42 +559,56 @@ public class CustomersUI : MonoBehaviour
     {
         while (demandRows.Count < count)
         {
-            var go = new GameObject("DemandRow", typeof(RectTransform));
-            go.transform.SetParent(demandListRoot, false);
-            var le = go.AddComponent<LayoutElement>();
-            le.minHeight = 62;
-            le.preferredHeight = 64;
-            go.AddComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.9f);
-            var textGo = new GameObject("Text", typeof(RectTransform));
-            textGo.transform.SetParent(go.transform, false);
-            var trt = (RectTransform)textGo.transform;
-            trt.anchorMin = Vector2.zero;
-            trt.anchorMax = Vector2.one;
-            trt.offsetMin = new Vector2(64, 2);
-            trt.offsetMax = new Vector2(-10, -2);
-            var tmp = textGo.AddComponent<TextMeshProUGUI>();
-            tmp.fontSize = 14;
-            tmp.alignment = TextAlignmentOptions.MidlineLeft;
-            tmp.color = Color.white;
-            tmp.enableWordWrapping = true;
-            tmp.overflowMode = TextOverflowModes.Ellipsis;
-            demandRows.Add(tmp);
-
-            var imageGo = new GameObject("ProductImage", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
-            imageGo.transform.SetParent(go.transform, false);
-            var imageRect = (RectTransform)imageGo.transform;
-            imageRect.anchorMin = new Vector2(0f, 0.5f);
-            imageRect.anchorMax = new Vector2(0f, 0.5f);
-            imageRect.pivot = new Vector2(0f, 0.5f);
-            imageRect.anchoredPosition = new Vector2(9f, 0f);
-            imageRect.sizeDelta = new Vector2(44f, 44f);
-            var rawImage = imageGo.GetComponent<RawImage>();
-            rawImage.color = Color.white;
-            rawImage.raycastTarget = false;
-            var aspect = imageGo.GetComponent<AspectRatioFitter>();
-            aspect.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-            aspect.aspectRatio = 1f;
-            demandImages.Add(rawImage);
+            demandRows.Add(CreateDemandTableRow("DemandRow", 48f, out var preview));
+            demandImages.Add(preview);
         }
+    }
+
+    TextMeshProUGUI[] CreateDemandTableRow(string name, float height, out RawImage preview)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        go.transform.SetParent(demandListRoot, false);
+        go.GetComponent<Image>().color = new Color(0.13f, 0.16f, 0.20f, 0.98f);
+        var rowSize = go.GetComponent<LayoutElement>();
+        rowSize.minHeight = height;
+        rowSize.preferredHeight = height;
+        var layout = go.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 1f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        preview = null;
+        var cells = new TextMeshProUGUI[demandColumnWidths.Length];
+        for (int i = 0; i < cells.Length; i++)
+        {
+            var cell = new GameObject("Column" + i, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            cell.transform.SetParent(go.transform, false);
+            cell.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
+            var size = cell.GetComponent<LayoutElement>();
+            size.minWidth = demandColumnWidths[i];
+            size.preferredWidth = demandColumnWidths[i];
+            size.flexibleWidth = i == 0 ? 1f : 0f;
+            var label = CreateLabel(cell.transform, "Text", Vector2.zero, Vector2.one,
+                Vector2.zero, Vector2.zero, 13f,
+                i == 0 ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center);
+            SetRect(label.rectTransform, Vector2.zero, Vector2.one,
+                new Vector2(i == 0 && name != "Header" ? 48f : 8f, 4f), new Vector2(-8f, -4f));
+            label.raycastTarget = false;
+            cells[i] = label;
+            if (i != 0 || name == "Header") continue;
+
+            var imageGo = new GameObject("ProductImage", typeof(RectTransform), typeof(RawImage));
+            imageGo.transform.SetParent(cell.transform, false);
+            var imageRect = (RectTransform)imageGo.transform;
+            imageRect.anchorMin = imageRect.anchorMax = new Vector2(0f, 0.5f);
+            imageRect.pivot = new Vector2(0f, 0.5f);
+            imageRect.anchoredPosition = new Vector2(6f, 0f);
+            imageRect.sizeDelta = new Vector2(36f, 36f);
+            preview = imageGo.GetComponent<RawImage>();
+            preview.raycastTarget = false;
+        }
+        return cells;
     }
 }
