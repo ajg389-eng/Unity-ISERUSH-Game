@@ -23,6 +23,7 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     readonly List<Transform> outputMarkers = new List<Transform>();
     int displayedUnits = -1;
     bool displayedCooked;
+    ItemDefinition displayedProduct;
 
     ItemDefinition CookedItem
     {
@@ -44,11 +45,13 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     }
     public bool CanProcess(ItemDefinition output) => output != null && output == CookedItem;
     public ItemDefinition GetSelectedOutput() => CookedItem;
+    public ItemDefinition GetSelectedInput() => RawItem;
     public void SetRecipeOutput(ItemDefinition output)
     {
         if (selectedProduct != output) ResetRuntimeState();
         selectedProduct = output;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+        RefreshItemDisplay(true);
     }
 
     public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
@@ -156,13 +159,15 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     void RefreshItemDisplay(bool force)
     {
         bool cooked = IsCooked();
-        if (!force && displayedUnits == basketUnits && displayedCooked == cooked) return;
+        if (!force && displayedUnits == basketUnits && displayedCooked == cooked
+            && displayedProduct == selectedProduct) return;
         EnsureBufferMarkers();
         if (itemDisplayRoot == null)
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "FryerItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
         displayedUnits = basketUnits;
         displayedCooked = cooked;
+        displayedProduct = selectedProduct;
         if (basketUnits <= 0) return;
 
         ItemDefinition visualItem = cooked ? CookedItem : RawItem;

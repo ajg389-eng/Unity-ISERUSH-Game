@@ -50,6 +50,7 @@ public class PauseMenuUI : MonoBehaviour
     GameObject overlay;
     GameObject mainPage;
     GameObject optionsPage;
+    GameObject creditsPage;
     GuidebookUI guidebook;
     GameObject audioPage;
     GameObject videoPage;
@@ -93,6 +94,7 @@ public class PauseMenuUI : MonoBehaviour
     bool built;
     bool showingOptions;
     bool showingGuidebook;
+    bool showingCredits;
     bool titleSettingsMode;
     bool confirmationOwnsOverlay;
     bool confirmationPausedGame;
@@ -156,6 +158,8 @@ public class PauseMenuUI : MonoBehaviour
                 Show();
             else if (showingGuidebook)
                 CloseGuidebook();
+            else if (showingCredits)
+                ShowMain();
             else if (showingOptions)
                 ShowMain();
             else
@@ -204,6 +208,7 @@ public class PauseMenuUI : MonoBehaviour
         visible = false;
         showingOptions = false;
         showingGuidebook = false;
+        showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
         if (overlay != null)
@@ -225,10 +230,12 @@ public class PauseMenuUI : MonoBehaviour
         }
         showingOptions = false;
         showingGuidebook = false;
+        showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
         if (mainPage != null) mainPage.SetActive(true);
         if (optionsPage != null) optionsPage.SetActive(false);
+        if (creditsPage != null) creditsPage.SetActive(false);
     }
 
     public void CloseGuidebook()
@@ -416,6 +423,8 @@ public class PauseMenuUI : MonoBehaviour
         mainPage = BuildMainPage(overlay.transform);
         optionsPage = BuildOptionsPage(overlay.transform);
         optionsPage.SetActive(false);
+        creditsPage = BuildCreditsPage(overlay.transform);
+        creditsPage.SetActive(false);
         guidebook = GuidebookUI.Create(overlay.transform);
         quitConfirmation = BuildQuitConfirmation(overlay.transform);
         quitConfirmation.SetActive(false);
@@ -480,9 +489,163 @@ public class PauseMenuUI : MonoBehaviour
         var feedback = CreateMenuButton(page.transform, "FeedbackButton", "Give Feedback", 54f, 360f, 22f, MainButtonColor);
         feedback.onClick.AddListener(OpenFeedbackForm);
 
+        var credits = CreateMenuButton(page.transform, "CreditsButton", "Credits", 54f, 360f, 22f, MainButtonColor);
+        credits.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            ShowCredits();
+        });
+
         var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
         quit.onClick.AddListener(OnQuitToMenu);
         return page;
+    }
+
+    void ShowCredits()
+    {
+        showingCredits = true;
+        showingOptions = false;
+        showingGuidebook = false;
+        if (guidebook != null) guidebook.Close();
+        if (mainPage != null) mainPage.SetActive(false);
+        if (optionsPage != null) optionsPage.SetActive(false);
+        if (creditsPage != null) creditsPage.SetActive(true);
+    }
+
+    GameObject BuildCreditsPage(Transform parent)
+    {
+        var card = new GameObject("CreditsPage", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(VerticalLayoutGroup));
+        card.transform.SetParent(parent, false);
+        var cardRt = (RectTransform)card.transform;
+        cardRt.anchorMin = cardRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRt.pivot = new Vector2(0.5f, 0.5f);
+        cardRt.sizeDelta = new Vector2(760f, 820f);
+        card.GetComponent<UnityEngine.UI.Image>().color = PanelColor;
+        AddPanelChrome(card);
+
+        var cardLayout = card.GetComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(28, 28, 22, 22);
+        cardLayout.spacing = 12f;
+        cardLayout.childAlignment = TextAnchor.UpperCenter;
+        cardLayout.childControlWidth = true;
+        cardLayout.childControlHeight = true;
+        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandHeight = false;
+
+        var title = CreateLabel(card.transform, "CreditsTitle", "Credits", 30f, TextAlignmentOptions.Center);
+        title.fontStyle = FontStyles.Bold;
+        title.GetComponent<LayoutElement>().preferredHeight = 42f;
+
+        var scroll = new GameObject("CreditsScrollView", typeof(RectTransform), typeof(LayoutElement),
+            typeof(ScrollRect));
+        scroll.transform.SetParent(card.transform, false);
+        var scrollLayout = scroll.GetComponent<LayoutElement>();
+        scrollLayout.preferredHeight = 660f;
+        scrollLayout.flexibleHeight = 1f;
+
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(Mask));
+        viewport.transform.SetParent(scroll.transform, false);
+        var viewportRt = (RectTransform)viewport.transform;
+        Stretch(viewportRt);
+        viewport.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 0f, 0f, 0.14f);
+        viewport.GetComponent<Mask>().showMaskGraphic = true;
+
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup),
+            typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        var contentRt = (RectTransform)content.transform;
+        contentRt.anchorMin = new Vector2(0f, 1f);
+        contentRt.anchorMax = new Vector2(1f, 1f);
+        contentRt.pivot = new Vector2(0.5f, 1f);
+        contentRt.anchoredPosition = Vector2.zero;
+        contentRt.sizeDelta = Vector2.zero;
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(16, 16, 14, 14);
+        contentLayout.spacing = 8f;
+        contentLayout.childAlignment = TextAnchor.UpperLeft;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        CreateCreditSection(content.transform, "UNITY ASSET STORE PACKAGES");
+        CreateCreditLink(content.transform, "Fast Food Restaurant Kit", "Brick Project Studio",
+            "https://assetstore.unity.com/packages/3d/environments/fast-food-restaurant-kit-239419");
+        CreateCreditLink(content.transform, "Pandazole - Kitchen Food low poly pack", "Pandazole",
+            "https://assetstore.unity.com/packages/3d/props/food/pandazole-kitchen-food-low-poly-pack-204525");
+        CreateCreditLink(content.transform, "FREE Party Game Characters", "OlyPoly",
+            "https://assetstore.unity.com/packages/3d/characters/humanoids/free-party-game-characters-342650");
+        CreateCreditLink(content.transform, "Free Cooking Animations", "EEJANAI, TEAM",
+            "https://assetstore.unity.com/packages/3d/animations/free-cooking-animations-318012");
+        CreateCreditLink(content.transform, "FREE Casual Game SFX Pack", "Dustryroom",
+            "https://assetstore.unity.com/packages/audio/sound-fx/free-casual-game-sfx-pack-54116");
+        CreateCreditLink(content.transform, "Toony Kitchen & Ingredients Model FREE", "Sigun Studio",
+            "https://assetstore.unity.com/packages/3d/props/toony-kitchen-ingredients-model-free-301805");
+        CreateCreditLink(content.transform, "Customizable skybox", "Key Mouse",
+            "https://assetstore.unity.com/packages/p/customizable-skybox-174576");
+        CreateCreditLink(content.transform, "Low Poly Environment - Nature Free", "PolyTope Studio",
+            "https://assetstore.unity.com/packages/3d/environments/low-poly-environment-nature-free-lowpoly-medieval-fantasy-series-187052");
+        CreateCreditLink(content.transform, "Ultimate Food Pack - Low Poly 3D Food & Kitchen Assets", "AZ Studios",
+            "https://assetstore.unity.com/packages/3d/props/food/ultimate-food-pack-low-poly-3d-food-kitchen-assets-403436");
+
+        CreateCreditSection(content.transform, "MUSIC");
+        CreateCreditLink(content.transform, "Dreamy", "Jan-Michael Hökenschnieder x Fachhochschule Dortmund",
+            "https://freemusicarchive.org/search/?quicksearch=dreamy&search-genre=");
+        CreateCreditLink(content.transform, "Peak Hours Calm", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+        CreateCreditLink(content.transform, "Corporate Candy", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+        CreateCreditLink(content.transform, "Walkabout", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+
+        var scrollRect = scroll.GetComponent<ScrollRect>();
+        scrollRect.content = contentRt;
+        scrollRect.viewport = viewportRt;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 32f;
+        GameUITheme.ConfigureScroll(scrollRect);
+
+        var back = CreateMenuButton(card.transform, "CreditsBackButton", "Back", 46f, 340f, 18f, OptionsButtonColor);
+        back.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            ShowMain();
+        });
+        return card;
+    }
+
+    static void CreateCreditSection(Transform parent, string text)
+    {
+        var label = CreateLabel(parent, text.Replace(" ", string.Empty) + "Header", text, 15f,
+            TextAlignmentOptions.MidlineLeft);
+        label.fontStyle = FontStyles.Bold;
+        label.color = GameUITheme.Accent;
+        var layout = label.GetComponent<LayoutElement>();
+        layout.minHeight = 34f;
+        layout.preferredHeight = 34f;
+    }
+
+    static void CreateCreditLink(Transform parent, string packageName, string artist, string url)
+    {
+        var button = CreateMenuButton(parent, packageName.Replace(" ", string.Empty) + "Credit",
+            packageName + "\n<size=80%>by " + artist + "  •  Open source page</size>",
+            64f, 650f, 16f, GameUITheme.Surface);
+        var label = button.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+        {
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.textWrappingMode = TextWrappingModes.Normal;
+        }
+        button.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            Application.OpenURL(url);
+        });
     }
 
     GameObject BuildOptionsPage(Transform parent)

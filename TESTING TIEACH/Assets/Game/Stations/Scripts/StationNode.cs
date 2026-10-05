@@ -127,7 +127,9 @@ public class StationNode : MonoBehaviour
         {
             int stationBatch = Mathf.Min(batchSize, grill.InputSlotCapacity, grill.OutputSlotCapacity);
             SetIo(RateForCycle(grill.processTimeSeconds, stationBatch),
-                RateForCycle(grill.processTimeSeconds, stationBatch), "patties", "cooked patties");
+                RateForCycle(grill.processTimeSeconds, stationBatch),
+                ItemLabel(grill.GetSelectedInput(), "select recipe"),
+                ItemLabel(grill.GetSelectedOutput(), "select recipe"));
         }
         else if (assembly != null)
         {
@@ -163,7 +165,8 @@ public class StationNode : MonoBehaviour
             int stationBatch = Mathf.Min(batchSize, fryer.InputSlotCapacity, fryer.OutputSlotCapacity);
             SetIo(RateForCycle(fryer.processTimeSeconds, stationBatch),
                 RateForCycle(fryer.processTimeSeconds, stationBatch),
-                "potato slices", "cooked potato slices");
+                ItemLabel(fryer.GetSelectedInput(), "select recipe"),
+                ItemLabel(fryer.GetSelectedOutput(), "select recipe"));
         }
         else if (drink != null)
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");

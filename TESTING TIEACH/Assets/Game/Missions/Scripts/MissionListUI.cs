@@ -32,6 +32,7 @@ public class MissionListUI : MonoBehaviour
     public Transform tasksListContent;
     public Transform progressionListContent;
     public TextMeshProUGUI progressionDetailText;
+    public Button researchButton;
     public Button openQuizButton;
 
     [Header("Layout")]
@@ -562,6 +563,10 @@ public class MissionListUI : MonoBehaviour
         progressionDetailText.textWrappingMode = TextWrappingModes.Normal;
         progressionDetailText.GetComponent<LayoutElement>().minHeight = 44f;
 
+        researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
+            new Color(0.22f, 0.48f, 0.58f, 1f));
+        researchButton.onClick.AddListener(OpenResearch);
+
         progressionListContent = CreateScrollList(progressionPage.transform, "ProgressionList");
 
         openQuizButton = CreateButton(progressionPage.transform, "OpenQuizButton", "Open Quiz", new Color(0.4f, 0.45f, 0.25f, 1f));
@@ -592,6 +597,17 @@ public class MissionListUI : MonoBehaviour
                                      ?? panelRoot.transform.Find("ProgressionPage/ProgressionList");
         if (progressionDetailText == null)
             progressionDetailText = panelRoot.transform.Find("ProgressionPage/Detail")?.GetComponent<TextMeshProUGUI>();
+        if (researchButton == null)
+            researchButton = panelRoot.transform.Find("ProgressionPage/ResearchButton")?.GetComponent<Button>();
+        if (researchButton == null && progressionPage != null)
+        {
+            researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
+                new Color(0.22f, 0.48f, 0.58f, 1f));
+
+            Transform progressionList = progressionPage.transform.Find("ProgressionList");
+            if (progressionList != null)
+                researchButton.transform.SetSiblingIndex(progressionList.GetSiblingIndex());
+        }
         if (openQuizButton == null)
             openQuizButton = panelRoot.transform.Find("ProgressionPage/OpenQuizButton")?.GetComponent<Button>();
     }
@@ -613,6 +629,17 @@ public class MissionListUI : MonoBehaviour
             openQuizButton.onClick.RemoveListener(OpenQuiz);
             openQuizButton.onClick.AddListener(OpenQuiz);
         }
+        if (researchButton != null)
+        {
+            researchButton.onClick.RemoveListener(OpenResearch);
+            researchButton.onClick.AddListener(OpenResearch);
+        }
+    }
+
+    void OpenResearch()
+    {
+        ResearchTreeUI.Open(targetCanvas != null ? targetCanvas.transform : transform.root);
+        Sfx.Play(SfxId.UiClick);
     }
 
     void EnsureTopTabs()

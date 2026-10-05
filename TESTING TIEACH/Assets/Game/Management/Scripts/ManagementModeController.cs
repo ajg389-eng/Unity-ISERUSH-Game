@@ -687,10 +687,12 @@ public class ManagementModeController : MonoBehaviour
         if (freezer != null) return freezer.selectedItem;
         PantryStation pantry = station.GetComponent<PantryStation>();
         if (pantry != null) return pantry.selectedItem;
-        if (station.GetComponent<GrillStation>() != null) return config.cookedPattyIngredient;
+        GrillStation grill = station.GetComponent<GrillStation>();
+        if (grill != null) return grill.GetSelectedOutput();
         CuttingStation cutting = station.GetComponent<CuttingStation>();
         if (cutting != null) return cutting.GetSelectedRecipe()?.output;
-        if (station.GetComponent<FryerStation>() != null) return config.cookedPotatoIngredient;
+        FryerStation fryer = station.GetComponent<FryerStation>();
+        if (fryer != null) return fryer.GetSelectedOutput();
         if (station.GetComponent<DrinkStation>() != null) return config.drinkItem;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
         return assembly != null ? assembly.GetSelectedRecipe()?.output : null;
@@ -716,8 +718,12 @@ public class ManagementModeController : MonoBehaviour
         }
         if (target.GetComponent<FryerStation>() != null)
         {
-            if (stored == config.slicedPotatoIngredient) return true;
-            reason = "The Fryer needs " + DisplayItemName(config.slicedPotatoIngredient)
+            FryerStation fryer = target.GetComponent<FryerStation>();
+            StationProcessingRecipeDefinition fryerRecipe = fryer != null
+                ? config.GetFryerRecipe(fryer.GetSelectedOutput()) : null;
+            ItemDefinition required = fryerRecipe != null ? fryerRecipe.input : config.slicedPotatoIngredient;
+            if (stored == required) return true;
+            reason = "The Fryer needs " + DisplayItemName(required)
                 + ", but this Pantry stores " + DisplayItemName(stored) + ".";
             return false;
         }
@@ -1347,10 +1353,12 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (grill != null)
         {
-            inputPrefab = rawPattyModel;
-            outputPrefab = cookedPattyModel;
-            inputName = "Raw patties";
-            outputName = "Cooked patties";
+            ItemDefinition grillInput = grill.GetSelectedInput();
+            ItemDefinition grillOutput = grill.GetSelectedOutput();
+            inputPrefab = grillInput != null && grillInput.prefab != null ? grillInput.prefab : rawPattyModel;
+            outputPrefab = grillOutput != null && grillOutput.prefab != null ? grillOutput.prefab : cookedPattyModel;
+            inputName = grillInput != null ? DisplayItemName(grillInput) : "Select recipe";
+            outputName = grillOutput != null ? DisplayItemName(grillOutput) : "Select recipe";
             cycleSeconds = grill.processTimeSeconds;
         }
         else if (assembly != null)
@@ -1382,8 +1390,10 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (fryer != null)
         {
-            ItemDefinition fryerInput = modelConfig != null ? modelConfig.slicedPotatoIngredient : null;
-            ItemDefinition fryerOutput = modelConfig != null ? modelConfig.cookedPotatoIngredient : null;
+            ItemDefinition fryerOutput = fryer.GetSelectedOutput();
+            StationProcessingRecipeDefinition fryerRecipe = modelConfig != null
+                ? modelConfig.GetFryerRecipe(fryerOutput) : null;
+            ItemDefinition fryerInput = fryerRecipe != null ? fryerRecipe.input : null;
             inputPrefab = fryerInput != null && fryerInput.prefab != null
                 ? fryerInput.prefab : rawFriesPreviewPrefab;
             outputPrefab = fryerOutput != null && fryerOutput.prefab != null
