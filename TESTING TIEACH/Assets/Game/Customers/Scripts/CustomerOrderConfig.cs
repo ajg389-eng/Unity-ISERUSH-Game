@@ -407,6 +407,16 @@ public class CustomerOrderConfig : ScriptableObject
         recipe != null && recipe.rawPantryInput != null && recipe.pantryInput != null
         && recipe.rawPantryInput != recipe.pantryInput;
 
+    public ItemDefinition GetAssemblyThirdSupplySource(AssemblyRecipeDefinition recipe)
+    {
+        if (recipe == null) return null;
+        return recipe.rawThirdInput != null ? recipe.rawThirdInput : recipe.thirdInput;
+    }
+
+    public bool AssemblyThirdSupplyRequiresProcessing(AssemblyRecipeDefinition recipe) =>
+        recipe != null && recipe.rawThirdInput != null && recipe.thirdInput != null
+        && recipe.rawThirdInput != recipe.thirdInput;
+
     /// <summary>Assembly outputs in production order, including intermediate recipes.</summary>
     public List<ItemDefinition> GetAssemblyChain(ItemDefinition finalProduct)
     {

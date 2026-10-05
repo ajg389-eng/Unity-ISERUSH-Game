@@ -1050,6 +1050,12 @@ public class ProductionManager : MonoBehaviour
                 && recipe.processedInput != null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe, recipe.processedInput,
                     recipe.processedInput, station.BufferedProcessedInputCount, false, null, null);
+            if (recipe.thirdInput != null)
+                EnsureAssemblyIngredientSupplyJob(station, recipe,
+                    orderConfig != null ? orderConfig.GetAssemblyThirdSupplySource(recipe) : recipe.thirdInput,
+                    recipe.thirdInput, station.BufferedThirdInputCount,
+                    orderConfig != null && orderConfig.AssemblyThirdSupplyRequiresProcessing(recipe),
+                    recipe.thirdSupplyPipeline, recipe.thirdSupplyStageOutputs);
         }
     }
 

@@ -58,8 +58,10 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             AssemblyRecipeDefinition recipe = GetSelectedRecipe();
             int processedPerUnit = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
             int pantryPerUnit = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
+            int thirdPerUnit = recipe != null && recipe.thirdInput != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1;
             return Mathf.Max(1, Mathf.Min(OutputSlotCapacity,
-                IngredientCapacity / processedPerUnit, IngredientCapacity / pantryPerUnit));
+                IngredientCapacity / processedPerUnit, IngredientCapacity / pantryPerUnit,
+                recipe != null && recipe.thirdInput != null ? IngredientCapacity / thirdPerUnit : int.MaxValue));
         }
     }
 
@@ -68,6 +70,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || item == null) return 0;
         if (item == recipe.pantryInput) return bufferedPantryInputs;
+        if (item == recipe.thirdInput) return bufferedThirdInputs;
         if (recipe.processedInput == null || item == recipe.processedInput) return bufferedProcessedInputs;
         return 0;
     }
@@ -84,6 +87,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (recipe == null || item == null || amount <= 0) return false;
         if (item == recipe.pantryInput)
             return bufferedPantryInputs + amount <= IngredientCapacity;
+        if (item == recipe.thirdInput)
+            return IsMk2 && bufferedThirdInputs + amount <= IngredientCapacity;
         return (recipe.processedInput == null || item == recipe.processedInput)
             && bufferedProcessedInputs + amount <= IngredientCapacity;
     }
@@ -94,6 +99,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (!CanAcceptInput(item, amount) || recipe == null) return 0;
         if (item == recipe.pantryInput)
             return ReceivePantryInput(item, amount);
+        if (item == recipe.thirdInput)
+            return ReceiveThirdInput(item, amount);
         return ReceiveProcessedInput(item, amount);
     }
 
@@ -152,6 +159,16 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         return accepted;
     }
 
+    public int ReceiveThirdInput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (!IsMk2 || recipe == null || item == null || item != recipe.thirdInput || amount <= 0) return 0;
+        int accepted = Mathf.Min(amount, Mathf.Max(0, IngredientCapacity - bufferedThirdInputs));
+        bufferedThirdInputs += accepted;
+        if (accepted > 0) RefreshTableDisplay();
+        return accepted;
+    }
+
     public bool CanReceiveProcessedInput(ItemDefinition item, int amount)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
@@ -188,8 +205,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
                     present++;
         }
         int processedRequired = units * Mathf.Max(1, recipe.processedInputAmount);
-        return bufferedProcessedInputs >= processedRequired
+        int thirdRequired = recipe.thirdInput != null ? units * Mathf.Max(1, recipe.thirdInputAmount) : 0;
+        return (!recipe.RequiresMk2 || IsMk2)
+            && bufferedProcessedInputs >= processedRequired
             && present + bufferedPantryInputs >= required
+            && bufferedThirdInputs >= thirdRequired
             && CanStoreOutput(units);
     }
 
@@ -214,6 +234,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (consume != 0) return false;
 
         bufferedProcessedInputs = Mathf.Max(0, bufferedProcessedInputs - processedConsume);
+        if (recipe.thirdInput != null)
+            bufferedThirdInputs = Mathf.Max(0, bufferedThirdInputs - units * Mathf.Max(1, recipe.thirdInputAmount));
         bufferedOutputs = Mathf.Min(OutputSlotCapacity, bufferedOutputs + units);
         RefreshTableDisplay();
         return true;
@@ -271,6 +293,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         GameObject processedPrefab = recipe.processedInput != null && recipe.processedInput.prefab != null
             ? recipe.processedInput.prefab : defaultProcessedInputDisplayPrefab;
         GameObject pantryPrefab = recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
+        GameObject thirdPrefab = recipe.thirdInput != null ? recipe.thirdInput.prefab : null;
         GameObject outputPrefab = recipe.output != null && recipe.output.prefab != null
             ? recipe.output.prefab : defaultOutputDisplayPrefab;
 
@@ -278,6 +301,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             processedInputDisplaySlots, "ProcessedInput");
         SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, IngredientCapacity),
             pantryInputDisplaySlots, "PantryInput");
+        SpawnDisplayedItems(thirdPrefab, Mathf.Min(bufferedThirdInputs, IngredientCapacity),
+            thirdInputDisplaySlots, "ThirdInput");
         SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputSlotCapacity),
             outputDisplaySlots, "Output");
     }
@@ -290,17 +315,20 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         {
             var processed = new List<Transform>();
             var pantry = new List<Transform>();
+            var third = new List<Transform>();
             for (int i = 0; i < inputMarkers.Count; i++)
             {
                 Transform marker = inputMarkers[i];
                 string markerName = marker.name.ToLowerInvariant();
-                if (markerName.EndsWith("b")) pantry.Add(marker);
+                if (markerName.Contains("input3")) third.Add(marker);
+                else if (markerName.Contains("input2") || markerName.EndsWith("b")) pantry.Add(marker);
                 else if (markerName.EndsWith("a")) processed.Add(marker);
                 else if ((i & 1) == 0) processed.Add(marker);
                 else pantry.Add(marker);
             }
             processedInputDisplaySlots = processed.ToArray();
             pantryInputDisplaySlots = pantry.ToArray();
+            thirdInputDisplaySlots = third.ToArray();
         }
         if (outputMarkers.Count > 0)
             outputDisplaySlots = outputMarkers.ToArray();

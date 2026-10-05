@@ -1875,9 +1875,13 @@ public class ManagementModeController : MonoBehaviour
             int recipeRows = 0;
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
             bool shakeStation = assembly.GetComponent<ShakeStation>() != null;
+            productInfoText.text = assembly.IsMk2
+                ? "SELECT 3-INPUT MK2 RECIPE"
+                : "SELECT 2-INPUT MK1 RECIPE";
             foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
             {
                 if (recipe == null) continue;
+                if (recipe.RequiresMk2 != assembly.IsMk2) continue;
                 bool shakeRecipe = config.IsDrink(recipe.output);
                 if (shakeStation != shakeRecipe) continue;
                 if (recipeCount % 3 == 0)
@@ -1899,6 +1903,12 @@ public class ManagementModeController : MonoBehaviour
                     recipeRows * 117f + Mathf.Max(0, recipeRows - 1) * 5f);
                 listSize.minHeight = height;
                 listSize.preferredHeight = height;
+            }
+            if (recipeCount == 0)
+            {
+                productInfoText.text = assembly.IsMk2
+                    ? "MK2: no 3-input recipes unlocked yet"
+                    : "MK1: no 2-input recipes available";
             }
             productListContainer.gameObject.SetActive(recipeCount > 0);
             return;
