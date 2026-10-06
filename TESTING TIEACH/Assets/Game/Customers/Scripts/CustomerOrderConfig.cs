@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [System.Serializable]
 public class AssemblyRecipeDefinition
@@ -102,7 +103,11 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition tomatoIngredient;
     public ItemDefinition slicedTomatoIngredient;
     [Header("Bacon, onion, and egg")]
-    public ItemDefinition rawBaconIngredient;
+    [FormerlySerializedAs("rawBaconIngredient")]
+    [Tooltip("Bacon slab stocked by a Freezer and carried to a Cutting Station.")]
+    public ItemDefinition baconSlabIngredient;
+    [Tooltip("Cut bacon produced by a Cutting Station and carried to a Grill.")]
+    public ItemDefinition cutBaconIngredient;
     public ItemDefinition cookedBaconIngredient;
     public ItemDefinition onionIngredient;
     public ItemDefinition onionRingIngredient;
@@ -296,7 +301,7 @@ public class CustomerOrderConfig : ScriptableObject
         if (rawPattyIngredient != null && yielded.Add(rawPattyIngredient)) yield return rawPattyIngredient;
         if (lettuceIngredient != null && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
         if (tomatoIngredient != null && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
-        if (rawBaconIngredient != null && yielded.Add(rawBaconIngredient)) yield return rawBaconIngredient;
+        if (baconSlabIngredient != null && yielded.Add(baconSlabIngredient)) yield return baconSlabIngredient;
         if (onionIngredient != null && yielded.Add(onionIngredient)) yield return onionIngredient;
         if (eggIngredient != null && yielded.Add(eggIngredient)) yield return eggIngredient;
         if (assemblyRecipes != null)
@@ -330,7 +335,7 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null) return false;
         if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
-            || item == rawBaconIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient) return true;
+            || item == baconSlabIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient) return true;
         if (assemblyRecipes == null) return false;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)

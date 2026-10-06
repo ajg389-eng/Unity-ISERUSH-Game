@@ -408,10 +408,12 @@ public class IngredientsOrderUI : MonoBehaviour
         ConnectGraphNodes(cheesePatty, cheeseburger);
         ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE");
 
-        var rawBacon = AddGraphNode(menu.rawBaconIngredient, "RAW BACON", "FREEZER", new Vector2(330f, 0f));
-        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -180f));
+        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 0f));
+        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(330f, -150f));
+        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -300f));
         var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "CHEESE BACON BURGER", "ASSEMBLY", new Vector2(-80f, -350f), true);
-        ConnectGraphNodes(rawBacon, cookedBacon, "COOK"); ConnectGraphNodes(cheeseburger, cb); ConnectGraphNodes(cookedBacon, cb, "ASSEMBLE");
+        ConnectGraphNodes(baconSlab, cutBacon, "CUT"); ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
+        ConnectGraphNodes(cheeseburger, cb); ConnectGraphNodes(cookedBacon, cb, "ASSEMBLE");
 
         AddBurgerToppingBranch(menu, menu.cheeseBaconLettuceBurgerItem, cb, menu.lettuceIngredient,
             menu.slicedLettuceIngredient, "LETTUCE", "SLICED LETTUCE", new Vector2(380f, -340f),

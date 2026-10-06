@@ -1849,7 +1849,10 @@ public class KitchenEmployee : MonoBehaviour
             return;
         }
 
-        if (currentJob.isAssemblySupply && deliverTarget.GetComponent<CuttingStation>() == null)
+        // Only the final supply handoff goes directly into the target Assembly Station.
+        // Intermediate destinations such as Cutting, Grill, and Fryer must continue
+        // through the generic buffered-station handoff below.
+        if (currentJob.isAssemblySupply && deliverTarget.GetComponent<AssemblyStation>() != null)
         {
             AssemblyStation targetAssembly = currentJob.assemblySupplyTarget != null
                 ? currentJob.assemblySupplyTarget

@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Raw Bacon
+  m_Name: Bacon Slab
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Raw Bacon
-  prefab: {fileID: 1655350519324790408, guid: 3b5dda652e85c1c49987eb690d97a620, type: 3}
+  itemName: Bacon Slab
+  prefab: {fileID: 1655350519324790408, guid: 6697d52e616b1e343aae0d1712f5df97, type: 3}
   price: 2
   startingQuantity: 0
   stationFamily: 
