@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 7, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 9, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
@@ -16,7 +16,7 @@ public class KitchenSaveSnapshot
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
@@ -71,6 +71,7 @@ public class KitchenSaveSnapshot
                         : pantry != null ? pantry.selectedItem
                         : cutting != null ? cutting.selectedProduct : null;
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
+                        pantrySecondProduct=pantry != null && pantry.secondItem != null ? pantry.secondItem.name : "",
                         slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
                         processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
                         pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
@@ -110,7 +111,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>8 || inv==null || pm==null) return false;
+        if(version<1 || version>9 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -125,6 +126,7 @@ public class KitchenSaveSnapshot
             }
         }
         foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
+        foreach(var e in equipment) if(!string.IsNullOrEmpty(e.pantrySecondProduct) && !definitions.ContainsKey(e.pantrySecondProduct)) return false;
         if(workers.Count>0 && pm.employeePrefab==null) return false;
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
         pm.ResetTransientProductionState();
@@ -163,7 +165,11 @@ public class KitchenSaveSnapshot
             var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
             var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
-            var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) pantry.SetStoredItem(product);
+            var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) {
+                ItemDefinition second=null;
+                if(!string.IsNullOrEmpty(e.pantrySecondProduct)) definitions.TryGetValue(e.pantrySecondProduct,out second);
+                pantry.SetStoredItems(product,second);
+            }
             var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.SetRecipe(pm.orderConfig != null ? pm.orderConfig.GetCuttingRecipe(product) : null);
             if(e.slot>=0) {
                 CounterSurface closest=null; float best=float.PositiveInfinity;

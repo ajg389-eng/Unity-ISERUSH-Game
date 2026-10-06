@@ -653,7 +653,7 @@ public class OnboardingTutorial : MonoBehaviour
         foreach (var s in FindObjectsByType<FreezerStation>(FindObjectsSortMode.None))
             freezer |= IsPlacedFlowStation<FreezerStation>(s.gameObject) && s.selectedItem == config.rawPattyIngredient;
         foreach (var s in FindObjectsByType<PantryStation>(FindObjectsSortMode.None))
-            pantry |= IsPlacedFlowStation<PantryStation>(s.gameObject) && s.selectedItem == config.GetAssemblySupplySource(recipe);
+            pantry |= IsPlacedFlowStation<PantryStation>(s.gameObject) && s.CanDispense(config.GetAssemblySupplySource(recipe));
         foreach (var s in FindObjectsByType<GrillStation>(FindObjectsSortMode.None))
             grill |= IsPlacedFlowStation<GrillStation>(s.gameObject) && s.GetSelectedOutput() == config.cookedPattyIngredient;
         foreach (var s in FindObjectsByType<AssemblyStation>(FindObjectsSortMode.None))

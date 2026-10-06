@@ -376,7 +376,8 @@ public class KitchenEmployee : MonoBehaviour
     public string GetBlockedReason()
     {
         if (!CanTakeJobs) return "No flow or stations assigned";
-        if (manager == null || currentJob == null) return string.Empty;
+        if (manager == null) return string.Empty;
+        if (currentJob == null) return manager.GetIdleFlowSupplyWarning(this);
 
         if ((awaitingOutputDelivery || step == Step.GoToOutput || step == Step.AtOutput)
             && deliverTarget == null)
@@ -2161,7 +2162,7 @@ public class KitchenEmployee : MonoBehaviour
             return;
 
         GameObject output = manager.GetFlowOutput(this, fryer.gameObject, null,
-            manager.FriesItem);
+            manager.CookedPotatoItem);
         AssemblyStation assembly = output != null ? output.GetComponent<AssemblyStation>() : null;
         if (assembly == null || !assembly.CanProcess(manager.FriesItem)
             || !assembly.CanAcceptInput(manager.CookedPotatoItem, 1))

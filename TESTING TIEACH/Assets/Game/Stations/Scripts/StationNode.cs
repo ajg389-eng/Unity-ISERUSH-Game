@@ -172,7 +172,7 @@ public class StationNode : MonoBehaviour
             SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
         else if (pantry != null)
             SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "-",
-                ItemLabel(pantry.selectedItem, "select ingredient"));
+                pantry.StoredItemsLabel);
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
         else
@@ -513,7 +513,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
 
 
         PantryStation pantry = GetComponent<PantryStation>();
-        if (pantry != null && (!pantry.HasItemSelected || !pantry.HasItem(pantry.selectedItem)))
+        if (pantry != null && (!pantry.HasItemSelected || !pantry.HasAnyStock))
             return StationRuntimeState.Starved;
 
         return StationRuntimeState.Idle;

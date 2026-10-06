@@ -975,6 +975,14 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void CreateSelectedItemPreview(GameObject station)
     {
         ItemDefinition item = GetSelectedStationItem(station);
+        var pantry = station != null ? station.GetComponent<PantryStation>() : null;
+        bool twoItems = pantry != null && pantry.secondItem != null;
+        CreateSelectedItemPreview(station, item, twoItems ? -0.32f : 0f);
+        if (twoItems) CreateSelectedItemPreview(station, pantry.secondItem, 0.32f);
+    }
+
+    void CreateSelectedItemPreview(GameObject station, ItemDefinition item, float horizontalOffset)
+    {
         if (item == null || item.prefab == null || visualsRoot == null) return;
 
         Texture thumbnail = ItemPreviewThumbnails.Get(item);
@@ -1028,8 +1036,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         image.raycastTarget = false;
 
         Bounds stationBounds = GetBounds(station);
+        Vector3 side = Camera.main != null ? Camera.main.transform.right : Vector3.right;
         badgeRect.position = new Vector3(stationBounds.center.x,
-            stationBounds.max.y + 0.75f, stationBounds.center.z);
+            stationBounds.max.y + 0.75f, stationBounds.center.z) + side * horizontalOffset;
         recipePreviewBadges.Add(badge.transform);
     }
 

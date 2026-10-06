@@ -780,6 +780,26 @@ public class WorkersUI : MonoBehaviour
             var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
             dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
+
+        var spacer = new GameObject("DeleteFlowSpacer", typeof(RectTransform), typeof(LayoutElement));
+        spacer.transform.SetParent(flowListRow, false);
+        spacer.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        Button delete = MakeChip(flowListRow, "Delete", 62f);
+        delete.gameObject.name = "DeleteFlow";
+        delete.GetComponent<Image>().color = new Color(0.65f, 0.19f, 0.19f, 1f);
+        delete.interactable = ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow;
+        ProductionFlowPlan selectedFlow = production.SelectedFlow;
+        delete.onClick.AddListener(() =>
+        {
+            if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
+            production.RemoveProductionFlow(selectedFlow);
+            if (ManagementModeController.Instance != null)
+                ManagementModeController.Instance.SelectFlow(production.SelectedFlow);
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(production.SelectedFlow);
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+            StationOutputLinkVisuals.NotifyLinksChanged();
+            Refresh();
+        });
     }
 
     void RebuildStepRow()
