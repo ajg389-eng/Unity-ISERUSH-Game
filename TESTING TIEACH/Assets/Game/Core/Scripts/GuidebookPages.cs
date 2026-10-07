@@ -48,11 +48,11 @@ public static class GuidebookPages
             "• <b>Stations</b> — catalog of equipment\n" +
             "• <b>Floor</b> — spend money to grow the walkable kitchen\n\n" +
             "The <b>first copy of each station type is free</b>. Extra copies stay locked until <b>Milestone 2</b>, then cost cash.\n\n" +
-            "Undo under the list reverses a buy or a floor expand. Close Inventory when you are done so you return to Play."),
+            "Close Inventory when you are done so you return to Play."),
         new Page(
             "Inventory",
             "Stations",
-            "The Stations tab is the catalog: freezer, grill, fryer, drinks, assembly, Pickup Station, pantry, and more. The register is already in the lobby — you do not buy it.\n\n" +
+            "The Stations tab is the catalog: freezer, grill, fryer, shake station, assembly, Pickup Station, pantry, and more. The register is already in the lobby.\n\n" +
             "<b>How to place</b>\n" +
             "1. Buy the card (first copy is FREE).\n" +
             "2. Click the card so a ghost follows the mouse.\n" +
@@ -65,7 +65,6 @@ public static class GuidebookPages
             "Floor",
             "The Floor tab grows the kitchen grid.\n\n" +
             "Expand when stations no longer fit or queues block walkways. The button shows current size and the next size. If it says the floor is maxed, you cannot grow further.\n\n" +
-            "<b>Undo Floor</b> sits under Expand and reverses the last expand.\n\n" +
             "Extra floor does nothing by itself. Fill it with a clearer path from prep to the Pickup Station."),
         new Page(
             "Kitchen",
@@ -74,11 +73,11 @@ public static class GuidebookPages
             "<b>Freezer</b> — raw burger patties pulled from kitchen stock.\n" +
             "<b>Grill</b> — cooks those patties.\n" +
             "<b>Cutting Station</b> — supports future recipes that need prepared ingredients.\n" +
-            "<b>Fryer</b> — cooks potatoes collected from the pantry into fries.\n" +
+            "<b>Fryer</b> cooks potato slices from a Cutting Station into fries.\n" +
             "<b>Assembly</b> — combines two recipe inputs into one finished item. The Burger recipe uses a cooked patty and bun.\n" +
-            "<b>Pickup Station</b> — holds any finished product until pickup, including food, drinks, and future menu items. Products can expire if they sit too long.\n" +
+            "<b>Pickup Station</b> holds any finished product until pickup, including food, shakes, and future menu items. Products can expire if they sit too long.\n" +
             "<b>Pantry</b> — supplies burger ingredients and raw potatoes for fries.\n\n" +
-            "Burger patties run freezer → grill → assembly → Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry → fryer → Pickup Station."),
+            "Burger patties run freezer > grill > assembly > Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry > cutting > fryer > Pickup Station."),
         new Page(
             "Management",
             "Management",
@@ -101,16 +100,17 @@ public static class GuidebookPages
         new Page(
             "Management",
             "Create a flow",
-            "A <b>flow</b> is the cooking route: which stations run in which order, and where food is handed next.\n\n" +
+            "A <b>flow</b> is a network of station nodes showing how work can move through the kitchen.\n\n" +
             "1. Open Management → <b>Workers</b>.\n" +
             "2. Click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n" +
-            "3. Click stations <b>in production order</b> (example: freezer → grill → assembly → Pickup Station).\n" +
-            "4. Confirm when the path looks right. Esc cancels a new capture.\n\n" +
-            "Make separate flows for fries or drinks if those lines should run on their own. The lines drawn in the world are the route workers will follow."),
+            "3. Press on a station, drag to the next station, and release to create a path.\n" +
+            "4. Drag from the same station to another destination to split the flow. Drag onto an existing node to merge paths. Click selects a node and Ctrl-click removes it.\n" +
+            "5. Confirm when the graph looks right. Esc cancels a new capture.\n\n" +
+            "Branches let one flow contain burgers, fries, shakes, and ingredient-supply paths. Jobs choose the branch matching their next recipe step."),
         new Page(
             "Management",
             "Edit and assign",
-            "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Click a station already on the path to trim it back. Click a new station to extend it. Esc restores the previous path.\n\n" +
+            "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Drag from one station to another to add a path. Drag repeatedly from one node to split the route, or drag onto an existing node to merge paths. Click selects a node, Ctrl-click removes it, and Esc restores the previous graph.\n\n" +
             "<b>Assign to Current Flow</b> — select the flow, then use that button on a worker card. The name appears on the flow. Click the name chip to unassign. A second worker on the same line unlocks at <b>Milestone 2</b>.\n\n" +
             "Without at least one worker on a flow, that line will not cook — even if every station is placed and stocked."),
         new Page(
@@ -153,9 +153,9 @@ public static class GuidebookPages
         new Page(
             "Guide",
             "A good first shift",
-            "1. Inventory → Stations: place freezer, grill, fryer, drinks, assembly, Pickup Station, and pantry. First copy of each is free.\n" +
+            "1. Inventory → Stations: place a freezer, grill, fryer, shake station, assembly station, Pickup Station, and pantries. First copy of each is free.\n" +
             "2. Inventory → Floor: expand if you have no walking room.\n" +
-            "3. Management → Food: buy burger, fries, and drink packs.\n" +
+            "3. Management → Food: buy raw ingredients, including milk and empty cups for shakes.\n" +
             "4. Management → Workers: hire at least one person (first hire free).\n" +
             "5. Create Flow and click stations in order toward the Pickup Station.\n" +
             "6. Assign that worker to the flow.\n" +

@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top-left Build / Staff / Business tabs. Place under PlayerUI via
+/// Top-left Build / Business tabs. Staff is a submenu of Business. Place under PlayerUI via
 /// Game → Setup Main HUD Tabs so you can edit position in the scene.
 /// </summary>
 public class MainHudTabs : MonoBehaviour
@@ -34,10 +35,10 @@ public class MainHudTabs : MonoBehaviour
     bool built;
     PrimaryPage lastPage = PrimaryPage.Build;
 
-    enum PrimaryPage { Build, Staff, Business }
+    enum PrimaryPage { Build, Business }
 
     public Transform InventoryTabTransform => inventoryTabButton != null ? inventoryTabButton.transform : null;
-    public Transform ManagementTabTransform => managementTabButton != null ? managementTabButton.transform : null;
+    public Transform ManagementTabTransform => businessTabButton != null ? businessTabButton.transform : null;
     public Transform BusinessTabTransform => businessTabButton != null ? businessTabButton.transform : null;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -94,16 +95,23 @@ public class MainHudTabs : MonoBehaviour
     {
         if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
 
-        if (Input.GetKeyDown(KeyCode.Q))
+        int topLevel = GetNumberRowIndex();
+        if (topLevel >= 0)
         {
-            if (AnyPanelOpen()) CloseAll();
-            else SwitchTo(lastPage);
+            OpenTopLevelByNumber(topLevel);
             return;
         }
 
-        if (Pressed(KeyCode.Alpha1, KeyCode.Keypad1)) TogglePage(PrimaryPage.Build);
-        else if (Pressed(KeyCode.Alpha2, KeyCode.Keypad2)) TogglePage(PrimaryPage.Staff);
-        else if (Pressed(KeyCode.Alpha3, KeyCode.Keypad3)) TogglePage(PrimaryPage.Business);
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            CycleSubmenu(-1);
+            return;
+        }
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            CycleSubmenu(1);
+            return;
+        }
     }
 
     public void Build(bool forceDefaultLayout = false)
@@ -144,7 +152,7 @@ public class MainHudTabs : MonoBehaviour
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
         rt.anchoredPosition = screenOffset;
-        rt.sizeDelta = new Vector2(TabWidth * 3f + TabSpacing * 2f + 16f, TabHeight + 12f);
+        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 12f);
     }
 
     static void ApplyDefaultLayoutGroup(HorizontalLayoutGroup hlg)
@@ -178,6 +186,8 @@ public class MainHudTabs : MonoBehaviour
         SetTabLabel(inventoryBg, "Build");
         SetTabLabel(managementBg, "Staff");
         SetTabLabel(businessBg, "Business");
+        if (managementBg != null)
+            managementBg.gameObject.SetActive(false);
 
         // Remove accidental duplicates left from older rebuild logic.
         RemoveDuplicateTabs("InventoryTab", inventoryBg != null ? inventoryBg.transform : null);
@@ -216,7 +226,6 @@ public class MainHudTabs : MonoBehaviour
         if (managementTabButton != null)
         {
             managementTabButton.onClick.RemoveAllListeners();
-            managementTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Staff));
             managementTabButton.transition = Selectable.Transition.None;
             if (managementTabButton.targetGraphic == null)
                 managementTabButton.targetGraphic = managementBg;
@@ -298,7 +307,12 @@ public class MainHudTabs : MonoBehaviour
     }
 
     public void OpenBuildPage() => SwitchTo(PrimaryPage.Build);
-    public void OpenStaffPage() => SwitchTo(PrimaryPage.Staff);
+    public void OpenStaffPage()
+    {
+        SwitchTo(PrimaryPage.Business);
+        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (management != null) management.OpenWorkersTab();
+    }
     public void OpenBusinessPage() => SwitchTo(PrimaryPage.Business);
 
     void SwitchTo(PrimaryPage page)
@@ -322,16 +336,8 @@ public class MainHudTabs : MonoBehaviour
             return;
         }
 
-        if (page == PrimaryPage.Staff)
-        {
-            mgmt.OpenWorkersTab();
-            mgmt.SetUnifiedPrimaryPage(false);
-        }
-        else
-        {
-            mgmt.OpenCustomersTab();
-            mgmt.SetUnifiedPrimaryPage(true);
-        }
+        mgmt.SetUnifiedPrimaryPage(true);
+        mgmt.OpenWorkersTab();
     }
 
     void CloseAll()
@@ -342,9 +348,71 @@ public class MainHudTabs : MonoBehaviour
         if (mgmt != null && mgmt.IsOpen) mgmt.Close();
     }
 
-    static bool Pressed(KeyCode key, KeyCode keypad)
+    static int GetNumberRowIndex()
     {
-        return Input.GetKeyDown(key) || Input.GetKeyDown(keypad);
+        if (Input.GetKeyDown(KeyCode.Alpha1)) return 0;
+        if (Input.GetKeyDown(KeyCode.Alpha2)) return 1;
+        if (Input.GetKeyDown(KeyCode.Alpha3)) return 2;
+        if (Input.GetKeyDown(KeyCode.Alpha4)) return 3;
+        return -1;
+    }
+
+    void OpenTopLevelByNumber(int topLevel)
+    {
+        switch (topLevel)
+        {
+            case 0:
+                TogglePage(PrimaryPage.Build);
+                break;
+            case 1:
+                TogglePage(PrimaryPage.Business);
+                break;
+            case 2:
+            {
+                MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
+                if (missions != null) missions.ToggleTasksTab();
+                break;
+            }
+            case 3:
+            {
+                MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
+                if (missions != null) missions.ToggleProgressionTab();
+                break;
+            }
+        }
+    }
+
+    static void CycleSubmenu(int direction)
+    {
+        Button[] buttons = null;
+        GameObject[] panels = null;
+        var inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (inventory != null && inventory.IsPanelOpen)
+        {
+            buttons = inventory.tabButtons;
+            panels = inventory.tabPanels;
+        }
+        else if (management != null && management.IsOpen)
+        {
+            buttons = management.tabButtons;
+            panels = management.tabPanels;
+        }
+        if (buttons == null || panels == null) return;
+
+        var visible = new List<int>();
+        int count = Mathf.Min(buttons.Length, panels.Length);
+        for (int i = 0; i < count; i++)
+            if (buttons[i] != null && buttons[i].gameObject.activeInHierarchy && panels[i] != null)
+                visible.Add(i);
+        visible.Sort((a, b) => buttons[a].transform.GetSiblingIndex()
+            .CompareTo(buttons[b].transform.GetSiblingIndex()));
+        if (visible.Count == 0) return;
+
+        int current = visible.FindIndex(index => panels[index].activeSelf);
+        if (current < 0) current = direction > 0 ? -1 : 0;
+        int next = (current + direction + visible.Count) % visible.Count;
+        buttons[visible[next]].onClick.Invoke();
     }
 
     static bool AnyPanelOpen()
@@ -382,8 +450,7 @@ public class MainHudTabs : MonoBehaviour
         bool managementOpen = mgmt != null && mgmt.IsOpen;
 
         HudTabColors.Apply(inventoryTabButton, inventoryOpen);
-        HudTabColors.Apply(managementTabButton, managementOpen && lastPage == PrimaryPage.Staff);
-        HudTabColors.Apply(businessTabButton, managementOpen && lastPage == PrimaryPage.Business);
+        HudTabColors.Apply(businessTabButton, managementOpen);
     }
 
     static void SetTabLabel(Image tab, string value)

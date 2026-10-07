@@ -13,6 +13,7 @@ using TMPro;
 public class PauseMenuUI : MonoBehaviour
 {
     public const string PauseSource = GameTimeManager.PauseMenu;
+    const string FeedbackUrl = "https://forms.gle/pBXDWzbBJxpTxkPA7";
     const string PrefMaster = "PauseMenu.MasterVolume";
     const string PrefVoice = "PauseMenu.VoiceVolume";
     const string PrefMusic = "PauseMenu.MusicVolume";
@@ -49,11 +50,15 @@ public class PauseMenuUI : MonoBehaviour
     GameObject overlay;
     GameObject mainPage;
     GameObject optionsPage;
+    GameObject creditsPage;
     GuidebookUI guidebook;
     GameObject audioPage;
     GameObject videoPage;
     GameObject graphicsPage;
     GameObject keybindsPage;
+    GameObject quitConfirmation;
+    TextMeshProUGUI quitConfirmationTitle;
+    TextMeshProUGUI quitConfirmationBody;
     Button audioTab;
     Button videoTab;
     Button graphicsTab;
@@ -89,7 +94,12 @@ public class PauseMenuUI : MonoBehaviour
     bool built;
     bool showingOptions;
     bool showingGuidebook;
+    bool showingCredits;
     bool titleSettingsMode;
+    bool confirmationOwnsOverlay;
+    bool confirmationPausedGame;
+    bool allowApplicationQuit;
+    System.Action confirmedQuitAction;
     System.Action titleSettingsClosed;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -108,6 +118,7 @@ public class PauseMenuUI : MonoBehaviour
             return;
         }
         Instance = this;
+        Application.wantsToQuit += HandleApplicationQuitRequest;
         ApplySavedAudio();
         ApplySavedVideo(false);
         ApplySavedGraphics();
@@ -115,6 +126,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void OnDestroy()
     {
+        Application.wantsToQuit -= HandleApplicationQuitRequest;
         if (Instance == this)
             Instance = null;
     }
@@ -134,12 +146,20 @@ public class PauseMenuUI : MonoBehaviour
         }
 
         bool escape = !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape);
+        if (escape && quitConfirmation != null && quitConfirmation.activeSelf)
+        {
+            CloseQuitConfirmation();
+            EscapeHandledThisFrame = false;
+            return;
+        }
         if (escape && !EscapeHandledThisFrame && !IsTitleVisible())
         {
             if (!visible)
                 Show();
             else if (showingGuidebook)
                 CloseGuidebook();
+            else if (showingCredits)
+                ShowMain();
             else if (showingOptions)
                 ShowMain();
             else
@@ -173,9 +193,22 @@ public class PauseMenuUI : MonoBehaviour
 
     public void Hide(bool playSound = true)
     {
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            else
+                Time.timeScale = 1f;
+        }
+        if (quitConfirmation != null)
+            quitConfirmation.SetActive(false);
+        confirmedQuitAction = null;
+        confirmationOwnsOverlay = false;
+        confirmationPausedGame = false;
         visible = false;
         showingOptions = false;
         showingGuidebook = false;
+        showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
         if (overlay != null)
@@ -197,10 +230,12 @@ public class PauseMenuUI : MonoBehaviour
         }
         showingOptions = false;
         showingGuidebook = false;
+        showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
         if (mainPage != null) mainPage.SetActive(true);
         if (optionsPage != null) optionsPage.SetActive(false);
+        if (creditsPage != null) creditsPage.SetActive(false);
     }
 
     public void CloseGuidebook()
@@ -388,7 +423,11 @@ public class PauseMenuUI : MonoBehaviour
         mainPage = BuildMainPage(overlay.transform);
         optionsPage = BuildOptionsPage(overlay.transform);
         optionsPage.SetActive(false);
+        creditsPage = BuildCreditsPage(overlay.transform);
+        creditsPage.SetActive(false);
         guidebook = GuidebookUI.Create(overlay.transform);
+        quitConfirmation = BuildQuitConfirmation(overlay.transform);
+        quitConfirmation.SetActive(false);
 
         // This menu is created after the global theme's scene pass. Finalize it now so
         // it never renders one frame with the old gray controls or competing tints.
@@ -447,9 +486,166 @@ public class PauseMenuUI : MonoBehaviour
             ShowGuidebook();
         });
 
+        var feedback = CreateMenuButton(page.transform, "FeedbackButton", "Give Feedback", 54f, 360f, 22f, MainButtonColor);
+        feedback.onClick.AddListener(OpenFeedbackForm);
+
+        var credits = CreateMenuButton(page.transform, "CreditsButton", "Credits", 54f, 360f, 22f, MainButtonColor);
+        credits.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            ShowCredits();
+        });
+
         var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
         quit.onClick.AddListener(OnQuitToMenu);
         return page;
+    }
+
+    void ShowCredits()
+    {
+        showingCredits = true;
+        showingOptions = false;
+        showingGuidebook = false;
+        if (guidebook != null) guidebook.Close();
+        if (mainPage != null) mainPage.SetActive(false);
+        if (optionsPage != null) optionsPage.SetActive(false);
+        if (creditsPage != null) creditsPage.SetActive(true);
+    }
+
+    GameObject BuildCreditsPage(Transform parent)
+    {
+        var card = new GameObject("CreditsPage", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(VerticalLayoutGroup));
+        card.transform.SetParent(parent, false);
+        var cardRt = (RectTransform)card.transform;
+        cardRt.anchorMin = cardRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRt.pivot = new Vector2(0.5f, 0.5f);
+        cardRt.sizeDelta = new Vector2(760f, 820f);
+        card.GetComponent<UnityEngine.UI.Image>().color = PanelColor;
+        AddPanelChrome(card);
+
+        var cardLayout = card.GetComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(28, 28, 22, 22);
+        cardLayout.spacing = 12f;
+        cardLayout.childAlignment = TextAnchor.UpperCenter;
+        cardLayout.childControlWidth = true;
+        cardLayout.childControlHeight = true;
+        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandHeight = false;
+
+        var title = CreateLabel(card.transform, "CreditsTitle", "Credits", 30f, TextAlignmentOptions.Center);
+        title.fontStyle = FontStyles.Bold;
+        title.GetComponent<LayoutElement>().preferredHeight = 42f;
+
+        var scroll = new GameObject("CreditsScrollView", typeof(RectTransform), typeof(LayoutElement),
+            typeof(ScrollRect));
+        scroll.transform.SetParent(card.transform, false);
+        var scrollLayout = scroll.GetComponent<LayoutElement>();
+        scrollLayout.preferredHeight = 660f;
+        scrollLayout.flexibleHeight = 1f;
+
+        var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(Mask));
+        viewport.transform.SetParent(scroll.transform, false);
+        var viewportRt = (RectTransform)viewport.transform;
+        Stretch(viewportRt);
+        viewport.GetComponent<UnityEngine.UI.Image>().color = new Color(0f, 0f, 0f, 0.14f);
+        viewport.GetComponent<Mask>().showMaskGraphic = true;
+
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup),
+            typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        var contentRt = (RectTransform)content.transform;
+        contentRt.anchorMin = new Vector2(0f, 1f);
+        contentRt.anchorMax = new Vector2(1f, 1f);
+        contentRt.pivot = new Vector2(0.5f, 1f);
+        contentRt.anchoredPosition = Vector2.zero;
+        contentRt.sizeDelta = Vector2.zero;
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(16, 16, 14, 14);
+        contentLayout.spacing = 8f;
+        contentLayout.childAlignment = TextAnchor.UpperLeft;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        CreateCreditSection(content.transform, "UNITY ASSET STORE PACKAGES");
+        CreateCreditLink(content.transform, "Fast Food Restaurant Kit", "Brick Project Studio",
+            "https://assetstore.unity.com/packages/3d/environments/fast-food-restaurant-kit-239419");
+        CreateCreditLink(content.transform, "Pandazole - Kitchen Food low poly pack", "Pandazole",
+            "https://assetstore.unity.com/packages/3d/props/food/pandazole-kitchen-food-low-poly-pack-204525");
+        CreateCreditLink(content.transform, "FREE Party Game Characters", "OlyPoly",
+            "https://assetstore.unity.com/packages/3d/characters/humanoids/free-party-game-characters-342650");
+        CreateCreditLink(content.transform, "Free Cooking Animations", "EEJANAI, TEAM",
+            "https://assetstore.unity.com/packages/3d/animations/free-cooking-animations-318012");
+        CreateCreditLink(content.transform, "FREE Casual Game SFX Pack", "Dustryroom",
+            "https://assetstore.unity.com/packages/audio/sound-fx/free-casual-game-sfx-pack-54116");
+        CreateCreditLink(content.transform, "Toony Kitchen & Ingredients Model FREE", "Sigun Studio",
+            "https://assetstore.unity.com/packages/3d/props/toony-kitchen-ingredients-model-free-301805");
+        CreateCreditLink(content.transform, "Customizable skybox", "Key Mouse",
+            "https://assetstore.unity.com/packages/p/customizable-skybox-174576");
+        CreateCreditLink(content.transform, "Low Poly Environment - Nature Free", "PolyTope Studio",
+            "https://assetstore.unity.com/packages/3d/environments/low-poly-environment-nature-free-lowpoly-medieval-fantasy-series-187052");
+        CreateCreditLink(content.transform, "Ultimate Food Pack - Low Poly 3D Food & Kitchen Assets", "AZ Studios",
+            "https://assetstore.unity.com/packages/3d/props/food/ultimate-food-pack-low-poly-3d-food-kitchen-assets-403436");
+
+        CreateCreditSection(content.transform, "MUSIC");
+        CreateCreditLink(content.transform, "Dreamy", "Jan-Michael Hökenschnieder x Fachhochschule Dortmund",
+            "https://freemusicarchive.org/search/?quicksearch=dreamy&search-genre=");
+        CreateCreditLink(content.transform, "Peak Hours Calm", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+        CreateCreditLink(content.transform, "Corporate Candy", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+        CreateCreditLink(content.transform, "Walkabout", "Picratio",
+            "https://freemusicarchive.org/search?adv=1&quicksearch=Easy%20listening&&");
+
+        var scrollRect = scroll.GetComponent<ScrollRect>();
+        scrollRect.content = contentRt;
+        scrollRect.viewport = viewportRt;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 32f;
+        GameUITheme.ConfigureScroll(scrollRect);
+
+        var back = CreateMenuButton(card.transform, "CreditsBackButton", "Back", 46f, 340f, 18f, OptionsButtonColor);
+        back.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            ShowMain();
+        });
+        return card;
+    }
+
+    static void CreateCreditSection(Transform parent, string text)
+    {
+        var label = CreateLabel(parent, text.Replace(" ", string.Empty) + "Header", text, 15f,
+            TextAlignmentOptions.MidlineLeft);
+        label.fontStyle = FontStyles.Bold;
+        label.color = GameUITheme.Accent;
+        var layout = label.GetComponent<LayoutElement>();
+        layout.minHeight = 34f;
+        layout.preferredHeight = 34f;
+    }
+
+    static void CreateCreditLink(Transform parent, string packageName, string artist, string url)
+    {
+        var button = CreateMenuButton(parent, packageName.Replace(" ", string.Empty) + "Credit",
+            packageName + "\n<size=80%>by " + artist + "  •  Open source page</size>",
+            64f, 650f, 16f, GameUITheme.Surface);
+        var label = button.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+        {
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.textWrappingMode = TextWrappingModes.Normal;
+        }
+        button.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            Application.OpenURL(url);
+        });
     }
 
     GameObject BuildOptionsPage(Transform parent)
@@ -515,6 +711,64 @@ public class PauseMenuUI : MonoBehaviour
             ShowMain();
         });
         return card;
+    }
+
+    GameObject BuildQuitConfirmation(Transform parent)
+    {
+        var dim = new GameObject("QuitConfirmation", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        dim.transform.SetParent(parent, false);
+        Stretch((RectTransform)dim.transform);
+        var dimImage = dim.GetComponent<UnityEngine.UI.Image>();
+        dimImage.color = new Color(0f, 0f, 0f, 0.72f);
+        dimImage.raycastTarget = true;
+
+        var card = new GameObject("ConfirmationCard", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(UnityEngine.UI.VerticalLayoutGroup));
+        card.transform.SetParent(dim.transform, false);
+        var cardRt = (RectTransform)card.transform;
+        cardRt.anchorMin = new Vector2(0.5f, 0.5f);
+        cardRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRt.pivot = new Vector2(0.5f, 0.5f);
+        cardRt.sizeDelta = new Vector2(720f, 270f);
+        card.GetComponent<UnityEngine.UI.Image>().color = GameUITheme.Backdrop;
+        AddPanelChrome(card);
+
+        var vertical = card.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+        vertical.padding = new RectOffset(32, 32, 28, 28);
+        vertical.spacing = 18f;
+        vertical.childAlignment = TextAnchor.MiddleCenter;
+        vertical.childControlWidth = true;
+        vertical.childControlHeight = true;
+        vertical.childForceExpandWidth = true;
+        vertical.childForceExpandHeight = false;
+
+        quitConfirmationTitle = CreateLabel(card.transform, "Title", "Quit Game?", 28f, TextAlignmentOptions.Center);
+        quitConfirmationTitle.fontStyle = FontStyles.Bold;
+        quitConfirmationTitle.GetComponent<LayoutElement>().preferredHeight = 40f;
+
+        quitConfirmationBody = CreateLabel(card.transform, "Message", "Are you sure you want to quit?", 18f, TextAlignmentOptions.Center);
+        quitConfirmationBody.textWrappingMode = TextWrappingModes.Normal;
+        quitConfirmationBody.GetComponent<LayoutElement>().preferredHeight = 64f;
+
+        var actions = new GameObject("Actions", typeof(RectTransform), typeof(UnityEngine.UI.HorizontalLayoutGroup),
+            typeof(UnityEngine.UI.LayoutElement));
+        actions.transform.SetParent(card.transform, false);
+        actions.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 52f;
+        var horizontal = actions.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+        horizontal.spacing = 14f;
+        horizontal.childAlignment = TextAnchor.MiddleCenter;
+        horizontal.childControlWidth = true;
+        horizontal.childControlHeight = true;
+        horizontal.childForceExpandWidth = true;
+        horizontal.childForceExpandHeight = false;
+
+        var cancel = CreateMenuButton(actions.transform, "CancelButton", "Cancel", 52f, 200f, 19f, GameUITheme.Surface);
+        cancel.onClick.AddListener(CloseQuitConfirmation);
+        var feedback = CreateMenuButton(actions.transform, "FeedbackButton", "Give Feedback", 52f, 220f, 19f, GameUITheme.Positive);
+        feedback.onClick.AddListener(OpenFeedbackForm);
+        var confirm = CreateMenuButton(actions.transform, "ConfirmButton", "Quit", 52f, 200f, 19f, GameUITheme.Danger);
+        confirm.onClick.AddListener(ConfirmQuit);
+        return dim;
     }
 
     GameObject BuildAudioPage(Transform parent)
@@ -716,8 +970,8 @@ public class PauseMenuUI : MonoBehaviour
         CreateKeybindRow(content.transform, "Zoom camera", "Mouse Wheel");
 
         CreateKeybindSection(content.transform, "Menus");
-        CreateKeybindRow(content.transform, "Open / close restaurant panel", "Q");
-        CreateKeybindRow(content.transform, "Build / Staff / Business", "1 / 2 / 3");
+        CreateKeybindRow(content.transform, "Build / Business / Tasks / Progression", "1 / 2 / 3 / 4");
+        CreateKeybindRow(content.transform, "Previous / next submenu", "Q / E");
         CreateKeybindRow(content.transform, "Progression", "J");
         CreateKeybindRow(content.transform, "Pause / back / cancel", "Esc");
 
@@ -764,7 +1018,7 @@ public class PauseMenuUI : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scrollRect);
         scrollRect.verticalScrollbar = scrollbar;
         scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
         return page;
@@ -1019,7 +1273,21 @@ public class PauseMenuUI : MonoBehaviour
         Sfx.Play(SfxId.UiClick);
     }
 
+    void OpenFeedbackForm()
+    {
+        Sfx.Play(SfxId.UiClick);
+        Application.OpenURL(FeedbackUrl);
+    }
+
     void OnQuitToMenu()
+    {
+        ShowQuitConfirmation(
+            "Quit to Menu?",
+            "Your current game will be saved before returning to the title screen.",
+            QuitToMenuConfirmed);
+    }
+
+    void QuitToMenuConfirmed()
     {
         Sfx.Play(SfxId.UiClick);
         GameSaveSlots.SaveActiveSlot();
@@ -1032,6 +1300,82 @@ public class PauseMenuUI : MonoBehaviour
             SceneManager.LoadScene(activeScene.buildIndex);
         else
             SceneManager.LoadScene(activeScene.name);
+    }
+
+    public void ShowQuitConfirmation(string title, string message, System.Action onConfirm)
+    {
+        EnsureUi();
+        if (overlay == null || quitConfirmation == null) return;
+
+        confirmationOwnsOverlay = !overlay.activeSelf;
+        confirmationPausedGame = !visible && !IsTitleVisible();
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.RequestExternalPause(PauseSource);
+            else
+                Time.timeScale = 0f;
+        }
+        confirmedQuitAction = onConfirm;
+        if (quitConfirmationTitle != null) quitConfirmationTitle.text = title;
+        if (quitConfirmationBody != null) quitConfirmationBody.text = message;
+        overlay.SetActive(true);
+        quitConfirmation.SetActive(true);
+        quitConfirmation.transform.SetAsLastSibling();
+        Canvas.ForceUpdateCanvases();
+        GameUITheme.ApplyTo(quitConfirmation.transform);
+        Sfx.Play(SfxId.UiOpen);
+    }
+
+    bool HandleApplicationQuitRequest()
+    {
+#if UNITY_EDITOR
+        return true;
+#else
+        if (allowApplicationQuit) return true;
+        ShowQuitConfirmation(
+            "Quit Game?",
+            "Are you sure you want to exit the game?",
+            ConfirmApplicationQuit);
+        return false;
+#endif
+    }
+
+    public void ConfirmApplicationQuit()
+    {
+        allowApplicationQuit = true;
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+
+    void CloseQuitConfirmation()
+    {
+        if (quitConfirmation != null) quitConfirmation.SetActive(false);
+        confirmedQuitAction = null;
+        if (confirmationOwnsOverlay && overlay != null)
+            overlay.SetActive(false);
+        if (confirmationPausedGame)
+        {
+            if (GameTimeManager.Instance != null)
+                GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            else
+                Time.timeScale = 1f;
+        }
+        confirmationOwnsOverlay = false;
+        confirmationPausedGame = false;
+        Sfx.Play(SfxId.UiClose);
+    }
+
+    void ConfirmQuit()
+    {
+        System.Action action = confirmedQuitAction;
+        confirmedQuitAction = null;
+        if (quitConfirmation != null) quitConfirmation.SetActive(false);
+        confirmationOwnsOverlay = false;
+        action?.Invoke();
     }
 
     void RefreshAudioControls()

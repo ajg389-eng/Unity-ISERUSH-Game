@@ -241,6 +241,14 @@ public class KitchenPerimeterWalls : MonoBehaviour
                 Hide(brickPool[i]);
             for (int i = wallGroupsUsed; i < wallGroupPool.Count; i++)
                 Hide(wallGroupPool[i]);
+            for (int i = 0; i < wallGroupsUsed; i++)
+            {
+                CameraOcclusionWall occ = wallGroupPool[i] != null
+                    ? wallGroupPool[i].GetComponent<CameraOcclusionWall>() : null;
+                if (occ == null) continue;
+                occ.duckByLowering = true;
+                occ.RecaptureRestPose();
+            }
             currentWallGroup = null;
 
             float roofMinX = hasCustomer ? Mathf.Min(wMinX, cMinX) : wMinX;
@@ -651,7 +659,10 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
         occ.SetOutward(outward);
         occ.lowerDistance = Mathf.Max(3.5f, height * 0.95f);
+        occ.duckByLowering = false;
         occ.SnapUp();
+        // Moving the complete wall group preserves the exact brick material and UVs.
+        occ.duckByLowering = true;
         CameraWallCutaway.EnsureExists();
     }
 

@@ -574,11 +574,13 @@ public class TitleScreenController : MonoBehaviour
 
     void OnExit()
     {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
+        var menu = PauseMenuUI.Instance ?? FindFirstObjectByType<PauseMenuUI>();
+        if (menu == null)
+            menu = new GameObject("PauseMenuUI").AddComponent<PauseMenuUI>();
+        menu.ShowQuitConfirmation(
+            "Quit Game?",
+            "Are you sure you want to exit the game?",
+            menu.ConfirmApplicationQuit);
     }
 
     public bool IsShowingTitle => showingTitle;

@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// One prepared meal sitting under the heat lamp, waiting to be sold or expired.
+/// One prepared meal sitting at pickup. Its age changes its sale value.
 /// </summary>
 [System.Serializable]
 public class HeldMeal
@@ -24,10 +25,10 @@ public class HeldMeal
 /// <summary>
 /// Fast-food holding / pass-through. Kitchen workers deliver finished meals here;
 /// customers grab matching orders from the lobby side of the counter.
-/// Meals expire if held too long — overproducing wastes food.
+/// Meals remain available, but their freshness changes the value earned when sold.
 /// Inventory is viewed in Manage mode by clicking the heat lamp.
 /// </summary>
-public class HeatLampStation : MonoBehaviour
+public class HeatLampStation : MonoBehaviour, IStationBuffer
 {
     public const int FixedCapacity = 4;
     public static HeatLampStation Instance { get; private set; }
@@ -38,9 +39,16 @@ public class HeatLampStation : MonoBehaviour
     [Tooltip("Kitchen tries to keep this many meals ready (demand + buffer)")]
     public int targetStock = 3;
 
-    [Header("Expiry")]
-    [Tooltip("Seconds a meal can sit before it is thrown out")]
-    public float expireAfterSeconds = 28f;
+    [Header("Freshness pricing")]
+    [Tooltip("Items at or below this age receive the full freshness bonus.")]
+    [Min(0f)] public float freshBonusSeconds = 8f;
+    [FormerlySerializedAs("expireAfterSeconds")]
+    [Tooltip("At this age the item sells for its normal base value.")]
+    [Min(0f)] public float normalValueAfterSeconds = 28f;
+    [Tooltip("At this age the item reaches the maximum freshness penalty.")]
+    [Min(0f)] public float minimumValueAfterSeconds = 56f;
+    [Range(0f, 1f)] public float maximumFreshnessBonus = 0.5f;
+    [Range(-1f, 0f)] public float maximumFreshnessPenalty = -0.5f;
 
     [Header("Interaction")]
     public Vector3 interactionOffset = Vector3.zero;
@@ -68,10 +76,6 @@ public class HeatLampStation : MonoBehaviour
     public GameObject drinkDisplayPrefab;
     [Tooltip("Height of product models above the Pickup Station root.")]
     public float foodDisplayHeight = 0.55f;
-    [Tooltip("Uniform world-space scale used by displayed food models.")]
-    public float foodDisplayScale = 0.42f;
-    [Tooltip("Maximum world-space size of the drink model. Drink prefabs use different native dimensions than food prefabs.")]
-    public float drinkDisplaySize = 0.42f;
     [Tooltip("Local X/Z center of the four display pans on the current 1x1 model.")]
     public Vector2 foodDisplayCenter = new Vector2(-0.004f, 0.032f);
     [Tooltip("Local X/Z spacing between the four display positions.")]
@@ -88,21 +92,50 @@ public class HeatLampStation : MonoBehaviour
     CanvasGroup cautionMessageGroup;
     float cautionMessageShownAt = float.NegativeInfinity;
     float nextCautionRefresh;
+    Camera mainCamera;
     bool productionShortfallWasActive;
     Transform foodDisplayRoot;
     readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
+    readonly List<Transform> foodDisplaySlots = new List<Transform>();
 
     public int Count => meals.Count;
     public int TotalWasted => totalWasted;
     public int TotalDelivered => totalDelivered;
     public int TotalSold => totalSold;
     public bool HasSpace => meals.Count < maxCapacity;
+    public int InputSlotCapacity => maxCapacity;
+    public int OutputSlotCapacity => maxCapacity;
+    public int GetInputCount(ItemDefinition item) => CountHeldMatching(item);
+    public int GetOutputCount(ItemDefinition item) => CountHeldMatching(item);
+    public bool CanAcceptInput(ItemDefinition item, int amount) =>
+        item != null && amount > 0 && meals.Count + amount <= maxCapacity;
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        if (!CanAcceptInput(item, amount)) return 0;
+        int stored = 0;
+        while (stored < amount)
+        {
+            CustomerOrder unit = sourceOrder != null && sourceOrder.CountQuantityOf(item) == 1
+                ? sourceOrder : CustomerOrder.FromItem(item, 1);
+            if (!DeliverMeal(unit)) break;
+            stored++;
+        }
+        return stored;
+    }
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0) return 0;
+        int taken = 0;
+        while (taken < amount && TryTakeSingleItem(item) != null) taken++;
+        return taken;
+    }
     public IReadOnlyList<HeldMeal> Meals => meals;
     public int PickupQueueCount => customerPickupQueue.Count;
 
     void Awake()
     {
-        maxCapacity = FixedCapacity;
+        StationItemVisualUtility.FindMarkers(transform, foodDisplaySlots);
+        maxCapacity = foodDisplaySlots.Count > 0 ? foodDisplaySlots.Count : FixedCapacity;
         if (Instance != null && Instance != this)
         {
             Debug.LogWarning("Multiple HeatLampStation objects; using the newest.", this);
@@ -146,7 +179,7 @@ public class HeatLampStation : MonoBehaviour
         EnsureFoodDisplayRoot();
         ClearFoodDisplay();
 
-        int visibleCount = Mathf.Min(meals.Count, FixedCapacity);
+        int visibleCount = Mathf.Min(meals.Count, maxCapacity);
         for (int i = 0; i < visibleCount; i++)
         {
             ItemDefinition item = meals[i]?.order?.PrimaryItem;
@@ -155,12 +188,18 @@ public class HeatLampStation : MonoBehaviour
 
             GameObject display = Instantiate(prefab, foodDisplayRoot);
             display.name = "HeldFood_" + i + "_" + prefab.name;
-            display.transform.localPosition = GetFoodDisplaySlot(i);
-            display.transform.localRotation = Quaternion.identity;
-            if (prefab == drinkDisplayPrefab)
-                NormalizeDisplaySize(display, drinkDisplaySize);
+            if (i < foodDisplaySlots.Count)
+            {
+                display.transform.position = foodDisplaySlots[i].position;
+                display.transform.rotation = foodDisplaySlots[i].rotation * prefab.transform.localRotation;
+                SetNativeWorldScale(display.transform, prefab.transform.localScale);
+            }
             else
-                SetUniformWorldScale(display.transform, foodDisplayScale);
+            {
+                display.transform.localPosition = GetFoodDisplaySlot(i);
+                display.transform.localRotation = prefab.transform.localRotation;
+                SetNativeWorldScale(display.transform, prefab.transform.localScale);
+            }
             DisableDisplayColliders(display);
             foodDisplayObjects.Add(display);
         }
@@ -207,6 +246,7 @@ public class HeatLampStation : MonoBehaviour
     GameObject GetFoodDisplayPrefab(ItemDefinition item)
     {
         if (item == null) return null;
+        if (item.prefab != null) return item.prefab;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig
             : null;
@@ -228,32 +268,13 @@ public class HeatLampStation : MonoBehaviour
         return null;
     }
 
-    static void SetUniformWorldScale(Transform target, float scale)
+    static void SetNativeWorldScale(Transform target, Vector3 sourceScale)
     {
         Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
         target.localScale = new Vector3(
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
-            scale / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
-    }
-
-    static void NormalizeDisplaySize(GameObject display, float targetSize)
-    {
-        display.transform.localScale = Vector3.one;
-
-        Renderer[] renderers = display.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
-
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-
-        float largestDimension = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
-        if (largestDimension > 0.0001f)
-        {
-            float uniformScale = Mathf.Max(0.01f, targetSize) / largestDimension;
-            display.transform.localScale = Vector3.one * uniformScale;
-        }
+            sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
     }
 
     static void DisableDisplayColliders(GameObject display)
@@ -266,7 +287,6 @@ public class HeatLampStation : MonoBehaviour
     {
         if (customerPickupQueue.RemoveAll(customer => customer == null) > 0)
             RefreshPickupQueueTargets();
-        ExpireStaleMeals();
         if (Time.unscaledTime >= nextCautionRefresh)
         {
             nextCautionRefresh = Time.unscaledTime + 0.5f;
@@ -290,7 +310,9 @@ public class HeatLampStation : MonoBehaviour
         indicator.position = transform.position + cautionIndicatorOffset;
         indicator.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
 
-        Camera cam = Camera.main;
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+        Camera cam = mainCamera;
         if (cam == null) return;
 
         Vector3 cameraToIndicator = indicator.position - cam.transform.position;
@@ -606,7 +628,7 @@ public class HeatLampStation : MonoBehaviour
 
     Register FindNearestRegister()
     {
-        var registers = FindObjectsOfType<Register>();
+        var registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (registers == null || registers.Length == 0) return null;
 
         Register best = null;
@@ -640,20 +662,37 @@ public class HeatLampStation : MonoBehaviour
             grid.Origin.z + (z + 0.5f) * size);
     }
 
-    /// <summary>Seconds left before this meal expires (0 if already expired / no expiry).</summary>
-    public float GetSecondsUntilExpire(HeldMeal meal)
+    public float GetFreshnessModifier(HeldMeal meal)
     {
-        if (meal == null || expireAfterSeconds <= 0f) return 0f;
-        return Mathf.Max(0f, expireAfterSeconds - meal.AgeSeconds);
+        if (meal == null) return 0f;
+
+        float age = Mathf.Max(0f, meal.AgeSeconds);
+        float freshUntil = Mathf.Max(0f, freshBonusSeconds);
+        float normalAt = Mathf.Max(freshUntil, normalValueAfterSeconds);
+        float minimumAt = Mathf.Max(normalAt, minimumValueAfterSeconds);
+
+        if (age <= freshUntil) return maximumFreshnessBonus;
+        if (age < normalAt && normalAt > freshUntil)
+            return Mathf.Lerp(maximumFreshnessBonus, 0f,
+                Mathf.InverseLerp(freshUntil, normalAt, age));
+        if (age < minimumAt && minimumAt > normalAt)
+            return Mathf.Lerp(0f, maximumFreshnessPenalty,
+                Mathf.InverseLerp(normalAt, minimumAt, age));
+        return maximumFreshnessPenalty;
     }
 
-    static string FormatExpireTime(float seconds)
+    public int GetFreshnessSaleValue(HeldMeal meal, ItemDefinition item)
     {
-        int s = Mathf.CeilToInt(seconds);
-        if (s < 60) return s + "s";
-        int m = s / 60;
-        int rem = s % 60;
-        return m + ":" + rem.ToString("00");
+        if (item == null) return 0;
+        return Mathf.Max(0, Mathf.RoundToInt(item.price * (1f + GetFreshnessModifier(meal))));
+    }
+
+    static string FormatFreshness(float modifier)
+    {
+        int percent = Mathf.RoundToInt(modifier * 100f);
+        if (percent > 0) return $"Fresh +{percent}%";
+        if (percent < 0) return $"Aged {percent}%";
+        return "Base value";
     }
 
     static string MealDisplayName(CustomerOrder order)
@@ -663,7 +702,7 @@ public class HeatLampStation : MonoBehaviour
         return string.IsNullOrEmpty(name) || name == "—" ? "Item" : name;
     }
 
-    /// <summary>One line per held meal with time until expiry.</summary>
+    /// <summary>One line per held meal with its current sale-value modifier.</summary>
     public string GetInventoryDisplay()
     {
         if (meals.Count == 0) return "Empty";
@@ -674,8 +713,9 @@ public class HeatLampStation : MonoBehaviour
             var meal = meals[i];
             if (meal?.order == null) continue;
             string itemName = MealDisplayName(meal.order);
-            float left = GetSecondsUntilExpire(meal);
-            parts.Add($"{itemName}  —  {FormatExpireTime(left)}");
+            ItemDefinition item = meal.order.PrimaryItem;
+            string saleValue = item != null ? $" (${GetFreshnessSaleValue(meal, item)})" : string.Empty;
+            parts.Add($"{itemName}: {FormatFreshness(GetFreshnessModifier(meal))}{saleValue}");
         }
 
         return parts.Count > 0 ? string.Join("\n", parts) : "Empty";
@@ -684,6 +724,7 @@ public class HeatLampStation : MonoBehaviour
     public string GetManagePanelText()
     {
         string text = $"Stock: {meals.Count}/{maxCapacity}\n{GetIncomingRateDisplay()}\n{GetCustomerDemandRateDisplay()}\n{GetInventoryDisplay()}";
+        text += $"\nFreshness value: +{Mathf.RoundToInt(maximumFreshnessBonus * 100f)}% to {Mathf.RoundToInt(maximumFreshnessPenalty * 100f)}%";
         if (totalWasted > 0)
             text += $"\nWaste: {totalWasted}";
         return text;
@@ -905,7 +946,7 @@ public class HeatLampStation : MonoBehaviour
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
 
         // Only stations before this lamp can contribute food to it.
-        for (int i = 0; i < lampIndex; i++)
+        for (int i = Mathf.Max(0, lampIndex - 1); i < lampIndex; i++)
         {
             GameObject station = flow.stations[i];
             if (station == null) continue;
@@ -920,8 +961,6 @@ public class HeatLampStation : MonoBehaviour
             if (burger != null)
                 found.Add(burger);
 
-            if (station.GetComponent<FryerStation>() != null && config != null && config.friesItem != null)
-                found.Add(config.friesItem);
             if (station.GetComponent<DrinkStation>() != null && config != null && config.drinkItem != null)
                 found.Add(config.drinkItem);
         }
@@ -996,6 +1035,23 @@ public class HeatLampStation : MonoBehaviour
         RefreshStatusLabel();
     }
 
+    public void ResetRuntimeState()
+    {
+        CustomerAI[] waiting = customerPickupQueue.ToArray();
+        customerPickupQueue.Clear();
+        meals.Clear();
+        totalWasted = 0;
+        totalDelivered = 0;
+        totalSold = 0;
+        productionShortfallWasActive = false;
+        cautionMessageShownAt = float.NegativeInfinity;
+        if (cautionIndicator != null) cautionIndicator.SetActive(false);
+        if (cautionMessageGroup != null) cautionMessageGroup.alpha = 0f;
+        foreach (CustomerAI customer in waiting)
+            if (customer != null) customer.OnPickupStationUnavailable(this);
+        RefreshStatusLabel();
+    }
+
     public bool HasSingleItem(ItemDefinition item)
     {
         return FindSingleItemIndex(item) >= 0;
@@ -1045,7 +1101,16 @@ public class HeatLampStation : MonoBehaviour
     public static bool TryCustomerTakeAvailableItem(CustomerAI customer,
         HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item)
     {
+        return TryCustomerTakeAvailableItem(customer, queueStation, customerOrder,
+            out item, out _);
+    }
+
+    public static bool TryCustomerTakeAvailableItem(CustomerAI customer,
+        HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item,
+        out int adjustedSaleValue)
+    {
         item = null;
+        adjustedSaleValue = 0;
         if (customer == null || customerOrder?.lines == null) return false;
 
         HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(
@@ -1074,7 +1139,7 @@ public class HeatLampStation : MonoBehaviour
                 source = station;
             }
 
-            if (source == null || !source.TryCustomerTakeSingleItem(line.item)) continue;
+            if (source == null || !source.TryCustomerTakeSingleItem(line.item, out adjustedSaleValue)) continue;
             item = line.item;
             return true;
         }
@@ -1125,11 +1190,18 @@ public class HeatLampStation : MonoBehaviour
 
     public CustomerOrder TryTakeSingleItem(ItemDefinition item)
     {
+        return TryTakeSingleItem(item, out _);
+    }
+
+    public CustomerOrder TryTakeSingleItem(ItemDefinition item, out int adjustedSaleValue)
+    {
+        adjustedSaleValue = 0;
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
-        ItemDefinition held = meal?.order?.PrimaryItem;
+        ItemDefinition held = item;
         if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
+        adjustedSaleValue = GetFreshnessSaleValue(meal, item);
         if (meal.order.GetTotalQuantity() <= 0)
             meals.RemoveAt(idx);
         RefreshStatusLabel();
@@ -1138,7 +1210,12 @@ public class HeatLampStation : MonoBehaviour
 
     public bool TryCustomerTakeSingleItem(ItemDefinition item)
     {
-        CustomerOrder taken = TryTakeSingleItem(item);
+        return TryCustomerTakeSingleItem(item, out _);
+    }
+
+    public bool TryCustomerTakeSingleItem(ItemDefinition item, out int adjustedSaleValue)
+    {
+        CustomerOrder taken = TryTakeSingleItem(item, out adjustedSaleValue);
         if (taken == null) return false;
         totalSold++;
         return true;
@@ -1243,24 +1320,6 @@ public class HeatLampStation : MonoBehaviour
                 return i;
         }
         return -1;
-    }
-
-    void ExpireStaleMeals()
-    {
-        if (expireAfterSeconds <= 0f) return;
-        bool changed = false;
-        for (int i = meals.Count - 1; i >= 0; i--)
-        {
-            if (meals[i] == null || meals[i].AgeSeconds < expireAfterSeconds)
-                continue;
-            meals.RemoveAt(i);
-            totalWasted++;
-            Sfx.Play(SfxId.FoodWasted);
-            changed = true;
-            if (StoreStatisticsManager.Instance != null)
-                StoreStatisticsManager.Instance.RecordMealWasted();
-        }
-        if (changed) RefreshStatusLabel();
     }
 
     void RefreshStatusLabel()

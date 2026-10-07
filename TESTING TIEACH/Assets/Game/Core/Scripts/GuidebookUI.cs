@@ -218,7 +218,7 @@ public class GuidebookUI : MonoBehaviour
         scroll.movementType = ScrollRect.MovementType.Clamped;
         scroll.viewport = (RectTransform)scrollGo.transform;
         scroll.content = contentRt;
-        scroll.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scroll);
     }
 
     void Turn(int delta)

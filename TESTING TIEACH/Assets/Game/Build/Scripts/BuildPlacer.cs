@@ -1804,7 +1804,7 @@ public class BuildPlacer : MonoBehaviour
             || prefab.GetComponentInChildren<FryerStation>(true) != null
             || prefab.GetComponentInChildren<DrinkStation>(true) != null
             || prefab.GetComponentInChildren<AssemblyStation>(true) != null
-            || item.itemName == "Cutting Station"
+            || prefab.GetComponentInChildren<CuttingStation>(true) != null
             || prefab.GetComponentInChildren<HeatLampStation>(true) != null
             || prefab.GetComponentInChildren<PantryStation>(true) != null;
     }
@@ -2003,10 +2003,15 @@ public class BuildPlacer : MonoBehaviour
         if (item.placementSurface == ItemDefinition.PlacementSurface.Floor)
         {
             BuildFootprint footprint = placed.GetComponent<BuildFootprint>();
-            if (footprint == null) footprint = placed.AddComponent<BuildFootprint>();
-            footprint.sizeX = Mathf.Max(1, item.footprintX);
-            footprint.sizeY = Mathf.Max(1, item.footprintY);
-            if (item.itemName == "Cutting Station")
+            // Authored station prefabs own their footprint. ItemDefinition is only
+            // a fallback for older prefabs that do not contain BuildFootprint.
+            if (footprint == null)
+            {
+                footprint = placed.AddComponent<BuildFootprint>();
+                footprint.sizeX = Mathf.Max(1, item.footprintX);
+                footprint.sizeY = Mathf.Max(1, item.footprintY);
+            }
+            if (item.prefab != null && item.prefab.GetComponentInChildren<CuttingStation>(true) != null)
             {
                 if (placed.GetComponent<CuttingStation>() == null)
                     placed.AddComponent<CuttingStation>();

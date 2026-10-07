@@ -21,6 +21,7 @@ public class DeliveryVan : MonoBehaviour
     Vector3 stall;
     Action onParked;
     bool parked;
+    bool useExactStallPose;
     Transform[] wheels;
     float wheelRadius = 0.35f;
 
@@ -38,10 +39,12 @@ public class DeliveryVan : MonoBehaviour
         }
     }
 
-    public void Arrive(Vector3 stallCenter, Quaternion facing, Action parkedCallback)
+    public void Arrive(Vector3 stallCenter, Quaternion facing, Action parkedCallback,
+        bool exactStallPose = false)
     {
+        useExactStallPose = exactStallPose;
         stallFacing = facing;
-        stall = FitOnPavement(stallCenter);
+        stall = exactStallPose ? stallCenter : FitOnPavement(stallCenter);
         onParked = parkedCallback;
         cruise = 10f;
         speed = 3.5f;
@@ -144,9 +147,12 @@ public class DeliveryVan : MonoBehaviour
         settleFromRot = transform.rotation;
         // A parking bay accepts either heading; keep the one nearest the approach
         // instead of forcing a half-turn after the vehicle has already arrived.
-        Quaternion opposite = stallFacing * Quaternion.Euler(0f, 180f, 0f);
-        if (Quaternion.Angle(settleFromRot, opposite) < Quaternion.Angle(settleFromRot, stallFacing))
-            stallFacing = opposite;
+        if (!useExactStallPose)
+        {
+            Quaternion opposite = stallFacing * Quaternion.Euler(0f, 180f, 0f);
+            if (Quaternion.Angle(settleFromRot, opposite) < Quaternion.Angle(settleFromRot, stallFacing))
+                stallFacing = opposite;
+        }
     }
 
     void TickSettle()

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Burger
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Burger
-  prefab: {fileID: 0}
+  prefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   price: 12
   startingQuantity: 12
   orderPackSize: 10

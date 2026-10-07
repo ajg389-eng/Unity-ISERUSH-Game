@@ -6,19 +6,20 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 4, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 9, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
     public bool tutorialComplete;
     public List<Equipment> equipment = new List<Equipment>();
-    public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
+    public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>(), productionTargets = new List<Stock>();
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1; public Vector3 counterPosition; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
-    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public List<int> stations = new List<int>(), workers = new List<int>(); }
+    [Serializable] public class FlowEdge { public int from = -1, to = -1; }
+    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
     public static KitchenSaveSnapshot Capture()
     {
@@ -59,8 +60,24 @@ public class KitchenSaveSnapshot
                             || (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(go)) && WorkerFlowAssigner.GetStationId(go) == WorkerFlowAssigner.GetStationId(item.prefab));
                     if (!match) continue;
                     objects.Add(go);
-                    s.equipment.Add(new Equipment { item=item.name, position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
-                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero });
+                    var grill = go.GetComponent<GrillStation>();
+                    var assembly = go.GetComponent<AssemblyStation>();
+                    var freezer = go.GetComponent<FreezerStation>();
+                    var pantry = go.GetComponent<PantryStation>();
+                    var cutting = go.GetComponent<CuttingStation>();
+                    ItemDefinition product = assembly != null ? assembly.selectedProduct
+                        : grill != null ? grill.selectedProduct
+                        : freezer != null ? freezer.selectedItem
+                        : pantry != null ? pantry.selectedItem
+                        : cutting != null ? cutting.selectedProduct : null;
+                    s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
+                        pantrySecondProduct=pantry != null && pantry.secondItem != null ? pantry.secondItem.name : "",
+                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
+                        processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
+                        pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
+                        bufferedOutputs=assembly != null ? assembly.BufferedOutputCount : 0,
+                        processingUnits=grill != null ? grill.BufferedPattyCount : 0,
+                        processProgress=grill != null ? grill.CookProgressSeconds : 0f });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -69,6 +86,8 @@ public class KitchenSaveSnapshot
         if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity});
         var pm=ProductionManager.Instance;
         if(pm!=null) {
+            foreach(var target in pm.productionTargets) if(target!=null && target.item!=null)
+                s.productionTargets.Add(new Stock {item=target.item.name,count=Mathf.Max(0,target.quantity)});
             var staff=new List<KitchenEmployee>();
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
@@ -77,9 +96,11 @@ public class KitchenSaveSnapshot
                 s.workers.Add(w);
             }
             foreach(var flow in pm.productionFlows) if(flow!=null) {
-                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds)};
+                flow.EnsureLegacyConnections();
+                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized};
                 foreach(var station in flow.stations) f.stations.Add(objects.IndexOf(station));
                 foreach(var worker in flow.workers) f.workers.Add(staff.IndexOf(worker));
+                foreach(var edge in flow.connections) if(edge!=null) f.edges.Add(new FlowEdge {from=objects.IndexOf(edge.from),to=objects.IndexOf(edge.to)});
                 s.flows.Add(f);
             }
         }
@@ -90,14 +111,33 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>4 || inv==null || pm==null) return false;
+        if(version<1 || version>9 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
-        foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) definitions[item.name]=item;
+        foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
+            definitions[item.name]=item;
+            // Bacon Slab replaced the legacy Raw Bacon ingredient. Saves persist
+            // stock and station selections by asset name, so retain the old key.
+            if(item.name=="Bacon Slab") definitions["Raw Bacon"]=item;
+            // Saves created before station tiers used the original asset names.
+            // Keep those keys pointed at MK1 so existing kitchens still load.
+            if(item.IsTieredStation && item.stationMark==1) {
+                string legacyName=item.stationFamily;
+                if(item.stationFamily=="Cutting Station") legacyName="CuttingStation";
+                else if(item.stationFamily=="Pickup Station") legacyName="PickupStation";
+                definitions[legacyName]=item;
+            }
+        }
         foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
+        foreach(var e in equipment) if(!string.IsNullOrEmpty(e.pantrySecondProduct) && !definitions.ContainsKey(e.pantrySecondProduct)) return false;
         if(workers.Count>0 && pm.employeePrefab==null) return false;
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
+        pm.ResetTransientProductionState();
         pm.employees.Clear(); pm.productionFlows.Clear();
+        pm.productionTargets.Clear();
+        if(productionTargets!=null) foreach(var entry in productionTargets)
+            if(entry!=null && definitions.TryGetValue(entry.item,out var targetItem))
+                pm.productionTargets.Add(new ProductionManager.ProductionTarget {item=targetItem,quantity=Mathf.Clamp(entry.count,0,20)});
         foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
             if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
                 continue;
@@ -113,13 +153,27 @@ public class KitchenSaveSnapshot
         if(grid!=null) { grid.ResyncOccupancyFromScene(); grid.TryExpand(Mathf.Max(0,width-grid.Width),Mathf.Max(0,height-grid.Height)); }
         var objects=new List<GameObject>();
         foreach(var e in equipment) {
-            var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation); go.transform.localScale=e.scale;
+            var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation);
+            // Tiered stations use the current authored prefab dimensions. Older
+            // saves may contain scale values from the station models they replace.
+            go.transform.localScale=item.IsTieredStation && item.prefab!=null
+                ? item.prefab.transform.localScale : e.scale;
             BuildPlacer.ConfigurePlacedObject(go,item);
             var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
             objects.Add(go);
         }
         for(int i=0;i<equipment.Count;i++) {
             var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
+            ItemDefinition product = !string.IsNullOrEmpty(e.product) && definitions.TryGetValue(e.product,out var savedProduct) ? savedProduct : null;
+            var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
+            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
+            var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
+            var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) {
+                ItemDefinition second=null;
+                if(!string.IsNullOrEmpty(e.pantrySecondProduct)) definitions.TryGetValue(e.pantrySecondProduct,out second);
+                pantry.SetStoredItems(product,second);
+            }
+            var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.SetRecipe(pm.orderConfig != null ? pm.orderConfig.GetCuttingRecipe(product) : null);
             if(e.slot>=0) {
                 CounterSurface closest=null; float best=float.PositiveInfinity;
                 foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }
@@ -137,11 +191,14 @@ public class KitchenSaveSnapshot
             employee.SyncFromOperatedStations();
         }
         foreach(var f in flows) {
-            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps};
+            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps,graphInitialized=version>=6 && f.graphInitialized};
             foreach(int i in f.stations) if(i>=0 && i<objects.Count) flow.stations.Add(objects[i]);
+            if(f.edges!=null) foreach(var edge in f.edges) if(edge!=null && edge.from>=0 && edge.from<objects.Count && edge.to>=0 && edge.to<objects.Count) flow.connections.Add(new ProductionFlowConnection(objects[edge.from],objects[edge.to]));
+            flow.EnsureLegacyConnections();
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
+        foreach(var flow in pm.productionFlows) if(flow!=null) WorkerFlowAssigner.ApplyBalancedTeam(flow);
         // Version 1 checkpoints included the removed door lesson at index 2.
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1

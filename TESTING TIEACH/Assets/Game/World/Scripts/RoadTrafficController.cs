@@ -62,8 +62,6 @@ public class RoadTrafficController : MonoBehaviour
         ResolveDrivePath();
         if (GetComponent<StreetScenery>() == null)
             gameObject.AddComponent<StreetScenery>();
-        if (GetComponent<AmbientPedestrianSystem>() == null)
-            gameObject.AddComponent<AmbientPedestrianSystem>();
         if (MilestoneFeatures.HighestReachedNumberedStage() <= 1)
         {
             nextEastbound = Random.Range(4f, 8f);

@@ -180,7 +180,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scroll);
         scroll.viewport = viewportRt;
         scroll.content = textRt;
     }
@@ -270,7 +270,7 @@ public class ManagementTabInfoUI : MonoBehaviour
                 "<b>Station cards</b>\nEach card shows a station you can buy and place. The first number is how many you own and the second is your current cap. The price is removed when the station is purchased.\n\n" +
                 "<b>Capacity limit</b>\nYou start with one of each station. Extra copies unlock at <b>Milestone 2</b> (cap becomes 2), then later milestones can raise the cap further. MAX or MILESTONE 2 on the card means you cannot buy another copy yet.\n\n" +
                 "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used. Double-click a placed object to pick it up and move it.\n\n" +
-                "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, drink stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
+                "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, shake stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
                 "<b>Counter equipment</b>\nRegisters sit on top of counter slots. Pickup Stations use counter-grid placement and hold finished products for collection.\n\n" +
                 "<b>Undo purchase</b>\nThe bottom button reverses the latest eligible purchase.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Layout affects travel distance, handling time, congestion, and therefore the capacity of the whole workflow.";
@@ -326,6 +326,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             title = "Food tab help";
             body =
                 "<b>Items to sell</b>\nThe green toggle determines whether customers can order that product. Each item also shows its station sequence and the material used at every step.\n\n" +
+                "<b>Recipes</b>\nOpen the centered recipe book and switch between Burger, Fries, and Shake to see each production tree from raw ingredients to the most complex finished product.\n\n" +
                 "<b>Workflow</b>\nRead the stations from left to right. A product can only be completed when its required stations exist, have materials, and belong to a usable worker flow.\n\n" +
                 "<b>Buy ingredients</b>\nEach row shows the ingredient, current stock, pack size, and purchase price. Ordering spends cash and starts a <b>1-minute delivery</b>. A delivery person comes in the front door and hands the pack over at the counter when the timer ends.\n\n" +
                 "<b>Undo purchase</b>\nThe bottom button reverses your latest eligible purchase.\n\n" +

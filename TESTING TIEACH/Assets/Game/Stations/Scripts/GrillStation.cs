@@ -1,14 +1,16 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Placeable grill. Choose which product this grill cooks (Manage mode).
-/// Currently used for burgers; selection is required before jobs are accepted.
+/// Placeable grill. The selected product is the grill's own output, not the
+/// downstream menu item that Assembly will eventually create.
 /// </summary>
-public class GrillStation : MonoBehaviour
+public class GrillStation : MonoBehaviour, IStationBuffer
 {
+    const int DefaultBufferCapacity = 2;
     [Header("Product")]
-    [Tooltip("Product this grill is set to cook. Must be chosen in Manage mode.")]
+    [Tooltip("Output this grill produces. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
     [FormerlySerializedAs("cookTimeSeconds")]
@@ -16,15 +18,117 @@ public class GrillStation : MonoBehaviour
     [Min(0f)] public float processTimeSeconds = 4f;
     public Vector3 interactionOffset = Vector3.zero;
 
-    bool hasPatty;
+    [SerializeField, Min(0)] int pattyUnits;
     float cookTimer;
+    CustomerOrder bufferedOrder;
+    Transform itemDisplayRoot;
+    readonly List<Transform> inputMarkers = new List<Transform>();
+    readonly List<Transform> outputMarkers = new List<Transform>();
+    int displayedUnits = -1;
+    bool displayedCooked;
+    ItemDefinition displayedProduct;
 
     public bool HasProductSelected => selectedProduct != null;
-    public bool HasPattyOnGrill => hasPatty;
-    public bool IsCookingPatty => hasPatty && cookTimer < processTimeSeconds;
+    public bool HasPattyOnGrill => pattyUnits > 0;
+    public bool IsCookingPatty => pattyUnits > 0 && cookTimer < processTimeSeconds;
+    public int BufferedPattyCount => pattyUnits;
+    public float CookProgressSeconds => cookTimer;
+    public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
+    public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
 
-    public bool CanProcess(ItemDefinition product) =>
-        product != null && selectedProduct != null && product == selectedProduct;
+    void OnEnable()
+    {
+        StationConfigurationCaution.Ensure(gameObject);
+        NormalizeLegacySelection();
+        FindBufferMarkers();
+        pattyUnits = Mathf.Clamp(pattyUnits, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
+        RefreshItemDisplay(force: true);
+    }
+
+    public int GetInputCount(ItemDefinition item) =>
+        IsSelectedInput(item) && IsCookingPatty ? pattyUnits : 0;
+    public int GetOutputCount(ItemDefinition item) =>
+        IsSelectedOutput(item) && IsCooked() ? pattyUnits : 0;
+    public bool CanAcceptInput(ItemDefinition item, int amount) =>
+        amount > 0 && IsSelectedInput(item) && pattyUnits == 0 && amount <= InputSlotCapacity;
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        if (!CanAcceptInput(item, amount)) return 0;
+        pattyUnits = amount;
+        cookTimer = 0f;
+        bufferedOrder = sourceOrder;
+        return amount;
+    }
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        if (amount <= 0 || !IsSelectedOutput(item) || !IsCooked()) return 0;
+        int taken = Mathf.Min(amount, pattyUnits);
+        pattyUnits -= taken;
+        if (pattyUnits <= 0)
+        {
+            pattyUnits = 0;
+            cookTimer = 0f;
+            bufferedOrder = null;
+        }
+        return taken;
+    }
+
+    public bool CanProcess(ItemDefinition product)
+    {
+        NormalizeLegacySelection();
+        if (product == null || selectedProduct == null) return false;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (product == selectedProduct) return true;
+        return config != null && selectedProduct == config.cookedPattyIngredient
+            && config.IsBurger(product);
+    }
+
+    public ItemDefinition GetSelectedOutput()
+    {
+        NormalizeLegacySelection();
+        return selectedProduct;
+    }
+    public ItemDefinition GetSelectedInput() => SelectedInput;
+
+    public void SetRecipeOutput(ItemDefinition output)
+    {
+        NormalizeLegacySelection();
+        if (selectedProduct != output)
+        {
+            pattyUnits = 0;
+            cookTimer = 0f;
+            bufferedOrder = null;
+        }
+        selectedProduct = output;
+        GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+        RefreshItemDisplay(force: true);
+    }
+
+    ItemDefinition SelectedInput
+    {
+        get
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            StationProcessingRecipeDefinition recipe = config != null ? config.GetGrillRecipe(selectedProduct) : null;
+            return recipe != null ? recipe.input : (config != null ? config.rawPattyIngredient : selectedProduct);
+        }
+    }
+    bool IsSelectedInput(ItemDefinition item) => item != null && item == SelectedInput;
+    bool IsSelectedOutput(ItemDefinition item) => item != null && item == selectedProduct;
+
+    void NormalizeLegacySelection()
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config != null && config.IsBurger(selectedProduct)
+            && config.cookedPattyIngredient != null)
+            selectedProduct = config.cookedPattyIngredient;
+    }
+
+    public bool IsHoldingOrder(CustomerOrder order) =>
+        !HasPattyOnGrill || bufferedOrder == null || order == null || bufferedOrder == order;
 
     public Vector3 GetInteractionPosition()
     {
@@ -35,36 +139,96 @@ public class GrillStation : MonoBehaviour
 
     public bool CanPlacePatty()
     {
-        return !hasPatty && HasProductSelected;
+        return pattyUnits == 0 && HasProductSelected;
     }
 
     public void PlacePatty()
     {
-        if (hasPatty || !HasProductSelected) return;
-        hasPatty = true;
-        cookTimer = 0f;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        StoreInput(config != null ? config.rawPattyIngredient : selectedProduct, 1);
+    }
+
+    public int PlacePatties(ItemDefinition item, int amount)
+    {
+        return StoreInput(item, amount);
     }
 
     public void UpdateCooking(float deltaTime)
     {
-        if (hasPatty && cookTimer < processTimeSeconds)
+        if (pattyUnits > 0 && cookTimer < processTimeSeconds)
             cookTimer += deltaTime;
     }
 
     public bool IsCooked()
     {
-        return hasPatty && cookTimer >= processTimeSeconds;
+        return pattyUnits > 0 && cookTimer >= processTimeSeconds;
     }
 
     public bool TakeCookedPatty()
     {
-        if (!hasPatty || cookTimer < processTimeSeconds) return false;
-        hasPatty = false;
-        return true;
+        return TakeOutput(GetSelectedOutput(), 1) == 1;
+    }
+
+    public int TakeCookedPatties(ItemDefinition item, int amount)
+    {
+        return TakeOutput(item, amount);
+    }
+
+    public void RestoreBufferedState(ItemDefinition product, int units, float progressSeconds)
+    {
+        selectedProduct = product;
+        NormalizeLegacySelection();
+        pattyUnits = Mathf.Clamp(units, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
+        cookTimer = pattyUnits > 0
+            ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
+            : 0f;
+        bufferedOrder = null;
     }
 
     void Update()
     {
         UpdateCooking(Time.deltaTime);
+        RefreshItemDisplay(force: false);
+    }
+
+    void RefreshItemDisplay(bool force)
+    {
+        bool cooked = IsCooked();
+        if (!force && displayedUnits == pattyUnits && displayedCooked == cooked
+            && displayedProduct == selectedProduct) return;
+
+        EnsureBufferMarkers();
+        if (itemDisplayRoot == null)
+            itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "GrillItemDisplay");
+        StationItemVisualUtility.ClearChildren(itemDisplayRoot);
+
+        displayedUnits = pattyUnits;
+        displayedCooked = cooked;
+        displayedProduct = selectedProduct;
+        if (pattyUnits <= 0) return;
+
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig
+            : null;
+        ItemDefinition visualItem = cooked ? selectedProduct : SelectedInput;
+        GameObject prefab = visualItem != null ? visualItem.prefab : null;
+        if (prefab == null) return;
+
+        List<Transform> activeMarkers = cooked ? outputMarkers : inputMarkers;
+        int visibleCount = Mathf.Min(pattyUnits, activeMarkers.Count);
+        for (int i = 0; i < visibleCount; i++)
+            StationItemVisualUtility.SpawnAtMarker(prefab, activeMarkers[i], itemDisplayRoot,
+                (cooked ? "CookedPatty_" : "RawPatty_") + i);
+    }
+
+    void FindBufferMarkers()
+    {
+        StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+    }
+
+    void EnsureBufferMarkers()
+    {
+        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
     }
 }

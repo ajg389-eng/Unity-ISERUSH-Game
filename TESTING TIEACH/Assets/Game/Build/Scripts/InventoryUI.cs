@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -33,7 +34,7 @@ public class InventoryUI : MonoBehaviour
     public bool useSquareCards = true;
     [Tooltip("When true, GridLayoutGroup cell size/spacing on Content are left alone for scene editing.")]
     public bool useSceneGridLayout = true;
-    public Vector2 cardCellSize = new Vector2(230f, 250f);
+    public Vector2 cardCellSize = new Vector2(170f, 250f);
     public Vector2 cardSpacing = new Vector2(12f, 12f);
 
     [Header("Tabs (scene)")]
@@ -51,20 +52,24 @@ public class InventoryUI : MonoBehaviour
     public int expandHeight = 1;
 
     Button expandButton;
-    Button undoExpandButton;
     TextMeshProUGUI expandLabel;
-    TextMeshProUGUI undoExpandLabel;
     TextMeshProUGUI expandStatusText;
-    PurchaseUndoFooter stationUndoFooter;
     int displayedStationUnlockProgress = int.MinValue;
     bool expandUiBuilt;
     Transform floorContentParent;
     int activeTab;
     int displayedCapacityMilestoneCount = -1;
     ManagementTabInfoUI tabInfoUI;
+    MainHudTabs cachedHudTabs;
+    ManagementScreenController cachedManagementScreen;
+    float nextReferenceRefresh;
+    bool expansionStateKnown;
+    int displayedFloorWidth, displayedFloorHeight, displayedExpandWidth, displayedExpandHeight, displayedExpandCost;
+    bool displayedGridAvailable, displayedCanExpand;
 
     void Start()
     {
+        RefreshNavigationReferences();
         if (grid == null) grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
@@ -87,9 +92,12 @@ public class InventoryUI : MonoBehaviour
 
     void Update()
     {
+        // Retry missing/destroyed references without scanning the scene every frame.
+        if (Time.unscaledTime >= nextReferenceRefresh && (cachedHudTabs == null || cachedManagementScreen == null))
+            RefreshNavigationReferences();
         if (!UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen)
         {
-            bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+            bool unifiedNavigation = cachedHudTabs != null;
             if (!unifiedNavigation && Input.GetKeyDown(KeyCode.Q))
                 TogglePanel();
 
@@ -98,12 +106,22 @@ public class InventoryUI : MonoBehaviour
         }
 
         ApplyModeState();
-        RefreshExpandButton();
+        if (IsPanelOpen)
+            RefreshExpandButton();
 
         int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
         if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
+    }
+
+    void RefreshNavigationReferences()
+    {
+        nextReferenceRefresh = Time.unscaledTime + 0.5f;
+        if (cachedHudTabs == null)
+            cachedHudTabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        if (cachedManagementScreen == null)
+            cachedManagementScreen = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
     }
 
     void HandleNumberRowTabShortcut()
@@ -142,13 +160,15 @@ public class InventoryUI : MonoBehaviour
 
         if (panel.activeSelf)
         {
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt != null && mgmt.IsOpen) mgmt.Close();
             modeManager.SetMode(GameModeManager.Mode.Build);
         }
         else if (modeManager.CurrentMode == GameModeManager.Mode.Build)
         {
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt == null || !mgmt.IsOpen)
                 modeManager.SetMode(GameModeManager.Mode.Play);
         }
@@ -170,9 +190,11 @@ public class InventoryUI : MonoBehaviour
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            RefreshNavigationReferences();
             EnsurePanelClickBlocker();
             ApplyConnectedHudBackdrop();
-            var mgmt = FindObjectOfType<ManagementScreenController>();
+            var mgmt = cachedManagementScreen != null && cachedManagementScreen.gameObject.activeInHierarchy
+                ? cachedManagementScreen : null;
             if (mgmt != null && mgmt.IsOpen)
                 mgmt.Close();
             BindOrBuildTabs(forceDefaultLayout: false);
@@ -241,6 +263,24 @@ public class InventoryUI : MonoBehaviour
         if (tabPanels == null || tabPanels.Length == 0) return;
 
         activeTab = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        int floorIndex = System.Array.FindIndex(tabPanels, p => p != null && p.name == FloorPanelName);
+        int customizeIndex = System.Array.FindIndex(tabPanels, p => p != null && p.name == CustomizePanelName);
+        if (floorIndex >= 0 && customizeIndex >= 0)
+        {
+            if (activeTab == floorIndex) activeTab = customizeIndex;
+            if (tabButtons != null && floorIndex < tabButtons.Length && tabButtons[floorIndex] != null)
+                tabButtons[floorIndex].gameObject.SetActive(false);
+            var upper = (RectTransform)tabPanels[customizeIndex].transform;
+            upper.anchorMin = Vector2.zero;
+            upper.anchorMax = Vector2.one;
+            upper.offsetMin = new Vector2(16, 60);
+            // Binding calculates the space needed by the actual tab bar.
+            // Preserve that inset when combining Customize and expansion controls.
+            upper.offsetMax = new Vector2(-16, upper.offsetMax.y);
+            var appearance = tabPanels[customizeIndex].GetComponent<StoreAppearanceUI>();
+            if (appearance != null && expandButton != null)
+                appearance.AppendOptions(expandButton.transform.parent);
+        }
         for (int i = 0; i < tabPanels.Length; i++)
         {
             if (tabPanels[i] != null)
@@ -256,10 +296,7 @@ public class InventoryUI : MonoBehaviour
         EnsureTabInfo();
         if (tabInfoUI != null)
             tabInfoUI.SetTab(tabPanels[activeTab]);
-        if (stationUndoFooter == null)
-            EnsureUndoFooter();
-        if (stationUndoFooter != null)
-            stationUndoFooter.gameObject.SetActive(activeTab == 0);
+        EnsureUndoFooter();
 
         if (activeTab == 0)
             RefreshAll();
@@ -291,13 +328,21 @@ public class InventoryUI : MonoBehaviour
             DestroyObject(child.gameObject);
         }
 
+        bool squareCards = useSquareCards || rowPrefab == null
+            || rowPrefab.GetComponent<InventoryItemCardUI>() != null;
+        var shownFamilies = new HashSet<string>();
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
             if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
                 continue;
 
-            if (useSquareCards || rowPrefab == null || rowPrefab.GetComponent<InventoryItemCardUI>() != null)
+            if (squareCards && item.IsTieredStation)
+            {
+                if (!shownFamilies.Add(item.stationFamily)) continue;
+                CreateStationFamilyCard(item.stationFamily);
+            }
+            else if (squareCards)
                 CreateSquareCard(item);
             else
                 CreateLegacyRow(item);
@@ -325,7 +370,7 @@ public class InventoryUI : MonoBehaviour
         SelectTab(0);
     }
 
-    /// <summary>Editor / runtime: configure the stations Content as a 2-column grid.</summary>
+    /// <summary>Editor / runtime: configure the stations Content as a 3-column grid.</summary>
     public void SetupStationsGrid(bool forceDefaultLayout = true)
     {
         EnsureStationsScrollSetup();
@@ -417,7 +462,7 @@ public class InventoryUI : MonoBehaviour
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 30f;
+        GameUITheme.ConfigureScroll(scrollRect);
 
         // Keep scroll view filling the stations panel.
         if (scroll.parent != null && scroll.parent.name == StationsPanelName)
@@ -449,12 +494,14 @@ public class InventoryUI : MonoBehaviour
         if (scrollRect != null && scrollRect.viewport != null)
             viewportWidth = Mathf.Max(120f, scrollRect.viewport.rect.width);
 
-        // Fit two columns inside the viewport with padding/spacing.
+        // Fit three columns inside the viewport with padding and two gaps.
         float pad = 24f;
         float gap = cardSpacing.x;
-        float cellW = Mathf.Floor((viewportWidth - pad - gap) * 0.5f);
-        cellW = Mathf.Clamp(cellW, 120f, 280f);
-        float cellH = cellW + 30f;
+        float cellW = Mathf.Floor((viewportWidth - pad - gap * 2f) / 3f);
+        cellW = Mathf.Clamp(cellW, 100f, 190f);
+        // Three columns reduce width, but the title, optional MK selector, preview,
+        // and footer still need the original vertical space.
+        float cellH = 250f;
 
         if (forceDefaultLayout || !useSceneGridLayout || created)
         {
@@ -464,17 +511,16 @@ public class InventoryUI : MonoBehaviour
             grid.startAxis = GridLayoutGroup.Axis.Horizontal;
             grid.childAlignment = TextAnchor.UpperCenter;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
+            grid.constraintCount = 3;
             grid.padding = new RectOffset(12, 12, 12, 12);
             cardCellSize = grid.cellSize;
         }
         else
         {
-            // Keep scene-tuned height, but always fit two columns to the viewport width.
-            float height = grid.cellSize.y > 1f ? grid.cellSize.y : cellH;
-            grid.cellSize = new Vector2(cellW, height);
+            // Preserve the card proportions while always fitting three columns.
+            grid.cellSize = new Vector2(cellW, cellH);
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 2;
+            grid.constraintCount = 3;
         }
 
         var fitter = contentParent.GetComponent<ContentSizeFitter>();
@@ -530,6 +576,63 @@ public class InventoryUI : MonoBehaviour
             inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
         card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(captured));
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
+            card.transform.SetAsFirstSibling();
+    }
+
+    void CreateStationFamilyCard(string family)
+    {
+        ItemDefinition mk1 = null;
+        ItemDefinition mk2 = null;
+        foreach (ItemDefinition candidate in inventory.allItems)
+        {
+            if (candidate == null || !candidate.IsTieredStation
+                || candidate.stationFamily != family) continue;
+            if (candidate.stationMark == 1) mk1 = candidate;
+            else if (candidate.stationMark == 2) mk2 = candidate;
+        }
+        if (mk1 == null && mk2 == null) return;
+
+        InventoryItemCardUI card = rowPrefab != null
+            && rowPrefab.GetComponent<InventoryItemCardUI>() != null
+            ? Object.Instantiate(rowPrefab, contentParent).GetComponent<InventoryItemCardUI>()
+            : InventoryItemCardBuilder.Create(contentParent);
+        card.gameObject.SetActive(true);
+
+        ItemDefinition selected = mk1 != null ? mk1 : mk2;
+        System.Action refresh = null;
+        refresh = () =>
+        {
+            ItemDefinition active = selected;
+            card.SetTutorialLocked(false);
+            card.Bind(active, inventory.GetAcquiredCount(active),
+                onSelect: () => BeginItemPlacement(active),
+                onBuy: () =>
+                {
+                    if (!inventory.PurchaseOne(active))
+                    {
+                        Sfx.Play(SfxId.UiError);
+                        return;
+                    }
+                    Sfx.Play(SfxId.Purchase);
+                    refresh();
+                    BeginItemPlacement(active);
+                },
+                displayPrice: inventory.GetPurchasePrice(active));
+            card.SetDisplayName(family);
+            card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
+                inventory.GetStationCapacity(active));
+            card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
+                inventory.GetCount(active), inventory.GetAcquiredCount(active));
+            card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(active));
+            card.ConfigureMarkSelector(mk1 != null, mk2 != null, active.stationMark, mark =>
+            {
+                selected = mark == 2 ? mk2 : mk1;
+                if (selected != null) refresh();
+            });
+        };
+        refresh();
+
+        if (OnboardingTutorial.ShouldHighlightInventoryItem(selected))
             card.transform.SetAsFirstSibling();
     }
 
@@ -1020,78 +1123,25 @@ public class InventoryUI : MonoBehaviour
         expandButton.onClick.RemoveListener(OnExpandClicked);
         expandButton.onClick.AddListener(OnExpandClicked);
 
-        undoExpandButton = barGo.transform.Find("UndoExpandButton")?.GetComponent<Button>();
-        if (undoExpandButton == null)
-        {
-            var undoGo = new GameObject("UndoExpandButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            undoGo.transform.SetParent(barGo.transform, false);
-            var undoImg = undoGo.GetComponent<Image>();
-            undoImg.color = new Color(0.28f, 0.32f, 0.42f, 1f);
-            undoExpandButton = undoGo.GetComponent<Button>();
-            var undoLe = undoGo.AddComponent<LayoutElement>();
-            undoLe.preferredHeight = 44f;
-
-            var undoLabelGo = new GameObject("Label", typeof(RectTransform));
-            undoLabelGo.transform.SetParent(undoGo.transform, false);
-            StretchFull((RectTransform)undoLabelGo.transform);
-            undoExpandLabel = undoLabelGo.AddComponent<TextMeshProUGUI>();
-            undoExpandLabel.fontSize = 16;
-            undoExpandLabel.alignment = TextAlignmentOptions.Center;
-            undoExpandLabel.color = Color.white;
-            if (TMP_Settings.defaultFontAsset != null)
-                undoExpandLabel.font = TMP_Settings.defaultFontAsset;
-        }
-        else
-        {
-            undoExpandLabel = undoExpandButton.GetComponentInChildren<TextMeshProUGUI>(true);
-        }
-
-        undoExpandButton.onClick.RemoveListener(OnUndoFloorClicked);
-        undoExpandButton.onClick.AddListener(OnUndoFloorClicked);
+        var obsoleteUndo = barGo.transform.Find("UndoExpandButton");
+        if (obsoleteUndo != null)
+            DestroyObject(obsoleteUndo.gameObject);
 
         expandUiBuilt = true;
+        expansionStateKnown = false;
         RefreshExpandButton();
     }
 
     void EnsureUndoFooter()
     {
         if (panel == null) return;
+        foreach (PurchaseUndoFooter footer in panel.GetComponentsInChildren<PurchaseUndoFooter>(true))
+            if (footer != null)
+                DestroyObject(footer.gameObject);
 
-        var contentBox = panel.transform.Find(ContentBoxName);
-        var scroll = contentBox != null
-            ? contentBox.Find(StationsPanelName + "/Scroll View") as RectTransform
-            : panel.transform.Find("Scroll View") as RectTransform;
-
-        // Older versions parented this footer to the station scroll area, which
-        // left it floating above the bottom of the screen. Remove that copy.
-        if (scroll != null && scroll.parent != null && scroll.parent != panel.transform)
-        {
-            var oldFooter = scroll.parent.Find(PurchaseUndoFooter.ObjectName);
-            if (oldFooter != null)
-                DestroyObject(oldFooter.gameObject);
-        }
-
-        // Match the content column horizontally, but parent to the full-screen
-        // inventory panel so y = 0 is the actual bottom edge of the screen.
-        if (contentBox is RectTransform contentBoxRt)
-        {
-            stationUndoFooter = PurchaseUndoFooter.EnsureMatching(contentBoxRt);
-        }
-        else
-        {
-            stationUndoFooter = PurchaseUndoFooter.EnsureOnPanel(panel.transform);
-        }
-
-        if (stationUndoFooter != null)
-            stationUndoFooter.gameObject.SetActive(activeTab == 0);
-
-        var floorPanel = contentBox != null ? contentBox.Find(FloorPanelName) : null;
-        if (floorPanel != null)
-        {
-            var leftover = floorPanel.Find(PurchaseUndoFooter.ObjectName);
-            if (leftover != null)
-                DestroyObject(leftover.gameObject);
-        }
+        Transform floorUndo = panel.transform.Find(ContentBoxName + "/" + FloorPanelName + "/ExpandFloorRow/UndoExpandButton");
+        if (floorUndo != null)
+            DestroyObject(floorUndo.gameObject);
     }
 
     void RefreshExpandButton()
@@ -1106,6 +1156,24 @@ public class InventoryUI : MonoBehaviour
         bool canPay = money != null && money.CanAfford(expandCost);
         bool can = canSize && canPay;
 
+        // Affordability remains live, but unchanged values do not dirty the UI.
+        if (expandButton != null && expandButton.interactable != can)
+            expandButton.interactable = can;
+        bool gridAvailable = grid != null;
+        if (expansionStateKnown && displayedFloorWidth == w && displayedFloorHeight == h
+            && displayedExpandWidth == expandWidth && displayedExpandHeight == expandHeight
+            && displayedExpandCost == expandCost && displayedGridAvailable == gridAvailable
+            && displayedCanExpand == canSize)
+            return;
+        expansionStateKnown = true;
+        displayedFloorWidth = w;
+        displayedFloorHeight = h;
+        displayedExpandWidth = expandWidth;
+        displayedExpandHeight = expandHeight;
+        displayedExpandCost = expandCost;
+        displayedGridAvailable = gridAvailable;
+        displayedCanExpand = canSize;
+
         if (expandStatusText != null)
         {
             if (grid == null)
@@ -1119,23 +1187,6 @@ public class InventoryUI : MonoBehaviour
         if (expandLabel != null)
             expandLabel.text = canSize ? $"Expand Floor  ${expandCost}" : "Floor Maxed";
 
-        if (expandButton != null)
-            expandButton.interactable = can;
-
-        var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
-        bool canUndoFloor = undo != null && undo.CanUndoFloor;
-        if (undoExpandLabel != null)
-            undoExpandLabel.text = canUndoFloor ? undo.PeekFloorLabel : "Undo Floor";
-        if (undoExpandButton != null)
-            undoExpandButton.interactable = canUndoFloor;
-    }
-
-    void OnUndoFloorClicked()
-    {
-        var undo = PurchaseUndoManager.Ensure();
-        if (undo != null)
-            undo.TryUndoLastFloor();
-        RefreshExpandButton();
     }
 
     void OnExpandClicked()

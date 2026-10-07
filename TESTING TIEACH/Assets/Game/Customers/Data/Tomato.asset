@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Tomato
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Tomato
-  prefab: {fileID: 0}
+  prefab: {fileID: 5028759993301923343, guid: 9a41000000000000000000000000000d, type: 3}
   price: 6
   startingQuantity: 10
   orderPackSize: 10

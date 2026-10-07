@@ -16,7 +16,8 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
     public static bool IsActive => Instance != null && Instance.running;
-    public static bool BlocksAutoCustomers => IsActive;
+    public static bool BlocksAutoCustomers => IsActive || !IsComplete;
+    public static bool AllowsPracticeCustomer => IsActive && Steps[Instance.stepIndex].liveCustomer;
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
 
@@ -43,7 +44,7 @@ public class OnboardingTutorial : MonoBehaviour
     }
     int furthestStepIndex = -1;
     bool flowEditCompleted;
-    readonly List<Outline> tutorialControlOutlines = new List<Outline>();
+    readonly Dictionary<Graphic, GameObject> tutorialBorders = new Dictionary<Graphic, GameObject>();
     float nextControlHighlightRefresh;
     readonly List<GameObject> starterKitchen = new List<GameObject>();
 
@@ -91,6 +92,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireWorkerOnFlow;
         public bool requireHiredWorker;
         public bool requireEditedFlow;
+        public bool requireRecipes;
 
         public Step(
             string title,
@@ -107,7 +109,7 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireFlow = false,
             bool requireWorkerOnFlow = false,
             bool requireHiredWorker = false,
-            bool requireEditedFlow = false)
+            bool requireEditedFlow = false, bool requireRecipes = false)
         {
             this.title = title;
             this.body = body;
@@ -124,6 +126,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireWorkerOnFlow = requireWorkerOnFlow;
             this.requireHiredWorker = requireHiredWorker;
             this.requireEditedFlow = requireEditedFlow;
+            this.requireRecipes = requireRecipes;
         }
     }
 
@@ -131,39 +134,39 @@ public class OnboardingTutorial : MonoBehaviour
     {
         new Step(
             "Empty kitchen",
-            "This shift starts with an <b>empty kitchen</b>. Start by placing a register on the lobby counter.\n\n" +
+            "This shift starts with an <b>empty kitchen</b>. Let's build it one step at a time.\n\n" +
             "You will buy each workstation, stock ingredients, then serve one customer. Use <b>Back</b> and <b>Next</b> to move through the steps.",
             "Next", Highlight.None),
+        new Step(
+            "Buy stations",
+            "Open <b>Build</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
+            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
+            "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
+            "Next", Highlight.Inventory, openInventory: true),
         new Step(
             "Register",
             "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
             "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
-            "Buy stations",
-            "Open <b>Build</b> (top-left, or press Q then 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
-            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
-            "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
-            "Next", Highlight.Inventory, openInventory: true),
-        new Step(
             "Freezer",
-            "Buy and place a <b>freezer</b>. It holds raw burger patties. A cook walks here first when a burger is ordered, then carries a patty to the grill.\n\n" +
-            "If the freezer is missing or empty, burgers never start.\n\nPlace one to continue.",
+            "Buy and place a <b>freezer</b>. Each freezer stores one ingredient. Select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>. A cook carries those patties to the grill.\n\n" +
+            "If the freezer is unconfigured or empty, burgers never start.\n\nPlace one to continue.",
             "Next", Highlight.Freezer, openInventory: true, requirePlaced: true),
         new Step(
             "Grill",
             "Buy and place a <b>grill</b> next in the burger line. After the freezer, this cooks the patty.\n\n" +
-            "Later, in Staff, point the grill's output toward assembly so cooked patties keep moving.\n\nPlace one to continue.",
+            "Later, under Business > Staff, point the grill's output toward assembly so cooked patties keep moving.\n\nPlace one to continue.",
             "Next", Highlight.Grill, openInventory: true, requirePlaced: true),
         new Step(
             "Fryer",
             "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "The fries flow is Pantry > Fryer > Pickup Station, starting with potatoes from the pantry.\n\nPlace one to continue.",
+            "The fries flow is Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, then Assembly combines them with a fry container from a second Pantry.\n\nPlace one to continue.",
             "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
         new Step(
             "Pantry",
-            "Buy and place a <b>pantry</b>. It supplies buns for burgers and potatoes for fries.\n\n" +
-            "For a burger, the worker carries the cooked patty here, adds a bun, then continues to assembly.\n\nPlace one to continue.",
+            "Buy and place a <b>pantry</b>. Each pantry stores exactly one ingredient. Select it under <b>Business > Staff</b> and choose <b>Bun</b> for this burger line.\n\n" +
+            "Later, use separate pantries for potatoes, raw cheese, lettuce, or tomatoes.\n\nPlace one to continue.",
             "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
         new Step(
             "Assembly",
@@ -176,33 +179,33 @@ public class OnboardingTutorial : MonoBehaviour
             "If this sits empty, upstream stations are too slow. If it fills and items expire, you produced more than you can serve.\n\nPlace one to continue.",
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
-            "Assembly recipe",
-            "Select the assembly station in Management to choose its recipe. Burger is the first recipe available, and more recipes can be added later.\n\n" +
-            "The station panel shows both required inputs and the single finished output.",
-            "Next", Highlight.Management),
+            "Configure ingredients and recipes",
+            "Select stations under <b>Business > Staff</b> to configure them. Set the <b>Freezer to Raw Patty</b>, the <b>Pantry to Bun</b>, and the Assembly recipe to <b>Burger</b>.\n\n" +
+            "Set the <b>Grill to Cooked Patty</b> too. Assembly combines one cooked patty and one bun. Next unlocks when all four selections are ready.",
+            "Next", Highlight.Management, openWorkers: true, requireRecipes: true),
         new Step(
             "Buy ingredients",
-            "Stations do nothing without stock. Open <b>Business</b> (top-left, or press Q then 3), then <b>Menu & Supply</b>.\n\n" +
-            "Buy Burger patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
+            "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then <b>Menu & Supply</b>.\n\n" +
+            "Buy Raw Patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
             "Next", Highlight.Management, openIngredients: true),
         new Step(
             "Hire workers",
-            "Stations only cook if people work a <b>flow</b>. Open <b>Staff</b> (top-left, or press Q then 2).\n\n" +
-            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. A worker can cover up to three stations; extra people you do not assign will stand idle.\n\n" +
+            "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
+            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. Workers use their priorities to choose jobs within their assigned flow; unassigned workers remain idle.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
         new Step(
             "Create a flow",
             "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
-            "Click stations <b>in production order</b>. The burger line is freezer → grill → assembly → Pickup Station. Confirm when the path looks right.\n\n" +
-            "Build Freezer > Grill > Assembly > Pickup Station. Then make a short Pantry > Assembly feeder flow so buns arrive independently.",
+            "Hold the left mouse button on a station, drag to its destination, and release to add a connection.\n\n" +
+            "In one flow, drag these connections: <b>Freezer > Grill</b>, <b>Grill > Assembly</b>, <b>Pantry > Assembly</b>, <b>Assembly > Pickup Station</b>. Click Finish.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
-            "Click a station already on the path to trim it back. Click a new station to extend the route. Press Esc to restore the previous path.\n\n" +
-            "Open Edit and click Finish to save the burger route before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
-            "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireEditedFlow: true),
+            "Drag to add a connection. Click selects a station; Ctrl-click removes it and its connections. Press Esc to cancel edits.\n\n" +
+            "Edit an existing flow and click Finish to save it before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
+            "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true),
         new Step(
             "Assign workers to a flow",
             "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
@@ -213,7 +216,7 @@ public class OnboardingTutorial : MonoBehaviour
             "One customer loop",
             "Here is the basic service loop:\n\n" +
             "1. Customer arrives and orders at the register.\n" +
-            "2. Workers follow the flow you built — freezer → grill → assembly for burgers, fryer for fries, drinks for drinks.\n" +
+            "2. Workers follow the flow you built: freezer > grill > assembly for burgers, pantry > cutting > fryer for fries, with both grill and pantry feeding burger assembly.\n" +
             "3. Finished items wait at the Pickup Station.\n" +
             "4. Food is handed off and the customer leaves.",
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
@@ -228,47 +231,47 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] GusDialogue =
     {
-        "I cleared out the kitchen so we can rebuild the operation properly. First, place a <b>register</b> on the lobby counter.\n\n" +
+        "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
+
+        "Open <b>Build</b> at the top-left, or press <b>1</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
+        "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
 
         "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
         "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
 
-        "Open <b>Build</b> at the top-left, or press <b>Q</b> then <b>1</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
-        "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
-
-        "Let's start the burger process. Buy and place a <b>freezer</b>. It stores raw patties, so this is the first stop for every burger.\n\n" +
-        "If it is missing or empty, burger production cannot begin.",
+        "Let's start the burger process. Buy and place a <b>freezer</b>. Each freezer stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>.\n\n" +
+        "If it is unconfigured or empty, burger production cannot begin.",
 
         "Next, buy and place a <b>grill</b>. Workers carry raw patties here from the freezer to cook them.\n\n" +
         "Distance matters because every extra tile adds travel time. Put it somewhere sensible and we will connect its output later.",
 
         "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
-        "Its output should eventually lead to a Pickup Station so customers can collect the finished fries.",
+        "Fries use Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, and Assembly combines them with a fry container supplied by a second Pantry. We will practice a basic burger first; no cutting station is required for it.",
 
-        "Place a <b>pantry</b> so the burger line can collect buns. The same pantry supplies potatoes to a fries line.\n\n" +
-        "Route burgers from the grill to the pantry, then assembly.",
+        "Place a <b>pantry</b> for the burger line. Each pantry stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Bun</b>.\n\n" +
+        "A fries line needs one pantry configured for potatoes and another configured for fry containers.",
 
         "Place an <b>assembly</b> table. Workers combine one cooked patty with one bun here to finish a burger.\n\n" +
-        "The burger route should move from grill to pantry to assembly, then from assembly to a Pickup Station.",
+        "Connect Grill > Assembly for cooked patties and Pantry > Assembly for buns, then Assembly > Pickup Station. Both input branches belong in the same flow.",
 
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
 
-        "Buy and place a <b>pantry</b>. It supplies toppings and other ingredients workers need at assembly.\n\n" +
-        "Try placing it nearby. I do not want workers crossing the entire kitchen every time they need one ingredient.",
+        "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Burger recipe at Assembly.\n\n" +
+        "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
 
-        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>Q</b> then <b>3</b>, and choose <b>Menu & Supply</b>.\n\n" +
-        "Order at least one pack of <b>Burger</b>, <b>Fries</b>, and <b>Drink</b>. A delivery person will bring the combined order through the front door.",
+        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Menu & Supply</b>.\n\n" +
+        "Order at least one pack of <b>Raw Patties</b>, <b>Buns</b>, and <b>Potatoes</b>. A delivery person will bring the combined order through the front door.",
 
-        "Now we need someone to run the process. Open <b>Staff</b>, or press <b>Q</b> then <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
+        "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
 
-        "Let's define how work should move. In Workers, click <b>Create Flow</b>, then select stations in production order.\n\n" +
-        "Build this burger route: <b>Freezer > Grill > Assembly > Pickup Station</b>. Then create a <b>Pantry > Assembly</b> feeder flow for buns.",
+        "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +
+        "In ONE flow, drag Freezer to Grill, Grill to Assembly, Pantry to Assembly, and Assembly to Pickup Station. Release on each destination and click Finish. The pantry supplies buns to the same assembly station.",
 
         "Plans change, so you need to know how to revise one. Select the flow chip, then click <b>Edit Flow</b>.\n\n" +
-        "Selecting an existing stop trims the route back to that point. Selecting a new station extends it. Check the route, then click Finish to save it.",
+        "Drag to connect stations. Click selects a station; Ctrl-click removes it and its connections. Check the route, then click Finish to save it.",
 
         "A process plan does nothing until someone owns the work. Select the burger flow, then <b>drag a worker card onto DROP WORKER</b>.\n\n" +
         "Their name will appear on the flow. Assign at least one worker so production can begin.",
@@ -344,6 +347,11 @@ public class OnboardingTutorial : MonoBehaviour
             return;
 
         PrepareEmptyKitchen();
+        foreach (var customer in FindObjectsByType<CustomerAI>(FindObjectsSortMode.None))
+        {
+            customer.gameObject.SetActive(false);
+            Destroy(customer.gameObject);
+        }
         running = true;
         pendingStart = false;
         stepIndex = 0;
@@ -519,6 +527,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
+        if (step.requireRecipes) return "Set ingredients and recipes";
         if (step.requireEditedFlow) return "Edit and save flow";
         if (step.requireHiredWorker)
             return "Hire a worker";
@@ -546,8 +555,9 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.requireRecipes && !BurgerRecipesReady()) return false;
         if (step.requireEditedFlow && !flowEditCompleted) return false;
-        if ((step.requireFlow || step.requireWorkerOnFlow)
+        if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
             && ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
             return false;
         if (step.requireAllStations && !AllTutorialStationsPlaced())
@@ -610,32 +620,61 @@ public class OnboardingTutorial : MonoBehaviour
 
     static bool IsBurgerTutorialFlow(ProductionFlowPlan flow)
     {
-        if (flow == null || flow.stations == null || flow.stations.Count != 4) return false;
-        foreach (var station in flow.stations)
-            if (station == null || !station.activeInHierarchy || station.GetComponent<PlacedBuildItem>() == null)
-                return false;
-        return flow.stations[0].GetComponent<FreezerStation>() != null
-            && flow.stations[1].GetComponent<GrillStation>() != null
-            && flow.stations[2].GetComponent<AssemblyStation>() != null
-            && flow.stations[3].GetComponent<HeatLampStation>() != null;
+        if (flow == null) return false;
+        flow.EnsureLegacyConnections();
+        foreach (var assembly in flow.stations)
+        {
+            if (!IsPlacedFlowStation<AssemblyStation>(assembly)) continue;
+            bool pantry = false, cooked = false, pickup = false;
+            foreach (var edge in flow.connections)
+            {
+                if (edge.to == assembly && IsPlacedFlowStation<PantryStation>(edge.from)) pantry = true;
+                if (edge.from == assembly && IsPlacedFlowStation<HeatLampStation>(edge.to)) pickup = true;
+                if (edge.to != assembly || !IsPlacedFlowStation<GrillStation>(edge.from)) continue;
+                foreach (var input in flow.connections)
+                    if (input.to == edge.from && IsPlacedFlowStation<FreezerStation>(input.from)) cooked = true;
+            }
+            if (pantry && cooked && pickup) return true;
+        }
+        return false;
+    }
+
+    static bool IsPlacedFlowStation<T>(GameObject station) where T : Component =>
+        station != null && station.activeInHierarchy && station.GetComponent<PlacedBuildItem>() != null
+        && station.GetComponent<T>() != null;
+
+    bool BurgerRecipesReady()
+    {
+        var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+        if (config == null || config.burgerBase == null || config.rawPattyIngredient == null) return false;
+        var recipe = config.GetAssemblyRecipe(config.burgerBase);
+        if (recipe == null || config.GetAssemblySupplySource(recipe) == null) return false;
+        bool freezer = false, pantry = false, grill = false, assembly = false;
+        foreach (var s in FindObjectsByType<FreezerStation>(FindObjectsSortMode.None))
+            freezer |= IsPlacedFlowStation<FreezerStation>(s.gameObject) && s.selectedItem == config.rawPattyIngredient;
+        foreach (var s in FindObjectsByType<PantryStation>(FindObjectsSortMode.None))
+            pantry |= IsPlacedFlowStation<PantryStation>(s.gameObject) && s.CanDispense(config.GetAssemblySupplySource(recipe));
+        foreach (var s in FindObjectsByType<GrillStation>(FindObjectsSortMode.None))
+            grill |= IsPlacedFlowStation<GrillStation>(s.gameObject) && s.GetSelectedOutput() == config.cookedPattyIngredient;
+        foreach (var s in FindObjectsByType<AssemblyStation>(FindObjectsSortMode.None))
+            assembly |= IsPlacedFlowStation<AssemblyStation>(s.gameObject) && s.GetSelectedRecipe() == recipe;
+        return freezer && pantry && grill && assembly;
     }
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
     {
-        if (IsActive && wasEdit && Steps[Instance.stepIndex].requireEditedFlow && IsBurgerTutorialFlow(flow))
+        if (IsActive && wasEdit && flow != null && flow.stations != null && flow.stations.Count >= 2)
             Instance.flowEditCompleted = true;
     }
 
     bool AllTutorialStationsPlaced()
     {
-        return HasPlacedStation(Highlight.Register)
-            && HasPlacedStation(Highlight.Freezer)
-            && HasPlacedStation(Highlight.Grill)
-            && HasPlacedStation(Highlight.Fryer)
-            && HasPlacedStation(Highlight.Drink)
-            && HasPlacedStation(Highlight.Assembly)
-            && HasPlacedStation(Highlight.HeatLamp)
-            && HasPlacedStation(Highlight.Pantry);
+        // Follow the authored placement lessons. A removed/replaced station
+        // must not remain a hidden requirement for the customer demonstration.
+        foreach (var step in Steps)
+            if (step.requirePlaced && !HasPlacedStation(step.highlight))
+                return false;
+        return true;
     }
 
     bool HasPlacedStation(Highlight kind)
@@ -687,15 +726,18 @@ public class OnboardingTutorial : MonoBehaviour
     void SpawnPracticeCustomer()
     {
         if (liveCustomerSpawned) return;
-        liveCustomerSpawned = true;
-
         var existing = FindObjectsByType<CustomerAI>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (existing != null && existing.Length > 0)
+        {
+            liveCustomerSpawned = true;
             return;
+        }
+
+        if (CustomerWallDoor.FindEntryDoor() == null || !HasPlacedStation(Highlight.Register)) return;
 
         var spawner = FindFirstObjectByType<CustomerSpawner>();
         if (spawner != null)
-            spawner.SpawnNow();
+            liveCustomerSpawned = spawner.SpawnTutorialCustomer();
     }
 
     void Complete(bool skipped)
@@ -881,22 +923,44 @@ public class OnboardingTutorial : MonoBehaviour
 
     void ClearControlHighlights()
     {
-        foreach (var outline in tutorialControlOutlines)
-            if (outline != null) { outline.enabled = false; Destroy(outline); }
-        tutorialControlOutlines.Clear();
+        foreach (var border in tutorialBorders.Values)
+            if (border != null) border.SetActive(false);
     }
 
     void HighlightControl(Component control)
     {
         if (control == null || !control.gameObject.activeInHierarchy) return;
-        var image = control.GetComponent<Graphic>();
-        if (image == null) return;
-        var outline = control.gameObject.AddComponent<Outline>();
-        outline.effectDistance = new Vector2(5f, -5f);
-        outline.effectColor = new Color(1f, 0.82f, 0.15f, 1f);
-        tutorialControlOutlines.Add(outline);
+        var graphic = control.GetComponent<Graphic>();
+        if (graphic == null) return;
+        if (!tutorialBorders.TryGetValue(graphic, out var border) || border == null)
+        {
+            border = new GameObject("Tutorial Steady Border", typeof(RectTransform), typeof(LayoutElement));
+            border.transform.SetParent(control.transform, false);
+            border.GetComponent<LayoutElement>().ignoreLayout = true;
+            var rect = (RectTransform)border.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            for (int side = 0; side < 4; side++)
+            {
+                var edge = new GameObject("Edge", typeof(RectTransform), typeof(Image));
+                edge.transform.SetParent(border.transform, false);
+                var image = edge.GetComponent<Image>();
+                image.color = new Color(1f, 0.82f, 0.15f, 1f);
+                image.raycastTarget = false;
+                var r = (RectTransform)edge.transform;
+                r.anchorMin = side == 1 ? Vector2.up : side == 3 ? Vector2.right : Vector2.zero;
+                r.anchorMax = side == 0 ? Vector2.right : side == 2 ? Vector2.up : Vector2.one;
+                r.offsetMin = Vector2.zero;
+                r.offsetMax = Vector2.zero;
+                if (side < 2) { r.sizeDelta = new Vector2(0, 3); r.pivot = new Vector2(0.5f, side); }
+                else { r.sizeDelta = new Vector2(3, 0); r.pivot = new Vector2(side - 2, 0.5f); }
+            }
+            tutorialBorders[graphic] = border;
+        }
+        border.SetActive(true);
+        border.transform.SetAsLastSibling();
     }
-
     void RefreshControlHighlights()
     {
         if (Time.unscaledTime < nextControlHighlightRefresh) return;
@@ -914,6 +978,11 @@ public class OnboardingTutorial : MonoBehaviour
                     || step.requireFlow && !step.requireEditedFlow && !HasTutorialFlow() && button.name == "CreateFlow"
                     || step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
                     HighlightControl(button);
+                if (step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
+                {
+                    var flowPanel = button.transform.parent.GetComponentInParent<Image>();
+                    if (flowPanel != null) HighlightControl(flowPanel);
+                }
             }
             if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
                 foreach (var card in workers.GetComponentsInChildren<WorkerCardUI>())
@@ -936,6 +1005,8 @@ public class OnboardingTutorial : MonoBehaviour
         }
         RefreshAdvanceGate();
         RefreshControlHighlights();
+        if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
+            SpawnPracticeCustomer();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
@@ -1191,8 +1262,8 @@ public class OnboardingTutorial : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 0f);
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(188f, 52f);
-        rt.anchoredPosition = new Vector2(side < 0 ? -470f : 470f, 78f);
+        rt.sizeDelta = new Vector2(188f, 46f);
+        rt.anchoredPosition = new Vector2(470f, side < 0 ? 51f : 103f);
         go.GetComponent<Image>().color = color;
         var btn = go.GetComponent<Button>();
         btn.onClick.AddListener(onClick);

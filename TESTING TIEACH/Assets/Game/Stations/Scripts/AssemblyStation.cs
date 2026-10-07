@@ -3,12 +3,16 @@ using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// Burger assembly only. Choose the burger product in Manage mode; fries/drinks do not use this station.
+/// Recipe-driven assembly station. Recipes may create final menu items or intermediates
+/// that feed a later assembly station.
 /// </summary>
-public class AssemblyStation : MonoBehaviour
+public class AssemblyStation : MonoBehaviour, IStationBuffer
 {
+    const int DefaultInputCapacity = 2;
+    const int DefaultOutputCapacity = 2;
+
     [Header("Product")]
-    [Tooltip("Burger product this station assembles. Must be chosen in Manage mode.")]
+    [Tooltip("Recipe output this station assembles. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
     [System.NonSerialized] AssemblyRecipeDefinition selectedRecipe;
 
@@ -16,9 +20,89 @@ public class AssemblyStation : MonoBehaviour
     [Tooltip("Total time for one assembly operation.")]
     [Min(0f)] public float processTimeSeconds = 1.2f;
     public Vector3 interactionOffset = Vector3.zero;
+    [SerializeField, Min(0)] int bufferedProcessedInputs;
     [SerializeField, Min(0)] int bufferedPantryInputs;
+    [SerializeField, Min(0)] int bufferedThirdInputs;
+    [SerializeField, Min(0)] int bufferedOutputs;
 
+    [Header("Table display")]
+    [Tooltip("Fallback model for a cooked patty when the recipe input has no ItemDefinition prefab.")]
+    public GameObject defaultProcessedInputDisplayPrefab;
+    [Tooltip("Fallback model for an output whose ItemDefinition has no prefab.")]
+    public GameObject defaultOutputDisplayPrefab;
+    [Tooltip("Two tabletop markers for the processed ingredient.")]
+    public Transform[] processedInputDisplaySlots = new Transform[2];
+    [Tooltip("Two tabletop markers for the pantry ingredient.")]
+    public Transform[] pantryInputDisplaySlots = new Transform[2];
+    public Transform[] thirdInputDisplaySlots = new Transform[2];
+    [Tooltip("Two tabletop markers for completed outputs.")]
+    public Transform[] outputDisplaySlots = new Transform[2];
+
+    Transform tableDisplayRoot;
+    readonly List<Transform> inputMarkers = new List<Transform>();
+    readonly List<Transform> outputMarkers = new List<Transform>();
+    bool layoutReady;
+
+    public int BufferedProcessedInputCount => bufferedProcessedInputs;
     public int BufferedPantryInputCount => bufferedPantryInputs;
+    public int BufferedThirdInputCount => bufferedThirdInputs;
+    public bool IsMk2 { get { EnsureBufferLayout(); return inputMarkers.Count >= 6; } }
+    public int BufferedOutputCount => bufferedOutputs;
+    public int InputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultInputCapacity, inputMarkers.Count); } }
+    public int OutputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultOutputCapacity, outputMarkers.Count); } }
+    public int IngredientCapacity => Mathf.Max(1, InputSlotCapacity / 2);
+    public int MaxProcessBatch
+    {
+        get
+        {
+            AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+            int processedPerUnit = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
+            int pantryPerUnit = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
+            int thirdPerUnit = recipe != null && recipe.thirdInput != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1;
+            return Mathf.Max(1, Mathf.Min(OutputSlotCapacity,
+                IngredientCapacity / processedPerUnit, IngredientCapacity / pantryPerUnit,
+                recipe != null && recipe.thirdInput != null ? IngredientCapacity / thirdPerUnit : int.MaxValue));
+        }
+    }
+
+    public int GetInputCount(ItemDefinition item)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null) return 0;
+        if (item == recipe.pantryInput) return bufferedPantryInputs;
+        if (item == recipe.thirdInput) return bufferedThirdInputs;
+        if (recipe.processedInput == null || item == recipe.processedInput) return bufferedProcessedInputs;
+        return 0;
+    }
+
+    public int GetOutputCount(ItemDefinition item)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && recipe.Produces(item) ? bufferedOutputs : 0;
+    }
+
+    public bool CanAcceptInput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null || amount <= 0) return false;
+        if (item == recipe.pantryInput)
+            return bufferedPantryInputs + amount <= IngredientCapacity;
+        if (item == recipe.thirdInput)
+            return IsMk2 && bufferedThirdInputs + amount <= IngredientCapacity;
+        return (recipe.processedInput == null || item == recipe.processedInput)
+            && bufferedProcessedInputs + amount <= IngredientCapacity;
+    }
+
+    public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (!CanAcceptInput(item, amount) || recipe == null) return 0;
+        if (item == recipe.pantryInput)
+            return ReceivePantryInput(item, amount);
+        if (item == recipe.thirdInput)
+            return ReceiveThirdInput(item, amount);
+        return ReceiveProcessedInput(item, amount);
+    }
 
     public bool HasProductSelected => GetSelectedRecipe() != null;
 
@@ -41,14 +125,22 @@ public class AssemblyStation : MonoBehaviour
 
     public void SetRecipe(AssemblyRecipeDefinition recipe)
     {
+        if (selectedRecipe != recipe)
+        {
+            bufferedProcessedInputs = 0;
+            bufferedPantryInputs = 0;
+            bufferedThirdInputs = 0;
+            bufferedOutputs = 0;
+        }
         selectedRecipe = recipe;
         selectedProduct = recipe != null ? recipe.output : null;
+        RefreshTableDisplay();
     }
 
     public bool CanProcess(ItemDefinition product)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
-        return product != null && recipe != null && recipe.Produces(product);
+        return product != null && recipe != null && recipe.Produces(product) && recipe.RequiresMk2 == IsMk2;
     }
 
     public ItemDefinition GetPantryInput(ItemDefinition product)
@@ -61,10 +153,41 @@ public class AssemblyStation : MonoBehaviour
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || item == null || item != recipe.pantryInput || amount <= 0) return 0;
-        int capacity = 8 * Mathf.Max(1, recipe.pantryInputAmount);
-        int accepted = Mathf.Min(amount, Mathf.Max(0, capacity - bufferedPantryInputs));
+        int accepted = Mathf.Min(amount, Mathf.Max(0, IngredientCapacity - bufferedPantryInputs));
         bufferedPantryInputs += accepted;
+        if (accepted > 0) RefreshTableDisplay();
         return accepted;
+    }
+
+    public int ReceiveThirdInput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (!IsMk2 || recipe == null || item == null || item != recipe.thirdInput || amount <= 0) return 0;
+        int accepted = Mathf.Min(amount, Mathf.Max(0, IngredientCapacity - bufferedThirdInputs));
+        bufferedThirdInputs += accepted;
+        if (accepted > 0) RefreshTableDisplay();
+        return accepted;
+    }
+
+    public bool CanReceiveProcessedInput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || amount <= 0) return false;
+        if (recipe.processedInput != null && item != recipe.processedInput) return false;
+        return bufferedProcessedInputs + amount <= IngredientCapacity;
+    }
+
+    public int ReceiveProcessedInput(ItemDefinition item, int amount)
+    {
+        if (!CanReceiveProcessedInput(item, amount)) return 0;
+        bufferedProcessedInputs += amount;
+        RefreshTableDisplay();
+        return amount;
+    }
+
+    public bool CanStoreOutput(int amount)
+    {
+        return amount > 0 && bufferedOutputs + amount <= OutputSlotCapacity;
     }
 
     public bool HasRequiredInputs(ItemDefinition product, IReadOnlyList<ItemDefinition> pantryMaterials, int units)
@@ -81,13 +204,20 @@ public class AssemblyStation : MonoBehaviour
                 if (pantryMaterials[i] == recipe.pantryInput)
                     present++;
         }
-        return present + bufferedPantryInputs >= required;
+        int processedRequired = units * Mathf.Max(1, recipe.processedInputAmount);
+        int thirdRequired = recipe.thirdInput != null ? units * Mathf.Max(1, recipe.thirdInputAmount) : 0;
+        return (!recipe.RequiresMk2 || IsMk2)
+            && bufferedProcessedInputs >= processedRequired
+            && present + bufferedPantryInputs >= required
+            && bufferedThirdInputs >= thirdRequired
+            && CanStoreOutput(units);
     }
 
     public bool TryAssemble(ItemDefinition product, List<ItemDefinition> pantryMaterials, int units)
     {
         if (!HasRequiredInputs(product, pantryMaterials, units)) return false;
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        int processedConsume = units * Mathf.Max(1, recipe.processedInputAmount);
         int consume = units * Mathf.Max(1, recipe.pantryInputAmount);
         for (int i = pantryMaterials.Count - 1; i >= 0 && consume > 0; i--)
         {
@@ -101,7 +231,36 @@ public class AssemblyStation : MonoBehaviour
             bufferedPantryInputs -= fromBuffer;
             consume -= fromBuffer;
         }
-        return consume == 0;
+        if (consume != 0) return false;
+
+        bufferedProcessedInputs = Mathf.Max(0, bufferedProcessedInputs - processedConsume);
+        if (recipe.thirdInput != null)
+            bufferedThirdInputs = Mathf.Max(0, bufferedThirdInputs - units * Mathf.Max(1, recipe.thirdInputAmount));
+        bufferedOutputs = Mathf.Min(OutputSlotCapacity, bufferedOutputs + units);
+        RefreshTableDisplay();
+        return true;
+    }
+
+    public int TakeOutput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null || !recipe.Produces(item) || amount <= 0) return 0;
+        int taken = Mathf.Min(amount, bufferedOutputs);
+        bufferedOutputs -= taken;
+        if (taken > 0) RefreshTableDisplay();
+        return taken;
+    }
+
+    public void RestoreBufferedState(ItemDefinition product, int processedInputs, int pantryInputs, int outputs)
+    {
+        selectedProduct = product;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        selectedRecipe = config != null ? config.GetAssemblyRecipe(product) : null;
+        bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, IngredientCapacity);
+        bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, IngredientCapacity);
+        bufferedOutputs = Mathf.Clamp(outputs, 0, OutputSlotCapacity);
+        RefreshTableDisplay();
     }
 
     public Vector3 GetInteractionPosition()
@@ -110,4 +269,147 @@ public class AssemblyStation : MonoBehaviour
         if (tiles != null) return tiles.GetFirstInteractionPosition();
         return transform.position + interactionOffset;
     }
+
+    void OnEnable()
+    {
+        StationConfigurationCaution.Ensure(gameObject);
+        EnsureBufferLayout(true);
+        bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, IngredientCapacity);
+        bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, IngredientCapacity);
+        bufferedThirdInputs = Mathf.Clamp(bufferedThirdInputs, 0, IngredientCapacity);
+        bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputSlotCapacity);
+        HideSlotMarkers();
+        RefreshTableDisplay();
+    }
+
+    void RefreshTableDisplay()
+    {
+        EnsureTableDisplayRoot();
+        ClearTableDisplay();
+
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null) return;
+
+        GameObject processedPrefab = recipe.processedInput != null && recipe.processedInput.prefab != null
+            ? recipe.processedInput.prefab : defaultProcessedInputDisplayPrefab;
+        GameObject pantryPrefab = recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
+        GameObject thirdPrefab = recipe.thirdInput != null ? recipe.thirdInput.prefab : null;
+        GameObject outputPrefab = recipe.output != null && recipe.output.prefab != null
+            ? recipe.output.prefab : defaultOutputDisplayPrefab;
+
+        SpawnDisplayedItems(processedPrefab, Mathf.Min(bufferedProcessedInputs, IngredientCapacity),
+            processedInputDisplaySlots, "ProcessedInput");
+        SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, IngredientCapacity),
+            pantryInputDisplaySlots, "PantryInput");
+        SpawnDisplayedItems(thirdPrefab, Mathf.Min(bufferedThirdInputs, IngredientCapacity),
+            thirdInputDisplaySlots, "ThirdInput");
+        SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputSlotCapacity),
+            outputDisplaySlots, "Output");
+    }
+
+    void EnsureBufferLayout(bool force = false)
+    {
+        if (layoutReady && !force) return;
+        StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+        if (inputMarkers.Count > 0)
+        {
+            var processed = new List<Transform>();
+            var pantry = new List<Transform>();
+            var third = new List<Transform>();
+            for (int i = 0; i < inputMarkers.Count; i++)
+            {
+                Transform marker = inputMarkers[i];
+                string markerName = marker.name.ToLowerInvariant();
+                if (markerName.Contains("input3")) third.Add(marker);
+                else if (markerName.Contains("input2") || markerName.EndsWith("b")) pantry.Add(marker);
+                else if (markerName.EndsWith("a")) processed.Add(marker);
+                else if ((i & 1) == 0) processed.Add(marker);
+                else pantry.Add(marker);
+            }
+            processedInputDisplaySlots = processed.ToArray();
+            pantryInputDisplaySlots = pantry.ToArray();
+            thirdInputDisplaySlots = third.ToArray();
+        }
+        if (outputMarkers.Count > 0)
+            outputDisplaySlots = outputMarkers.ToArray();
+        layoutReady = true;
+    }
+
+    void EnsureTableDisplayRoot()
+    {
+        if (tableDisplayRoot != null) return;
+        Transform existing = transform.Find("AssemblyTableDisplay");
+        if (existing != null)
+        {
+            tableDisplayRoot = existing;
+            return;
+        }
+
+        tableDisplayRoot = new GameObject("AssemblyTableDisplay").transform;
+        tableDisplayRoot.SetParent(transform, false);
+    }
+
+    void ClearTableDisplay()
+    {
+        if (tableDisplayRoot == null) return;
+        for (int i = tableDisplayRoot.childCount - 1; i >= 0; i--)
+            Destroy(tableDisplayRoot.GetChild(i).gameObject);
+    }
+
+    void SpawnDisplayedItems(GameObject prefab, int count, Transform[] slots, string label)
+    {
+        if (prefab == null || count <= 0 || slots == null) return;
+
+        int visible = Mathf.Min(count, slots.Length);
+        for (int i = 0; i < visible; i++)
+        {
+            Transform slot = slots[i];
+            if (slot == null) continue;
+
+            GameObject display = Instantiate(prefab, tableDisplayRoot);
+            display.name = label + "_" + (i + 1) + "_" + prefab.name;
+            Vector3 sourceScale = prefab.transform.localScale;
+            display.transform.localPosition = transform.InverseTransformPoint(slot.position);
+            display.transform.localRotation = prefab.transform.localRotation;
+            SetNativeWorldScale(display.transform, sourceScale);
+            DisableDisplayColliders(display);
+        }
+    }
+
+    void HideSlotMarkers()
+    {
+        HideSlotMarkers(processedInputDisplaySlots);
+        HideSlotMarkers(pantryInputDisplaySlots);
+        HideSlotMarkers(thirdInputDisplaySlots);
+        HideSlotMarkers(outputDisplaySlots);
+    }
+
+    static void HideSlotMarkers(Transform[] slots)
+    {
+        if (slots == null) return;
+        foreach (Transform slot in slots)
+        {
+            if (slot == null) continue;
+            foreach (Renderer renderer in slot.GetComponentsInChildren<Renderer>(true))
+                renderer.enabled = false;
+            foreach (Collider collider in slot.GetComponentsInChildren<Collider>(true))
+                collider.enabled = false;
+        }
+    }
+
+    static void SetNativeWorldScale(Transform target, Vector3 sourceScale)
+    {
+        Vector3 parentScale = target.parent != null ? target.parent.lossyScale : Vector3.one;
+        target.localScale = new Vector3(
+            sourceScale.x / Mathf.Max(0.0001f, Mathf.Abs(parentScale.x)),
+            sourceScale.y / Mathf.Max(0.0001f, Mathf.Abs(parentScale.y)),
+            sourceScale.z / Mathf.Max(0.0001f, Mathf.Abs(parentScale.z)));
+    }
+
+    static void DisableDisplayColliders(GameObject display)
+    {
+        foreach (Collider collider in display.GetComponentsInChildren<Collider>(true))
+            collider.enabled = false;
+    }
+
 }

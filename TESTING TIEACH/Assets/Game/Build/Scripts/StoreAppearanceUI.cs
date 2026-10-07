@@ -8,12 +8,20 @@ public sealed class StoreAppearanceUI : MonoBehaviour
     sealed class SurfaceControls
     {
         public StoreSurfaceKind kind;
-        public TextMeshProUGUI textureName;
+        public Outline[] textureOutlines;
         public Outline[] swatchOutlines;
     }
 
     Transform content;
     SurfaceControls[] controls;
+
+    public void AppendOptions(Transform options)
+    {
+        if (options == null) return;
+        BuildIfNeeded();
+        options.SetParent(content, false);
+        options.SetAsLastSibling();
+    }
 
     void OnEnable()
     {
@@ -53,6 +61,9 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         contentGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
+        GameUITheme.ConfigureScroll(scroll);
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.135f;
         scroll.viewport = (RectTransform)viewport.transform;
         scroll.content = contentRt;
         scroll.horizontal = false;
@@ -77,8 +88,8 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         card.transform.SetParent(content, false);
         card.GetComponent<Image>().color = GameUITheme.Surface;
         var cardLe = card.GetComponent<LayoutElement>();
-        cardLe.minHeight = 142f;
-        cardLe.preferredHeight = 142f;
+        cardLe.minHeight = 210f;
+        cardLe.preferredHeight = 210f;
         var vertical = card.GetComponent<VerticalLayoutGroup>();
         vertical.padding = new RectOffset(12, 12, 8, 8);
         vertical.spacing = 6f;
@@ -88,14 +99,54 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         vertical.childForceExpandHeight = false;
 
         CreateText(card.transform, "Title", label, 17f, FontStyles.Bold, 24f, Color.white);
-        var textureRow = CreateRow(card.transform, "TextureRow", 38f);
-        CreateText(textureRow, "Label", "Texture", 13f, FontStyles.Bold, 30f, GameUITheme.TextSecondary)
-            .GetComponent<LayoutElement>().preferredWidth = 70f;
-        CreateArrowButton(textureRow, "Previous", "<", () => CycleTexture(kind, -1));
-        var textureName = CreateText(textureRow, "TextureName", "Original", 14f, FontStyles.Bold, 30f, Color.white);
-        textureName.alignment = TextAlignmentOptions.Center;
-        textureName.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        CreateArrowButton(textureRow, "Next", ">", () => CycleTexture(kind, 1));
+        var controller = StoreAppearanceController.Ensure();
+        var textureRow = CreateRow(card.transform, "TexturePreviews", 96f);
+        var textureOutlines = new Outline[controller.GetTextureCount(kind)];
+        for (int i = 0; i < textureOutlines.Length; i++)
+        {
+            int captured = i;
+            var tile = new GameObject("Texture_" + controller.GetTextureName(kind, i),
+                typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement), typeof(Outline),
+                typeof(VerticalLayoutGroup));
+            tile.transform.SetParent(textureRow, false);
+            tile.GetComponent<Image>().color = GameUITheme.Panel;
+            var tileLe = tile.GetComponent<LayoutElement>();
+            tileLe.minWidth = 64f; tileLe.preferredWidth = 64f;
+            tileLe.minHeight = 92f; tileLe.preferredHeight = 92f;
+            var tileLayout = tile.GetComponent<VerticalLayoutGroup>();
+            tileLayout.padding = new RectOffset(4, 4, 4, 3);
+            tileLayout.spacing = 2f;
+            tileLayout.childAlignment = TextAnchor.MiddleCenter;
+            tileLayout.childControlWidth = true;
+            tileLayout.childControlHeight = true;
+            tileLayout.childForceExpandWidth = true;
+            tileLayout.childForceExpandHeight = false;
+
+            var previewFrame = new GameObject("Preview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
+            previewFrame.transform.SetParent(tile.transform, false);
+            var preview = previewFrame.GetComponent<RawImage>();
+            preview.texture = controller.GetTexturePreview(kind, i);
+            preview.color = preview.texture != null ? Color.white : new Color(.42f, .45f, .48f, 1f);
+            preview.raycastTarget = false;
+            var previewLe = previewFrame.GetComponent<LayoutElement>();
+            previewLe.minHeight = 58f; previewLe.preferredHeight = 58f;
+
+            var name = CreateText(tile.transform, "Name", controller.GetTextureName(kind, i),
+                10f, FontStyles.Bold, 22f, Color.white);
+            name.alignment = TextAlignmentOptions.Center;
+            name.textWrappingMode = TextWrappingModes.NoWrap;
+            name.overflowMode = TextOverflowModes.Ellipsis;
+
+            var outline = tile.GetComponent<Outline>();
+            outline.effectColor = GameUITheme.Accent;
+            outline.effectDistance = new Vector2(3f, -3f);
+            tile.GetComponent<Button>().onClick.AddListener(() =>
+            {
+                StoreAppearanceController.Ensure().SetTexture(kind, captured);
+                Refresh();
+            });
+            textureOutlines[i] = outline;
+        }
 
         var colorRow = CreateRow(card.transform, "ColorRow", 44f);
         CreateText(colorRow, "Label", "Color", 13f, FontStyles.Bold, 34f, GameUITheme.TextSecondary)
@@ -121,16 +172,7 @@ public sealed class StoreAppearanceUI : MonoBehaviour
             outlines[i] = outline;
         }
 
-        return new SurfaceControls { kind = kind, textureName = textureName, swatchOutlines = outlines };
-    }
-
-    void CycleTexture(StoreSurfaceKind kind, int direction)
-    {
-        var controller = StoreAppearanceController.Ensure();
-        int count = Mathf.Max(1, controller.GetTextureCount(kind));
-        int next = (controller.GetTextureIndex(kind) + direction + count) % count;
-        controller.SetTexture(kind, next);
-        Refresh();
+        return new SurfaceControls { kind = kind, textureOutlines = textureOutlines, swatchOutlines = outlines };
     }
 
     void Refresh()
@@ -140,7 +182,8 @@ public sealed class StoreAppearanceUI : MonoBehaviour
         foreach (var control in controls)
         {
             int textureIndex = controller.GetTextureIndex(control.kind);
-            control.textureName.text = controller.GetTextureName(control.kind, textureIndex);
+            for (int i = 0; i < control.textureOutlines.Length; i++)
+                control.textureOutlines[i].enabled = i == textureIndex;
             Color activeTint = controller.GetTint(control.kind);
             for (int i = 0; i < control.swatchOutlines.Length; i++)
                 control.swatchOutlines[i].enabled = Approximately(activeTint, StoreAppearanceController.TintColors[i]);

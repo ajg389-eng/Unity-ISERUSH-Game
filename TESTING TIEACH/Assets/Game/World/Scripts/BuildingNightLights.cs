@@ -21,13 +21,6 @@ public sealed class BuildingNightLights : MonoBehaviour
     Material housing, lens, indoorTrim, indoorShade;
     float nextRefresh;
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void Bootstrap()
-    {
-        if (FindFirstObjectByType<BuildingNightLights>() == null)
-            new GameObject("Building Night Lights").AddComponent<BuildingNightLights>();
-    }
-
     void Update()
     {
         if (grid == null)

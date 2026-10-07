@@ -195,7 +195,7 @@ public class WorkerCustomizePopup : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 24f;
+        GameUITheme.ConfigureScroll(scroll);
 
         return content.transform;
     }

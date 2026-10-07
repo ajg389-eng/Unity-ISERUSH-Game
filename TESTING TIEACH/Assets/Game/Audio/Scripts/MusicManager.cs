@@ -218,6 +218,17 @@ public class MusicManager : MonoBehaviour
 
     public bool IsPlaying => source != null && source.isPlaying;
     public bool IsPaused => explicitlyPaused;
+    public int TrackCount => tracks.Count;
+    public int CurrentTrackIndex => source != null && source.clip != null ? tracks.IndexOf(source.clip) : -1;
+    public AudioClip GetTrack(int trackIndex) => trackIndex >= 0 && trackIndex < tracks.Count ? tracks[trackIndex] : null;
+
+    public void PlayTrack(int trackIndex)
+    {
+        if (trackIndex < 0 || trackIndex >= tracks.Count) return;
+        index = trackIndex;
+        PlayCurrent();
+    }
+
     public string CurrentTrackName => source != null && source.clip != null
         ? CleanTrackName(source.clip.name)
         : "No track";

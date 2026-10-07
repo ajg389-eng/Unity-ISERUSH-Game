@@ -13,8 +13,20 @@ MonoBehaviour:
   m_Name: Potatoes
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Potatoes
-  prefab: {fileID: 8041849481946025025, guid: c68bd0879681d2241845579839f5c99d, type: 3}
+  prefab: {fileID: 8041849481946025025, guid: 9a41000000000000000000000000000e, type: 3}
   price: 0
   startingQuantity: 10
+  placementSurface: 0
+  footprintX: 1
+  footprintY: 1
+  placementScale: {x: 1, y: 1, z: 1}
+  placementEuler: {x: 0, y: 0, z: 0}
+  counterEmbedDepth: 0
+  counterLocalOffset: {x: 0, y: 0, z: 0}
+  useFixedCounterY: 0
+  fixedCounterY: 0
+  counterSlotSpan: 1
+  buildFunction: 0
+  previewIcon: {fileID: 0}
   orderPackSize: 10
-  orderPackPrice: 12
+  orderPackPrice: 10

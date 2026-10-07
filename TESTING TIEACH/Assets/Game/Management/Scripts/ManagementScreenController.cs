@@ -8,6 +8,10 @@ using TMPro;
 /// </summary>
 public class ManagementScreenController : MonoBehaviour
 {
+    static readonly Color StaffTabActive = new Color(0.52f, 0.34f, 0.78f, 1f);
+    static readonly Color StaffTabIdle = new Color(0.25f, 0.19f, 0.36f, 1f);
+    static readonly Color DemandTabActive = new Color(0.12f, 0.66f, 0.60f, 1f);
+    static readonly Color DemandTabIdle = new Color(0.10f, 0.32f, 0.31f, 1f);
     static readonly KeyCode[] NumberRowTabKeys =
     {
         KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
@@ -32,6 +36,9 @@ public class ManagementScreenController : MonoBehaviour
 
     bool isOpen;
     ManagementTabInfoUI tabInfoUI;
+    Button workersInnerTab;
+    Button customersInnerTab;
+    int selectedBusinessPanel = -1;
 
     void Start()
     {
@@ -51,6 +58,7 @@ public class ManagementScreenController : MonoBehaviour
 
         WireTabButtons();
         EnsureCustomersTab();
+        EnsureStaffDemandTabs();
         tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
         if (tabInfoUI != null)
             tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
@@ -194,21 +202,165 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
+        int demandIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<CustomersUI>(true) != null);
+        int selectedIndex = index;
+        int outerIndex = index;
+        if (staffIndex >= 0 && demandIndex >= 0 && staffIndex != demandIndex)
+        {
+            if (index == staffIndex || index == demandIndex)
+            {
+                if (index == demandIndex)
+                    selectedBusinessPanel = demandIndex;
+                else if (selectedBusinessPanel < 0 || selectedBusinessPanel == staffIndex)
+                    selectedBusinessPanel = staffIndex;
+                selectedIndex = selectedBusinessPanel;
+                outerIndex = staffIndex;
+            }
+
+            // The inner tab strip sits above a single shared content area.
+            foreach (int pageIndex in new[] { staffIndex, demandIndex })
+            {
+                var page = (RectTransform)tabPanels[pageIndex].transform;
+                page.anchorMin = Vector2.zero;
+                page.anchorMax = Vector2.one;
+                page.offsetMin = new Vector2(12f, 12f);
+                page.offsetMax = new Vector2(-12f, -60f);
+            }
+        }
         for (int i = 0; i < tabPanels.Length; i++)
         {
             if (tabPanels[i] != null)
-                tabPanels[i].SetActive(i == index);
+                tabPanels[i].SetActive(i == selectedIndex);
         }
+        if (workersInnerTab != null && workersInnerTab.transform.parent != null)
+            workersInnerTab.transform.parent.gameObject.SetActive(outerIndex == staffIndex);
         if (tabButtons != null)
         {
             for (int i = 0; i < tabButtons.Length; i++)
-                HudTabColors.Apply(tabButtons[i], i == index);
+                HudTabColors.Apply(tabButtons[i], i == outerIndex);
         }
+
+        UpdateStaffDemandTabColors();
 
         if (tabInfoUI == null)
             tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
         if (tabInfoUI != null)
-            tabInfoUI.SetTab(tabPanels[index]);
+            tabInfoUI.SetTab(tabPanels[selectedIndex]);
+    }
+
+    static void ApplyBusinessTabColor(Button button, bool staff, bool selected)
+    {
+        if (button == null) return;
+        Color tint = staff
+            ? (selected ? StaffTabActive : StaffTabIdle)
+            : (selected ? DemandTabActive : DemandTabIdle);
+        var image = button.targetGraphic as Image;
+        if (image != null) image.color = tint;
+        var colors = button.colors;
+        colors.normalColor = tint;
+        colors.selectedColor = tint;
+        colors.highlightedColor = Color.Lerp(tint, Color.white, 0.12f);
+        colors.pressedColor = Color.Lerp(tint, Color.black, 0.12f);
+        colors.disabledColor = tint;
+        button.colors = colors;
+    }
+
+    void EnsureStaffDemandTabs()
+    {
+        if (managementPanel == null || tabPanels == null) return;
+        int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
+        int demandIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<CustomersUI>(true) != null);
+        if (staffIndex < 0 || demandIndex < 0 || staffIndex == demandIndex) return;
+
+        Transform parent = tabPanels[staffIndex].transform.parent;
+        if (parent == null) return;
+        Transform found = parent.Find("StaffDemandTabs");
+        GameObject strip;
+        if (found == null)
+        {
+            strip = new GameObject("StaffDemandTabs", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+            strip.transform.SetParent(parent, false);
+            var rt = (RectTransform)strip.transform;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -6f);
+            rt.sizeDelta = new Vector2(-24f, 42f);
+            strip.GetComponent<Image>().color = new Color(0.09f, 0.10f, 0.14f, 0.96f);
+            var layout = strip.GetComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(5, 5, 4, 4);
+            layout.spacing = 6f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = true;
+        }
+        else strip = found.gameObject;
+
+        workersInnerTab = FindInnerTab(strip.transform, "WorkersTab") ?? CreateInnerTab(strip.transform, "WorkersTab", "Workers");
+        customersInnerTab = FindInnerTab(strip.transform, "CustomersTab") ?? CreateInnerTab(strip.transform, "CustomersTab", "Customers");
+        strip.transform.SetAsLastSibling();
+        workersInnerTab.onClick.RemoveAllListeners();
+        workersInnerTab.onClick.AddListener(() => SelectBusinessPanel(false));
+        customersInnerTab.onClick.RemoveAllListeners();
+        customersInnerTab.onClick.AddListener(() => SelectBusinessPanel(true));
+        UpdateStaffDemandTabColors();
+    }
+
+    static Button FindInnerTab(Transform parent, string name)
+    {
+        Transform found = parent != null ? parent.Find(name) : null;
+        return found != null ? found.GetComponent<Button>() : null;
+    }
+
+    Button CreateInnerTab(Transform parent, string name, string label)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        go.transform.SetParent(parent, false);
+        var layout = go.GetComponent<LayoutElement>();
+        layout.minHeight = 34f;
+        layout.preferredHeight = 34f;
+        layout.flexibleWidth = 1f;
+
+        var textGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textGo.transform.SetParent(go.transform, false);
+        var textRect = (RectTransform)textGo.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        var text = textGo.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 16f;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        var button = go.GetComponent<Button>();
+        button.targetGraphic = go.GetComponent<Image>();
+        return button;
+    }
+
+    void SelectBusinessPanel(bool customers)
+    {
+        if (tabPanels == null) return;
+        int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
+        int demandIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<CustomersUI>(true) != null);
+        if (staffIndex < 0 || demandIndex < 0) return;
+        selectedBusinessPanel = customers ? demandIndex : staffIndex;
+        SelectTab(staffIndex);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void UpdateStaffDemandTabColors()
+    {
+        if (workersInnerTab == null || customersInnerTab == null || tabPanels == null) return;
+        int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
+        ApplyBusinessTabColor(workersInnerTab, true, selectedBusinessPanel == staffIndex);
+        ApplyBusinessTabColor(customersInnerTab, false, selectedBusinessPanel >= 0 && selectedBusinessPanel != staffIndex);
     }
 
     void Update()
@@ -267,6 +419,7 @@ public class ManagementScreenController : MonoBehaviour
         Sfx.Play(SfxId.UiOpen);
         EnsurePanelClickBlocker(managementPanel);
         ApplyManagementBackdrop();
+        SetUnifiedPrimaryPage(true);
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
@@ -345,6 +498,7 @@ public class ManagementScreenController : MonoBehaviour
         {
             if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null)
             {
+                selectedBusinessPanel = i;
                 SelectTab(i);
                 return;
             }
@@ -360,6 +514,7 @@ public class ManagementScreenController : MonoBehaviour
         {
             if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null)
             {
+                selectedBusinessPanel = i;
                 SelectTab(i);
                 return;
             }
@@ -378,18 +533,18 @@ public class ManagementScreenController : MonoBehaviour
 
             bool workers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null;
-            tabButtons[i].gameObject.SetActive(business ? !workers : false);
+            tabButtons[i].gameObject.SetActive(true);
 
-            if (!business || workers) continue;
             var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
             bool customers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<CustomersUI>(true) != null;
             if (label != null)
-                label.text = customers ? "Demand" : "Menu & Supply";
+                label.text = workers ? "Staff and Demand" : customers ? "Demand" : "Menu & Supply";
+            if (customers && !workers) tabButtons[i].gameObject.SetActive(false);
         }
 
         if (tabBar != null)
-            tabBar.gameObject.SetActive(business);
+            tabBar.gameObject.SetActive(true);
     }
 
     public void OpenIngredientsTab()

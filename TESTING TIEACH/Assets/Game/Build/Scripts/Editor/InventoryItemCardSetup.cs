@@ -57,7 +57,7 @@ public static class InventoryItemCardSetup
             "Inventory Item Cards",
             "Created / updated:\n" + PrefabPath + "\n\n" +
             "• Assigned to InventoryUI.rowPrefab\n" +
-            "• Stations Content uses a 2-column Grid Layout Group\n" +
+                "• Stations Content uses a 3-column Grid Layout Group\n" +
             "• Preview cards placed under Content for editing (cleared on Play refresh)\n\n" +
             "Edit the prefab (or a preview card) then save the scene.",
             "OK");

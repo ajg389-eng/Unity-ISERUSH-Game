@@ -13,6 +13,13 @@ public class ItemDefinition : ScriptableObject
     [Tooltip("Starting kitchen stock when KitchenInventory grants starting stock")]
     public int startingQuantity = 0;
 
+    [Header("Station tier")]
+    [Tooltip("Shared card name for MK1/MK2 variants. Leave empty for non-tiered items.")]
+    public string stationFamily;
+    [Range(0, 2), Tooltip("0 = not tiered, 1 = MK1, 2 = MK2.")]
+    public int stationMark;
+    public bool IsTieredStation => stationMark > 0 && !string.IsNullOrWhiteSpace(stationFamily);
+
     [Header("Placement")]
     [Tooltip("Floor items occupy grid cells. Counter items snap onto a free counter module. Customer-wall items snap to the outside walls bordering the customer floor.")]
     public PlacementSurface placementSurface = PlacementSurface.Floor;

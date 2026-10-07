@@ -61,6 +61,9 @@ public class WorkersUI : MonoBehaviour
     {
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
+        // Leaving the Workers/Flows UI is an explicit flow deselection. Ordinary
+        // world clicks are handled separately and keep the selected route pinned.
+        WorkerAssignmentLinkVisuals.ClearFocusedFlow();
     }
 
     void EnsureRefs()
@@ -219,7 +222,7 @@ public class WorkersUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(scroll);
         workerCardsScroll = scroll;
 
         var scrollBg = scrollGo.AddComponent<Image>();
@@ -272,7 +275,9 @@ public class WorkersUI : MonoBehaviour
         workerCardsScroll.horizontal = false;
         workerCardsScroll.vertical = true;
         workerCardsScroll.movementType = ScrollRect.MovementType.Clamped;
-        workerCardsScroll.scrollSensitivity = 28f;
+        GameUITheme.ConfigureScroll(workerCardsScroll);
+        workerCardsScroll.inertia = true;
+        workerCardsScroll.decelerationRate = 0.135f;
     }
 
     void FitScrollArea()
@@ -316,7 +321,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV4") == null)
+        if (existing != null && existing.Find("LayoutV6") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -334,7 +339,7 @@ public class WorkersUI : MonoBehaviour
             flowPanel = existing;
             flowListRow = existing.Find("FlowListRow");
             stepRow = existing.Find("StepRow");
-            workerRow = existing.Find("WorkerRow");
+            workerRow = null;
             flowNameInput = existing.Find("FlowHeader/FlowName")?.GetComponent<TMP_InputField>()
                 ?? existing.Find("NameRow/FlowName")?.GetComponent<TMP_InputField>();
             if (flowNameInput != null)
@@ -359,7 +364,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV4", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV6", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -382,8 +387,11 @@ public class WorkersUI : MonoBehaviour
         BuildFlowHeader();
 
         flowListRow = MakeRow(flowPanel, "FlowListRow", 28);
-        stepRow = MakeRow(flowPanel, "StepRow", 28);
-        workerRow = MakeRow(flowPanel, "WorkerRow", 28);
+        // The route already appears in-world when the flow is selected. Repeating
+        // every station connection here consumes most of the card without adding
+        // another decision, so keep the panel focused on flow selection and economics.
+        stepRow = null;
+        workerRow = null;
         BuildEconomicsPanel(flowPanel);
 
         LayoutFlowPanel();
@@ -762,16 +770,36 @@ public class WorkersUI : MonoBehaviour
                 if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
                     return;
                 production.SelectProductionFlow(index);
+                if (ManagementModeController.Instance != null)
+                    ManagementModeController.Instance.SelectFlow(flow);
                 var cameraController = FindObjectOfType<PlayerCameraController>();
                 if (cameraController != null)
                     cameraController.PanTo(flow);
                 RefreshFlowSection();
-                if (flowNameInput != null)
-                    flowNameInput.ActivateInputField();
             });
             var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
             dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
+
+        var spacer = new GameObject("DeleteFlowSpacer", typeof(RectTransform), typeof(LayoutElement));
+        spacer.transform.SetParent(flowListRow, false);
+        spacer.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        Button delete = MakeChip(flowListRow, "Delete", 62f);
+        delete.gameObject.name = "DeleteFlow";
+        delete.GetComponent<Image>().color = new Color(0.65f, 0.19f, 0.19f, 1f);
+        delete.interactable = ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow;
+        ProductionFlowPlan selectedFlow = production.SelectedFlow;
+        delete.onClick.AddListener(() =>
+        {
+            if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
+            production.RemoveProductionFlow(selectedFlow);
+            if (ManagementModeController.Instance != null)
+                ManagementModeController.Instance.SelectFlow(production.SelectedFlow);
+            WorkerAssignmentLinkVisuals.SetFocusedFlow(production.SelectedFlow);
+            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+            StationOutputLinkVisuals.NotifyLinksChanged();
+            Refresh();
+        });
     }
 
     void RebuildStepRow()
@@ -788,6 +816,22 @@ public class WorkersUI : MonoBehaviour
         {
             MakeLabel(stepRow, "No stations", 12,
                 new Color(0.7f, 0.74f, 0.8f, 1f), 24);
+            return;
+        }
+
+        flow.EnsureLegacyConnections();
+        if (flow.connections.Count > 0)
+        {
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection == null || connection.from == null || connection.to == null) continue;
+                StationNode fromNode = StationNode.EnsureOn(connection.from);
+                StationNode toNode = StationNode.EnsureOn(connection.to);
+                string edgeLabel = (fromNode != null ? fromNode.DisplayName : connection.from.name)
+                    + " → " + (toNode != null ? toNode.DisplayName : connection.to.name);
+                Button edgeChip = MakeChip(stepRow, edgeLabel, Mathf.Clamp(48f + edgeLabel.Length * 6f, 110f, 210f));
+                edgeChip.interactable = false;
+            }
             return;
         }
 
@@ -882,8 +926,6 @@ public class WorkersUI : MonoBehaviour
 
             RebuildFlowListRow();
             RebuildStepRow();
-            RebuildWorkerRow(flow);
-
             if (flowNameInput != null && !flowNameInput.isFocused)
                 flowNameInput.SetTextWithoutNotify(flow.flowName);
             WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
@@ -905,7 +947,12 @@ public class WorkersUI : MonoBehaviour
             var economics = WorkflowAnalysis.AnalyzeFlow(flow);
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(economics.summary))
-                sb.Append(economics.summary);
+            {
+                int detailStart = economics.summary.IndexOf('\n');
+                sb.Append(detailStart >= 0
+                    ? economics.summary.Substring(0, detailStart)
+                    : economics.summary);
+            }
             for (int i = 0; i < economics.lines.Count; i++)
             {
                 if (sb.Length > 0) sb.Append('\n');
@@ -946,7 +993,7 @@ public class WorkersUI : MonoBehaviour
             if (config.IsBurger(resource)) return "Patty";
             if (resource == config.friesIngredient) return "Potatoes";
             if (config.IsFries(resource)) return "Potatoes";
-            if (config.IsDrink(resource)) return "Drink Stock";
+            if (config.IsDrink(resource)) return "Shake";
         }
 
         return KitchenInventory.Instance != null

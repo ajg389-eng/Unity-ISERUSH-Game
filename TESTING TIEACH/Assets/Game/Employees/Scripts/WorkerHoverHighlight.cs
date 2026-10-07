@@ -13,6 +13,7 @@ public class WorkerHoverHighlight : MonoBehaviour
 
     SelectionOutlineEffect outline;
     bool hovering;
+    bool flowHighlighted;
 
     public static WorkerHoverHighlight EnsureOn(KitchenEmployee employee)
     {
@@ -25,19 +26,24 @@ public class WorkerHoverHighlight : MonoBehaviour
 
     public void SetHovered(bool on)
     {
-        if (hovering == on && outline != null)
-        {
-            if (on)
-                ApplyLook();
-            return;
-        }
-
         hovering = on;
+        RefreshOutline();
+    }
+
+    public void SetFlowHighlighted(bool on)
+    {
+        flowHighlighted = on;
+        RefreshOutline();
+    }
+
+    void RefreshOutline()
+    {
+        bool active = hovering || flowHighlighted;
+        if (outline == null && !active) return;
         outline = SelectionOutlineEffect.EnsureOn(gameObject);
         if (outline == null) return;
-
         ApplyLook();
-        outline.SetActive(on);
+        outline.SetActive(active);
     }
 
     void ApplyLook()
@@ -50,7 +56,7 @@ public class WorkerHoverHighlight : MonoBehaviour
 
     void OnDisable()
     {
-        if (hovering && outline != null)
+        if (outline != null)
             outline.SetActive(false);
     }
 }

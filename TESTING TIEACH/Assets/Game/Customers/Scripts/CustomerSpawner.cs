@@ -50,6 +50,19 @@ public class CustomerSpawner : MonoBehaviour
     /// </summary>
     public float CustomersPerMinute => MeanCustomersPerMinute();
 
+    /// <summary>Configured mean arrivals for a one-game-hour bucket at the supplied hour.</summary>
+    public float ExpectedCustomersPerGameHour(int hour24)
+    {
+        int stage = MilestoneFeatures.HighestReachedNumberedStage();
+        int stepsPastFirst = Mathf.Max(0, stage - 1);
+        float rate = milestoneOneCustomersPerMinute + stepsPastFirst * extraCustomersPerMinutePerMilestone;
+        hour24 = ((hour24 % 24) + 24) % 24;
+        bool rush = MilestoneFeatures.RushHourUnlocked
+            && ((hour24 >= 12 && hour24 < 14) || (hour24 >= 17 && hour24 < 19));
+        if (rush) rate *= rushArrivalMultiplier;
+        return Mathf.Max(0.05f, rate);
+    }
+
     float MeanCustomersPerMinute()
     {
         int stage = MilestoneFeatures.HighestReachedNumberedStage();
@@ -201,9 +214,19 @@ public class CustomerSpawner : MonoBehaviour
         arrivalScheduled = true;
     }
 
-    bool TrySpawn(bool force = false)
+    public bool SpawnTutorialCustomer()
+    {
+        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(false, true);
+    }
+
+    bool TrySpawn(bool force = false, bool tutorialPractice = false)
     {
         LastSpawnError = null;
+        if (OnboardingTutorial.BlocksAutoCustomers && !tutorialPractice)
+        {
+            LastSpawnError = "Customers arrive during the tutorial customer step.";
+            return false;
+        }
         if (customerPrefab == null)
         {
             LastSpawnError = "No customer prefab on CustomerSpawner";
@@ -234,6 +257,7 @@ public class CustomerSpawner : MonoBehaviour
     /// </summary>
     public bool SpawnArrivingCustomer(Vector3 doorWorld, LotArrivalVehicle rideHome)
     {
+        if (OnboardingTutorial.BlocksAutoCustomers) return false;
         if (customerPrefab == null) return false;
         if (orderConfig != null && !orderConfig.HasEnabledItems) return false;
 

@@ -9,6 +9,14 @@ using UnityEngine.UI;
 /// </summary>
 public class GameUITheme : MonoBehaviour
 {
+    public static void ConfigureScroll(ScrollRect scroll)
+    {
+        if (scroll == null) return;
+        scroll.scrollSensitivity = 15f;
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.135f;
+    }
+
     // Casual restaurant palette: quiet foundations with restrained warm accents.
     public static readonly Color Charcoal = Hex(0x23, 0x28, 0x30);
     public static readonly Color PanelSlate = Hex(0x2D, 0x34, 0x3E);
@@ -72,6 +80,7 @@ public class GameUITheme : MonoBehaviour
     public static void ApplyTo(Transform root)
     {
         if (root == null) return;
+        foreach (var scroll in root.GetComponentsInChildren<ScrollRect>(true)) ConfigureScroll(scroll);
         foreach (var image in root.GetComponentsInChildren<Image>(true)) StyleContainer(image);
         foreach (var button in root.GetComponentsInChildren<Button>(true)) StyleButton(button);
         foreach (var input in root.GetComponentsInChildren<TMP_InputField>(true)) StyleInput(input);
@@ -83,6 +92,7 @@ public class GameUITheme : MonoBehaviour
 
     static void ApplyCanvas(Canvas canvas)
     {
+        foreach (var scroll in canvas.GetComponentsInChildren<ScrollRect>(true)) ConfigureScroll(scroll);
         foreach (var image in canvas.GetComponentsInChildren<Image>(true)) StyleContainer(image);
         foreach (var button in canvas.GetComponentsInChildren<Button>(true)) StyleButton(button);
         foreach (var input in canvas.GetComponentsInChildren<TMP_InputField>(true)) StyleInput(input);
@@ -490,7 +500,7 @@ public class GameUITheme : MonoBehaviour
 
     static bool IsDanger(string key, Color current)
     {
-        return ContainsAny(key, "exit", "quit", "fire", "delete", "remove", "clear", "cancel");
+        return ContainsAny(key, "exit", "quit", "fire", "delete", "remove", "clear", "cancel", "targetminus");
     }
 
     static bool ContainsAny(string value, params string[] terms)

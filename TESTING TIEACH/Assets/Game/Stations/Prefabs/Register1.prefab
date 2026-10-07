@@ -61,7 +61,7 @@ Transform:
   m_GameObject: {fileID: 4887153391482828649}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 5.7834997, y: 1.5, z: 3.73826}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -173,6 +173,7 @@ MonoBehaviour:
   workerStandPoint: {fileID: 0}
   workerDutyRadius: 1.25
   orderTakeSeconds: 1.25
+  orderConfig: {fileID: 0}
 --- !u!114 &5382212128317171785
 MonoBehaviour:
   m_ObjectHideFlags: 0

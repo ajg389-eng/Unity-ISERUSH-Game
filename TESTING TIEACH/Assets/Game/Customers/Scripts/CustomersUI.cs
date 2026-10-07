@@ -13,14 +13,21 @@ public class CustomersUI : MonoBehaviour
     float nextRefresh;
     bool built;
 
-    TextMeshProUGUI summaryText;
     TextMeshProUGUI graphTitle;
     TextMeshProUGUI demandTitle;
+    readonly List<TextMeshProUGUI> metricValues = new List<TextMeshProUGUI>();
     RectTransform graphBarsRoot;
     Transform demandListRoot;
+    RectTransform demandViewport;
     readonly List<Image> barFills = new List<Image>();
+    readonly List<Image> barTracks = new List<Image>();
+    readonly List<Image> barRanges = new List<Image>();
+    readonly List<Image> barMeans = new List<Image>();
+    readonly List<TextMeshProUGUI> barValues = new List<TextMeshProUGUI>();
     readonly List<TextMeshProUGUI> barLabels = new List<TextMeshProUGUI>();
-    readonly List<TextMeshProUGUI> demandRows = new List<TextMeshProUGUI>();
+    readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
+    readonly List<RawImage> demandImages = new List<RawImage>();
+    static readonly float[] demandColumnWidths = { 300f, 130f, 80f, 65f, 70f, 90f, 100f };
 
     void OnEnable()
     {
@@ -49,16 +56,14 @@ public class CustomersUI : MonoBehaviour
             if (tmp != null) tmp.text = "Customers";
         }
 
-        summaryText = CreateLabel(transform, "Summary",
-            new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -48), new Vector2(-28, 36),
-            16, TextAlignmentOptions.TopLeft);
+        BuildMetricCards();
 
         graphTitle = CreateLabel(transform, "GraphTitle",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -92), new Vector2(-28, 24),
+            new Vector2(0, -126), new Vector2(-28, 28),
             15, TextAlignmentOptions.MidlineLeft);
-        graphTitle.text = "Visit trend (10 AM – 10 PM)";
+        graphTitle.text = "Arrivals / hour   <color=#38B7A3>Actual</color>  ·  <color=#F0BE55>Usual range (most hours)</color>  ·  <color=#F8F5EE>Average</color>";
+        graphTitle.richText = true;
 
         var graphFrame = new GameObject("VisitGraph", typeof(RectTransform));
         graphFrame.transform.SetParent(transform, false);
@@ -66,8 +71,8 @@ public class CustomersUI : MonoBehaviour
         graphRt.anchorMin = new Vector2(0, 1);
         graphRt.anchorMax = new Vector2(1, 1);
         graphRt.pivot = new Vector2(0.5f, 1f);
-        graphRt.anchoredPosition = new Vector2(0, -120);
-        graphRt.sizeDelta = new Vector2(-28, 150);
+        graphRt.anchoredPosition = new Vector2(0, -158);
+        graphRt.sizeDelta = new Vector2(-28, 240);
         var frameImg = graphFrame.AddComponent<Image>();
         frameImg.color = new Color(0.12f, 0.13f, 0.16f, 0.95f);
 
@@ -76,7 +81,7 @@ public class CustomersUI : MonoBehaviour
         graphBarsRoot = (RectTransform)barsGo.transform;
         graphBarsRoot.anchorMin = Vector2.zero;
         graphBarsRoot.anchorMax = Vector2.one;
-        graphBarsRoot.offsetMin = new Vector2(8, 26);
+        graphBarsRoot.offsetMin = new Vector2(8, 34);
         graphBarsRoot.offsetMax = new Vector2(-8, -8);
         var hlg = barsGo.AddComponent<HorizontalLayoutGroup>();
         hlg.spacing = 3;
@@ -95,9 +100,9 @@ public class CustomersUI : MonoBehaviour
 
         demandTitle = CreateLabel(transform, "DemandTitle",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -286), new Vector2(-28, 24),
-            15, TextAlignmentOptions.MidlineLeft);
-        demandTitle.text = "Live demand and throughput (last 60 simulation seconds)";
+            new Vector2(0, -410), new Vector2(-28, 30),
+            18, TextAlignmentOptions.MidlineLeft);
+        demandTitle.text = "Live demand by item";
 
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
@@ -105,15 +110,19 @@ public class CustomersUI : MonoBehaviour
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(12, 12);
-        scrollRt.offsetMax = new Vector2(-12, -318);
+        scrollRt.offsetMax = new Vector2(-12, -448);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
-        scroll.horizontal = false;
+        GameUITheme.ConfigureScroll(scroll);
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.135f;
+        scroll.horizontal = true;
         scroll.vertical = true;
 
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
         var vpRt = (RectTransform)viewport.transform;
+        demandViewport = vpRt;
         vpRt.anchorMin = Vector2.zero;
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
@@ -129,15 +138,28 @@ public class CustomersUI : MonoBehaviour
         contentRt.anchorMax = new Vector2(1, 1);
         contentRt.pivot = new Vector2(0.5f, 1f);
         contentRt.anchoredPosition = Vector2.zero;
-        contentRt.sizeDelta = new Vector2(0, 0);
+        // Preserve readable columns on narrow panels; wider panels stretch the item column.
+        contentRt.sizeDelta = Vector2.zero;
         var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 6;
+        vlg.spacing = 1;
         vlg.padding = new RectOffset(4, 4, 4, 4);
         vlg.childControlHeight = true;
         vlg.childControlWidth = true;
         vlg.childForceExpandHeight = false;
         vlg.childForceExpandWidth = true;
-        content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var header = CreateDemandTableRow("Header", 36f, out _);
+        string[] headings = { "Item", "Status", "Open\norders", "Ready", "Cooking", "Ordered\nlast min", "Completed\nlast min" };
+        for (int i = 0; i < headings.Length; i++)
+        {
+            header[i].text = headings[i];
+            header[i].fontStyle = FontStyles.Bold;
+            header[i].fontSize = 12f;
+            header[i].color = new Color(0.72f, 0.77f, 0.86f, 1f);
+        }
+        header[0].transform.parent.parent.GetComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
 
         scroll.viewport = vpRt;
         scroll.content = contentRt;
@@ -148,6 +170,63 @@ public class CustomersUI : MonoBehaviour
         var subtitle = transform.Find("Subtitle");
         if (subtitle != null)
             subtitle.gameObject.SetActive(false);
+    }
+
+    void BuildMetricCards()
+    {
+        var row = new GameObject("LiveMetrics", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        row.transform.SetParent(transform, false);
+        var rowRect = (RectTransform)row.transform;
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(1f, 1f);
+        rowRect.pivot = new Vector2(0.5f, 1f);
+        rowRect.anchoredPosition = new Vector2(0f, -46f);
+        rowRect.sizeDelta = new Vector2(-28f, 66f);
+        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 8f;
+        rowLayout.childAlignment = TextAnchor.MiddleCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = true;
+
+        CreateMetricCard(row.transform, "WIP · IN SYSTEM", new Color(0.58f, 0.47f, 0.93f, 1f));
+        CreateMetricCard(row.transform, "AVG WAIT", new Color(0.29f, 0.72f, 0.95f, 1f));
+        CreateMetricCard(row.transform, "ORDERS / MIN", new Color(0.25f, 0.78f, 0.62f, 1f));
+        CreateMetricCard(row.transform, "SERVICE RATE", new Color(0.98f, 0.68f, 0.30f, 1f));
+    }
+
+    void CreateMetricCard(Transform parent, string label, Color accent)
+    {
+        var card = new GameObject(label.Replace(' ', '_'), typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        card.transform.SetParent(parent, false);
+        card.GetComponent<Image>().color = new Color(0.11f, 0.13f, 0.18f, 0.98f);
+        card.GetComponent<LayoutElement>().flexibleWidth = 1f;
+
+        var stripe = new GameObject("Accent", typeof(RectTransform), typeof(Image));
+        stripe.transform.SetParent(card.transform, false);
+        var stripeRect = (RectTransform)stripe.transform;
+        stripeRect.anchorMin = Vector2.zero;
+        stripeRect.anchorMax = new Vector2(0f, 1f);
+        stripeRect.sizeDelta = new Vector2(4f, 0f);
+        stripe.GetComponent<Image>().color = accent;
+
+        var caption = CreateLabel(card.transform, "Label",
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+            10, TextAlignmentOptions.MidlineLeft);
+        caption.text = label;
+        SetRect(caption.rectTransform, new Vector2(0f, 0.52f), Vector2.one, new Vector2(12f, 0f), new Vector2(-5f, -5f));
+        caption.fontStyle = FontStyles.Bold;
+        caption.color = new Color(0.72f, 0.77f, 0.86f, 1f);
+        caption.enableWordWrapping = false;
+
+        var value = CreateLabel(card.transform, "Value",
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+            21, TextAlignmentOptions.MidlineLeft);
+        value.text = "—";
+        SetRect(value.rectTransform, Vector2.zero, new Vector2(1f, 0.58f), new Vector2(12f, 3f), new Vector2(-5f, 0f));
+        value.fontStyle = FontStyles.Bold;
+        metricValues.Add(value);
     }
 
     void CreateBarColumn(Transform parent)
@@ -165,7 +244,32 @@ public class CustomersUI : MonoBehaviour
         trackRt.anchorMax = new Vector2(0.85f, 1f);
         trackRt.offsetMin = Vector2.zero;
         trackRt.offsetMax = Vector2.zero;
-        track.AddComponent<Image>().color = new Color(0.2f, 0.22f, 0.28f, 1f);
+        var trackImage = track.AddComponent<Image>();
+        trackImage.color = new Color(0.2f, 0.22f, 0.28f, 1f);
+        barTracks.Add(trackImage);
+
+        var range = new GameObject("ExpectedRange", typeof(RectTransform), typeof(Image));
+        range.transform.SetParent(track.transform, false);
+        var rangeRect = (RectTransform)range.transform;
+        rangeRect.anchorMin = Vector2.zero;
+        rangeRect.anchorMax = new Vector2(1f, 0f);
+        rangeRect.pivot = new Vector2(0.5f, 0f);
+        rangeRect.offsetMin = Vector2.zero;
+        rangeRect.offsetMax = Vector2.zero;
+        range.GetComponent<Image>().color = new Color(0.94f, 0.70f, 0.24f, 0.34f);
+        range.GetComponent<Image>().raycastTarget = false;
+        barRanges.Add(range.GetComponent<Image>());
+
+        var meanLine = new GameObject("ExpectedMean", typeof(RectTransform), typeof(Image));
+        meanLine.transform.SetParent(track.transform, false);
+        var meanRect = (RectTransform)meanLine.transform;
+        meanRect.anchorMin = new Vector2(0f, 0f);
+        meanRect.anchorMax = new Vector2(1f, 0f);
+        meanRect.pivot = new Vector2(0.5f, 0f);
+        meanRect.sizeDelta = new Vector2(0f, 2f);
+        meanLine.GetComponent<Image>().color = new Color(1f, 0.79f, 0.39f, 1f);
+        meanLine.GetComponent<Image>().raycastTarget = false;
+        barMeans.Add(meanLine.GetComponent<Image>());
 
         var fill = new GameObject("Fill", typeof(RectTransform));
         fill.transform.SetParent(track.transform, false);
@@ -178,6 +282,22 @@ public class CustomersUI : MonoBehaviour
         var fillImg = fill.AddComponent<Image>();
         fillImg.color = new Color(0.35f, 0.72f, 0.95f, 1f);
         barFills.Add(fillImg);
+        meanLine.transform.SetAsLastSibling();
+
+        var valueGo = new GameObject("Count", typeof(RectTransform), typeof(TextMeshProUGUI));
+        valueGo.transform.SetParent(track.transform, false);
+        var valueRect = (RectTransform)valueGo.transform;
+        valueRect.anchorMin = new Vector2(0f, 0f);
+        valueRect.anchorMax = new Vector2(1f, 0f);
+        valueRect.pivot = new Vector2(0.5f, 0f);
+        valueRect.sizeDelta = new Vector2(0f, 16f);
+        var valueText = valueGo.GetComponent<TextMeshProUGUI>();
+        valueText.fontSize = 10;
+        valueText.alignment = TextAlignmentOptions.Center;
+        valueText.color = new Color(0.82f, 0.86f, 0.92f, 1f);
+        valueText.raycastTarget = false;
+        valueText.enableWordWrapping = false;
+        barValues.Add(valueText);
 
         var labelGo = new GameObject("Label", typeof(RectTransform));
         labelGo.transform.SetParent(col.transform, false);
@@ -187,11 +307,11 @@ public class CustomersUI : MonoBehaviour
         labelRt.offsetMin = Vector2.zero;
         labelRt.offsetMax = Vector2.zero;
         var label = labelGo.AddComponent<TextMeshProUGUI>();
-        label.fontSize = 9;
+        label.fontSize = 10;
         label.alignment = TextAlignmentOptions.Center;
         label.color = new Color(0.75f, 0.78f, 0.85f, 1f);
         label.text = "—";
-        label.enableWordWrapping = true;
+        label.enableWordWrapping = false;
         label.overflowMode = TextOverflowModes.Ellipsis;
         barLabels.Add(label);
     }
@@ -223,6 +343,14 @@ public class CustomersUI : MonoBehaviour
         return tmp;
     }
 
+    static void SetRect(RectTransform rt, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.offsetMin = offsetMin;
+        rt.offsetMax = offsetMax;
+    }
+
     void RefreshAll()
     {
         EnsureBuilt();
@@ -233,13 +361,15 @@ public class CustomersUI : MonoBehaviour
 
     void RefreshSummary()
     {
-        if (summaryText == null) return;
+        if (metricValues.Count < 4) return;
         var stats = StoreStatisticsManager.Instance;
-        int inSystem = stats != null ? stats.CustomersInSystem : 0;
-        int visited = stats != null ? stats.CustomersVisitedToday : 0;
-        int lost = stats != null ? stats.CustomersLostToday : 0;
-        summaryText.text =
-            $"In store now: <b>{inSystem}</b>    Visited today: <b>{visited}</b>    Walked out: <b>{lost}</b>";
+        metricValues[0].text = stats != null ? stats.CustomersInSystem.ToString() : "—";
+        metricValues[1].text = stats != null ? stats.AverageWaitTimeSeconds.ToString("F1") + " s" : "—";
+        metricValues[2].text = stats != null ? stats.ThroughputOrdersPerMinute.ToString("F1") : "—";
+        int servedOrLost = stats != null ? stats.OrdersCompletedToday + stats.CustomersLostToday : 0;
+        metricValues[3].text = stats == null || servedOrLost == 0
+            ? "—"
+            : stats.ServiceEfficiencyPercent.ToString("F0") + "%";
     }
 
     void RefreshGraph()
@@ -248,23 +378,30 @@ public class CustomersUI : MonoBehaviour
         if (stats == null || graphBarsRoot == null) return;
 
         int startH = stats.ShiftStartHour;
-        int endH = stats.ShiftEndHour;
         if (graphTitle != null)
-            graphTitle.text = $"Visit trend ({FormatClockHour(startH)} – {FormatClockHour(endH)})";
+            graphTitle.text = "Arrivals / hour   <color=#38B7A3>Actual</color>  ·  <color=#F0BE55>Usual range (most hours)</color>  ·  <color=#F8F5EE>Average</color>";
 
         int[] buckets = stats.GetVisitTrendBuckets();
         string[] hourLabels = stats.GetVisitHourLabels();
         int currentIdx = stats.GetCurrentHourBucketIndex();
 
+        var spawner = FindFirstObjectByType<CustomerSpawner>();
+        var lowerBounds = new int[buckets.Length];
+        var upperBounds = new int[buckets.Length];
+        var means = new float[buckets.Length];
         int max = 1;
         for (int i = 0; i < buckets.Length; i++)
-            if (buckets[i] > max) max = buckets[i];
+        {
+            means[i] = spawner != null ? spawner.ExpectedCustomersPerGameHour(startH + i) : 0f;
+            GetPoissonRange(means[i], out lowerBounds[i], out upperBounds[i]);
+            max = Mathf.Max(max, Mathf.Max(buckets[i], upperBounds[i]));
+        }
 
         while (barFills.Count < buckets.Length)
             CreateBarColumn(graphBarsRoot);
 
-        Color normal = new Color(0.35f, 0.72f, 0.95f, 1f);
-        Color current = new Color(0.95f, 0.72f, 0.28f, 1f);
+        Color normal = new Color(0.22f, 0.72f, 0.66f, 1f);
+        Color current = new Color(0.36f, 0.91f, 0.78f, 1f);
 
         for (int i = 0; i < barFills.Count; i++)
         {
@@ -275,29 +412,82 @@ public class CustomersUI : MonoBehaviour
             int value = buckets[i];
             float t = max > 0 ? value / (float)max : 0f;
             var fillRt = (RectTransform)barFills[i].transform;
-            fillRt.anchorMax = new Vector2(1f, Mathf.Clamp01(Mathf.Max(t, value > 0 ? 0.08f : 0f)));
+            float barHeight = Mathf.Clamp01(Mathf.Max(t, value > 0 ? 0.06f : 0f));
+            fillRt.anchorMax = new Vector2(1f, barHeight);
             barFills[i].color = i == currentIdx ? current : normal;
+            if (i < barTracks.Count)
+                barTracks[i].color = i == currentIdx
+                    ? new Color(0.31f, 0.27f, 0.19f, 1f)
+                    : new Color(0.2f, 0.22f, 0.28f, 1f);
+            if (i < barValues.Count)
+            {
+                barValues[i].text = value.ToString();
+                barValues[i].color = i == currentIdx
+                    ? new Color(1f, 0.79f, 0.40f, 1f)
+                    : new Color(0.82f, 0.86f, 0.92f, 1f);
+                var valueRt = (RectTransform)barValues[i].transform;
+                valueRt.anchoredPosition = new Vector2(0f, Mathf.Max(0f, barHeight * ((RectTransform)barTracks[i].transform).rect.height - 14f));
+            }
+            if (i < means.Length && i < barRanges.Count && i < barMeans.Count)
+            {
+                var trackRect = (RectTransform)barTracks[i].transform;
+                var rangeRect = (RectTransform)barRanges[i].transform;
+                rangeRect.anchorMin = new Vector2(0f, lowerBounds[i] / (float)max);
+                rangeRect.anchorMax = new Vector2(1f, upperBounds[i] / (float)max);
+                rangeRect.offsetMin = Vector2.zero;
+                rangeRect.offsetMax = Vector2.zero;
+                barRanges[i].color = i == currentIdx
+                    ? new Color(1f, 0.73f, 0.25f, 0.46f)
+                    : new Color(0.94f, 0.70f, 0.24f, 0.34f);
+                var meanRect = (RectTransform)barMeans[i].transform;
+                meanRect.anchoredPosition = new Vector2(0f, means[i] / max * trackRect.rect.height - 1f);
+            }
 
             if (i < barLabels.Count)
             {
                 string hour = i < hourLabels.Length ? hourLabels[i] : "";
-                barLabels[i].text = value > 0 ? $"{hour}\n{value}" : hour;
+                barLabels[i].text = hour;
             }
         }
     }
 
-    static string FormatClockHour(int hour24)
+    static void GetPoissonRange(float mean, out int lower, out int upper)
     {
-        hour24 = ((hour24 % 24) + 24) % 24;
-        bool pm = hour24 >= 12;
-        int hour12 = hour24 % 12;
-        if (hour12 == 0) hour12 = 12;
-        return $"{hour12} {(pm ? "PM" : "AM")}";
+        if (mean <= 0f)
+        {
+            lower = 0;
+            upper = 0;
+            return;
+        }
+
+        double probability = System.Math.Exp(-mean);
+        double cumulative = probability;
+        int value = 0;
+        lower = -1;
+        upper = -1;
+        while (value < 512)
+        {
+            if (lower < 0 && cumulative >= 0.025d) lower = value;
+            if (upper < 0 && cumulative >= 0.975d)
+            {
+                upper = value;
+                break;
+            }
+            value++;
+            probability *= mean / value;
+            cumulative += probability;
+        }
+        if (lower < 0) lower = 0;
+        if (upper < 0) upper = value;
     }
 
     void RefreshDemand()
     {
         if (demandListRoot == null) return;
+        float minimumWidth = 8f + demandColumnWidths.Length - 1;
+        foreach (float width in demandColumnWidths) minimumWidth += width;
+        var contentRect = (RectTransform)demandListRoot;
+        contentRect.sizeDelta = new Vector2(Mathf.Max(0f, minimumWidth - demandViewport.rect.width), contentRect.sizeDelta.y);
 
         var pm = ProductionManager.Instance != null
             ? ProductionManager.Instance
@@ -307,12 +497,21 @@ public class CustomersUI : MonoBehaviour
             : new List<ProductionManager.ItemOutputNeed>();
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
+        demandTitle.text = $"Live demand by item ({needs.Count} items)";
+
+        // Hide entire rows so inactive items leave no backgrounds or layout gaps.
+        for (int i = 0; i < demandRows.Count; i++)
+            demandRows[i][0].transform.parent.parent.gameObject.SetActive(i < Mathf.Max(1, needs.Count));
 
         if (needs.Count == 0)
         {
-            demandRows[0].text = "No cookable menu items yet.";
-            for (int i = 1; i < demandRows.Count; i++)
-                demandRows[i].gameObject.SetActive(false);
+            for (int column = 0; column < demandRows[0].Length; column++)
+                demandRows[0][column].text = column == 0 ? "No cookable menu items yet." : "";
+            if (demandImages.Count > 0 && demandImages[0] != null)
+            {
+                demandImages[0].texture = null;
+                demandImages[0].enabled = false;
+            }
             return;
         }
 
@@ -320,19 +519,39 @@ public class CustomersUI : MonoBehaviour
         {
             if (i >= needs.Count)
             {
-                demandRows[i].gameObject.SetActive(false);
                 continue;
             }
 
-            demandRows[i].gameObject.SetActive(true);
             var row = needs[i];
+            if (i < demandImages.Count && demandImages[i] != null)
+            {
+                var preview = ItemPreviewThumbnails.Get(row.item);
+                demandImages[i].texture = preview;
+                demandImages[i].enabled = preview != null;
+            }
             string name = row.item != null
                 ? (string.IsNullOrEmpty(row.item.itemName) ? row.item.name : row.item.itemName)
                 : "Item";
-            demandRows[i].text =
-                $"<b>{name}</b>  ·  outstanding <color=#FFB070><b>{row.requested}</b></color>" +
-                $"  ·  ready {row.ready}  ·  in production {row.cooking}  ·  shortfall {row.requiredOutput}\n" +
-                $"<size=85%>ordered {row.orderedLastMinute}/min  ·  completed {row.completedLastMinute}/min</size>";
+            string state = row.requiredOutput > 0
+                ? $"<color=#FF9C79><b>SHORT {row.requiredOutput}</b></color>"
+                : row.requested > 0
+                    ? "<color=#77D9AE><b>COVERED</b></color>"
+                    : "<color=#9AA7B8>NO OPEN ORDERS</color>";
+            var cells = demandRows[i];
+            cells[0].text = name;
+            cells[1].text = state;
+            cells[2].text = row.requested.ToString();
+            cells[3].text = row.ready.ToString();
+            cells[4].text = row.cooking.ToString();
+            cells[5].text = row.orderedLastMinute.ToString();
+            cells[6].text = row.completedLastMinute.ToString();
+            var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
+            if (rowImage != null)
+                rowImage.color = row.requiredOutput > 0
+                    ? new Color(0.22f, 0.14f, 0.15f, 0.98f)
+                    : i % 2 == 0
+                        ? new Color(0.13f, 0.16f, 0.20f, 0.98f)
+                        : new Color(0.11f, 0.14f, 0.18f, 0.98f);
         }
     }
 
@@ -340,26 +559,56 @@ public class CustomersUI : MonoBehaviour
     {
         while (demandRows.Count < count)
         {
-            var go = new GameObject("DemandRow", typeof(RectTransform));
-            go.transform.SetParent(demandListRoot, false);
-            var le = go.AddComponent<LayoutElement>();
-            le.minHeight = 48;
-            le.preferredHeight = 50;
-            go.AddComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 0.9f);
-            var textGo = new GameObject("Text", typeof(RectTransform));
-            textGo.transform.SetParent(go.transform, false);
-            var trt = (RectTransform)textGo.transform;
-            trt.anchorMin = Vector2.zero;
-            trt.anchorMax = Vector2.one;
-            trt.offsetMin = new Vector2(10, 2);
-            trt.offsetMax = new Vector2(-10, -2);
-            var tmp = textGo.AddComponent<TextMeshProUGUI>();
-            tmp.fontSize = 14;
-            tmp.alignment = TextAlignmentOptions.MidlineLeft;
-            tmp.color = Color.white;
-            tmp.enableWordWrapping = true;
-            tmp.overflowMode = TextOverflowModes.Ellipsis;
-            demandRows.Add(tmp);
+            demandRows.Add(CreateDemandTableRow("DemandRow", 48f, out var preview));
+            demandImages.Add(preview);
         }
+    }
+
+    TextMeshProUGUI[] CreateDemandTableRow(string name, float height, out RawImage preview)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        go.transform.SetParent(demandListRoot, false);
+        go.GetComponent<Image>().color = new Color(0.13f, 0.16f, 0.20f, 0.98f);
+        var rowSize = go.GetComponent<LayoutElement>();
+        rowSize.minHeight = height;
+        rowSize.preferredHeight = height;
+        var layout = go.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 1f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        preview = null;
+        var cells = new TextMeshProUGUI[demandColumnWidths.Length];
+        for (int i = 0; i < cells.Length; i++)
+        {
+            var cell = new GameObject("Column" + i, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            cell.transform.SetParent(go.transform, false);
+            cell.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
+            var size = cell.GetComponent<LayoutElement>();
+            size.minWidth = demandColumnWidths[i];
+            size.preferredWidth = demandColumnWidths[i];
+            size.flexibleWidth = i == 0 ? 1f : 0f;
+            var label = CreateLabel(cell.transform, "Text", Vector2.zero, Vector2.one,
+                Vector2.zero, Vector2.zero, 13f,
+                i == 0 ? TextAlignmentOptions.MidlineLeft : TextAlignmentOptions.Center);
+            SetRect(label.rectTransform, Vector2.zero, Vector2.one,
+                new Vector2(i == 0 && name != "Header" ? 48f : 8f, 4f), new Vector2(-8f, -4f));
+            label.raycastTarget = false;
+            cells[i] = label;
+            if (i != 0 || name == "Header") continue;
+
+            var imageGo = new GameObject("ProductImage", typeof(RectTransform), typeof(RawImage));
+            imageGo.transform.SetParent(cell.transform, false);
+            var imageRect = (RectTransform)imageGo.transform;
+            imageRect.anchorMin = imageRect.anchorMax = new Vector2(0f, 0.5f);
+            imageRect.pivot = new Vector2(0f, 0.5f);
+            imageRect.anchoredPosition = new Vector2(6f, 0f);
+            imageRect.sizeDelta = new Vector2(36f, 36f);
+            preview = imageGo.GetComponent<RawImage>();
+            preview.raycastTarget = false;
+        }
+        return cells;
     }
 }

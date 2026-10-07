@@ -311,6 +311,7 @@ public class PlayerCameraController : MonoBehaviour
 
     static bool ShouldBlockZoom()
     {
+        if (RecipeGraphDrag.IsAnyGraphOpen) return true;
         var es = EventSystem.current;
         if (es == null) return false;
 

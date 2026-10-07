@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public enum StoreSurfaceKind { Walls, Floor, Roof }
 
@@ -25,6 +26,7 @@ public sealed class StoreAppearanceController : MonoBehaviour
     }
 
     readonly Dictionary<Renderer, OriginalLook> originals = new Dictionary<Renderer, OriginalLook>();
+    readonly Dictionary<Renderer, MeshRenderer> tintOverlays = new Dictionary<Renderer, MeshRenderer>();
     readonly List<Texture2D> wallTextures = new List<Texture2D>();
     readonly List<Texture2D> floorTextures = new List<Texture2D>();
     readonly List<Texture2D> roofTextures = new List<Texture2D>();
@@ -69,6 +71,10 @@ public sealed class StoreAppearanceController : MonoBehaviour
     {
         if (grid != null) grid.GridChanged -= QueueRefresh;
         if (Instance == this) Instance = null;
+        foreach (var overlay in tintOverlays.Values)
+            if (overlay != null && overlay.sharedMaterial != null)
+                Destroy(overlay.sharedMaterial);
+        tintOverlays.Clear();
     }
 
     void LateUpdate()
@@ -91,7 +97,9 @@ public sealed class StoreAppearanceController : MonoBehaviour
     {
         destination.Clear();
         destination.Add(null); // Original material texture.
-        foreach (var texture in Resources.LoadAll<Texture2D>(path))
+        var discovered = Resources.LoadAll<Texture2D>(path);
+        System.Array.Sort(discovered, (a, b) => string.Compare(a.name, b.name, System.StringComparison.Ordinal));
+        foreach (var texture in discovered)
             if (texture != null && !destination.Contains(texture)) destination.Add(texture);
     }
 
@@ -101,7 +109,18 @@ public sealed class StoreAppearanceController : MonoBehaviour
     {
         var textures = GetTextures(kind);
         index = Mathf.Clamp(index, 0, textures.Count - 1);
-        return index == 0 || textures[index] == null ? "Original" : textures[index].name;
+        if (index == 0 || textures[index] == null) return "Original";
+        string name = textures[index].name;
+        return name.Length > 3 && char.IsDigit(name[0]) && char.IsDigit(name[1]) && name[2] == ' '
+            ? name.Substring(3)
+            : name;
+    }
+
+    public Texture2D GetTexturePreview(StoreSurfaceKind kind, int index)
+    {
+        var textures = GetTextures(kind);
+        index = Mathf.Clamp(index, 0, textures.Count - 1);
+        return textures[index];
     }
 
     public int GetTextureIndex(StoreSurfaceKind kind) => kind switch
@@ -223,6 +242,7 @@ public sealed class StoreAppearanceController : MonoBehaviour
     void ApplyToRenderer(Renderer renderer, Color tint, Texture textureOverride)
     {
         if (renderer == null) return;
+        if (renderer.gameObject.name == "StoreAppearanceTint") return;
         if (block == null) block = new MaterialPropertyBlock();
         Material[] materials = renderer.sharedMaterials;
         if (!originals.TryGetValue(renderer, out OriginalLook look) || look.colors.Length != materials.Length)
@@ -249,7 +269,66 @@ public sealed class StoreAppearanceController : MonoBehaviour
             if (texture != null && material.HasProperty("_MainTex")) block.SetTexture("_MainTex", texture);
             renderer.SetPropertyBlock(block, i);
         }
+
+        ApplyAppearanceOverlay(renderer, tint, textureOverride);
     }
+
+    void ApplyAppearanceOverlay(Renderer source, Color tint, Texture texture)
+    {
+        bool needsOverlay = texture != null || !ApproximatelyWhite(tint);
+        if (!needsOverlay)
+        {
+            if (tintOverlays.TryGetValue(source, out MeshRenderer existing) && existing != null)
+                existing.gameObject.SetActive(false);
+            return;
+        }
+
+        if (!(source is MeshRenderer) || !source.TryGetComponent(out MeshFilter sourceFilter)
+            || sourceFilter.sharedMesh == null)
+            return;
+
+        if (!tintOverlays.TryGetValue(source, out MeshRenderer overlay) || overlay == null)
+        {
+            Shader shader = Shader.Find("ISE Rush/Surface Tint Multiply");
+            if (shader == null) return;
+            var overlayObject = new GameObject("StoreAppearanceTint", typeof(MeshFilter), typeof(MeshRenderer));
+            overlayObject.transform.SetParent(source.transform, false);
+            overlayObject.layer = source.gameObject.layer;
+            overlayObject.GetComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
+            overlay = overlayObject.GetComponent<MeshRenderer>();
+            overlay.sharedMaterial = new Material(shader)
+            {
+                name = source.name + " Tint (Runtime)",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            overlay.shadowCastingMode = ShadowCastingMode.Off;
+            overlay.receiveShadows = false;
+            tintOverlays[source] = overlay;
+        }
+
+        overlay.gameObject.SetActive(source.enabled);
+        overlay.sharedMaterial.SetColor("_Tint", tint);
+        overlay.sharedMaterial.SetTexture("_BaseMap", texture != null ? texture : Texture2D.whiteTexture);
+        overlay.sharedMaterial.SetFloat("_Tiling", TextureWorldTiling(texture));
+        bool hasTexture = texture != null;
+        overlay.sharedMaterial.SetFloat("_TextureMode", hasTexture ? 1f : 0f);
+        overlay.sharedMaterial.SetFloat("_SrcBlend", hasTexture
+            ? (float)BlendMode.One : (float)BlendMode.DstColor);
+        overlay.sharedMaterial.SetFloat("_DstBlend", (float)BlendMode.Zero);
+        overlay.sharedMaterial.SetFloat("_ZWrite", hasTexture ? 1f : 0f);
+    }
+
+    static float TextureWorldTiling(Texture texture)
+    {
+        if (texture != null && texture.name.IndexOf("Cream Tile", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return 2f;
+        return .5f;
+    }
+
+    static bool ApproximatelyWhite(Color color) =>
+        Mathf.Abs(color.r - 1f) < 0.002f
+        && Mathf.Abs(color.g - 1f) < 0.002f
+        && Mathf.Abs(color.b - 1f) < 0.002f;
 
     static Color ReadMaterialColor(Material material)
     {

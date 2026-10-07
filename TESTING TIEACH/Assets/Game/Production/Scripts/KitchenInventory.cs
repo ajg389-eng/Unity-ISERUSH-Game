@@ -57,7 +57,7 @@ public class KitchenInventory : MonoBehaviour
         var list = new List<ItemDefinition>();
         void Add(ItemDefinition item)
         {
-            if (item != null && !list.Contains(item))
+            if (item != null && (orderConfig == null || !orderConfig.IsDrink(item)) && !list.Contains(item))
                 list.Add(item);
         }
 
