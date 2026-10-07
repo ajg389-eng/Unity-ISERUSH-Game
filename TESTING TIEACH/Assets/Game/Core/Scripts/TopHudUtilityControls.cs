@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -24,6 +25,7 @@ public class TopHudUtilityControls : MonoBehaviour
     GameTimeManager boundTime;
     GameObject musicPanel;
     RectTransform musicList;
+    readonly HashSet<GameNotification> expandedNotifications = new HashSet<GameNotification>();
 
     void Awake() => EnsureLayout();
 
@@ -241,22 +243,50 @@ public class TopHudUtilityControls : MonoBehaviour
         title.fontStyle = FontStyles.Bold;
         title.alignment = TextAlignmentOptions.MidlineLeft;
 
+        var hint = CreateLabel(root, "Hint", "Click a notice to expand · scroll for older", 10);
+        hint.color = new Color(0.68f, 0.72f, 0.8f, 1f);
+        hint.alignment = TextAlignmentOptions.MidlineLeft;
+        SetRect(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f),
+            new Vector2(16f, -72f), new Vector2(-78f, -52f));
+
         Button clear = CreateButton(root, "ClearButton", "Clear", 66f, out _);
         var clearRt = (RectTransform)clear.transform;
         clearRt.anchorMin = clearRt.anchorMax = new Vector2(1f, 1f);
         clearRt.pivot = new Vector2(1f, 1f);
         clearRt.anchoredPosition = new Vector2(-12f, -10f);
         clearRt.sizeDelta = new Vector2(66f, 32f);
-        clear.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); NotificationCenter.Clear(); });
+        clear.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            expandedNotifications.Clear();
+            NotificationCenter.Clear();
+        });
 
         var scrollGo = new GameObject("Scroll View", typeof(RectTransform), typeof(ScrollRect));
         scrollGo.transform.SetParent(root, false);
-        SetRect((RectTransform)scrollGo.transform, Vector2.zero, Vector2.one, new Vector2(12f, 12f), new Vector2(-12f, -54f));
+        SetRect((RectTransform)scrollGo.transform, Vector2.zero, Vector2.one, new Vector2(12f, 12f), new Vector2(-12f, -76f));
 
         var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
         viewport.transform.SetParent(scrollGo.transform, false);
-        SetRect((RectTransform)viewport.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        SetRect((RectTransform)viewport.transform, Vector2.zero, Vector2.one, Vector2.zero, new Vector2(-12f, 0f));
         viewport.GetComponent<Image>().color = new Color(0.04f, 0.045f, 0.07f, 0.8f);
+
+        var scrollbarGo = new GameObject("Vertical Scrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        scrollbarGo.transform.SetParent(scrollGo.transform, false);
+        SetRect((RectTransform)scrollbarGo.transform, new Vector2(1f, 0f), Vector2.one,
+            new Vector2(-9f, 4f), new Vector2(-3f, -4f));
+        scrollbarGo.GetComponent<Image>().color = new Color(0.06f, 0.07f, 0.1f, 0.9f);
+
+        var handleGo = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handleGo.transform.SetParent(scrollbarGo.transform, false);
+        SetRect((RectTransform)handleGo.transform, Vector2.zero, Vector2.one,
+            new Vector2(1f, 1f), new Vector2(-1f, -1f));
+        var handleImage = handleGo.GetComponent<Image>();
+        handleImage.color = new Color(0.48f, 0.55f, 0.67f, 0.9f);
+        var scrollbar = scrollbarGo.GetComponent<Scrollbar>();
+        scrollbar.handleRect = (RectTransform)handleGo.transform;
+        scrollbar.targetGraphic = handleImage;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
 
         var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
         content.transform.SetParent(viewport.transform, false);
@@ -282,6 +312,8 @@ public class TopHudUtilityControls : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
     }
 
     void ToggleHistory()
@@ -439,18 +471,59 @@ public class TopHudUtilityControls : MonoBehaviour
 
         foreach (var entry in NotificationCenter.Entries)
         {
-            var row = new GameObject("Notification", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            bool expanded = expandedNotifications.Contains(entry);
+            var row = new GameObject("Notification", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
             row.transform.SetParent(historyContent, false);
-            row.GetComponent<Image>().color = entry.kind == GameNotificationKind.Warning
+            var rowImage = row.GetComponent<Image>();
+            rowImage.color = entry.kind == GameNotificationKind.Warning
                 ? new Color(0.22f, 0.16f, 0.07f, 0.95f)
                 : new Color(0.12f, 0.14f, 0.20f, 0.95f);
-            row.GetComponent<LayoutElement>().preferredHeight = 58f;
+            row.GetComponent<Button>().transition = Selectable.Transition.None;
 
-            var label = CreateLabel(row.transform, "Text", "<color=#8FA4BC>" + entry.time + "</color>  " + entry.message, 13);
-            SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 6f), new Vector2(-10f, -6f));
-            label.alignment = TextAlignmentOptions.MidlineLeft;
-            label.enableWordWrapping = true;
+            string displayMessage = expanded
+                ? entry.message
+                : GetNotificationPreview(entry.message);
+            var label = CreateLabel(row.transform, "Text", "<color=#AEBBCD>" + entry.time + "</color>  " + displayMessage, 12);
+            SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 5f), new Vector2(-32f, -5f));
+            label.alignment = expanded ? TextAlignmentOptions.TopLeft : TextAlignmentOptions.MidlineLeft;
+            label.enableWordWrapping = expanded;
+            label.overflowMode = expanded ? TextOverflowModes.Overflow : TextOverflowModes.Ellipsis;
+
+            var toggle = CreateLabel(row.transform, "ExpandIndicator", expanded ? "−" : "+", 16);
+            SetRect(toggle.rectTransform, new Vector2(1f, 0f), Vector2.one,
+                new Vector2(-28f, 0f), new Vector2(-4f, 0f));
+            toggle.alignment = TextAlignmentOptions.Center;
+            toggle.color = new Color(0.7f, 0.78f, 0.88f, 1f);
+
+            float height = 38f;
+            if (expanded)
+            {
+                float panelWidth = ((RectTransform)historyPanel.transform).sizeDelta.x;
+                float availableTextWidth = Mathf.Max(120f, panelWidth - 80f);
+                float textHeight = label.GetPreferredValues(label.text, availableTextWidth, 0f).y;
+                height = Mathf.Max(54f, textHeight + 12f);
+            }
+            row.GetComponent<LayoutElement>().preferredHeight = height;
+            row.GetComponent<Button>().onClick.AddListener(() =>
+            {
+                Sfx.Play(SfxId.UiClick);
+                if (!expandedNotifications.Add(entry))
+                    expandedNotifications.Remove(entry);
+                RebuildHistory();
+            });
         }
+    }
+
+    static string GetNotificationPreview(string message)
+    {
+        const string deliveryPrefix = "Ingredient delivery arrived:";
+        if (message.StartsWith(deliveryPrefix, System.StringComparison.OrdinalIgnoreCase))
+            return "Ingredient delivery arrived";
+
+        const int previewLength = 46;
+        return message.Length <= previewLength
+            ? message
+            : message.Substring(0, previewLength - 1).TrimEnd() + "…";
     }
 
     static Button CreateButton(Transform parent, string name, string label, float width, out TextMeshProUGUI text)

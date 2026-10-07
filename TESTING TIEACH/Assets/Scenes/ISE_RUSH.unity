@@ -11053,6 +11053,7 @@ MonoBehaviour:
   tasksListContent: {fileID: 228830239}
   progressionListContent: {fileID: 1161387480}
   progressionDetailText: {fileID: 2027053146}
+  researchButton: {fileID: 0}
   openQuizButton: {fileID: 29111397}
   useSceneLayout: 0
   panelAnchor: {x: 1, y: 0.5}
@@ -19254,7 +19255,6 @@ Transform:
   - {fileID: 607073559}
   - {fileID: 2043999105}
   - {fileID: 866130494}
-  - {fileID: 1772278241}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1584365192
@@ -19795,67 +19795,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 400000, guid: 3181f15579d1b0c46872c9980226268b, type: 3}
   m_PrefabInstance: {fileID: 1609946544}
   m_PrefabAsset: {fileID: 0}
---- !u!1001 &1616383158
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 1582531903}
-    m_Modifications:
-    - target: {fileID: 100014, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_Name
-      value: DeliveryTruckSpot
-      objectReference: {fileID: 0}
-    - target: {fileID: 100014, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -20.729841
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 2.531452
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 0.13052604
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: -0.99144495
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: -165
-      objectReference: {fileID: 0}
-    - target: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
 --- !u!1001 &1620410531
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -21999,11 +21938,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1771794267}
   m_CullTransparentMesh: 1
---- !u!4 &1772278241 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 400012, guid: f119644f5530c1044aa946bb6b18bb13, type: 3}
-  m_PrefabInstance: {fileID: 1616383158}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1777467605
 GameObject:
   m_ObjectHideFlags: 0
