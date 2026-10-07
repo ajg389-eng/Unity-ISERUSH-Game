@@ -19,7 +19,7 @@ public class DeliveryArrivedNotice : MonoBehaviour
     public static void Show(IngredientDeliveryService.Shipment shipment)
     {
         string body = FormatBody(shipment);
-        NotificationCenter.Post("Ingredient delivery arrived: " + body,
+        NotificationCenter.Post("Ingredient delivery arrived: " + FormatDeliveryDetails(shipment),
             GameNotificationKind.Message, "ingredient-delivery", 2f);
         DeliveryArrivedNotice live = instance;
         if (live == null)
@@ -94,7 +94,10 @@ public class DeliveryArrivedNotice : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 1f);
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
-        rt.sizeDelta = new Vector2(560f, 78f);
+        Canvas canvas = GetComponentInParent<Canvas>();
+        float scale = canvas != null ? Mathf.Max(0.01f, canvas.scaleFactor) : 1f;
+        float availableWidth = Screen.width / scale - 32f;
+        rt.sizeDelta = new Vector2(Mathf.Max(220f, Mathf.Min(680f, availableWidth)), 92f);
 
         float y = -118f;
         var bar = FindFirstObjectByType<TopHudBar>(FindObjectsInactive.Include);
@@ -120,6 +123,28 @@ public class DeliveryArrivedNotice : MonoBehaviour
     }
 
     static string FormatBody(IngredientDeliveryService.Shipment shipment)
+    {
+        if (shipment == null || shipment.packs.Count == 0)
+            return "Ingredients are now in stock.";
+
+        var itemTypes = new HashSet<ItemDefinition>();
+        int totalUnits = 0;
+        for (int i = 0; i < shipment.packs.Count; i++)
+        {
+            IngredientDeliveryService.Pack pack = shipment.packs[i];
+            if (pack == null || pack.item == null) continue;
+            itemTypes.Add(pack.item);
+            totalUnits += Mathf.Max(0, pack.amount);
+        }
+
+        if (itemTypes.Count == 0)
+            return "Ingredients are now in stock.";
+
+        return itemTypes.Count + (itemTypes.Count == 1 ? " ingredient type restocked" : " ingredient types restocked")
+            + "  ·  " + totalUnits + (totalUnits == 1 ? " unit now in stock" : " units now in stock");
+    }
+
+    static string FormatDeliveryDetails(IngredientDeliveryService.Shipment shipment)
     {
         if (shipment == null || shipment.packs.Count == 0)
             return "Ingredients are now in stock.";
@@ -165,12 +190,16 @@ public class DeliveryArrivedNotice : MonoBehaviour
         rt.offsetMax = Vector2.zero;
 
         var bg = panel.GetComponent<Image>();
-        bg.color = new Color(0.1f, 0.18f, 0.12f, 0.94f);
+        bg.color = new Color(0.035f, 0.09f, 0.075f, 0.98f);
         bg.raycastTarget = false;
+        var outline = panel.AddComponent<Outline>();
+        outline.effectColor = new Color(0.38f, 0.78f, 0.57f, 1f);
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
+        outline.useGraphicAlpha = true;
 
         var layout = panel.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(18, 18, 10, 10);
-        layout.spacing = 4f;
+        layout.padding = new RectOffset(18, 18, 9, 9);
+        layout.spacing = 2f;
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -184,29 +213,29 @@ public class DeliveryArrivedNotice : MonoBehaviour
         var titleGo = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         titleGo.transform.SetParent(panel.transform, false);
         var title = titleGo.GetComponent<TextMeshProUGUI>();
-        title.text = "Delivery arrived";
-        title.fontSize = 18f;
+        title.text = "DELIVERY ARRIVED";
+        title.fontSize = 20f;
         title.fontStyle = FontStyles.Bold;
         title.alignment = TextAlignmentOptions.Center;
-        title.color = new Color(0.85f, 0.98f, 0.78f, 1f);
+        title.color = new Color(0.55f, 0.95f, 0.69f, 1f);
         title.raycastTarget = false;
         title.enableWordWrapping = false;
-        titleGo.GetComponent<LayoutElement>().preferredHeight = 24f;
-        titleGo.GetComponent<LayoutElement>().minHeight = 22f;
+        titleGo.GetComponent<LayoutElement>().preferredHeight = 27f;
+        titleGo.GetComponent<LayoutElement>().minHeight = 27f;
 
         var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         bodyGo.transform.SetParent(panel.transform, false);
         bodyLabel = bodyGo.GetComponent<TextMeshProUGUI>();
         bodyLabel.text = body;
-        bodyLabel.fontSize = 15f;
+        bodyLabel.fontSize = 16f;
         bodyLabel.alignment = TextAlignmentOptions.Center;
         bodyLabel.color = Color.white;
         bodyLabel.raycastTarget = false;
         bodyLabel.enableWordWrapping = true;
-        bodyLabel.lineSpacing = 4f;
+        bodyLabel.lineSpacing = 2f;
         var bodyLe = bodyGo.GetComponent<LayoutElement>();
-        bodyLe.minHeight = 22f;
-        bodyLe.preferredHeight = 28f;
+        bodyLe.minHeight = 24f;
+        bodyLe.preferredHeight = 32f;
         bodyLe.flexibleHeight = 1f;
     }
 

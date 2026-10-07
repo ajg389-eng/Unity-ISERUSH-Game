@@ -31,8 +31,11 @@ public class BuildPlacer : MonoBehaviour
     private int dragRotation;
     private int dragOrigRotation;
     private CounterMountedItem draggingMountedItem;
+    private GroundPickupStationPlacement draggingGroundPickupStation;
     private CounterSurface dragOriginalSurface;
     private int dragOriginalSlot = -1;
+    private CounterSurface dragOriginalGroundPickupSurface;
+    private int dragOriginalGroundPickupSlot = -1;
     private Vector3 dragOriginalPosition;
     private Quaternion dragOriginalWorldRotation;
     private CustomerWallDoor draggingWallDoor;
@@ -44,7 +47,7 @@ public class BuildPlacer : MonoBehaviour
     readonly List<GroupMoveMember> groupMoveMembers = new List<GroupMoveMember>();
     BuildStationActionBar actionBar;
     // Retained only for the legacy private drag helper. Selection no longer calls it.
-    const float EditDoubleClickSeconds = 0.4f;
+    const float EditDoubleClickSeconds = 0.75f;
     float lastEditClickTime = -999f;
     int lastEditClickId;
 
@@ -93,14 +96,13 @@ public class BuildPlacer : MonoBehaviour
             CounterSurface surface = staticCounter.GetComponent<CounterSurface>();
             if (surface == null) surface = staticCounter.AddComponent<CounterSurface>();
             surface.slotCount = 10;
+            surface.InitializeGroundStationPlacement();
             surface.EnsurePlacementCollider();
             if (staticCounter.GetComponent<GridObstacle>() == null)
                 staticCounter.AddComponent<GridObstacle>();
             if (grid != null) grid.ResyncOccupancyFromScene();
         }
         EnsureRequiredCustomerDoors();
-        if (CustomerWallDoor.FindEntryDoor() == null)
-            Invoke(nameof(EnsureRequiredCustomerDoors), 0.35f);
         SetHint(false);
         actionBar = BuildStationActionBar.EnsureFor(this);
     }
@@ -181,6 +183,32 @@ public class BuildPlacer : MonoBehaviour
                 return;
             }
 
+            if (draggingGroundPickupStation != null)
+            {
+                if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R)
+                    && !IsRotationLocked(draggingGroundPickupStation.GetItemDefinition(), draggingObject))
+                {
+                    dragRotation = (dragRotation + 1) % 4;
+                    Sfx.Play(SfxId.BuildRotate);
+                }
+
+                if (TryGetGroundPickupTarget(out CounterSurface groundSurface, out int groundSlot))
+                {
+                    ItemDefinition item = draggingGroundPickupStation.GetItemDefinition();
+                    if (item != null)
+                    {
+                        draggingObject.transform.rotation = Quaternion.Euler(
+                            item.placementEuler + Vector3.up * (dragRotation * 90f));
+                        Vector3 position = groundSurface.GetSlotWorldCenter(groundSlot);
+                        position.y = GetYOnFloor(draggingObject, grid != null ? grid.Origin.y : position.y);
+                        draggingObject.transform.position = position;
+                        if (Input.GetMouseButtonDown(0))
+                            TryPlaceDraggedGroundPickupStation(groundSurface, groundSlot);
+                    }
+                }
+                return;
+            }
+
             if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsCurrentDragRotationLocked())
             {
                 dragRotation = (dragRotation + 1) % 4;
@@ -229,6 +257,34 @@ public class BuildPlacer : MonoBehaviour
                 if (Input.GetMouseButtonDown(0))
                     TryPlaceCustomerDoor(doorPosition, doorRotation, doorSide);
             }
+            return;
+        }
+
+        if (IsPickupStationDefinition(placingItem))
+        {
+            if (!UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.R) && !IsRotationLocked(placingItem, ghost))
+            {
+                placementRotation = (placementRotation + 1) % 4;
+                Sfx.Play(SfxId.BuildRotate);
+            }
+
+            if (TryGetGroundPickupTarget(out CounterSurface surface, out int slot))
+            {
+                if (ghost != null)
+                {
+                    ghost.SetActive(true);
+                    ghost.transform.rotation = Quaternion.Euler(
+                        placingItem.placementEuler + Vector3.up * (placementRotation * 90f));
+                    Vector3 ghostPosition = surface.GetSlotWorldCenter(slot);
+                    ghost.transform.position = ghostPosition;
+                    ghostPosition.y = GetYOnFloor(ghost, grid.Origin.y);
+                    ghost.transform.position = ghostPosition;
+                }
+                if (Input.GetMouseButtonDown(0))
+                    TryPlaceGroundPickupStation(surface, slot);
+            }
+            else if (ghost != null)
+                ghost.SetActive(false);
             return;
         }
 
@@ -536,6 +592,119 @@ public class BuildPlacer : MonoBehaviour
         return found;
     }
 
+    static bool IsPickupStationDefinition(ItemDefinition item) => item != null
+        && item.stationFamily == "Pickup Station"
+        && item.placementSurface == ItemDefinition.PlacementSurface.Floor;
+
+    static bool IsGroundPickupStationObject(GameObject target)
+    {
+        if (target == null) return false;
+        if (target.GetComponent<GroundPickupStationPlacement>() != null) return true;
+        return IsPickupStationDefinition(target.GetComponent<PlacedBuildItem>()?.itemDefinition);
+    }
+
+    GroundPickupStationPlacement EnsureGroundPickupPlacement(GameObject target)
+    {
+        if (target == null) return null;
+        GroundPickupStationPlacement placement = target.GetComponent<GroundPickupStationPlacement>();
+        if (placement != null) return placement;
+
+        ItemDefinition item = target.GetComponent<PlacedBuildItem>()?.itemDefinition;
+        if (!IsPickupStationDefinition(item)
+            || !TryFindGroundStationSlot(target.transform.position, out CounterSurface surface, out int slot)
+            || !surface.OpenGroundStationSlot(slot))
+            return null;
+
+        placement = target.AddComponent<GroundPickupStationPlacement>();
+        placement.BindSlot(surface, slot, item);
+        return placement;
+    }
+
+    static bool TryFindGroundStationSlot(Vector3 center, out CounterSurface surface, out int slot)
+    {
+        CounterSurface[] surfaces = FindObjectsByType<CounterSurface>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < surfaces.Length; i++)
+        {
+            if (surfaces[i] != null && surfaces[i].TryGetGroundStationSlot(center, out slot))
+            {
+                surface = surfaces[i];
+                return true;
+            }
+        }
+        surface = null;
+        slot = -1;
+        return false;
+    }
+
+    bool TryGetGroundPickupTarget(out CounterSurface surface, out int slot)
+    {
+        surface = null;
+        slot = -1;
+        if (Camera.main != null)
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            RaycastHit[] hits = Physics.RaycastAll(ray, 500f, -1, QueryTriggerInteraction.Collide);
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            foreach (RaycastHit hit in hits)
+            {
+                CounterSurface candidate = hit.collider.GetComponentInParent<CounterSurface>();
+                if (candidate == null || !candidate.TryGetGroundStationSlot(hit.point, out int candidateSlot))
+                    continue;
+                surface = candidate;
+                slot = candidateSlot;
+                return true;
+            }
+        }
+
+        // Keep floor aiming as a fallback when the cursor is beside the counter.
+        if (!TryGetFloorAimPoint(out Vector3 aim)) return false;
+        return TryFindGroundStationSlot(aim, out surface, out slot);
+    }
+
+    void TryPlaceGroundPickupStation(CounterSurface surface, int slot)
+    {
+        if (placingItem == null || surface == null || inventory == null) return;
+        if (inventory.GetCount(placingItem) <= 0)
+        {
+            CancelPlacement();
+            return;
+        }
+        if (!surface.OpenGroundStationSlot(slot))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+        if (!inventory.TryConsumeOne(placingItem))
+        {
+            surface.CloseGroundStationSlot(slot);
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+
+        GameObject placed = Instantiate(placingItem.prefab);
+        placed.transform.localScale = GetPlacementScale(placingItem);
+        placed.transform.rotation = Quaternion.Euler(
+            placingItem.placementEuler + Vector3.up * (placementRotation * 90f));
+        ConfigurePlacedObject(placed, placingItem);
+        Vector3 position = surface.GetSlotWorldCenter(slot);
+        placed.transform.position = position;
+        position.y = GetYOnFloor(placed, grid != null ? grid.Origin.y : position.y);
+        placed.transform.position = position;
+        var placedMarker = placed.GetComponent<PlacedBuildItem>() ?? placed.AddComponent<PlacedBuildItem>();
+        placedMarker.itemDefinition = placingItem;
+        var groundPlacement = placed.GetComponent<GroundPickupStationPlacement>()
+            ?? placed.AddComponent<GroundPickupStationPlacement>();
+        groundPlacement.BindSlot(surface, slot, placingItem);
+        if (grid != null) grid.ResyncOccupancyFromScene();
+
+        var inventoryUi = FindObjectOfType<InventoryUI>();
+        if (inventoryUi != null) inventoryUi.RefreshAll();
+        Sfx.Play(SfxId.BuildPlace);
+        PurchaseUndoManager.Ensure()?.NotifyStationPlaced(placingItem, placed);
+        CancelPlacementIfOutOfStock();
+    }
+
     bool TryGetFloorAimPoint(out Vector3 aim)
     {
         aim = Vector3.zero;
@@ -649,16 +818,29 @@ public class BuildPlacer : MonoBehaviour
         lastEditClickId = doubleClick ? 0 : targetId;
         lastEditClickTime = clickTime;
 
-        // A selected object does not collapse an existing group. This makes a
-        // double-click on any member act as a Move shortcut for the whole group.
+        // A repeated click starts moving directly, even if the first click did not
+        // leave the object selected. This keeps floor pickup stations reliable.
+        if (doubleClick && !additive)
+        {
+            bool groundPickup = IsGroundPickupStationObject(target);
+            if (groundPickup || !selectedObjects.Contains(target))
+            {
+                ClearStationSelection();
+                selectedObjects.Add(target);
+                StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
+                actionBar?.Refresh();
+            }
+            BeginMoveSelected();
+            return;
+        }
+
+        // Once selected, clicking the same object again is a move shortcut. This
+        // also makes the gesture reliable if counter and station colliders produce
+        // different raycast timing or the second click falls outside the interval.
         if (selectedObjects.Contains(target))
         {
-            if (doubleClick && !additive)
-            {
-                BeginMoveSelected();
-                return;
-            }
             if (additive) RemoveFromSelection(target);
+            else BeginMoveSelected();
             return;
         }
 
@@ -674,18 +856,64 @@ public class BuildPlacer : MonoBehaviour
     {
         if (Camera.main == null) return null;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        int layerMask = placeableLayer.value != 0 ? placeableLayer.value : -1;
-        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, layerMask);
+        // Selection also needs the counter's trigger collider so a pickup station
+        // can be targeted through the counter tile directly above its floor slot.
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, -1, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
         foreach (RaycastHit hit in hits)
         {
+            CounterSurface surface = hit.collider.GetComponentInParent<CounterSurface>();
+            if (surface != null
+                && surface.TryGetGroundStationSlotAtPosition(hit.point, out int groundSlot))
+            {
+                GroundPickupStationPlacement groundStation = surface.GetGroundStationAtSlot(groundSlot);
+                if (groundStation != null) return groundStation.gameObject;
+
+                // Older placed stations may not have the runtime slot marker yet.
+                // Resolve them by their saved world position so they remain movable
+                // after switching to the counter opening placement system.
+                GameObject legacyGroundStation = FindGroundPickupStationAtSlot(surface, groundSlot);
+                if (legacyGroundStation != null) return legacyGroundStation;
+            }
+
             CustomerWallDoor door = hit.collider.GetComponentInParent<CustomerWallDoor>();
             if (door != null) return door.gameObject;
+            GroundPickupStationPlacement groundPickup = hit.collider.GetComponentInParent<GroundPickupStationPlacement>();
+            if (groundPickup != null) return groundPickup.gameObject;
             CounterMountedItem mounted = hit.collider.GetComponentInParent<CounterMountedItem>();
             if (mounted != null) return mounted.gameObject;
             BuildFootprint footprint = hit.collider.GetComponentInParent<BuildFootprint>();
             if (footprint != null && footprint.gameObject != ghost) return footprint.gameObject;
         }
+        return null;
+    }
+
+    static GameObject FindGroundPickupStationAtSlot(CounterSurface surface, int slot)
+    {
+        if (surface == null || slot < 0) return null;
+
+        CounterMountedItem[] mountedItems = FindObjectsByType<CounterMountedItem>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (CounterMountedItem mounted in mountedItems)
+        {
+            if (mounted == null || mounted.surface != surface) continue;
+            if (mounted.itemDefinition == null
+                || mounted.itemDefinition.stationFamily != "Pickup Station") continue;
+            int span = Mathf.Max(1, mounted.itemDefinition.counterSlotSpan);
+            if (slot >= mounted.slotIndex && slot < mounted.slotIndex + span)
+                return mounted.gameObject;
+        }
+
+        PlacedBuildItem[] placedItems = FindObjectsByType<PlacedBuildItem>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (PlacedBuildItem placed in placedItems)
+        {
+            if (placed == null || !IsPickupStationDefinition(placed.itemDefinition)) continue;
+            if (surface.TryGetGroundStationSlotAtPosition(placed.transform.position, out int placedSlot)
+                && placedSlot == slot)
+                return placed.gameObject;
+        }
+
         return null;
     }
 
@@ -715,30 +943,77 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
-        CounterMountedItem mounted = target.GetComponent<CounterMountedItem>();
-        if (mounted != null)
+        // Preserve the original counter-mounted move path for stations placed
+        // before pickup stations switched to ground slots. Those objects may still
+        // have a floor ItemDefinition after the asset update, but their occupied
+        // counter slot must be released through CounterMountedItem.surface.
+        CounterMountedItem legacyMounted = target.GetComponent<CounterMountedItem>();
+        if (legacyMounted != null)
         {
-            Register activeRegister = mounted.GetComponent<Register>();
-            HeatLampStation stockedLamp = mounted.GetComponent<HeatLampStation>();
-            if ((activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
-                || (stockedLamp != null && stockedLamp.Count > 0))
+            Register activeRegister = legacyMounted.GetComponent<Register>();
+            if (activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
             {
                 Sfx.Play(SfxId.UiError);
                 return;
             }
             draggingObject = target;
-            draggingMountedItem = mounted;
-            dragOriginalSurface = mounted.surface;
-            dragOriginalSlot = mounted.slotIndex;
+            draggingMountedItem = legacyMounted;
+            dragOriginalSurface = legacyMounted.surface;
+            dragOriginalSlot = legacyMounted.slotIndex;
             dragOriginalPosition = target.transform.position;
             dragOriginalWorldRotation = target.transform.rotation;
-            float authoredY = mounted.itemDefinition != null ? mounted.itemDefinition.placementEuler.y : 0f;
+            float authoredY = legacyMounted.itemDefinition != null ? legacyMounted.itemDefinition.placementEuler.y : 0f;
             float surfaceY = dragOriginalSurface != null ? dragOriginalSurface.transform.eulerAngles.y : 0f;
             float relativeY = Mathf.DeltaAngle(surfaceY + authoredY, target.transform.eulerAngles.y);
             dragRotation = (Mathf.RoundToInt(relativeY / 90f) % 4 + 4) % 4;
-            if (IsRotationLocked(mounted.itemDefinition, target)) dragRotation = 0;
-            if (dragOriginalSurface != null) dragOriginalSurface.Release(mounted);
+            if (IsRotationLocked(legacyMounted.itemDefinition, target)) dragRotation = 0;
+            if (dragOriginalSurface != null) dragOriginalSurface.Release(legacyMounted);
             target.transform.SetParent(null, true);
+            SetDraggedObjectHighlighted(target);
+            SetHint(true, true);
+            Sfx.Play(SfxId.BuildPickup);
+            return;
+        }
+
+        GroundPickupStationPlacement groundPickup = EnsureGroundPickupPlacement(target);
+        if (groundPickup != null)
+        {
+            BuildFootprint footprint = target.GetComponent<BuildFootprint>();
+            ItemDefinition item = groundPickup.GetItemDefinition();
+            if (footprint == null && item != null)
+            {
+                footprint = target.AddComponent<BuildFootprint>();
+                footprint.sizeX = Mathf.Max(1, item.footprintX);
+                footprint.sizeY = Mathf.Max(1, item.footprintY);
+            }
+            if (footprint == null || grid == null) return;
+
+            int x = -1;
+            int y = -1;
+            int sizeX = Mathf.Max(1, footprint.sizeX);
+            int sizeY = Mathf.Max(1, footprint.sizeY);
+            GetPlacedFootprint(target, footprint, out int placedX, out int placedY,
+                out sizeX, out sizeY, out _);
+            if (placedX >= 0)
+            {
+                x = placedX;
+                y = placedY;
+            }
+
+            draggingObject = target;
+            dragFootprint = footprint;
+            draggingGroundPickupStation = groundPickup;
+            dragOriginalGroundPickupSurface = groundPickup.surface;
+            dragOriginalGroundPickupSlot = groundPickup.slotIndex;
+            dragOriginalPosition = target.transform.position;
+            dragOriginalWorldRotation = target.transform.rotation;
+            dragOrigX = x;
+            dragOrigY = y;
+            float authoredY = item != null ? item.placementEuler.y : 0f;
+            dragRotation = (Mathf.RoundToInt(
+                Mathf.DeltaAngle(authoredY, target.transform.eulerAngles.y) / 90f) % 4 + 4) % 4;
+            groundPickup.ReleaseSlot();
+            if (x >= 0 && y >= 0) grid.SetOccupied(x, y, sizeX, sizeY, false);
             SetDraggedObjectHighlighted(target);
             SetHint(true, true);
             Sfx.Play(SfxId.BuildPickup);
@@ -962,9 +1237,7 @@ public class BuildPlacer : MonoBehaviour
             {
                 if (!IsDoubleClickEdit(mounted.gameObject)) return;
                 Register activeRegister = mounted.GetComponent<Register>();
-                HeatLampStation stockedLamp = mounted.GetComponent<HeatLampStation>();
-                if ((activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
-                    || (stockedLamp != null && stockedLamp.Count > 0))
+                if (activeRegister != null && activeRegister.QueueCount + activeRegister.PickupCount > 0)
                 {
                     Sfx.Play(SfxId.UiError);
                     return;
@@ -1060,6 +1333,33 @@ public class BuildPlacer : MonoBehaviour
         EndDrag();
     }
 
+    void TryPlaceDraggedGroundPickupStation(CounterSurface surface, int slot)
+    {
+        if (draggingObject == null || draggingGroundPickupStation == null || surface == null)
+            return;
+        if (!surface.OpenGroundStationSlot(slot))
+        {
+            Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+
+        ItemDefinition item = draggingGroundPickupStation.GetItemDefinition();
+        Vector3 position = surface.GetSlotWorldCenter(slot);
+        position.y = GetYOnFloor(draggingObject, grid != null ? grid.Origin.y : position.y);
+        draggingObject.transform.position = position;
+        draggingGroundPickupStation.BindSlot(surface, slot, item);
+
+        GetPlacedFootprint(draggingObject, dragFootprint,
+            out int x, out int y, out int sizeX, out int sizeY, out _);
+        if (grid != null)
+        {
+            if (x >= 0 && y >= 0) grid.SetOccupied(x, y, sizeX, sizeY, true);
+            else grid.ResyncOccupancyFromScene();
+        }
+        Sfx.Play(SfxId.BuildPlace);
+        EndDrag();
+    }
+
     void TryPlaceDraggedOnCounter(CounterSurface surface, int slot)
     {
         if (draggingObject == null || draggingMountedItem == null || surface == null || !surface.IsAvailable)
@@ -1100,6 +1400,23 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
+        if (draggingGroundPickupStation != null)
+        {
+            draggingObject.transform.SetPositionAndRotation(dragOriginalPosition, dragOriginalWorldRotation);
+            if (dragOriginalGroundPickupSurface != null
+                && dragOriginalGroundPickupSurface.OpenGroundStationSlot(dragOriginalGroundPickupSlot))
+                draggingGroundPickupStation.BindSlot(
+                    dragOriginalGroundPickupSurface, dragOriginalGroundPickupSlot,
+                    draggingGroundPickupStation.GetItemDefinition());
+            if (dragOrigX >= 0 && dragOrigY >= 0)
+                grid.SetOccupied(dragOrigX, dragOrigY,
+                    Mathf.Max(1, dragFootprint.sizeX), Mathf.Max(1, dragFootprint.sizeY), true);
+            else if (grid != null)
+                grid.ResyncOccupancyFromScene();
+            EndDrag();
+            return;
+        }
+
         if (dragFootprint == null) return;
 
         draggingObject.transform.rotation = Quaternion.Euler(0f, dragOrigRotation * 90f, 0f);
@@ -1121,9 +1438,12 @@ public class BuildPlacer : MonoBehaviour
         draggingObject = null;
         dragFootprint = null;
         draggingMountedItem = null;
+        draggingGroundPickupStation = null;
         draggingWallDoor = null;
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
+        dragOriginalGroundPickupSurface = null;
+        dragOriginalGroundPickupSlot = -1;
         SetHint(IsPlacing);
         RefreshSelectionHighlights();
     }
@@ -1175,9 +1495,12 @@ public class BuildPlacer : MonoBehaviour
         draggingObject = null;
         dragFootprint = null;
         draggingMountedItem = null;
+        draggingGroundPickupStation = null;
         draggingWallDoor = null;
         dragOriginalSurface = null;
         dragOriginalSlot = -1;
+        dragOriginalGroundPickupSurface = null;
+        dragOriginalGroundPickupSlot = -1;
         SetHint(IsPlacing);
         actionBar?.Refresh();
         Sfx.Play(SfxId.BuildRemove);
@@ -1576,11 +1899,20 @@ public class BuildPlacer : MonoBehaviour
         ItemDefinition definition = FindCustomerDoorDefinition();
         if (entrance == null)
         {
-            if (definition == null || definition.prefab == null) return;
+            if (definition == null || definition.prefab == null)
+            {
+                ScheduleCustomerEntranceRetry();
+                return;
+            }
             entrance = CreateRequiredCustomerDoor(definition, CustomerWallDoor.DoorRole.Entrance,
                 CustomerWallDoor.WallSide.East, 0.36f);
-            if (entrance == null) return;
+            if (entrance == null)
+            {
+                ScheduleCustomerEntranceRetry();
+                return;
+            }
         }
+        CancelInvoke(nameof(EnsureRequiredCustomerDoors));
         if (definition != null)
             ConfigureRequiredDoor(entrance, definition, CustomerWallDoor.DoorRole.Entrance);
         for (int i = 0; i < existing.Length; i++)
@@ -1594,8 +1926,16 @@ public class BuildPlacer : MonoBehaviour
         Invoke(nameof(RefreshPerimeterWalls), 0.05f);
     }
 
+    void ScheduleCustomerEntranceRetry()
+    {
+        if (!IsInvoking(nameof(EnsureRequiredCustomerDoors)))
+            Invoke(nameof(EnsureRequiredCustomerDoors), 0.5f);
+    }
+
     ItemDefinition FindCustomerDoorDefinition()
     {
+        if (inventory == null)
+            inventory = FindFirstObjectByType<InventoryManager>();
         if (inventory == null || inventory.allItems == null) return null;
         for (int i = 0; i < inventory.allItems.Count; i++)
         {

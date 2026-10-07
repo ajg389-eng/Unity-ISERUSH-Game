@@ -55,6 +55,7 @@ public class KitchenSaveSnapshot
                     if (objects.Contains(go) || go.name.Contains("Ghost")) continue;
                     var placed = go.GetComponent<PlacedBuildItem>();
                     var mounted = go.GetComponent<CounterMountedItem>();
+                    var groundPickup = go.GetComponent<GroundPickupStationPlacement>();
                     bool match = placed != null ? placed.itemDefinition == item : mounted != null ? mounted.itemDefinition == item
                         : go.name.Replace("(Clone)", "").Trim() == item.prefab.name
                             || (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(go)) && WorkerFlowAssigner.GetStationId(go) == WorkerFlowAssigner.GetStationId(item.prefab));
@@ -72,7 +73,9 @@ public class KitchenSaveSnapshot
                         : cutting != null ? cutting.selectedProduct : null;
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
                         pantrySecondProduct=pantry != null && pantry.secondItem != null ? pantry.secondItem.name : "",
-                        slot=mounted != null ? mounted.slotIndex : -1, counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position : Vector3.zero,
+                        slot=mounted != null ? mounted.slotIndex : groundPickup != null ? groundPickup.slotIndex : -1,
+                        counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position
+                            : groundPickup != null && groundPickup.surface != null ? groundPickup.surface.transform.position : Vector3.zero,
                         processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
                         pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
                         bufferedOutputs=assembly != null ? assembly.BufferedOutputCount : 0,
@@ -147,6 +150,7 @@ public class KitchenSaveSnapshot
             if(!match) foreach(var item in inv.allItems) if(item!=null && item.prefab!=null && candidate.name.Replace("(Clone)","").Trim()==item.prefab.name) {match=true;break;}
             if(!match) continue;
             if(mounted!=null && mounted.surface!=null) mounted.surface.Release(mounted);
+            candidate.GetComponent<GroundPickupStationPlacement>()?.ReleaseSlot();
             candidate.gameObject.SetActive(false); UnityEngine.Object.Destroy(candidate.gameObject);
         }
         var grid=GridManager.Instance;
@@ -174,10 +178,52 @@ public class KitchenSaveSnapshot
                 pantry.SetStoredItems(product,second);
             }
             var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.SetRecipe(pm.orderConfig != null ? pm.orderConfig.GetCuttingRecipe(product) : null);
-            if(e.slot>=0) {
-                CounterSurface closest=null; float best=float.PositiveInfinity;
-                foreach(var surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None)) { float d=(surface.transform.position-e.counterPosition).sqrMagnitude; if(d<best){closest=surface;best=d;} }
-                if(closest!=null) { var mounted=go.GetComponent<CounterMountedItem>() ?? go.AddComponent<CounterMountedItem>(); mounted.itemDefinition=item; closest.Attach(mounted,e.slot); }
+            if (item.stationFamily == "Pickup Station"
+                && item.placementSurface == ItemDefinition.PlacementSurface.Floor)
+            {
+                CounterSurface closest = null;
+                float best = float.PositiveInfinity;
+                Vector3 anchor = e.slot >= 0 ? e.counterPosition : e.position;
+                foreach (CounterSurface surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None))
+                {
+                    if (surface == null) continue;
+                    float distance = (surface.transform.position - anchor).sqrMagnitude;
+                    if (distance >= best) continue;
+                    closest = surface;
+                    best = distance;
+                }
+
+                int slot = e.slot;
+                if (closest != null && slot < 0)
+                    closest.TryGetGroundStationSlot(e.position, out slot);
+                if (closest != null && slot >= 0 && closest.OpenGroundStationSlot(slot))
+                {
+                    var groundPlacement = go.GetComponent<GroundPickupStationPlacement>()
+                        ?? go.AddComponent<GroundPickupStationPlacement>();
+                    groundPlacement.BindSlot(closest, slot, item);
+                    Vector3 stationPosition = closest.GetSlotWorldCenter(slot);
+                    GridManager placementGrid = GridManager.Instance;
+                    go.transform.position = stationPosition;
+                    AlignObjectBottomToFloor(go, placementGrid != null ? placementGrid.Origin.y : stationPosition.y);
+                }
+            }
+            else if (e.slot >= 0)
+            {
+                CounterSurface closest = null;
+                float best = float.PositiveInfinity;
+                foreach (CounterSurface surface in UnityEngine.Object.FindObjectsByType<CounterSurface>(FindObjectsSortMode.None))
+                {
+                    float distance = (surface.transform.position - e.counterPosition).sqrMagnitude;
+                    if (distance >= best) continue;
+                    closest = surface;
+                    best = distance;
+                }
+                if (closest != null)
+                {
+                    var mounted = go.GetComponent<CounterMountedItem>() ?? go.AddComponent<CounterMountedItem>();
+                    mounted.itemDefinition = item;
+                    closest.Attach(mounted, e.slot);
+                }
             }
         }
         for(int i=0;i<equipment.Count;i++) { int output=equipment[i].output; if(output>=0 && output<objects.Count) StationNode.EnsureOn(objects[i]).SetOutput(objects[output]); }
@@ -220,5 +266,21 @@ public class KitchenSaveSnapshot
         else
             UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>()?.RequestRefresh();
         return true;
+    }
+
+    static void AlignObjectBottomToFloor(GameObject obj, float floorY)
+    {
+        if (obj == null) return;
+        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
+        bool found = false;
+        Bounds bounds = default;
+        foreach (Renderer renderer in renderers)
+        {
+            if (CounterSurface.IsAuxiliaryPlacementRenderer(renderer, obj.transform)) continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
+        }
+        if (found)
+            obj.transform.position += Vector3.up * (floorY - bounds.min.y);
     }
 }

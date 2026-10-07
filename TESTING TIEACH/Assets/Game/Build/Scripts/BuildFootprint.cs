@@ -618,6 +618,14 @@ public class CounterSurface : MonoBehaviour
     [Min(0.005f)] public float gridLineWidth = 0.035f;
 
     readonly System.Collections.Generic.List<CounterMountedItem> occupants = new System.Collections.Generic.List<CounterMountedItem>();
+    readonly System.Collections.Generic.List<GameObject> counterSegments = new System.Collections.Generic.List<GameObject>();
+    readonly HashSet<int> groundStationSlots = new HashSet<int>();
+    readonly Dictionary<int, GroundPickupStationPlacement> groundStationItems = new Dictionary<int, GroundPickupStationPlacement>();
+    Transform counterTemplate;
+    Vector3 counterSegmentScale;
+    float originalSlotLength;
+    Bounds segmentedCounterBounds;
+    bool counterSegmentMode;
     GameModeManager modeManager;
     GridManager placementGrid;
     GameObject gridVisual;
@@ -640,9 +648,18 @@ public class CounterSurface : MonoBehaviour
 
     void Start()
     {
+        RebuildOccupants();
+        RealignMountedItems();
         modeManager = FindObjectOfType<GameModeManager>();
         BuildGridVisual();
         UpdateGridVisibility();
+    }
+
+    public void InitializeGroundStationPlacement()
+    {
+        if (!counterSegmentMode) BuildCounterSegments();
+        else if (counterSegments.Count != slotCount) RebuildCounterSegments();
+        if (counterSegmentMode) EnsurePlacementCollider();
     }
 
     void LateUpdate()
@@ -652,6 +669,8 @@ public class CounterSurface : MonoBehaviour
 
     public Bounds GetBaseBounds()
     {
+        if (counterSegmentMode) return segmentedCounterBounds;
+
         Renderer[] renderers = GetComponentsInChildren<Renderer>();
         bool found = false;
         Bounds bounds = new Bounds(transform.position, Vector3.one);
@@ -692,6 +711,29 @@ public class CounterSurface : MonoBehaviour
         targetWorldLength = Mathf.Max(0.01f, targetWorldLength);
         newSlotCount = Mathf.Max(1, newSlotCount);
         RebuildOccupants();
+
+        if (counterSegmentMode)
+        {
+            Bounds oldSegmentBounds = segmentedCounterBounds;
+            segmentedCounterBounds = new Bounds(
+                new Vector3(oldSegmentBounds.center.x, oldSegmentBounds.center.y, targetCenterZ),
+                new Vector3(oldSegmentBounds.size.x, oldSegmentBounds.size.y, targetWorldLength));
+            slotCount = newSlotCount;
+            RebuildCounterSegments();
+            foreach (CounterMountedItem item in occupants)
+            {
+                if (item == null) continue;
+                int span = item.itemDefinition != null
+                    ? Mathf.Max(1, item.itemDefinition.counterSlotSpan)
+                    : 1;
+                item.slotIndex = Mathf.Clamp(
+                    item.slotIndex + slotIndexDelta, 0, Mathf.Max(0, slotCount - span));
+            }
+            BuildGridVisual();
+            RealignMountedItems();
+            UpdateGridVisibility();
+            return;
+        }
 
         var bodyRoots = new System.Collections.Generic.List<Transform>();
         var seenRoots = new System.Collections.Generic.HashSet<Transform>();
@@ -783,6 +825,10 @@ public class CounterSurface : MonoBehaviour
             bounds.size.x / Mathf.Max(0.0001f, Mathf.Abs(scale.x)),
             bounds.size.y / Mathf.Max(0.0001f, Mathf.Abs(scale.y)),
             bounds.size.z / Mathf.Max(0.0001f, Mathf.Abs(scale.z)));
+        // Keep a trigger over the full counter footprint so pointer raycasts can
+        // target its tiles, including the openings where pickup stations sit.
+        placementCollider.isTrigger = counterSegmentMode;
+        placementCollider.enabled = true;
     }
 
     public int GetNearestAvailableSlot(Vector3 worldPoint, int span)
@@ -830,6 +876,7 @@ public class CounterSurface : MonoBehaviour
     {
         CleanupOccupants();
         if (slot < 0 || slot >= Mathf.Max(1, slotCount)) return false;
+        if (groundStationSlots.Contains(slot)) return false;
         foreach (CounterMountedItem item in occupants)
         {
             if (item == null) continue;
@@ -910,7 +957,174 @@ public class CounterSurface : MonoBehaviour
         item.surface = this;
         item.slotIndex = slot;
         item.transform.SetParent(transform, true);
+        // Saved counter stations are instantiated at their previously saved world
+        // position before Attach is called. Recompute the mount after attachment so
+        // they honor the current definition and sit on top of the counter as well.
+        RealignMountedItems();
         return true;
+    }
+
+    public bool TryGetGroundStationSlot(Vector3 floorPosition, out int slot)
+    {
+        slot = -1;
+        if (!counterSegmentMode && !BuildCounterSegments()) return false;
+        if (counterSegments.Count == 0) return false;
+
+        float cell = segmentedCounterBounds.size.z / Mathf.Max(1, slotCount);
+        if (Mathf.Abs(floorPosition.x - segmentedCounterBounds.center.x) > segmentedCounterBounds.size.x * 0.5f)
+            return false;
+
+        float minZ = segmentedCounterBounds.center.z - segmentedCounterBounds.size.z * 0.5f;
+        float maxZ = minZ + cell * slotCount;
+        if (floorPosition.z < minZ || floorPosition.z > maxZ) return false;
+
+        // Snap to the nearest free tile so a click near an occupied tile can still
+        // use the next open section of the counter.
+        float bestDistance = float.PositiveInfinity;
+        for (int candidate = 0; candidate < slotCount; candidate++)
+        {
+            if (!IsSlotAvailable(candidate)) continue;
+            Vector3 center = GetSlotCenter(candidate);
+            float distance = (new Vector2(center.x, center.z)
+                - new Vector2(floorPosition.x, floorPosition.z)).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            slot = candidate;
+        }
+        return slot >= 0;
+    }
+
+    public bool TryGetGroundStationSlotAtPosition(Vector3 worldPosition, out int slot)
+    {
+        slot = -1;
+        if (!counterSegmentMode && !BuildCounterSegments()) return false;
+        if (counterSegments.Count == 0) return false;
+        if (Mathf.Abs(worldPosition.x - segmentedCounterBounds.center.x) > segmentedCounterBounds.size.x * 0.5f)
+            return false;
+
+        float cell = segmentedCounterBounds.size.z / Mathf.Max(1, slotCount);
+        float minZ = segmentedCounterBounds.center.z - segmentedCounterBounds.size.z * 0.5f;
+        float maxZ = minZ + cell * slotCount;
+        if (worldPosition.z < minZ || worldPosition.z > maxZ) return false;
+        slot = Mathf.Clamp(Mathf.FloorToInt((worldPosition.z - minZ) / cell), 0, slotCount - 1);
+        return true;
+    }
+
+    public GroundPickupStationPlacement GetGroundStationAtSlot(int slot)
+    {
+        if (groundStationItems.TryGetValue(slot, out GroundPickupStationPlacement placement)
+            && placement != null)
+            return placement;
+        groundStationItems.Remove(slot);
+        return null;
+    }
+
+    public void RegisterGroundStation(GroundPickupStationPlacement placement, int slot)
+    {
+        if (placement == null || slot < 0 || slot >= slotCount) return;
+        groundStationItems[slot] = placement;
+    }
+
+    public void UnregisterGroundStation(GroundPickupStationPlacement placement, int slot)
+    {
+        if (slot < 0) return;
+        if (groundStationItems.TryGetValue(slot, out GroundPickupStationPlacement current)
+            && current == placement)
+            groundStationItems.Remove(slot);
+    }
+
+    public bool OpenGroundStationSlot(int slot)
+    {
+        if (!counterSegmentMode && !BuildCounterSegments()) return false;
+        if (slot < 0 || slot >= slotCount || slot >= counterSegments.Count) return false;
+        groundStationSlots.Add(slot);
+        GameObject segment = counterSegments[slot];
+        if (segment != null) segment.SetActive(false);
+        EnsurePlacementCollider();
+        return true;
+    }
+
+    public void CloseGroundStationSlot(int slot)
+    {
+        if (slot < 0 || slot >= counterSegments.Count) return;
+        groundStationSlots.Remove(slot);
+        if (counterSegments[slot] != null) counterSegments[slot].SetActive(true);
+    }
+
+    bool BuildCounterSegments()
+    {
+        Bounds bounds = GetBaseBounds();
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || renderer.GetComponentInParent<CounterMountedItem>() != null) continue;
+            Transform root = renderer.transform;
+            while (root.parent != null && root.parent != transform) root = root.parent;
+            if (root.parent == transform && root.name.IndexOf("Counter", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                counterTemplate = root;
+                break;
+            }
+        }
+        if (counterTemplate == null || bounds.size.z <= 0.01f) return false;
+
+        originalSlotLength = bounds.size.z / Mathf.Max(1, slotCount);
+        counterSegmentScale = counterTemplate.localScale;
+        counterSegmentScale.z /= Mathf.Max(1, slotCount);
+        GetGridAlignedRange(bounds.center.z, false, out float minZ, out float maxZ);
+        segmentedCounterBounds = new Bounds(
+            new Vector3(bounds.center.x, bounds.center.y, (minZ + maxZ) * 0.5f),
+            new Vector3(bounds.size.x, bounds.size.y, maxZ - minZ));
+        counterSegmentMode = true;
+        RebuildCounterSegments();
+        EnsurePlacementCollider();
+        return true;
+    }
+
+    void RebuildCounterSegments()
+    {
+        for (int i = 0; i < counterSegments.Count; i++)
+        {
+            if (counterSegments[i] == null) continue;
+            counterSegments[i].SetActive(false);
+            Destroy(counterSegments[i]);
+        }
+        counterSegments.Clear();
+
+        if (counterTemplate == null) return;
+        counterTemplate.gameObject.SetActive(false);
+        float cellLength = segmentedCounterBounds.size.z / Mathf.Max(1, slotCount);
+        Vector3 segmentScale = counterSegmentScale;
+        segmentScale.z *= cellLength / Mathf.Max(0.01f, originalSlotLength);
+
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            GameObject segment = Instantiate(counterTemplate.gameObject, counterTemplate.parent, false);
+            segment.name = "CounterSegment_" + slot;
+            segment.SetActive(true);
+            segment.transform.localScale = segmentScale;
+            Renderer[] segmentRenderers = segment.GetComponentsInChildren<Renderer>();
+            if (segmentRenderers.Length == 0)
+            {
+                Destroy(segment);
+                counterSegments.Add(null);
+                continue;
+            }
+            Bounds segmentBounds = segmentRenderers[0].bounds;
+            for (int r = 1; r < segmentRenderers.Length; r++)
+                segmentBounds.Encapsulate(segmentRenderers[r].bounds);
+
+            float firstCenterZ = segmentedCounterBounds.center.z - segmentedCounterBounds.size.z * 0.5f + cellLength * 0.5f;
+            Vector3 target = new Vector3(segmentedCounterBounds.center.x, segmentedCounterBounds.center.y,
+                firstCenterZ + slot * cellLength);
+            segment.transform.position += target - segmentBounds.center;
+            counterSegments.Add(segment);
+        }
+
+        for (int i = 0; i < counterSegments.Count; i++)
+            if (groundStationSlots.Contains(i) && counterSegments[i] != null)
+                counterSegments[i].SetActive(false);
     }
 
     public void Release(CounterMountedItem item)
@@ -1124,5 +1338,51 @@ public class CounterMountedItem : MonoBehaviour
     void OnDestroy()
     {
         if (surface != null) surface.Release(this);
+    }
+}
+
+/// <summary>Tracks the countertop tile removed to make room for a floor pickup station.</summary>
+public class GroundPickupStationPlacement : MonoBehaviour
+{
+    public CounterSurface surface;
+    public int slotIndex = -1;
+    public ItemDefinition itemDefinition;
+
+    void OnEnable()
+    {
+        if (surface != null && slotIndex >= 0)
+            surface.RegisterGroundStation(this, slotIndex);
+    }
+
+    public ItemDefinition GetItemDefinition()
+    {
+        if (itemDefinition != null) return itemDefinition;
+        PlacedBuildItem placed = GetComponent<PlacedBuildItem>();
+        return placed != null ? placed.itemDefinition : null;
+    }
+
+    public void BindSlot(CounterSurface newSurface, int newSlot, ItemDefinition definition)
+    {
+        if (surface != newSurface || slotIndex != newSlot) ReleaseSlot();
+        surface = newSurface;
+        slotIndex = newSlot;
+        if (definition != null) itemDefinition = definition;
+        if (surface != null) surface.RegisterGroundStation(this, slotIndex);
+    }
+
+    public void ReleaseSlot()
+    {
+        if (surface != null && slotIndex >= 0)
+        {
+            surface.UnregisterGroundStation(this, slotIndex);
+            surface.CloseGroundStationSlot(slotIndex);
+        }
+        surface = null;
+        slotIndex = -1;
+    }
+
+    void OnDestroy()
+    {
+        if (Application.isPlaying) ReleaseSlot();
     }
 }
