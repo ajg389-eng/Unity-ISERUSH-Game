@@ -76,6 +76,11 @@ public class IngredientDeliveryService : MonoBehaviour
         Instance = this;
     }
 
+    void Start()
+    {
+        HideDeliveryTruckMarker();
+    }
+
     void OnDestroy()
     {
         if (Instance == this)
@@ -295,6 +300,21 @@ public class IngredientDeliveryService : MonoBehaviour
 
     static bool TryGetDeliveryTruckSpot(out Vector3 position, out Quaternion rotation)
     {
+        Transform marker = FindDeliveryTruckMarker();
+        if (marker != null)
+        {
+            position = marker.position;
+            rotation = marker.rotation;
+            return true;
+        }
+
+        position = default;
+        rotation = Quaternion.identity;
+        return false;
+    }
+
+    static Transform FindDeliveryTruckMarker()
+    {
         Transform[] transforms = FindObjectsByType<Transform>(
             FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < transforms.Length; i++)
@@ -303,15 +323,25 @@ public class IngredientDeliveryService : MonoBehaviour
             if (candidate == null || !string.Equals(candidate.name, "DeliveryTruckSpot",
                 System.StringComparison.Ordinal))
                 continue;
-
-            position = candidate.position;
-            rotation = candidate.rotation;
-            return true;
+            return candidate;
         }
+        return null;
+    }
 
-        position = default;
-        rotation = Quaternion.identity;
-        return false;
+    static void HideDeliveryTruckMarker()
+    {
+        Transform marker = FindDeliveryTruckMarker();
+        if (marker == null) return;
+
+        marker.gameObject.SetActive(false);
+        Renderer[] renderers = marker.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+            if (renderers[i] != null)
+                renderers[i].enabled = false;
+        Light[] lights = marker.GetComponentsInChildren<Light>(true);
+        for (int i = 0; i < lights.Length; i++)
+            if (lights[i] != null)
+                lights[i].enabled = false;
     }
 
     void SpawnDriver(Shipment shipment, DeliveryVan van)
@@ -322,6 +352,8 @@ public class IngredientDeliveryService : MonoBehaviour
         if (body == null)
         {
             Complete(shipment);
+            if (shipment.van != null)
+                shipment.van.Leave();
             return;
         }
 

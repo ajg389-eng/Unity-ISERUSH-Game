@@ -9,11 +9,12 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 {
     static readonly string[] Lines =
     {
-        "Hey, I'm Gus, the owner of this restaurant. Thanks for coming. I could really use your help.",
-        "Business has been struggling. Orders take too long, ingredients pile up, and too many customers leave without their food.",
-        "That is why I am hiring you as our industrial and systems engineer. I need you to study how work moves through the restaurant and figure out what is slowing us down.",
-        "Design better workflows, arrange stations, assign workers, and use the data to find bottlenecks before they cost us more customers.",
-        "If you can make this place faster, more efficient, and more reliable, we might turn the business around. Ready to get started?"
+        "Hey look who it is – it’s 10:30 I’ve been expecting you for the last 30 minutes. First day on the job and you’re already late…",
+        "Let me get one thing straight, the only reason you're here is because the investors threatened to pull the plug on this whole place if I didn’t take their advice and hire an Industrial & Systems Engineer…",
+        "Apparently they think a young kid like you could do a better job at managing the place than me. I’ve been in this business longer than you’ve been alive…",
+        "You want to know what’s wrong with this place? Lunch line's out the door, fries come out cold, and we threw out forty patties last week. Kids I hire these days just don't move fast enough.",
+        "Now follow me, I’ll show you around. Hopefully you paid attention in school, investors told me you were the real deal – I’ll believe it if I see it…",
+        "And if I don’t see it, I’ll fire you myself!"
     };
 
     public static bool IsPlaying { get; private set; }

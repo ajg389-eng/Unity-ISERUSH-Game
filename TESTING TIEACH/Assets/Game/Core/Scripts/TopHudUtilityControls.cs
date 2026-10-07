@@ -7,8 +7,14 @@ public class TopHudUtilityControls : MonoBehaviour
 {
     public const string MusicSectionName = "MusicSection";
     public const string NotificationSectionName = "NotificationSection";
+    public const string InvestorLetterId = "investor-welcome-letter";
     const string PanelName = "NotificationHistoryPanel";
     const string MusicPanelName = "MusicTrackPicker";
+    static readonly string InvestorLetterMessage =
+        "Dear Player,\n" +
+        "We understand that Gus is difficult. His methods have kept the place open for 25 years, but our internal metrics suggest closure is certain in the next year unless you can implement effective changes. Keep in mind workflows and station arrangements to reduce bottlenecks, and be sure to make data-driven decisions. We will be reviewing your quarterly results closely.\n" +
+        "Kindest Regards,\n" +
+        "QuickBurger Investment Group";
 
     static readonly Color Panel = new Color(0.075f, 0.08f, 0.12f, 0.98f);
     static readonly Color Control = new Color(0.18f, 0.20f, 0.28f, 1f);
@@ -113,7 +119,17 @@ public class TopHudUtilityControls : MonoBehaviour
             boundTime.OnDayEnded += OnDayEnded;
             NotificationCenter.Post("Day " + boundTime.CurrentDay + " shift active.",
                 GameNotificationKind.Message, "day-active-" + boundTime.CurrentDay);
+            EnsureInvestorLetter();
         }
+    }
+
+    void EnsureInvestorLetter()
+    {
+        bool alreadySent = GameSaveSlots.ActiveSlotInvestorLetterSent();
+        NotificationCenter.Post(InvestorLetterMessage, GameNotificationKind.Message,
+            InvestorLetterId, 0f, alreadySent, true);
+        if (!alreadySent)
+            GameSaveSlots.MarkActiveSlotInvestorLetterSent();
     }
 
     void OnDayStarted()
@@ -444,11 +460,15 @@ public class TopHudUtilityControls : MonoBehaviour
             row.GetComponent<Image>().color = entry.kind == GameNotificationKind.Warning
                 ? new Color(0.22f, 0.16f, 0.07f, 0.95f)
                 : new Color(0.12f, 0.14f, 0.20f, 0.95f);
-            row.GetComponent<LayoutElement>().preferredHeight = 58f;
+            var layout = row.GetComponent<LayoutElement>();
+            layout.minHeight = 58f;
+            layout.preferredHeight = entry.message.IndexOf('\n') >= 0 ? 220f : 58f;
 
             var label = CreateLabel(row.transform, "Text", "<color=#8FA4BC>" + entry.time + "</color>  " + entry.message, 13);
             SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 6f), new Vector2(-10f, -6f));
-            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.alignment = entry.message.IndexOf('\n') >= 0
+                ? TextAlignmentOptions.TopLeft
+                : TextAlignmentOptions.MidlineLeft;
             label.enableWordWrapping = true;
         }
     }

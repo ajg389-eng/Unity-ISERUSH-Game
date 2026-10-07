@@ -527,7 +527,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
-        if (step.requireRecipes) return "Set ingredients and recipes";
+        if (step.requireRecipes) return MissingRecipeLabel();
         if (step.requireEditedFlow) return "Edit and save flow";
         if (step.requireHiredWorker)
             return "Hire a worker";
@@ -643,12 +643,17 @@ public class OnboardingTutorial : MonoBehaviour
         station != null && station.activeInHierarchy && station.GetComponent<PlacedBuildItem>() != null
         && station.GetComponent<T>() != null;
 
-    bool BurgerRecipesReady()
+    bool BurgerRecipesReady() => MissingRecipeLabel() == null;
+
+    static string MissingRecipeLabel()
     {
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
-        if (config == null || config.burgerBase == null || config.rawPattyIngredient == null) return false;
+        if (config == null || config.burgerBase == null || config.rawPattyIngredient == null)
+            return "Set ingredients and recipes";
         var recipe = config.GetAssemblyRecipe(config.burgerBase);
-        if (recipe == null || config.GetAssemblySupplySource(recipe) == null) return false;
+        if (recipe == null || config.GetAssemblySupplySource(recipe) == null)
+            return "Set ingredients and recipes";
+
         bool freezer = false, pantry = false, grill = false, assembly = false;
         foreach (var s in FindObjectsByType<FreezerStation>(FindObjectsSortMode.None))
             freezer |= IsPlacedFlowStation<FreezerStation>(s.gameObject) && s.selectedItem == config.rawPattyIngredient;
@@ -658,7 +663,16 @@ public class OnboardingTutorial : MonoBehaviour
             grill |= IsPlacedFlowStation<GrillStation>(s.gameObject) && s.GetSelectedOutput() == config.cookedPattyIngredient;
         foreach (var s in FindObjectsByType<AssemblyStation>(FindObjectsSortMode.None))
             assembly |= IsPlacedFlowStation<AssemblyStation>(s.gameObject) && s.GetSelectedRecipe() == recipe;
-        return freezer && pantry && grill && assembly;
+
+        if (freezer && pantry && grill && assembly) return null;
+        if (!freezer && !pantry && !grill && !assembly) return "Set ingredients and recipes";
+
+        var missing = new List<string>();
+        if (!freezer) missing.Add("freezer");
+        if (!pantry) missing.Add("pantry");
+        if (!grill) missing.Add("grill");
+        if (!assembly) missing.Add("assembly");
+        return "Set " + string.Join(", ", missing);
     }
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)

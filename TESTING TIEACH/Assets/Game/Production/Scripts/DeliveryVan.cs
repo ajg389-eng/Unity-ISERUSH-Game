@@ -22,6 +22,7 @@ public class DeliveryVan : MonoBehaviour
     Action onParked;
     bool parked;
     bool useExactStallPose;
+    float parkedAt;
     Transform[] wheels;
     float wheelRadius = 0.35f;
 
@@ -82,6 +83,12 @@ public class DeliveryVan : MonoBehaviour
 
     void Update()
     {
+        if (parked && !leaving && parkedAt > 0f && Time.unscaledTime - parkedAt > 75f)
+        {
+            Leave();
+            return;
+        }
+
         if (settling)
         {
             TickSettle();
@@ -167,6 +174,7 @@ public class DeliveryVan : MonoBehaviour
 
         settling = false;
         parked = true;
+        parkedAt = Time.unscaledTime;
         speed = 0f;
         RoadTrafficController.EndDeliveryLaneClearance();
         onParked?.Invoke();

@@ -24,6 +24,7 @@ public class IngredientCourier : MonoBehaviour
     float speed = 2.8f;
     Phase phase = Phase.ToCounter;
     float handoffTimer;
+    float blockedWait;
     Vector3 handoff;
     Vector3 vanDoor;
     GameObject carriedParcel;
@@ -109,7 +110,13 @@ public class IngredientCourier : MonoBehaviour
         target.y = transform.position.y;
         FacePoint(target);
         if (!DoorIsClear(transform.position, target))
-            return;
+        {
+            blockedWait += Time.deltaTime;
+            if (blockedWait < 1.5f)
+                return;
+        }
+        else
+            blockedWait = 0f;
         transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
         PushOutOfCounters();
         if (HorizontalDist(transform.position, target) <= 0.14f)

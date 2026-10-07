@@ -265,7 +265,11 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     bool HasLowPantryStock()
     {
         var pantry = GetComponent<PantryStation>();
-        return pantry != null && pantry.HasItemSelected && pantry.IsAssignedIngredientLow;
+        if (pantry == null || !pantry.HasItemSelected || !pantry.IsAssignedIngredientLow)
+            return false;
+        // During onboarding, stock is empty until the later buy-ingredients step.
+        // Keep the yellow icon for missing selections only.
+        return !OnboardingTutorial.BlocksProgression;
     }
 
     GameObject CreateIndicator()

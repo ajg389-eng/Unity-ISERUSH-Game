@@ -71,7 +71,7 @@ public static class GameSaveSlots
     public static void WipeSlot(int slotIndex)
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
-        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "IntroSeen" };
+        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "IntroSeen", "InvestorLetterSent" };
         foreach (string field in fields)
             PlayerPrefs.DeleteKey(Key(slotIndex, field));
 
@@ -89,6 +89,7 @@ public static class GameSaveSlots
         SlotInfo info = GetSlot(slotIndex);
         PlayerPrefs.SetInt(ActiveSlotKey, slotIndex);
         slotSelectedThisSession = true;
+        NotificationCenter.Clear(true);
 
         var time = GameTimeManager.Instance ?? UnityEngine.Object.FindFirstObjectByType<GameTimeManager>();
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>();
@@ -123,6 +124,7 @@ public static class GameSaveSlots
         else
         {
             PlayerPrefs.SetInt(Key(slotIndex, "IntroSeen"), 0);
+            PlayerPrefs.DeleteKey(Key(slotIndex, "InvestorLetterSent"));
             if (time != null) time.RestoreDay(1);
             if (money != null) money.SetMoney(money.startingMoney);
 
@@ -150,6 +152,21 @@ public static class GameSaveSlots
         int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
         if (slotIndex < 1 || slotIndex > SlotCount) return;
         PlayerPrefs.SetInt(Key(slotIndex, "IntroSeen"), 1);
+        PlayerPrefs.Save();
+    }
+
+    public static bool ActiveSlotInvestorLetterSent()
+    {
+        int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        if (slotIndex < 1 || slotIndex > SlotCount) return false;
+        return PlayerPrefs.GetInt(Key(slotIndex, "InvestorLetterSent"), 0) == 1;
+    }
+
+    public static void MarkActiveSlotInvestorLetterSent()
+    {
+        int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        if (slotIndex < 1 || slotIndex > SlotCount) return;
+        PlayerPrefs.SetInt(Key(slotIndex, "InvestorLetterSent"), 1);
         PlayerPrefs.Save();
     }
 
