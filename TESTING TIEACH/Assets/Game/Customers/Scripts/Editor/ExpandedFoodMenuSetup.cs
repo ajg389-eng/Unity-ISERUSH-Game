@@ -33,7 +33,7 @@ public static class ExpandedFoodMenuSetup
         AddRecipe(config, "Cheese Bacon Fries", cheeseBaconFries, cheeseFries, config.cookedBaconIngredient,
             config.baconSlabIngredient, new[] { StationType.Freezer, StationType.Cutting, StationType.Grill },
             new[] { config.baconSlabIngredient, config.cutBaconIngredient, config.cookedBaconIngredient });
-        AddRecipe(config, "Whipped Cream Shake", creamShake, config.drinkItem, cream, null, null, null, true);
+        AddRecipe(config, "Whipped Cream Shake", creamShake, config.drinkItem, cream, null, null, null, false);
         AddRecipe(config, "Whipped Cream Sprinkle Shake", sprinkleShake, creamShake, sprinkles, null, null, null);
         EditorUtility.SetDirty(config); AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
         Debug.Log("Installed Cheese Fries, Cheese Bacon Fries, and whipped-cream shake recipes.");

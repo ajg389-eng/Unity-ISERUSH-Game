@@ -52,9 +52,10 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
     public bool CanSupply(ItemDefinition requested)
     {
         if (selectedItem == null || requested == null) return false;
-        if (requested == selectedItem) return true;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
+        if (config != null && config.IsDrink(selectedItem)) return false;
+        if (requested == selectedItem) return true;
         return config != null && selectedItem == config.rawPattyIngredient && config.IsBurger(requested);
     }
 

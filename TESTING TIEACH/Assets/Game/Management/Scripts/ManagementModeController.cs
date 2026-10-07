@@ -1945,6 +1945,7 @@ public class ManagementModeController : MonoBehaviour
         foreach (var item in options)
         {
             if (item == null) continue;
+            if ((freezer != null || pantry != null) && config.IsDrink(item)) continue;
             if (optionCount % 3 == 0)
             {
                 optionRow = CreateRecipeRow();
@@ -2553,13 +2554,13 @@ public class ManagementModeController : MonoBehaviour
         if (capturedFlow == null) return false;
         ProductionFlowPlan finished = capturedFlow;
         bool wasEdit = !capturingNewFlow;
-        if (finished.stations.Count == 0)
+        if (finished.stations.Count == 0 && !wasEdit)
         {
             SetStatus("A flow needs at least one station.");
             RefreshFlowCaptureHud();
             return false;
         }
-        string routeProblem = ValidateFlowGraph(finished);
+        string routeProblem = finished.stations.Count > 0 ? ValidateFlowGraph(finished) : null;
         if (!string.IsNullOrEmpty(routeProblem))
         {
             SetStatus(routeProblem);
@@ -2578,6 +2579,12 @@ public class ManagementModeController : MonoBehaviour
         ClearFlowCaptureHighlights();
         SetFlowCaptureHudVisible(false);
 
+        if (finished.stations.Count == 0)
+        {
+            foreach (KitchenEmployee worker in finished.workers)
+                if (worker != null) worker.ClearAllOperatedStations();
+            finished.workers.Clear();
+        }
         WorkerFlowAssigner.SynchronizeFlowRoute(finished);
         OnboardingTutorial.NotifyFlowSaved(finished, wasEdit);
 
@@ -2677,8 +2684,9 @@ public class ManagementModeController : MonoBehaviour
                 RefreshWorkersUi();
                 return;
             }
-            activeFlowNode = node;
-            SetStatus("Selected " + node.DisplayName + ". Drag from it to another station to add a path.");
+            activeFlowNode = activeFlowNode == node ? null : node;
+            SetStatus(activeFlowNode == null ? "Node deselected."
+                : "Selected " + node.DisplayName + ". Drag from it to another station to add a path.");
             RefreshFlowCaptureHud();
             RefreshWorkersUi();
             return;
@@ -2696,6 +2704,50 @@ public class ManagementModeController : MonoBehaviour
         SetStatus("Added " + node.DisplayName + " as a flow node. Drag from it to create a path.");
         RefreshFlowCaptureHud();
         RefreshWorkersUi();
+    }
+
+    void UndoCapturedFlowStep()
+    {
+        if (capturedFlow == null) return;
+        CancelOutputDrag();
+        if (capturedFlow.connections.Count > 0)
+        {
+            ProductionFlowConnection last = capturedFlow.connections[capturedFlow.connections.Count - 1];
+            capturedFlow.connections.RemoveAt(capturedFlow.connections.Count - 1);
+            if (last != null)
+            {
+                bool stillConnected = capturedFlow.connections.Exists(edge => edge != null
+                    && (edge.from == last.to || edge.to == last.to));
+                if (!stillConnected) capturedFlow.stations.Remove(last.to);
+                activeFlowNode = last.from != null ? StationNode.EnsureOn(last.from) : null;
+            }
+        }
+        else if (capturedFlow.stations.Count > 0)
+        {
+            capturedFlow.stations.RemoveAt(capturedFlow.stations.Count - 1);
+            activeFlowNode = capturedFlow.stations.Count > 0
+                ? StationNode.EnsureOn(capturedFlow.stations[capturedFlow.stations.Count - 1]) : null;
+        }
+        WorkerFlowAssigner.RebuildStepIdsFromStations(capturedFlow);
+        RefreshFlowCaptureHud();
+        RefreshWorkersUi();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        SetStatus("Removed the last flow step. Continue from the previous station.");
+    }
+
+    void ClearCapturedFlow()
+    {
+        if (capturedFlow == null || capturingNewFlow) return;
+        CancelOutputDrag();
+        capturedFlow.connections.Clear();
+        capturedFlow.stations.Clear();
+        capturedFlow.stepIds.Clear();
+        capturedFlow.graphInitialized = true;
+        activeFlowNode = null;
+        SetStatus("Flow cleared. Add a new route, Finish to save, or Cancel to restore it.");
+        RefreshFlowCaptureHud();
+        RefreshWorkersUi();
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     bool CanConnectCapturedFlowStations(StationNode from, StationNode to, out string reason)
@@ -2940,6 +2992,27 @@ public class ManagementModeController : MonoBehaviour
         Transform buttons = flowCaptureHud.transform.Find("Buttons");
         if (buttons != null)
         {
+            Button back = buttons.Find("Back Step")?.GetComponent<Button>();
+            if (back == null)
+            {
+                back = MakeCaptureButton(buttons, "Back Step", new Color(0.20f, 0.23f, 0.29f, 1f));
+                back.onClick.AddListener(UndoCapturedFlowStep);
+                var backSize = back.GetComponent<LayoutElement>();
+                backSize.minWidth = 88f;
+                backSize.preferredWidth = 88f;
+                backSize.preferredHeight = 30f;
+                back.GetComponentInChildren<TextMeshProUGUI>().fontSize = 12f;
+            }
+            back.interactable = capturedFlow != null && capturedFlow.stations.Count > 0;
+            Button clear = buttons.Find("Clear Flow")?.GetComponent<Button>();
+            if (clear != null)
+            {
+                clear.gameObject.SetActive(false);
+                Destroy(clear.gameObject);
+            }
+            if (flowCaptureCancelButton != null) flowCaptureCancelButton.transform.SetSiblingIndex(0);
+            back.transform.SetSiblingIndex(1);
+            if (flowCaptureFinishButton != null) flowCaptureFinishButton.transform.SetAsLastSibling();
             var size = buttons.GetComponent<LayoutElement>();
             size.minHeight = 32f;
             size.preferredHeight = 32f;
@@ -3046,7 +3119,7 @@ public class ManagementModeController : MonoBehaviour
             }
         }
         if (flowCaptureFinishButton != null)
-            flowCaptureFinishButton.interactable = capturedFlow.stations.Count > 0;
+            flowCaptureFinishButton.interactable = !capturingNewFlow || capturedFlow.stations.Count > 0;
     }
 
     static string FormatFlowGraph(ProductionFlowPlan flow)
@@ -3163,6 +3236,7 @@ public class ManagementModeController : MonoBehaviour
         {
             StationNode node = StationNode.FindFromCollider(hit.collider);
             if (node == null) continue;
+            if (string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(node.gameObject))) continue;
             Register register = node.GetComponent<Register>();
             if (register != null && !register.IsPlacedRegister) continue;
             return node;

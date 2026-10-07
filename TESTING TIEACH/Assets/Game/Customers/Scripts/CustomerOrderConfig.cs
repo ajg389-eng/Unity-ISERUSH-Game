@@ -307,7 +307,7 @@ public class CustomerOrderConfig : ScriptableObject
         if (assemblyRecipes != null)
             foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
                 if (recipe != null && recipe.processedInputFromFreezer
-                    && recipe.processedInput != null && yielded.Add(recipe.processedInput))
+                    && recipe.processedInput != null && !IsDrink(recipe.processedInput) && yielded.Add(recipe.processedInput))
                     yield return recipe.processedInput;
     }
 
@@ -333,7 +333,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsFreezerIngredient(ItemDefinition item)
     {
-        if (item == null) return false;
+        if (item == null || IsDrink(item)) return false;
         if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
             || item == baconSlabIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient) return true;
         if (assemblyRecipes == null) return false;
@@ -530,9 +530,9 @@ public class CustomerOrderConfig : ScriptableObject
     {
         var yielded = new HashSet<ItemDefinition>();
         foreach (ItemDefinition freezerItem in GetFreezerIngredients())
-            if (freezerItem != null && yielded.Add(freezerItem)) yield return freezerItem;
+            if (freezerItem != null && !IsDrink(freezerItem) && yielded.Add(freezerItem)) yield return freezerItem;
         foreach (ItemDefinition pantryItem in GetPantryIngredients())
-            if (pantryItem != null && yielded.Add(pantryItem)) yield return pantryItem;
+            if (pantryItem != null && !IsDrink(pantryItem) && yielded.Add(pantryItem)) yield return pantryItem;
         if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
     }
 }

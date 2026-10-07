@@ -277,7 +277,7 @@ MonoBehaviour:
     processedInputName: Shake
     processedInputAmount: 1
     processedInputFromPantry: 0
-    processedInputFromFreezer: 1
+    processedInputFromFreezer: 0
     pantryInput: {fileID: 11400000, guid: dca8c0cc17d036647a59ae63254eb34e, type: 2}
     pantryInputAmount: 1
     rawPantryInput: {fileID: 0}
