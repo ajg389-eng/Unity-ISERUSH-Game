@@ -320,17 +320,12 @@ public static class WorkerFlowAssigner
 
         ConfigureProducts(kind, nodes);
 
-        int assigned = 0;
         for (int i = 0; i < nodes.Count; i++)
         {
             var node = StationNode.EnsureOn(nodes[i]);
             bool isHeatLamp = nodes[i].GetComponent<HeatLampStation>() != null;
-            if (!isHeatLamp && assigned < KitchenEmployee.MaxStations)
-            {
+            if (!isHeatLamp)
                 node.AddWorker(emp);
-                assigned++;
-            }
-
         }
 
         emp.assignedFlow = kind;
@@ -484,8 +479,8 @@ public static class WorkerFlowAssigner
     }
 
     /// <summary>
-    /// Wires one player-defined route, then divides its work stations into contiguous
-    /// segments. Each segment is assigned to one team member so handoffs stay visible.
+    /// Wires one player-defined route and assigns every worker to every labor station.
+    /// Runtime job claims and reservations prevent workers from duplicating the same task.
     /// </summary>
     public static TeamBalanceResult ApplyBalancedTeam(ProductionFlowPlan flow)
     {
@@ -565,37 +560,23 @@ public static class WorkerFlowAssigner
             return result;
         }
 
-        bool containsRegister = workStations.Exists(station => station.GetComponent<Register>() != null);
-        // Cashiers must retain their drink stop because serving is one coupled customer task.
-        int activeWorkers = containsRegister ? 1 : Mathf.Min(flow.workers.Count, workStations.Count);
-        if (workStations.Count > activeWorkers * KitchenEmployee.MaxStations)
-        {
-            result.message = "Add more workers. A worker can cover at most " + KitchenEmployee.MaxStations + " stations.";
-            return result;
-        }
+        int activeWorkers = flow.workers.Count;
 
         foreach (KitchenEmployee worker in flow.workers)
             if (worker != null)
                 worker.ClearAllOperatedStations();
 
         ConfigureProducts(flow.kind, route);
-        // Output links are player-authored. Rebalancing labor must not rewrite them
-        // from the flow's display order.
-        int start = 0;
+        // Every worker assigned to a flow may operate every work station in it.
+        // Jobs and station reservations coordinate multiple workers at runtime.
         for (int workerIndex = 0; workerIndex < activeWorkers; workerIndex++)
         {
-            int workersLeft = activeWorkers - workerIndex;
-            int stationsLeft = workStations.Count - start;
-            int take = workersLeft == 1
-                ? stationsLeft
-                : ChooseBalancedSegmentLength(workStations, start, stationsLeft, workersLeft);
-            take = Mathf.Clamp(take, 1, KitchenEmployee.MaxStations);
-
             KitchenEmployee worker = flow.workers[workerIndex];
+            if (worker == null) continue;
             var stationNames = new List<string>();
-            for (int j = 0; j < take; j++)
+            for (int j = 0; j < workStations.Count; j++)
             {
-                StationNode node = StationNode.EnsureOn(workStations[start + j]);
+                StationNode node = StationNode.EnsureOn(workStations[j]);
                 node.AddWorker(worker);
                 stationNames.Add(node.DisplayName);
             }
@@ -603,16 +584,6 @@ public static class WorkerFlowAssigner
             worker.assignedFlowName = flow.flowName;
             worker.SyncFromOperatedStations();
             result.assignments.Add(worker.employeeName + ": " + string.Join(" → ", stationNames));
-            start += take;
-        }
-
-        for (int i = activeWorkers; i < flow.workers.Count; i++)
-        {
-            KitchenEmployee worker = flow.workers[i];
-            if (worker == null) continue;
-            worker.assignedFlow = flow.kind;
-            worker.assignedFlowName = flow.flowName;
-            result.assignments.Add(worker.employeeName + ": reserve (no open stage)");
         }
 
         result.estimatedCycleSeconds = 0f;
@@ -632,9 +603,7 @@ public static class WorkerFlowAssigner
                 slowest = station;
         result.bottleneck = StationNode.EnsureOn(slowest).DisplayName;
         result.success = true;
-        result.message = flow.workers.Count > activeWorkers
-            ? (flow.workers.Count - activeWorkers) + " worker(s) are reserve because every stage already has an owner."
-            : "Work split into contiguous stages.";
+        result.message = "Every worker can operate every station in the flow.";
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
         StationOutputLinkVisuals.NotifyLinksChanged();
         return result;
@@ -660,29 +629,6 @@ public static class WorkerFlowAssigner
         for (int i = 0; i < steps.Count; i++)
             if (steps[i] == id) return i;
         return -1;
-    }
-
-    static int ChooseBalancedSegmentLength(List<GameObject> stations, int start, int stationsLeft, int workersLeft)
-    {
-        float remainingLoad = 0f;
-        for (int i = start; i < stations.Count; i++)
-            remainingLoad += WorkflowAnalysis.GetStationWorkSeconds(stations[i]);
-        float target = remainingLoad / workersLeft;
-        int maxTake = Mathf.Min(KitchenEmployee.MaxStations, stationsLeft - (workersLeft - 1));
-        int bestTake = 1;
-        float load = 0f;
-        float bestDifference = float.MaxValue;
-        for (int take = 1; take <= maxTake; take++)
-        {
-            load += WorkflowAnalysis.GetStationWorkSeconds(stations[start + take - 1]);
-            float difference = Mathf.Abs(load - target);
-            if (difference < bestDifference)
-            {
-                bestDifference = difference;
-                bestTake = take;
-            }
-        }
-        return bestTake;
     }
 
     static GameObject FindStationForTeam(System.Type componentType, HashSet<KitchenEmployee> team, HashSet<GameObject> used)
@@ -876,13 +822,11 @@ public static class WorkflowAnalysis
         float cycle = GetEstimatedCycleSeconds(employee);
         int carry = Mathf.Clamp(employee.CarryCapacity, 1, 4);
         float laborRate = cycle > 0.01f ? 60f * carry / cycle : 0f;
-        string risk = count >= KitchenEmployee.MaxStations
-            ? " | Risk: high task switching"
-            : distance >= 12f ? " | Risk: excess walking" : "";
+        string risk = distance >= 12f ? " | Risk: excess walking" : "";
         string flow = !string.IsNullOrEmpty(employee.assignedFlowName)
             ? employee.assignedFlowName + " | "
             : "";
-        return flow + employee.employeeName + " | " + count + "/" + KitchenEmployee.MaxStations
+        return flow + employee.employeeName + " | " + count
             + " stations | Route " + distance.ToString("F0") + " tiles | Base cycle "
             + cycle.ToString("F1") + "s | Carry " + carry + " | Labor "
             + laborRate.ToString("0.0") + "/min" + risk;
@@ -894,9 +838,6 @@ public static class WorkflowAnalysis
         if (!candidate.IsWorkStation) return "This station is an output, not a labor assignment.";
         if (employee.IsAssignedTo(candidate.gameObject))
             return candidate.DisplayName + " is already on this worker's route.";
-        if (employee.OperatedStationCount >= KitchenEmployee.MaxStations)
-            return "At capacity. Remove a station before adding " + candidate.DisplayName + ".";
-
         float approach = 0f;
         GridManager grid = employee.grid != null ? employee.grid : GridManager.Instance;
         if (grid != null && employee.operatedStations.Count > 0)
@@ -936,8 +877,6 @@ public static class WorkflowAnalysis
                 float distance = GetRouteDistanceTiles(employee);
                 if (distance >= 12f)
                     notes.Add(employee.employeeName + " walks about " + distance.ToString("F0") + " tiles per route. Move stations closer or specialize the worker.");
-                if (employee.OperatedStationCount >= KitchenEmployee.MaxStations)
-                    notes.Add(employee.employeeName + " covers three stations. Watch for task-switching delays.");
             }
         }
 

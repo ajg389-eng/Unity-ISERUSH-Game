@@ -750,7 +750,8 @@ public class ProductionManager : MonoBehaviour
             return itemTarget;
         }
         GameObject requiredTarget = GetRequiredBranchTarget(job, station);
-        if (requiredTarget != null && outgoing.Contains(requiredTarget))
+        if (requiredTarget != null && flow.stations.Contains(requiredTarget)
+            && CanBranchAcceptItem(requiredTarget, GetBranchTransferItem(job)))
             return requiredTarget;
 
         StationType? requiredType = GetRequiredNextStationType(job);
@@ -789,16 +790,48 @@ public class ProductionManager : MonoBehaviour
             }
         }
 
+        // A flow can contain converging branches whose visual edge does not directly
+        // connect every intermediate processing station. Keep the recipe sequence
+        // authoritative and use any compatible station in this flow as a fallback.
+        if (best == null && requiredType.HasValue)
+        {
+            ItemDefinition transferItem = GetBranchTransferItem(job);
+            foreach (GameObject candidate in flow.stations)
+            {
+                if (candidate == null || candidate == station
+                    || KitchenEmployee.GetStationTypeFrom(candidate) != requiredType)
+                    continue;
+                if (requiredType == StationType.Assembly && requiredAssemblyProduct != null)
+                {
+                    AssemblyStation assembly = candidate.GetComponent<AssemblyStation>();
+                    if (assembly == null || !assembly.CanProcess(requiredAssemblyProduct)) continue;
+                }
+                if (!CanBranchAcceptItem(candidate, transferItem)) continue;
+
+                float score = Vector3.SqrMagnitude(
+                    candidate.transform.position - station.transform.position);
+                IStationBuffer buffer = candidate.GetComponent<IStationBuffer>();
+                if (buffer != null && transferItem != null
+                    && !buffer.CanAcceptInput(transferItem, 1))
+                    score += 100000f;
+                if (score >= bestScore) continue;
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
         return best;
     }
 
     GameObject GetRequiredBranchTarget(ProductionJob job, GameObject source)
     {
         if (job == null || !job.isAssemblySupply || job.assemblySupplyTarget == null) return null;
+        // Only force the configured Assembly Station on the final supply step.
+        // Multi-stage ingredients can continue after Cutting, for example
+        // Bacon Slab -> Cutting -> Grill -> Assembly.
         if (job.currentStepIndex >= job.pipeline.Length - 1)
             return job.assemblySupplyTarget.gameObject;
-        bool needsCutting = job.FindNextPipelineIndex(StationType.Cutting) >= 0;
-        return needsCutting ? null : job.assemblySupplyTarget.gameObject;
+        return null;
     }
 
     static StationType? GetRequiredNextStationType(ProductionJob job)
@@ -2071,8 +2104,9 @@ public class ProductionManager : MonoBehaviour
         return true;
     }
 
-    bool TryClaimWorkStation(ProductionJob job, GameObject station)
+    public bool CanClaimWorkStation(ProductionJob job, GameObject station)
     {
+        if (job == null || station == null) return false;
         if (job.CurrentStationType == StationType.Pantry)
         {
             ItemDefinition ingredient = job.isAssemblySupply
@@ -2082,14 +2116,27 @@ public class ProductionManager : MonoBehaviour
             var key = (station, ingredient);
             if (pantryWorkReservations.TryGetValue(key, out ProductionJob pantryOwner)
                 && pantryOwner != null && pantryOwner != job) return false;
-            pantryWorkReservations[key] = job;
-            // Remember the claimed item even if the Pantry selection changes during work.
-            job.reservedPantryIngredient = ingredient;
             return true;
         }
 
         if (stationWorkReservations.TryGetValue(station, out ProductionJob owner)
             && owner != null && owner != job) return false;
+        return true;
+    }
+
+    bool TryClaimWorkStation(ProductionJob job, GameObject station)
+    {
+        if (!CanClaimWorkStation(job, station)) return false;
+        if (job.CurrentStationType == StationType.Pantry)
+        {
+            ItemDefinition ingredient = job.isAssemblySupply
+                ? GetAssemblySupplySource(job) : GetPantryItemForProduct(job.product);
+            pantryWorkReservations[(station, ingredient)] = job;
+            // Remember the claimed item even if the Pantry selection changes during work.
+            job.reservedPantryIngredient = ingredient;
+            return true;
+        }
+
         stationWorkReservations[station] = job;
         return true;
     }

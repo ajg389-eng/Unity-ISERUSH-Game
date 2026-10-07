@@ -41,10 +41,6 @@ public class KitchenEmployee : MonoBehaviour
         ItemPrefab
     }
 
-    // A worker assigned to a flow must be able to operate its complete graph,
-    // including ingredient branches. Keep this equal to the flow node limit so
-    // one worker can run an entire flow without requiring artificial staffing.
-    public const int MaxStations = 16;
     public const int MaxUpgradeLevel = 3;
 
     static readonly float[] TransportRatesByLevel = { 5f, 10f, 15f, 20f };
@@ -182,7 +178,6 @@ public class KitchenEmployee : MonoBehaviour
         if (station == null) return false;
         if (operatedStations == null) operatedStations = new List<GameObject>();
         if (operatedStations.Contains(station)) return true;
-        if (operatedStations.Count >= MaxStations) return false;
         operatedStations.Add(station);
         SyncFromOperatedStations();
         return true;
@@ -571,6 +566,12 @@ public class KitchenEmployee : MonoBehaviour
                 continue;
             if (job.taskSourceStation != null && candidate != job.taskSourceStation)
                 continue;
+            // Duplicate station types are distinct physical instances. Skip an
+            // instance claimed by another job so the search can continue to the
+            // next compatible Grill, Cutting Station, Assembly Station, etc.
+            if (requireReady && production != null
+                && !production.CanClaimWorkStation(job, candidate))
+                continue;
 
             if (stationType == StationType.Grill)
             {
@@ -703,7 +704,7 @@ public class KitchenEmployee : MonoBehaviour
     {
         assignedStations = new List<StationType>();
         if (stations == null) return;
-        for (int i = 0; i < stations.Count && assignedStations.Count < MaxStations; i++)
+        for (int i = 0; i < stations.Count; i++)
         {
             if (!assignedStations.Contains(stations[i]))
                 assignedStations.Add(stations[i]);

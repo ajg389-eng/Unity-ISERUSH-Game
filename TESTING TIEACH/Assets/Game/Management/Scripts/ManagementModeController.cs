@@ -802,8 +802,7 @@ public class ManagementModeController : MonoBehaviour
 
         SetSelectedEmployee(emp);
         ClearSelection();
-        SetStatus(emp.employeeName + " selected — click a station to assign them (" +
-                  emp.OperatedStationCount + "/" + KitchenEmployee.MaxStations + ").");
+        SetStatus(emp.employeeName + " selected — click any station to assign them.");
     }
 
     void SetSelectedEmployee(KitchenEmployee emp)
@@ -887,19 +886,13 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        if (emp.OperatedStationCount >= KitchenEmployee.MaxStations)
-        {
-            SetStatus(emp.employeeName + " already has " + KitchenEmployee.MaxStations + " stations.");
-            return;
-        }
-
         node.SetWorker(emp);
         Sfx.Play(SfxId.AssignWorker);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.WorkerAssigned);
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
 
         SetStatus(emp.employeeName + " assigned to " + node.DisplayName +
-                  " (" + emp.OperatedStationCount + "/" + KitchenEmployee.MaxStations + "). Click another station or Esc.");
+                  ". Click another station or Esc.");
         SelectStation(node);
         // Keep employee selected so you can assign them to more stations.
         SetSelectedEmployee(emp);
@@ -2249,11 +2242,8 @@ public class ManagementModeController : MonoBehaviour
         foreach (var emp in pm.employees)
         {
             if (emp == null) continue;
-            bool full = emp.OperatedStationCount >= KitchenEmployee.MaxStations
-                        && (selectedStation == null || !emp.IsAssignedTo(selectedStation.gameObject));
             var btn = CreateListButton(
-                emp.employeeName + " (" + emp.OperatedStationCount + "/" + KitchenEmployee.MaxStations + ")",
-                !full || emp.IsAssignedTo(selectedStation.gameObject));
+                emp.employeeName + " (" + emp.OperatedStationCount + " stations)", true);
             var captured = emp;
             btn.onClick.AddListener(() => AssignWorkerToSelected(captured));
         }
@@ -2265,12 +2255,6 @@ public class ManagementModeController : MonoBehaviour
         if (!selectedStation.IsWorkStation)
         {
             SetStatus("Only kitchen/register stations can have workers.");
-            return;
-        }
-
-        if (!emp.IsAssignedTo(selectedStation.gameObject) && emp.OperatedStationCount >= KitchenEmployee.MaxStations)
-        {
-            SetStatus("That worker already has " + KitchenEmployee.MaxStations + " stations.");
             return;
         }
 

@@ -116,6 +116,9 @@ public class KitchenSaveSnapshot
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
             definitions[item.name]=item;
+            // Bacon Slab replaced the legacy Raw Bacon ingredient. Saves persist
+            // stock and station selections by asset name, so retain the old key.
+            if(item.name=="Bacon Slab") definitions["Raw Bacon"]=item;
             // Saves created before station tiers used the original asset names.
             // Keep those keys pointed at MK1 so existing kitchens still load.
             if(item.IsTieredStation && item.stationMark==1) {
