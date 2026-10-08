@@ -24,6 +24,8 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     public bool HasRecipeSelected => GetSelectedRecipe() != null;
     public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
     public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
+    public int AuthoredInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }
+    public int AuthoredOutputSlotCount { get { EnsureBufferMarkers(); return outputMarkers.Count; } }
 
     void OnEnable()
     {
@@ -187,14 +189,16 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     void EnsureBufferMarkers()
     {
-        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
+        // Re-scan if either side is missing. Previously, finding only input
+        // markers permanently prevented the station from discovering outputs.
+        if (inputMarkers.Count == 0 || outputMarkers.Count == 0) FindBufferMarkers();
     }
 
     void RefreshItemDisplay(bool force)
     {
         if (!force && displayedInput == inputUnits && displayedOutput == outputUnits
             && displayedRecipeOutput == selectedProduct) return;
-        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
+        if (inputMarkers.Count == 0 || outputMarkers.Count == 0) FindBufferMarkers();
         if (itemDisplayRoot == null)
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "CuttingItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);

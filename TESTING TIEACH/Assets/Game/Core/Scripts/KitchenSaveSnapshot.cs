@@ -17,7 +17,7 @@ public class KitchenSaveSnapshot
     public List<Flow> flows = new List<Flow>();
     [Serializable] public class Stock { public string item; public int count, acquired; }
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
-    [Serializable] public class Worker { public string name; public Vector3 position; public int level; public List<int> stations = new List<int>(); }
+    [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
@@ -94,7 +94,7 @@ public class KitchenSaveSnapshot
             var staff=new List<KitchenEmployee>();
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
-                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel};
+                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel,priority=(int)employee.taskPriority};
                 foreach(var station in employee.operatedStations) w.stations.Add(objects.IndexOf(station));
                 s.workers.Add(w);
             }
@@ -232,7 +232,7 @@ public class KitchenSaveSnapshot
         var staff=new List<KitchenEmployee>();
         foreach(var w in workers) {
             var go=UnityEngine.Object.Instantiate(pm.employeePrefab,w.position,Quaternion.identity); var employee=go.GetComponent<KitchenEmployee>();
-            employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); pm.RegisterEmployee(employee); staff.Add(employee);
+            employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); employee.taskPriority=(KitchenEmployee.TaskPriority)Mathf.Clamp(w.priority,0,System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length-1); pm.RegisterEmployee(employee); staff.Add(employee);
             foreach(int i in w.stations) if(i>=0 && i<objects.Count) { employee.AddOperatedStation(objects[i]); StationNode.EnsureOn(objects[i]).AddWorker(employee); }
             employee.SyncFromOperatedStations();
         }

@@ -97,6 +97,7 @@ public class StationNode : MonoBehaviour
     {
         SyncAssignedWorkers();
         StationRuntimeMetrics.EnsureOn(gameObject);
+        StationConfigurationCaution.Ensure(gameObject);
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
     }
@@ -241,7 +242,7 @@ public class StationNode : MonoBehaviour
         get
         {
             var assembly = GetComponent<AssemblyStation>();
-            if (assembly != null) return assembly.InputSlotCapacity >= 4 ? 2 : 1;
+            if (assembly != null) return assembly.IsMk2 ? 2 : 1;
             var cutting = GetComponent<CuttingStation>();
             if (cutting != null) return cutting.InputSlotCapacity >= 4 ? 2 : 1;
             var grill = GetComponent<GrillStation>();
@@ -384,6 +385,7 @@ public class StationNode : MonoBehaviour
         var node = go.GetComponent<StationNode>();
         if (node == null) node = go.AddComponent<StationNode>();
         StationRuntimeMetrics.EnsureOn(go);
+        StationConfigurationCaution.Ensure(go);
         return node;
     }
 
@@ -422,8 +424,10 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
     float starvedSeconds;
     float blockedSeconds;
     float idleSeconds;
+    StationRuntimeState previousState = StationRuntimeState.Idle;
 
     public StationRuntimeState CurrentState { get; private set; } = StationRuntimeState.Idle;
+    public float CurrentStateSeconds { get; private set; }
     public float TotalSeconds => workingSeconds + starvedSeconds + blockedSeconds + idleSeconds;
     public float WorkingSeconds => workingSeconds;
     public float StarvedSeconds => starvedSeconds;
@@ -451,6 +455,13 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         if (node == null) node = GetComponent<StationNode>();
         CurrentState = EvaluateState();
         float elapsed = Time.deltaTime;
+        if (CurrentState == previousState)
+            CurrentStateSeconds += elapsed;
+        else
+        {
+            previousState = CurrentState;
+            CurrentStateSeconds = 0f;
+        }
         switch (CurrentState)
         {
             case StationRuntimeState.Working: workingSeconds += elapsed; break;

@@ -139,20 +139,16 @@ public class PauseMenuUI : MonoBehaviour
 
     void LateUpdate()
     {
-        if (IntroCutsceneUI.IsPlaying)
-        {
-            EscapeHandledThisFrame = false;
-            return;
-        }
-
-        bool escape = !UIInputFocusGuard.IsTyping && Input.GetKeyDown(KeyCode.Escape);
+        // Escape is a global pause override. Other systems may also use it to cancel
+        // their current action, but they must not prevent the pause menu from opening.
+        bool escape = Input.GetKeyDown(KeyCode.Escape);
         if (escape && quitConfirmation != null && quitConfirmation.activeSelf)
         {
             CloseQuitConfirmation();
             EscapeHandledThisFrame = false;
             return;
         }
-        if (escape && !EscapeHandledThisFrame && !IsTitleVisible())
+        if (escape && !IsTitleVisible())
         {
             if (!visible)
                 Show();

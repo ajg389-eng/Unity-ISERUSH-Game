@@ -210,6 +210,7 @@ public class WorkersUI : MonoBehaviour
 
         if (cardContainer != null)
         {
+            ConfigureCardContainer();
             FitScrollArea();
             ConfigureWorkerScroll();
             return;
@@ -259,8 +260,39 @@ public class WorkersUI : MonoBehaviour
         scroll.viewport = vpRect;
         scroll.content = contentRect;
         cardContainer = content.transform;
+        ConfigureCardContainer();
         FitScrollArea();
         ConfigureWorkerScroll();
+    }
+
+    void ConfigureCardContainer()
+    {
+        if (cardContainer == null) return;
+
+        var contentRect = cardContainer as RectTransform;
+        if (contentRect != null)
+        {
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = Vector2.one;
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.offsetMin = Vector2.zero;
+            contentRect.offsetMax = Vector2.zero;
+        }
+
+        var fitter = cardContainer.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = cardContainer.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var layout = cardContainer.GetComponent<VerticalLayoutGroup>();
+        if (layout == null) layout = cardContainer.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = 6f;
+        layout.padding = new RectOffset(2, 2, 2, 4);
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
     }
 
     void ConfigureWorkerScroll()
@@ -1086,8 +1118,15 @@ public class WorkersUI : MonoBehaviour
                 if (emp == null) continue;
                 var card = CreateCard();
                 if (card != null)
+                {
+                    card.gameObject.name = "WorkerCard_" + emp.GetInstanceID();
                     card.Bind(emp);
+                    card.transform.SetAsLastSibling();
+                }
             }
+
+            if (cardContainer is RectTransform containerRect)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
         }
         finally
         {

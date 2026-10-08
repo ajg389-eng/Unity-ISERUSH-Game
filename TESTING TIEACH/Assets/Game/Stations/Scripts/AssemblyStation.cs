@@ -30,12 +30,12 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public GameObject defaultProcessedInputDisplayPrefab;
     [Tooltip("Fallback model for an output whose ItemDefinition has no prefab.")]
     public GameObject defaultOutputDisplayPrefab;
-    [Tooltip("Two tabletop markers for the processed ingredient.")]
+    [Tooltip("Authored tabletop markers for the processed ingredient.")]
     public Transform[] processedInputDisplaySlots = new Transform[2];
-    [Tooltip("Two tabletop markers for the pantry ingredient.")]
+    [Tooltip("Authored tabletop markers for the pantry ingredient.")]
     public Transform[] pantryInputDisplaySlots = new Transform[2];
     public Transform[] thirdInputDisplaySlots = new Transform[2];
-    [Tooltip("Two tabletop markers for completed outputs.")]
+    [Tooltip("Authored tabletop markers for completed outputs.")]
     public Transform[] outputDisplaySlots = new Transform[2];
 
     Transform tableDisplayRoot;
@@ -50,7 +50,12 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public int BufferedOutputCount => bufferedOutputs;
     public int InputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultInputCapacity, inputMarkers.Count); } }
     public int OutputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultOutputCapacity, outputMarkers.Count); } }
-    public int IngredientCapacity => Mathf.Max(1, InputSlotCapacity / 2);
+    public int ProcessedInputCapacity { get { EnsureBufferLayout(); return Mathf.Max(2, processedInputDisplaySlots.Length); } }
+    public int PantryInputCapacity { get { EnsureBufferLayout(); return Mathf.Max(2, pantryInputDisplaySlots.Length); } }
+    public int ThirdInputCapacity { get { EnsureBufferLayout(); return IsMk2 ? Mathf.Max(4, thirdInputDisplaySlots.Length) : 0; } }
+    /// <summary>Per-ingredient capacity retained for UI and legacy callers.</summary>
+    public int IngredientCapacity => Mathf.Max(ProcessedInputCapacity,
+        Mathf.Max(PantryInputCapacity, ThirdInputCapacity));
     public int MaxProcessBatch
     {
         get
@@ -60,8 +65,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             int pantryPerUnit = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
             int thirdPerUnit = recipe != null && recipe.thirdInput != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1;
             return Mathf.Max(1, Mathf.Min(OutputSlotCapacity,
-                IngredientCapacity / processedPerUnit, IngredientCapacity / pantryPerUnit,
-                recipe != null && recipe.thirdInput != null ? IngredientCapacity / thirdPerUnit : int.MaxValue));
+                ProcessedInputCapacity / processedPerUnit, PantryInputCapacity / pantryPerUnit,
+                recipe != null && recipe.thirdInput != null ? ThirdInputCapacity / thirdPerUnit : int.MaxValue));
         }
     }
 
@@ -86,11 +91,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || item == null || amount <= 0) return false;
         if (item == recipe.pantryInput)
-            return bufferedPantryInputs + amount <= IngredientCapacity;
+            return bufferedPantryInputs + amount <= PantryInputCapacity;
         if (item == recipe.thirdInput)
-            return IsMk2 && bufferedThirdInputs + amount <= IngredientCapacity;
+            return IsMk2 && bufferedThirdInputs + amount <= ThirdInputCapacity;
         return (recipe.processedInput == null || item == recipe.processedInput)
-            && bufferedProcessedInputs + amount <= IngredientCapacity;
+            && bufferedProcessedInputs + amount <= ProcessedInputCapacity;
     }
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
@@ -153,7 +158,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || item == null || item != recipe.pantryInput || amount <= 0) return 0;
-        int accepted = Mathf.Min(amount, Mathf.Max(0, IngredientCapacity - bufferedPantryInputs));
+        int accepted = Mathf.Min(amount, Mathf.Max(0, PantryInputCapacity - bufferedPantryInputs));
         bufferedPantryInputs += accepted;
         if (accepted > 0) RefreshTableDisplay();
         return accepted;
@@ -163,7 +168,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (!IsMk2 || recipe == null || item == null || item != recipe.thirdInput || amount <= 0) return 0;
-        int accepted = Mathf.Min(amount, Mathf.Max(0, IngredientCapacity - bufferedThirdInputs));
+        int accepted = Mathf.Min(amount, Mathf.Max(0, ThirdInputCapacity - bufferedThirdInputs));
         bufferedThirdInputs += accepted;
         if (accepted > 0) RefreshTableDisplay();
         return accepted;
@@ -174,7 +179,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || amount <= 0) return false;
         if (recipe.processedInput != null && item != recipe.processedInput) return false;
-        return bufferedProcessedInputs + amount <= IngredientCapacity;
+        return bufferedProcessedInputs + amount <= ProcessedInputCapacity;
     }
 
     public int ReceiveProcessedInput(ItemDefinition item, int amount)
@@ -257,8 +262,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
         selectedRecipe = config != null ? config.GetAssemblyRecipe(product) : null;
-        bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, IngredientCapacity);
-        bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, IngredientCapacity);
+        bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, ProcessedInputCapacity);
+        bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, PantryInputCapacity);
         bufferedOutputs = Mathf.Clamp(outputs, 0, OutputSlotCapacity);
         RefreshTableDisplay();
     }
@@ -274,9 +279,9 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     {
         StationConfigurationCaution.Ensure(gameObject);
         EnsureBufferLayout(true);
-        bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, IngredientCapacity);
-        bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, IngredientCapacity);
-        bufferedThirdInputs = Mathf.Clamp(bufferedThirdInputs, 0, IngredientCapacity);
+        bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, ProcessedInputCapacity);
+        bufferedPantryInputs = Mathf.Clamp(bufferedPantryInputs, 0, PantryInputCapacity);
+        bufferedThirdInputs = Mathf.Clamp(bufferedThirdInputs, 0, ThirdInputCapacity);
         bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputSlotCapacity);
         HideSlotMarkers();
         RefreshTableDisplay();
@@ -297,11 +302,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         GameObject outputPrefab = recipe.output != null && recipe.output.prefab != null
             ? recipe.output.prefab : defaultOutputDisplayPrefab;
 
-        SpawnDisplayedItems(processedPrefab, Mathf.Min(bufferedProcessedInputs, IngredientCapacity),
+        SpawnDisplayedItems(processedPrefab, Mathf.Min(bufferedProcessedInputs, ProcessedInputCapacity),
             processedInputDisplaySlots, "ProcessedInput");
-        SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, IngredientCapacity),
+        SpawnDisplayedItems(pantryPrefab, Mathf.Min(bufferedPantryInputs, PantryInputCapacity),
             pantryInputDisplaySlots, "PantryInput");
-        SpawnDisplayedItems(thirdPrefab, Mathf.Min(bufferedThirdInputs, IngredientCapacity),
+        SpawnDisplayedItems(thirdPrefab, Mathf.Min(bufferedThirdInputs, ThirdInputCapacity),
             thirdInputDisplaySlots, "ThirdInput");
         SpawnDisplayedItems(outputPrefab, Mathf.Min(bufferedOutputs, OutputSlotCapacity),
             outputDisplaySlots, "Output");
@@ -321,8 +326,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
                 Transform marker = inputMarkers[i];
                 string markerName = marker.name.ToLowerInvariant();
                 if (markerName.Contains("input3")) third.Add(marker);
-                else if (markerName.Contains("input2") || markerName.EndsWith("b")) pantry.Add(marker);
-                else if (markerName.EndsWith("a")) processed.Add(marker);
+                else if (markerName.Contains("input2")) pantry.Add(marker);
+                else if (markerName.Contains("input1")) processed.Add(marker);
                 else if ((i & 1) == 0) processed.Add(marker);
                 else pantry.Add(marker);
             }

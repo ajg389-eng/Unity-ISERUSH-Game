@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -198,6 +199,11 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     const float HeightPadding = 0.45f;
 
     GameObject indicator;
+    RectTransform indicatorRect;
+    TextMeshProUGUI explanation;
+    CanvasGroup explanationGroup;
+    float explanationShownAt = float.NegativeInfinity;
+    string currentDetails = "";
     float nextRefresh;
 
     public static void Ensure(GameObject station)
@@ -214,6 +220,8 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     void Update()
     {
+        HandleClick();
+        UpdateExplanationFade();
         if (Time.unscaledTime < nextRefresh) return;
         nextRefresh = Time.unscaledTime + RefreshInterval;
         RefreshVisibility();
@@ -233,13 +241,80 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     void RefreshVisibility()
     {
-        bool show = !HasConfiguration() || HasLowPantryStock();
+        bool show = TryGetCautionDetails(out currentDetails);
         if (show && indicator == null)
             indicator = CreateIndicator();
         if (indicator == null) return;
 
         indicator.SetActive(show);
         if (show) UpdateTransform();
+    }
+
+    bool TryGetCautionDetails(out string details)
+    {
+        if (!HasConfiguration())
+        {
+            details = "This station is not configured. Select its recipe or ingredient before workers can use it.";
+            return true;
+        }
+        if (HasLowPantryStock())
+        {
+            details = "Ingredient stock is running low. Order more stock before this pantry starves its downstream stations.";
+            return true;
+        }
+        return TryGetBottleneckDetails(out details);
+    }
+
+    bool TryGetBottleneckDetails(out string details)
+    {
+        details = "";
+        ProductionManager production = ProductionManager.Instance;
+        StationRuntimeMetrics ownMetrics = GetComponent<StationRuntimeMetrics>();
+        StationNode ownNode = GetComponent<StationNode>();
+        if (production == null || ownMetrics == null || ownNode == null
+            || production.productionFlows == null) return false;
+
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow?.stations == null || !flow.stations.Contains(gameObject)
+                || flow.workers == null || flow.workers.Count == 0) continue;
+            flow.EnsureLegacyConnections();
+
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection?.to != gameObject || connection.from == null) continue;
+                StationRuntimeMetrics upstream = connection.from.GetComponent<StationRuntimeMetrics>();
+                if (upstream == null || upstream.CurrentState != StationRuntimeState.Blocked
+                    || upstream.CurrentStateSeconds < 4f) continue;
+                details = "BOTTLENECK: " + ownNode.DisplayName
+                    + " is not accepting output fast enough. Upstream work has been waiting for "
+                    + upstream.CurrentStateSeconds.ToString("0")
+                    + "s. Check this station's input space, recipe, processing capacity, and worker access.";
+                return true;
+            }
+
+            float ownRate = ownNode.outputAmountPerMinute;
+            if (ownRate <= 0.01f || ownMetrics.CurrentState != StationRuntimeState.Working) continue;
+            float requiredBusySeconds = Mathf.Max(6f,
+                WorkflowAnalysis.GetStationWorkSeconds(gameObject) * 2f);
+            if (ownMetrics.CurrentStateSeconds < requiredBusySeconds) continue;
+
+            float minimumRate = float.MaxValue;
+            foreach (GameObject station in flow.stations)
+            {
+                if (station == null || station.GetComponent<HeatLampStation>() != null) continue;
+                StationNode node = StationNode.EnsureOn(station);
+                if (node != null && node.outputAmountPerMinute > 0.01f)
+                    minimumRate = Mathf.Min(minimumRate, node.outputAmountPerMinute);
+            }
+            if (minimumRate == float.MaxValue || ownRate > minimumRate + 0.01f) continue;
+
+            details = "BOTTLENECK: " + ownNode.DisplayName + " is the slowest active station in "
+                + flow.flowName + " at " + ownRate.ToString("0.0")
+                + " items/min and has remained continuously busy. Upgrade it, add parallel capacity, or reduce its workload.";
+            return true;
+        }
+        return false;
     }
 
     bool HasConfiguration()
@@ -289,6 +364,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         var rect = root.GetComponent<RectTransform>();
         rect.sizeDelta = Vector2.one * 100f;
         rect.localScale = Vector3.one * (IconWorldSize / 100f);
+        indicatorRect = rect;
 
         var icon = new GameObject("Icon", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
         icon.transform.SetParent(root.transform, false);
@@ -301,7 +377,58 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         var image = icon.GetComponent<UnityEngine.UI.RawImage>();
         image.texture = texture;
         image.raycastTarget = false;
+
+        var message = new GameObject("CautionExplanation", typeof(RectTransform),
+            typeof(CanvasGroup), typeof(TextMeshProUGUI));
+        message.transform.SetParent(root.transform, false);
+        var messageRect = message.GetComponent<RectTransform>();
+        messageRect.anchorMin = new Vector2(0.5f, 1f);
+        messageRect.anchorMax = new Vector2(0.5f, 1f);
+        messageRect.pivot = new Vector2(0.5f, 0f);
+        messageRect.anchoredPosition = new Vector2(0f, 12f);
+        messageRect.sizeDelta = new Vector2(430f, 120f);
+        explanationGroup = message.GetComponent<CanvasGroup>();
+        explanationGroup.alpha = 0f;
+        explanationGroup.interactable = false;
+        explanationGroup.blocksRaycasts = false;
+        explanation = message.GetComponent<TextMeshProUGUI>();
+        explanation.fontSize = 23f;
+        explanation.fontStyle = FontStyles.Bold;
+        explanation.alignment = TextAlignmentOptions.Bottom;
+        explanation.color = Color.white;
+        explanation.outlineColor = new Color32(35, 38, 40, 255);
+        explanation.outlineWidth = 0.28f;
+        explanation.textWrappingMode = TextWrappingModes.Normal;
+        explanation.raycastTarget = false;
+        message.SetActive(false);
         return root;
+    }
+
+    void HandleClick()
+    {
+        if (indicator == null || !indicator.activeSelf || indicatorRect == null
+            || !Input.GetMouseButtonDown(0)) return;
+        Camera cam = Camera.main;
+        if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(
+                indicatorRect, Input.mousePosition, cam)) return;
+        if (explanation == null || explanationGroup == null || string.IsNullOrEmpty(currentDetails)) return;
+        explanation.text = currentDetails;
+        explanationGroup.gameObject.SetActive(true);
+        explanationGroup.alpha = 1f;
+        explanationShownAt = Time.unscaledTime;
+    }
+
+    void UpdateExplanationFade()
+    {
+        if (explanationGroup == null || !explanationGroup.gameObject.activeSelf) return;
+        float age = Time.unscaledTime - explanationShownAt;
+        if (age >= 6f)
+        {
+            explanationGroup.alpha = 0f;
+            explanationGroup.gameObject.SetActive(false);
+            return;
+        }
+        explanationGroup.alpha = age <= 5f ? 1f : 1f - (age - 5f);
     }
 
     void UpdateTransform()

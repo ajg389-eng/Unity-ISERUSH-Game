@@ -31,6 +31,8 @@ public class WorkerCardUI : MonoBehaviour
     bool detailsExpanded;
     Button expandButton;
     TextMeshProUGUI expandArrowLabel;
+    TMP_Dropdown priorityDropdown;
+    bool settingPriorityDropdown;
     Image cardImage;
     Outline selectionOutline;
 
@@ -68,6 +70,9 @@ public class WorkerCardUI : MonoBehaviour
             return;
         TMP_InputField clickedTmpInput = clicked.GetComponentInParent<TMP_InputField>();
         if (clickedTmpInput != null && clickedTmpInput.transform.IsChildOf(transform))
+            return;
+        TMP_Dropdown clickedDropdown = clicked.GetComponentInParent<TMP_Dropdown>();
+        if (clickedDropdown != null && clickedDropdown.transform.IsChildOf(transform))
             return;
         InputField clickedLegacyInput = clicked.GetComponentInParent<InputField>();
         if (clickedLegacyInput != null && clickedLegacyInput.transform.IsChildOf(transform))
@@ -165,6 +170,8 @@ public class WorkerCardUI : MonoBehaviour
             customizeButton.onClick.RemoveListener(OnCustomizeClicked);
         if (expandButton != null)
             expandButton.onClick.RemoveListener(ToggleDetailsExpanded);
+        if (priorityDropdown != null)
+            priorityDropdown.onValueChanged.RemoveListener(OnPriorityChanged);
 
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
@@ -202,21 +209,18 @@ public class WorkerCardUI : MonoBehaviour
     public void RefreshDetails()
     {
         EnsureLayout();
+        EnsurePriorityDropdown();
 
         if (employee == null)
         {
             SetDetailText(currentTaskText, "—");
-            SetDetailText(assignmentsText, "FLOW: Unassigned");
             SetDetailText(heldItemsText, "Nothing");
             if (stationsLabel != null) stationsLabel.text = "—";
             return;
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
-        string flowName = !string.IsNullOrEmpty(employee.assignedFlowName)
-            ? employee.assignedFlowName
-            : "Unassigned";
-        SetDetailText(assignmentsText, "FLOW: " + flowName);
+        RefreshPriorityDropdown();
 
         string held = employee.GetHeldInventoryDisplay();
         bool carrying = !string.IsNullOrEmpty(held);
@@ -230,6 +234,182 @@ public class WorkerCardUI : MonoBehaviour
 
         EnsureAssignmentControls();
         RefreshUpgradeButton();
+    }
+
+    void EnsurePriorityDropdown()
+    {
+        Transform details = transform.Find("WorkerDetails");
+        Transform section = details?.Find("StatusRow/StationsSection")
+            ?? details?.Find("StationsSection");
+        if (section == null) return;
+
+        TextMeshProUGUI header = section.Find("Header")?.GetComponent<TextMeshProUGUI>();
+        if (header != null) header.text = "PRIORITY";
+        if (assignmentsText != null) assignmentsText.gameObject.SetActive(false);
+
+        if (priorityDropdown == null)
+            priorityDropdown = section.Find("PriorityDropdown")?.GetComponent<TMP_Dropdown>();
+        if (priorityDropdown == null)
+            priorityDropdown = CreatePriorityDropdown(section);
+        if (priorityDropdown == null) return;
+
+        ConfigurePriorityDropdown(priorityDropdown);
+
+        priorityDropdown.onValueChanged.RemoveListener(OnPriorityChanged);
+        priorityDropdown.onValueChanged.AddListener(OnPriorityChanged);
+        RefreshPriorityDropdown();
+    }
+
+    void RefreshPriorityDropdown()
+    {
+        if (priorityDropdown == null || priorityDropdown.options.Count == 0) return;
+        int value = employee != null ? (int)employee.taskPriority : 0;
+        value = Mathf.Clamp(value, 0, priorityDropdown.options.Count - 1);
+        settingPriorityDropdown = true;
+        priorityDropdown.SetValueWithoutNotify(value);
+        priorityDropdown.RefreshShownValue();
+        if (priorityDropdown.captionText != null)
+            priorityDropdown.captionText.text = priorityDropdown.options[value].text;
+        settingPriorityDropdown = false;
+    }
+
+    void OnPriorityChanged(int value)
+    {
+        if (settingPriorityDropdown || employee == null) return;
+        employee.taskPriority = (KitchenEmployee.TaskPriority)Mathf.Clamp(value, 0,
+            System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length - 1);
+        RefreshPriorityDropdown();
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    static TMP_Dropdown CreatePriorityDropdown(Transform parent)
+    {
+        GameObject go = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
+        if (go == null) return null;
+        go.name = "PriorityDropdown";
+        go.transform.SetParent(parent, false);
+
+        var layout = go.GetComponent<UnityEngine.UI.LayoutElement>();
+        if (layout == null) layout = go.AddComponent<UnityEngine.UI.LayoutElement>();
+        layout.minHeight = 22f;
+        layout.preferredHeight = 22f;
+        layout.minWidth = 126f;
+        layout.preferredWidth = 126f;
+        layout.flexibleWidth = 0f;
+
+        var rootImage = go.GetComponent<UnityEngine.UI.Image>();
+        if (rootImage != null) rootImage.color = new Color(0.10f, 0.12f, 0.17f, 1f);
+        TMP_Dropdown dropdown = go.GetComponent<TMP_Dropdown>();
+        dropdown.ClearOptions();
+        dropdown.AddOptions(new List<string>
+        {
+            "Any Task",
+            "Finish Products",
+            "Assembly",
+            "Grill",
+            "Cutting",
+            "Fryer",
+            "Ingredient Supply",
+            "Output Delivery"
+        });
+
+        if (dropdown.captionText != null)
+        {
+            dropdown.captionText.fontSize = 11.5f;
+            dropdown.captionText.fontStyle = FontStyles.Bold;
+            dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
+            dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
+            dropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+        }
+        if (dropdown.itemText != null)
+        {
+            dropdown.itemText.fontSize = 11.5f;
+            dropdown.itemText.color = Color.white;
+        }
+        if (dropdown.template != null)
+        {
+            dropdown.template.sizeDelta = new Vector2(0f, 180f);
+            UnityEngine.UI.Image templateImage = dropdown.template.GetComponent<UnityEngine.UI.Image>();
+            if (templateImage != null) templateImage.color = new Color(0.08f, 0.10f, 0.15f, 1f);
+            dropdown.template.gameObject.SetActive(false);
+        }
+        dropdown.RefreshShownValue();
+        return dropdown;
+    }
+
+    static void ConfigurePriorityDropdown(TMP_Dropdown dropdown)
+    {
+        if (dropdown == null) return;
+
+        var layout = dropdown.GetComponent<UnityEngine.UI.LayoutElement>();
+        if (layout == null) layout = dropdown.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+        layout.minWidth = 126f;
+        layout.preferredWidth = 126f;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = 20f;
+        layout.preferredHeight = 20f;
+
+        if (dropdown.captionText != null)
+        {
+            dropdown.captionText.enableAutoSizing = false;
+            dropdown.captionText.fontSize = 11f;
+            dropdown.captionText.fontStyle = FontStyles.Bold;
+            dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
+            dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
+            dropdown.captionText.textWrappingMode = TextWrappingModes.NoWrap;
+            dropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+            dropdown.captionText.raycastTarget = false;
+            if (TMP_Settings.defaultFontAsset != null)
+                dropdown.captionText.font = TMP_Settings.defaultFontAsset;
+
+            RectTransform captionRect = dropdown.captionText.rectTransform;
+            captionRect.anchorMin = Vector2.zero;
+            captionRect.anchorMax = Vector2.one;
+            captionRect.pivot = new Vector2(0.5f, 0.5f);
+            captionRect.offsetMin = new Vector2(8f, 0f);
+            captionRect.offsetMax = new Vector2(-24f, 0f);
+            captionRect.SetAsLastSibling();
+        }
+
+        // The generated dropdown has no arrow sprite resource, which renders as a white square.
+        Transform arrow = dropdown.transform.Find("Arrow");
+        if (arrow != null)
+        {
+            var arrowImage = arrow.GetComponent<UnityEngine.UI.Image>();
+            if (arrowImage != null) arrowImage.enabled = false;
+
+            // A GameObject that already has an Image cannot also host TMP_Text because
+            // both are Graphics. Put the replacement glyph on a child instead.
+            Transform arrowLabel = arrow.Find("ArrowLabel");
+            if (arrowLabel == null)
+            {
+                var labelGo = new GameObject("ArrowLabel", typeof(RectTransform));
+                labelGo.transform.SetParent(arrow, false);
+                arrowLabel = labelGo.transform;
+            }
+
+            var arrowRect = arrowLabel as RectTransform;
+            if (arrowRect != null)
+            {
+                arrowRect.anchorMin = Vector2.zero;
+                arrowRect.anchorMax = Vector2.one;
+                arrowRect.offsetMin = Vector2.zero;
+                arrowRect.offsetMax = Vector2.zero;
+            }
+
+            var arrowText = arrowLabel.GetComponent<TextMeshProUGUI>();
+            if (arrowText == null) arrowText = arrowLabel.gameObject.AddComponent<TextMeshProUGUI>();
+            arrowText.text = "V";
+            arrowText.fontSize = 10f;
+            arrowText.fontStyle = FontStyles.Bold;
+            arrowText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
+            arrowText.alignment = TextAlignmentOptions.Center;
+            arrowText.raycastTarget = false;
+            if (TMP_Settings.defaultFontAsset != null)
+                arrowText.font = TMP_Settings.defaultFontAsset;
+            arrowLabel.SetAsLastSibling();
+            arrow.SetAsLastSibling();
+        }
     }
 
     static string FormatUpgradeStars(int level)
@@ -531,7 +711,7 @@ public class WorkerCardUI : MonoBehaviour
         rowLayout.childAlignment = TextAnchor.MiddleLeft;
         rowLayout.childControlWidth = true;
         rowLayout.childControlHeight = true;
-        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandWidth = false;
         rowLayout.childForceExpandHeight = true;
 
         Transform flowSection = statusRow.Find("StationsSection") ?? details.Find("StationsSection");
@@ -541,14 +721,35 @@ public class WorkerCardUI : MonoBehaviour
             flowSection.SetParent(statusRow, false);
             flowSection.SetSiblingIndex(0);
             var flowLe = flowSection.GetComponent<LayoutElement>();
-            if (flowLe != null) flowLe.flexibleWidth = 0.8f;
+            if (flowLe != null)
+            {
+                flowLe.minWidth = 142f;
+                flowLe.preferredWidth = 142f;
+                flowLe.flexibleWidth = 0f;
+            }
         }
         if (taskSection != null)
         {
             taskSection.SetParent(statusRow, false);
             taskSection.SetSiblingIndex(1);
             var taskLe = taskSection.GetComponent<LayoutElement>();
-            if (taskLe != null) taskLe.flexibleWidth = 1.2f;
+            if (taskLe != null)
+            {
+                taskLe.minWidth = 0f;
+                taskLe.preferredWidth = 0f;
+                taskLe.flexibleWidth = 1f;
+            }
+
+            var taskText = taskSection.Find("CurrentTask")?.GetComponent<TextMeshProUGUI>();
+            if (taskText != null)
+            {
+                taskText.enableAutoSizing = false;
+                taskText.textWrappingMode = TextWrappingModes.NoWrap;
+                taskText.overflowMode = TextOverflowModes.Ellipsis;
+                var fitter = taskText.GetComponent<ContentSizeFitter>();
+                if (fitter != null)
+                    fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+            }
         }
 
         statusRow.SetAsFirstSibling();

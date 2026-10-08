@@ -75,18 +75,30 @@ public static class WorkerCardPrefabBuilder
         statusRowLayout.spacing = 4;
         statusRowLayout.childControlWidth = true;
         statusRowLayout.childControlHeight = true;
-        statusRowLayout.childForceExpandWidth = true;
+        statusRowLayout.childForceExpandWidth = false;
         statusRowLayout.childForceExpandHeight = true;
 
         var stationsSection = CreateSection(statusRow.transform, "StationsSection", minHeight: 28);
+        var stationsLayout = stationsSection.GetComponent<LayoutElement>();
+        stationsLayout.minWidth = 142;
+        stationsLayout.preferredWidth = 142;
+        stationsLayout.flexibleWidth = 0;
         CreateSectionHeader(stationsSection, "STATIONS");
         assignments = CreateBodyLabel(stationsSection, "Assignments", "FLOW: Unassigned", 13, BodyColor, minHeight: 20);
         assignments.lineSpacing = 6;
         assignments.paragraphSpacing = 4;
 
         var taskSection = CreateSection(statusRow.transform, "TaskSection", minHeight: 28);
+        var taskLayout = taskSection.GetComponent<LayoutElement>();
+        taskLayout.minWidth = 0;
+        taskLayout.preferredWidth = 0;
+        taskLayout.flexibleWidth = 1;
         CreateSectionHeader(taskSection, "CURRENT TASK");
         currentTask = CreateBodyLabel(taskSection, "CurrentTask", "—", 14, TaskColor, minHeight: 22);
+        currentTask.textWrappingMode = TextWrappingModes.NoWrap;
+        currentTask.overflowMode = TextOverflowModes.Ellipsis;
+        var taskFitter = currentTask.GetComponent<ContentSizeFitter>();
+        if (taskFitter != null) taskFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 
         var carryingSection = CreateSection(detailsGo.transform, "CarryingSection", minHeight: 48);
         CreateSectionHeader(carryingSection, "CARRYING");

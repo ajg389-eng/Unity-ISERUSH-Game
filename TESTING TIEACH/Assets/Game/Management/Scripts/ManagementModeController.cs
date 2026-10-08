@@ -1060,8 +1060,12 @@ public class ManagementModeController : MonoBehaviour
         AssemblyStation assembly = node.GetComponent<AssemblyStation>();
         if (assembly != null)
         {
-            return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + assembly.IngredientCapacity
-                + "  |  input B " + assembly.BufferedPantryInputCount + "/" + assembly.IngredientCapacity
+            string third = assembly.IsMk2
+                ? "  |  input C " + assembly.BufferedThirdInputCount + "/" + assembly.ThirdInputCapacity
+                : "";
+            return "Buffers: input A " + assembly.BufferedProcessedInputCount + "/" + assembly.ProcessedInputCapacity
+                + "  |  input B " + assembly.BufferedPantryInputCount + "/" + assembly.PantryInputCapacity
+                + third
                 + "  |  output " + assembly.BufferedOutputCount + "/" + assembly.OutputSlotCapacity
                 + "  |  reserved in " + incoming + ", out " + outgoing;
         }

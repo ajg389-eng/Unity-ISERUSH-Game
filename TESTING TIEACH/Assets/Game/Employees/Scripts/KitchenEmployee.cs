@@ -17,6 +17,18 @@ public class AssignmentRow
 /// </summary>
 public class KitchenEmployee : MonoBehaviour
 {
+    public enum TaskPriority
+    {
+        AnyTask,
+        FinishProducts,
+        Assembly,
+        Grill,
+        Cutting,
+        Fryer,
+        IngredientSupply,
+        OutputDelivery
+    }
+
     public enum WorkerActivityState
     {
         Unassigned,
@@ -96,6 +108,8 @@ public class KitchenEmployee : MonoBehaviour
     [Header("Legacy")]
     public AssignmentRow[] assignmentRows = new AssignmentRow[4];
     public List<StationType> assignedStations = new List<StationType>();
+    [Tooltip("Preferred work to claim first. The worker falls back to any runnable flow task.")]
+    public TaskPriority taskPriority = TaskPriority.AnyTask;
     public GrillStation targetGrill;
 
     ProductionJob currentJob;
@@ -422,10 +436,16 @@ public class KitchenEmployee : MonoBehaviour
         if ((step == Step.GoToCutting || step == Step.AtCutting) && currentJob.isAssemblySupply)
         {
             CuttingStation cutting = GetCuttingStation();
-            if (cutting != null && !cutting.HasCarriedSupply(manager.orderConfig,
-                    ingredientsHeld, Mathf.Max(1, heldUnits)))
+            CuttingRecipeDefinition recipe = cutting != null ? cutting.GetSelectedRecipe() : null;
+            int expectedUnits = Mathf.Max(1, heldUnits);
+            bool carriedInput = cutting != null && cutting.HasCarriedSupply(
+                manager.orderConfig, ingredientsHeld, expectedUnits);
+            bool bufferedInput = cutting != null && recipe != null
+                && cutting.GetInputCount(recipe.input) > 0;
+            bool bufferedOutput = cutting != null && recipe != null
+                && cutting.GetOutputCount(recipe.output) > 0;
+            if (cutting != null && !carriedInput && !bufferedInput && !bufferedOutput)
             {
-                CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
                 return FormatItemName(recipe != null ? recipe.input : null)
                     + " has not reached the Cutting Station";
             }
@@ -507,6 +527,27 @@ public class KitchenEmployee : MonoBehaviour
     public bool CanTakeJobStep(ProductionJob job, bool searchEntireFlow)
     {
         return FindStationForJob(job, searchEntireFlow, true) != null;
+    }
+
+    public bool PrefersJob(ProductionJob job)
+    {
+        if (job == null || taskPriority == TaskPriority.AnyTask) return true;
+        if (taskPriority == TaskPriority.OutputDelivery)
+            return job.taskPhase == ProductionTaskPhase.CollectOutput || job.IsHeatLampStep;
+        if (taskPriority == TaskPriority.FinishProducts)
+            return !job.isAssemblySupply && job.CurrentStationType == StationType.Assembly
+                && job.pipeline != null && job.currentStepIndex == job.pipeline.Length - 1;
+        if (taskPriority == TaskPriority.IngredientSupply)
+            return job.isAssemblySupply || job.CurrentStationType == StationType.Freezer
+                || job.CurrentStationType == StationType.Pantry;
+        return taskPriority switch
+        {
+            TaskPriority.Assembly => job.CurrentStationType == StationType.Assembly,
+            TaskPriority.Grill => job.CurrentStationType == StationType.Grill,
+            TaskPriority.Cutting => job.CurrentStationType == StationType.Cutting,
+            TaskPriority.Fryer => job.CurrentStationType == StationType.Fryer,
+            _ => false
+        };
     }
 
     /// <summary>
@@ -931,6 +972,11 @@ public class KitchenEmployee : MonoBehaviour
     ProductionJob lastProgressJob;
     bool lastProgressReturning;
     int stallRecoveries;
+    [Header("Production recovery")]
+    [Tooltip("Maximum time without a station, inventory, or handoff change before this worker releases the task.")]
+    [Min(3f)] public float taskProgressTimeout = 20f;
+    int lastMeaningfulProgressSignature;
+    float lastMeaningfulProgressTime;
     float ArrivalRadius => Mathf.Max(0.02f, cellArrivalDistance);
 
     enum Step
@@ -1145,6 +1191,66 @@ public class KitchenEmployee : MonoBehaviour
         lastProgressJob = currentJob;
         lastProgressReturning = returningToFlowStart;
         stallRecoveries = 0;
+        lastMeaningfulProgressSignature = GetMeaningfulProgressSignature();
+        lastMeaningfulProgressTime = Time.time;
+        if (currentJob != null)
+            manager?.ReportTaskProgress(currentJob);
+    }
+
+    int GetMeaningfulProgressSignature()
+    {
+        unchecked
+        {
+            int hash = currentJob != null ? currentJob.TaskKey.GetHashCode() : 0;
+            hash = hash * 397 ^ (int)step;
+            hash = hash * 397 ^ heldUnits;
+            hash = hash * 397 ^ ingredientsHeld.Count;
+            hash = hash * 397 ^ (awaitingOutputDelivery ? 1 : 0);
+            hash = hash * 397 ^ (deliverTarget != null ? deliverTarget.GetInstanceID() : 0);
+            return hash;
+        }
+    }
+
+    void RecoverStalledProductionTask()
+    {
+        if (currentJob == null) return;
+        int signature = GetMeaningfulProgressSignature();
+        if (signature != lastMeaningfulProgressSignature)
+        {
+            lastMeaningfulProgressSignature = signature;
+            lastMeaningfulProgressTime = Time.time;
+            manager?.ReportTaskProgress(currentJob);
+            return;
+        }
+
+        if (Time.time - lastMeaningfulProgressTime < Mathf.Max(3f, taskProgressTimeout)) return;
+        manager?.DeferTask(currentJob, "No physical production progress", GetCurrentTaskStation(), 0.75f);
+        ReleaseBlockedAssemblyJobAndReturn();
+        ResetProgressTracking();
+    }
+
+    GameObject GetCurrentTaskStation()
+    {
+        if (deliverTarget != null) return deliverTarget;
+        return currentJob != null ? currentJob.reservedWorkStation : null;
+    }
+
+    public float EstimateRouteDistance(GameObject station)
+    {
+        if (station == null) return float.PositiveInfinity;
+        Vector3 destination = station.transform.position;
+        if (grid == null) return Vector3.Distance(transform.position, destination);
+        List<Vector3> route = grid.GetPath(transform.position, grid.GetCellCenter(destination));
+        if (route == null || route.Count == 0)
+            return Vector3.Distance(transform.position, destination) * 4f;
+        float distance = 0f;
+        Vector3 previous = transform.position;
+        foreach (Vector3 point in route)
+        {
+            distance += Vector3.Distance(previous, point);
+            previous = point;
+        }
+        return distance;
     }
 
     bool IsTraveling()
@@ -1687,6 +1793,8 @@ public class KitchenEmployee : MonoBehaviour
             currentJob.hasPatty = false;
             currentJob.ingredientsHeld.Clear();
         }
+        manager?.DeferTask(currentJob, "Required station input or capacity is unavailable",
+            GetCurrentTaskStation(), 0.35f);
         manager?.ReleaseJob(currentJob);
         currentJob = null;
         ClearHeldInventory();
@@ -1708,6 +1816,8 @@ public class KitchenEmployee : MonoBehaviour
     void YieldBlockedOutputStep()
     {
         if (currentJob == null || IsHoldingAnything) return;
+        manager?.DeferTask(currentJob, "Downstream output buffer is full",
+            GetCurrentTaskStation(), 0.35f);
         manager?.ReleaseJob(currentJob);
         currentJob = null;
         deliverTarget = null;
@@ -2008,6 +2118,22 @@ public class KitchenEmployee : MonoBehaviour
 
         if (currentJob != null)
         {
+            if (manager != null && !awaitingOutputDelivery
+                && !manager.ValidateActiveClaim(currentJob, this))
+            {
+                manager.DeferTask(currentJob, "Task claim became invalid", GetCurrentTaskStation(), 0.35f);
+                ReleaseBlockedAssemblyJobAndReturn();
+                return;
+            }
+            if (manager != null)
+            {
+                ProductionTaskState taskState = awaitingOutputDelivery
+                    ? ProductionTaskState.Delivering
+                    : IsTraveling() ? ProductionTaskState.Traveling : ProductionTaskState.Working;
+                manager.TouchTask(currentJob, taskState);
+            }
+            RecoverStalledProductionTask();
+            if (currentJob == null) return;
             RecoverWorkflowStep();
             RunWorkflow();
             return;
@@ -3049,6 +3175,10 @@ public class KitchenEmployee : MonoBehaviour
                     }
                     FaceStationObject(cutting.gameObject);
                     SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.Assembly);
+                    // Station work is an active claim even while no inventory or
+                    // workflow fields change. Keep it alive until the physical
+                    // processing and collection operation has completed.
+                    manager?.ReportTaskProgress(currentJob);
                     stateTimer += Time.deltaTime;
                     ShowTaskBar = true;
                     TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, cutting.processTimeSeconds));
@@ -3063,10 +3193,27 @@ public class KitchenEmployee : MonoBehaviour
 
                         int availableOutput = cutting.GetOutputCount(recipe.output);
                         if (availableOutput <= 0)
-                            availableOutput = cutting.ProcessBuffered(CarryCapacity);
+                        {
+                            int produced = cutting.ProcessBuffered(CarryCapacity);
+                            if (produced > 0)
+                            {
+                                // Processing and collection are separate physical
+                                // actions. Leave the result in the authored output
+                                // slots so inventory, visuals, and another worker
+                                // can observe and claim it on the following update.
+                                manager.ReportTaskProgress(currentJob);
+                                stateTimer = cutting.processTimeSeconds;
+                                TaskProgress = 1f;
+                                availableOutput = cutting.GetOutputCount(recipe.output);
+                            }
+                        }
                         if (availableOutput <= 0)
                         {
-                            RewindInvalidCuttingTask();
+                            // An occupied output buffer or a transient reservation
+                            // race is not evidence that the upstream ingredient was
+                            // lost. Release this station step for replanning without
+                            // rewinding the recipe to its source pantry/freezer.
+                            YieldBlockedOutputStep();
                             break;
                         }
 

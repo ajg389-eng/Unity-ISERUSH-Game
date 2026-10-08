@@ -56,7 +56,9 @@ public class DebugMenu : MonoBehaviour
 
     void Update()
     {
-        if (!UIInputFocusGuard.IsTyping && (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt)))
+        // Debug access is a global escape hatch. It must remain available during
+        // tutorials, modal UI, paused simulation, and while an input field has focus.
+        if (Input.GetKeyDown(toggleKey) || Input.GetKeyDown(toggleKeyAlt))
             SetVisible(!visible);
 
         if (visible)
