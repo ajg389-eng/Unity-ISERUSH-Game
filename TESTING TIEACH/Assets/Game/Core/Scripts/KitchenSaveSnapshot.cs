@@ -30,7 +30,7 @@ public class KitchenSaveSnapshot
     {
         var s = new KitchenSaveSnapshot();
         foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
-            s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.transform.position });
+            s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.PlacementPosition });
         var clock = GameTimeManager.Instance;
         s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
@@ -296,7 +296,7 @@ public class KitchenSaveSnapshot
         if (wallPhotos != null)
             foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
                 foreach (WallPhoto saved in wallPhotos)
-                    if (saved != null && saved.name == photo.gameObject.name) photo.SetPosition(saved.position);
+                    if (saved != null && saved.name == photo.gameObject.name) photo.SetPlacementPosition(saved.position);
         return true;
     }
 

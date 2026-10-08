@@ -28,6 +28,8 @@ public class CustomerOrderBoard : MonoBehaviour
 
     void Awake()
     {
+        if (GetComponent<WallMountedCutawayFollower>() == null)
+            gameObject.AddComponent<WallMountedCutawayFollower>();
         var face = new GameObject("Order board face", typeof(RectTransform), typeof(Canvas));
         face.transform.SetParent(transform, false);
         face.transform.localPosition = new Vector3(0, 0, -0.51f);

@@ -15,13 +15,27 @@ public class WallPhotoDrag : MonoBehaviour
     static int inputFrame = -1;
     public static bool InputClaimed => dragging != null || inputFrame == Time.frameCount;
     GameModeManager mode;
-    Vector3 original, pointerOffset;
+    Vector3 original, originalPlacement, pointerOffset;
     Plane wallPlane;
     bool valid;
     LineRenderer outline;
     Material outlineMaterial;
 
-    void OnEnable() { photos.Add(this); }
+    public Vector3 PlacementPosition
+    {
+        get
+        {
+            WallMountedCutawayFollower follower = GetComponent<WallMountedCutawayFollower>();
+            return follower != null ? follower.RestPosition : transform.position;
+        }
+    }
+
+    void OnEnable()
+    {
+        if (GetComponent<WallMountedCutawayFollower>() == null)
+            gameObject.AddComponent<WallMountedCutawayFollower>();
+        photos.Add(this);
+    }
     void OnDisable()
     {
         if (dragging == this) EndDrag(false);
@@ -30,14 +44,25 @@ public class WallPhotoDrag : MonoBehaviour
 
     public void SetPosition(Vector3 position)
     {
+        WallMountedCutawayFollower follower = GetComponent<WallMountedCutawayFollower>();
+        if (follower != null) position.y += follower.CurrentDrop;
+        SetPlacementPosition(position);
+    }
+
+    public void SetPlacementPosition(Vector3 position)
+    {
         // Keep both pieces on their original wall, including their surface offset.
         position.z = transform.position.z;
         Vector3 half = transform.localScale * 0.5f;
         position.x = Mathf.Clamp(position.x, wallXLimits.x + half.x, wallXLimits.y - half.x);
         position.y = Mathf.Clamp(position.y, wallYLimits.x + half.y, wallYLimits.y - half.y);
-        Vector3 delta = position - transform.position;
+        Vector3 oldPosition = transform.position;
+        WallMountedCutawayFollower follower = GetComponent<WallMountedCutawayFollower>();
+        Vector3 delta = position - PlacementPosition;
         if (delta.sqrMagnitude < 0.0000001f) return;
-        transform.position = position;
+        if (follower != null) follower.SetRestPosition(position);
+        else transform.position = position;
+        delta = transform.position - oldPosition;
         if (artwork != null) artwork.position += delta;
     }
 
@@ -57,6 +82,7 @@ public class WallPhotoDrag : MonoBehaviour
             if (!Physics.Raycast(camera.ScreenPointToRay(Input.mousePosition), out RaycastHit hit, 500f)) return;
             if (hit.transform != transform && hit.transform != artwork) return;
             original = transform.position;
+            originalPlacement = PlacementPosition;
             wallPlane = new Plane(Vector3.forward, original);
             Ray ray = camera.ScreenPointToRay(Input.mousePosition);
             if (!wallPlane.Raycast(ray, out float distance)) return;
@@ -116,7 +142,7 @@ public class WallPhotoDrag : MonoBehaviour
 
     void EndDrag(bool commit)
     {
-        if (!commit) SetPosition(original);
+        if (!commit) SetPlacementPosition(originalPlacement);
         if (outline != null) Destroy(outline.gameObject);
         if (outlineMaterial != null) Destroy(outlineMaterial);
         dragging = null;

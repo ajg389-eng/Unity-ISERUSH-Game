@@ -39,6 +39,7 @@ public class CameraOcclusionWall : MonoBehaviour
     bool placementLocked;
     float visualBottom;
     float visualTop;
+    Bounds worldBounds;
     static Material brickCutawayTemplate;
     Material capMaterial;
 
@@ -50,6 +51,15 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public float DuckAmount => cutawayAmount;
     public bool IsPlacementLocked => placementLocked;
+    public float CutawayDropDistance => hasRestPose
+        ? Mathf.Max(0f, restVisualHeight - Mathf.Max(0.2f, cutawayHeight)) * cutawayAmount
+        : 0f;
+
+    public float DistanceToWall(Vector3 point)
+    {
+        Vector3 nearest = worldBounds.ClosestPoint(point);
+        return Vector3.Distance(nearest, point);
+    }
 
     void Awake()
     {
@@ -237,6 +247,7 @@ public class CameraOcclusionWall : MonoBehaviour
 
         visualBottom = foundBounds ? combined.min.y : transform.position.y;
         visualTop = foundBounds ? combined.max.y : visualBottom + 4f;
+        worldBounds = foundBounds ? combined : new Bounds(transform.position, new Vector3(1f, 4f, 0.4f));
         if (!hasRestPose)
             restVisualHeight = Mathf.Max(0.2f, visualTop - visualBottom);
         cutawayMaterials = null;
