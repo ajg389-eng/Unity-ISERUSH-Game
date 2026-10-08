@@ -379,6 +379,8 @@ public class ManagementScreenController : MonoBehaviour
 
     void HandleNumberRowTabShortcut()
     {
+        // 5 switches directly to the customer order board.
+        if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) return;
         int requestedPosition = -1;
         for (int i = 0; i < NumberRowTabKeys.Length; i++)
         {

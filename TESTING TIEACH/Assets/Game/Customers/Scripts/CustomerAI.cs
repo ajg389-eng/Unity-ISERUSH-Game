@@ -61,6 +61,13 @@ public class CustomerAI : MonoBehaviour
     Vector3 queuedSlotPos;
     bool queuedIsFront;
 
+    public static IReadOnlyList<CustomerAI> OrderBoardCustomers => ActiveCustomers;
+    static int nextOrderNumber;
+    static readonly System.Random customerNameRandom = new System.Random();
+    static readonly string[] orderNames = { "Kevin", "Emma", "Riley", "Alex", "Maya", "Noah", "Skyler", "Chloe", "Owen", "Avery", "Jordan", "Sofia", "Liam", "Grace", "Ethan", "Harper", "Leo", "Zoe", "Sam", "Ella" };
+    public int OrderNumber { get; private set; }
+    public string CustomerDisplayName { get; private set; }
+    public CustomerOrder OriginalOrder { get; private set; }
     public CustomerOrder GetOrder() => order;
     public int SalePrice => salePrice;
     public bool IsOrderFullyDelivered =>
@@ -183,6 +190,9 @@ public class CustomerAI : MonoBehaviour
     public void SetOrder(CustomerOrder o)
     {
         order = o != null ? o.Clone() : new CustomerOrder();
+        OriginalOrder = order.Clone();
+        OrderNumber = ++nextOrderNumber;
+        CustomerDisplayName = orderNames[customerNameRandom.Next(orderNames.Length)] + " " + (char)('A' + customerNameRandom.Next(26)) + ".";
         salePrice = order.GetSalePrice();
         if (ProductionManager.Instance != null)
             ProductionManager.Instance.RecordCustomerOrder(order);

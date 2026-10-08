@@ -15,6 +15,8 @@ public class KitchenSaveSnapshot
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>(), productionTargets = new List<Stock>();
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
+    public List<WallPhoto> wallPhotos = new List<WallPhoto>();
+    [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority; public List<int> stations = new List<int>(); }
@@ -24,6 +26,8 @@ public class KitchenSaveSnapshot
     public static KitchenSaveSnapshot Capture()
     {
         var s = new KitchenSaveSnapshot();
+        foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
+            s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.transform.position });
         var clock = GameTimeManager.Instance;
         s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
@@ -265,6 +269,10 @@ public class KitchenSaveSnapshot
             placer.EnsureCustomerEntrance();
         else
             UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>()?.RequestRefresh();
+        if (wallPhotos != null)
+            foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
+                foreach (WallPhoto saved in wallPhotos)
+                    if (saved != null && saved.name == photo.gameObject.name) photo.SetPosition(saved.position);
         return true;
     }
 

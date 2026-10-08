@@ -109,6 +109,7 @@ public class BuildPlacer : MonoBehaviour
 
     void Update()
     {
+        if (WallPhotoDrag.InputClaimed) return;
         if (!modeManager || !grid || !inventory) return;
 
         // Only allow placement in Build mode

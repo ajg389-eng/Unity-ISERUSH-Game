@@ -435,7 +435,7 @@ public class CustomerOrderLabel : MonoBehaviour
         return image;
     }
 
-    static Sprite GetFoodSprite(ItemDefinition item)
+    public static Sprite GetFoodSprite(ItemDefinition item)
     {
         string key = "item";
         if (item != null)
