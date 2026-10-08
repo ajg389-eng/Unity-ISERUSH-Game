@@ -9,10 +9,13 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
     [Min(0f)] public float processTimeSeconds = 4f;
+    [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
     [SerializeField, Min(0)] int inputUnits;
     [SerializeField, Min(0)] int outputUnits;
+    [SerializeField, Min(0)] int processingUnits;
+    [SerializeField, Min(0f)] float processingTimer;
     CustomerOrder bufferedOrder;
     Transform itemDisplayRoot;
     readonly List<Transform> inputMarkers = new List<Transform>();
@@ -20,15 +23,20 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     int displayedInput = -1;
     int displayedOutput = -1;
     ItemDefinition displayedRecipeOutput;
+    StationProcessProgressIndicator processProgressIndicator;
 
     public bool HasRecipeSelected => GetSelectedRecipe() != null;
-    public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
-    public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
+    public bool IsProcessing => processingUnits > 0;
+    public float ProcessRemainingSeconds => IsProcessing
+        ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
+    public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
+    public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int AuthoredInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }
     public int AuthoredOutputSlotCount { get { EnsureBufferMarkers(); return outputMarkers.Count; } }
 
     void OnEnable()
     {
+        processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         FindBufferMarkers();
         inputUnits = Mathf.Clamp(inputUnits, 0, InputSlotCapacity);
@@ -109,6 +117,31 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         return processed;
     }
 
+    void AdvanceAutomaticProcessing(float deltaTime)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null) return;
+
+        if (processingUnits <= 0)
+        {
+            int availableOutput = Mathf.Max(0, OutputSlotCapacity - outputUnits);
+            int batch = Mathf.Min(inputUnits, availableOutput, InputSlotCapacity, OutputSlotCapacity);
+            if (batch <= 0) return;
+            inputUnits -= batch;
+            processingUnits = batch;
+            processingTimer = 0f;
+            RefreshItemDisplay(true);
+        }
+
+        processingTimer += deltaTime;
+        if (processingTimer < processTimeSeconds) return;
+        outputUnits = Mathf.Min(OutputSlotCapacity, outputUnits + processingUnits);
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(processingUnits);
+        processingUnits = 0;
+        processingTimer = 0f;
+        RefreshItemDisplay(true);
+    }
+
     public bool CanProcess(ItemDefinition input, ItemDefinition output = null)
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
@@ -179,6 +212,9 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
+        AdvanceAutomaticProcessing(Time.deltaTime);
+        processProgressIndicator?.SetProgress(
+            IsProcessing, processingTimer / Mathf.Max(0.01f, processTimeSeconds));
         RefreshItemDisplay(false);
     }
 

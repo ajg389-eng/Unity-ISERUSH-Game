@@ -3293,7 +3293,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PantryStation
   selectedItem: {fileID: 0}
-  processTimeSeconds: 1.5
+  processTimeSeconds: 0
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!114 &4988263162553479662
 MonoBehaviour:

@@ -492,7 +492,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e037d0a0d0580ed439fc8b6d2dbbf9b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FryerStation
-  processTimeSeconds: 12
+  processTimeSeconds: 4
+  stationMark: 2
   interactionOffset: {x: 0, y: 0, z: 0}
   basketUnits: 0
 --- !u!1 &6238326841006979092

@@ -1208,7 +1208,7 @@ public static class WorkflowAnalysis
         result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, out string stationBottleneck);
 
         float laborCycle = 0f;
-        float staffedLaborCapacity = float.MaxValue;
+        float staffedLaborCapacity = 0f;
         bool foundStaffedSegment = false;
         result.minimumCarryCapacity = int.MaxValue;
         result.maximumCarryCapacity = 1;
@@ -1225,7 +1225,10 @@ public static class WorkflowAnalysis
                 laborCycle = Mathf.Max(laborCycle, workerCycle);
                 if (workerCycle > 0.01f)
                 {
-                    staffedLaborCapacity = Mathf.Min(staffedLaborCapacity, 60f * carry / workerCycle);
+                    // Workers on the same shared flow operate in parallel. Their
+                    // labor capacities add together; taking the minimum made a
+                    // second worker appear to provide no throughput improvement.
+                    staffedLaborCapacity += 60f * carry / workerCycle;
                     foundStaffedSegment = true;
                 }
             }

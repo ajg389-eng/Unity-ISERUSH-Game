@@ -12,7 +12,7 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
 
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one freezer operation.")]
-    [Min(0f)] public float processTimeSeconds = 1f;
+    [Min(0f)] public float processTimeSeconds = 0f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public int InputSlotCapacity => 0;
@@ -36,9 +36,15 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
     {
         if (!CanSupply(item) || amount <= 0) return 0;
         var inv = KitchenInventory.Instance;
-        if (inv == null) return amount;
+        if (inv == null)
+        {
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(amount);
+            return amount;
+        }
         int taken = Mathf.Min(amount, inv.GetCount(selectedItem));
-        return taken > 0 && inv.TryConsume(selectedItem, taken) ? taken : 0;
+        if (taken <= 0 || !inv.TryConsume(selectedItem, taken)) return 0;
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(taken);
+        return taken;
     }
 
     public bool HasItemSelected => selectedItem != null;

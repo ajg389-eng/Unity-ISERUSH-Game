@@ -18,12 +18,15 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one assembly operation.")]
-    [Min(0f)] public float processTimeSeconds = 1.2f;
+    [Min(0f)] public float processTimeSeconds = 4f;
+    [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
     [SerializeField, Min(0)] int bufferedProcessedInputs;
     [SerializeField, Min(0)] int bufferedPantryInputs;
     [SerializeField, Min(0)] int bufferedThirdInputs;
     [SerializeField, Min(0)] int bufferedOutputs;
+    [SerializeField, Min(0)] int processingUnits;
+    [SerializeField, Min(0f)] float processingTimer;
 
     [Header("Table display")]
     [Tooltip("Fallback model for a cooked patty when the recipe input has no ItemDefinition prefab.")]
@@ -42,17 +45,21 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     readonly List<Transform> inputMarkers = new List<Transform>();
     readonly List<Transform> outputMarkers = new List<Transform>();
     bool layoutReady;
+    StationProcessProgressIndicator processProgressIndicator;
 
     public int BufferedProcessedInputCount => bufferedProcessedInputs;
     public int BufferedPantryInputCount => bufferedPantryInputs;
     public int BufferedThirdInputCount => bufferedThirdInputs;
-    public bool IsMk2 { get { EnsureBufferLayout(); return inputMarkers.Count >= 6; } }
+    public bool IsMk2 => stationMark >= 2;
     public int BufferedOutputCount => bufferedOutputs;
-    public int InputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultInputCapacity, inputMarkers.Count); } }
-    public int OutputSlotCapacity { get { EnsureBufferLayout(); return Mathf.Max(DefaultOutputCapacity, outputMarkers.Count); } }
-    public int ProcessedInputCapacity { get { EnsureBufferLayout(); return Mathf.Max(2, processedInputDisplaySlots.Length); } }
-    public int PantryInputCapacity { get { EnsureBufferLayout(); return Mathf.Max(2, pantryInputDisplaySlots.Length); } }
-    public int ThirdInputCapacity { get { EnsureBufferLayout(); return IsMk2 ? Mathf.Max(4, thirdInputDisplaySlots.Length) : 0; } }
+    public bool IsProcessing => processingUnits > 0;
+    public float ProcessRemainingSeconds => IsProcessing
+        ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
+    public int InputSlotCapacity => IsMk2 ? 12 : 4;
+    public int OutputSlotCapacity => IsMk2 ? 4 : DefaultOutputCapacity;
+    public int ProcessedInputCapacity => IsMk2 ? 4 : 2;
+    public int PantryInputCapacity => IsMk2 ? 4 : 2;
+    public int ThirdInputCapacity => IsMk2 ? 4 : 0;
     /// <summary>Per-ingredient capacity retained for UI and legacy callers.</summary>
     public int IngredientCapacity => Mathf.Max(ProcessedInputCapacity,
         Mathf.Max(PantryInputCapacity, ThirdInputCapacity));
@@ -141,6 +148,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             bufferedPantryInputs = 0;
             bufferedThirdInputs = 0;
             bufferedOutputs = 0;
+            processingUnits = 0;
+            processingTimer = 0f;
         }
         selectedRecipe = recipe;
         selectedProduct = recipe != null ? recipe.output : null;
@@ -282,6 +291,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     void OnEnable()
     {
+        processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         EnsureBufferLayout(true);
         bufferedProcessedInputs = Mathf.Clamp(bufferedProcessedInputs, 0, ProcessedInputCapacity);
@@ -289,6 +299,49 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         bufferedThirdInputs = Mathf.Clamp(bufferedThirdInputs, 0, ThirdInputCapacity);
         bufferedOutputs = Mathf.Clamp(bufferedOutputs, 0, OutputSlotCapacity);
         HideSlotMarkers();
+        RefreshTableDisplay();
+    }
+
+    void Update()
+    {
+        AdvanceAutomaticProcessing(Time.deltaTime);
+        processProgressIndicator?.SetProgress(
+            IsProcessing, processingTimer / Mathf.Max(0.01f, processTimeSeconds));
+    }
+
+    void AdvanceAutomaticProcessing(float deltaTime)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || recipe.RequiresMk2 != IsMk2) return;
+
+        if (processingUnits <= 0)
+        {
+            int processedPerUnit = Mathf.Max(1, recipe.processedInputAmount);
+            int pantryPerUnit = Mathf.Max(1, recipe.pantryInputAmount);
+            int thirdPerUnit = recipe.thirdInput != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1;
+            int possible = Mathf.Min(MaxProcessBatch,
+                bufferedProcessedInputs / processedPerUnit,
+                bufferedPantryInputs / pantryPerUnit,
+                OutputSlotCapacity - bufferedOutputs);
+            if (recipe.thirdInput != null)
+                possible = Mathf.Min(possible, bufferedThirdInputs / thirdPerUnit);
+            if (possible <= 0) return;
+
+            bufferedProcessedInputs -= possible * processedPerUnit;
+            bufferedPantryInputs -= possible * pantryPerUnit;
+            if (recipe.thirdInput != null)
+                bufferedThirdInputs -= possible * thirdPerUnit;
+            processingUnits = possible;
+            processingTimer = 0f;
+            RefreshTableDisplay();
+        }
+
+        processingTimer += deltaTime;
+        if (processingTimer < processTimeSeconds) return;
+        bufferedOutputs = Mathf.Min(OutputSlotCapacity, bufferedOutputs + processingUnits);
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(processingUnits);
+        processingUnits = 0;
+        processingTimer = 0f;
         RefreshTableDisplay();
     }
 

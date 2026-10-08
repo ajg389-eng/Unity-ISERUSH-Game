@@ -343,7 +343,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FreezerStation
   selectedItem: {fileID: 0}
-  processTimeSeconds: 1.5
+  processTimeSeconds: 0
   interactionOffset: {x: 1, y: 0, z: 0}
 --- !u!114 &5075803326445885385
 MonoBehaviour:

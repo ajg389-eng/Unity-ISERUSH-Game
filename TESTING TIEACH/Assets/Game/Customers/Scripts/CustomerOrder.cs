@@ -56,7 +56,11 @@ public class CustomerOrder
         foreach (var line in lines)
         {
             if (line.item == null) continue;
-            string name = string.IsNullOrEmpty(line.item.itemName) ? line.item.name : line.item.itemName;
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            string name = config != null && config.IsBurger(line.item)
+                ? "Burger"
+                : (string.IsNullOrEmpty(line.item.itemName) ? line.item.name : line.item.itemName);
             if (string.IsNullOrEmpty(name)) name = "Item";
             if (line.quantity > 1)
                 parts.Add(name + " x" + line.quantity);
@@ -175,6 +179,8 @@ public class CustomerOrder
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig
             : null;
+        if (config != null && config.IsBurger(a) && config.IsBurger(b))
+            return true;
         if (config != null && config.SameMenuProduct(a, b))
             return true;
 

@@ -419,6 +419,9 @@ public enum StationRuntimeState
 /// </summary>
 public sealed class StationRuntimeMetrics : MonoBehaviour
 {
+    struct OutputSample { public float time; public int units; }
+    readonly Queue<OutputSample> outputSamples = new Queue<OutputSample>();
+    float outputTrackingStartedAt;
     StationNode node;
     float workingSeconds;
     float starvedSeconds;
@@ -437,6 +440,24 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
     public float StarvedPercent => Percent(starvedSeconds);
     public float BlockedPercent => Percent(blockedSeconds);
     public float IdlePercent => Percent(idleSeconds);
+    /// <summary>
+    /// Productive time divided only by time in which production was demanded.
+    /// Intentional idle time after targets are met does not reduce efficiency.
+    /// </summary>
+    public float DemandSeconds => workingSeconds + starvedSeconds + blockedSeconds;
+    public float EfficiencyPercent => DemandSeconds > 0.01f
+        ? workingSeconds * 100f / DemandSeconds : 0f;
+    public float ActualOutputPerMinute
+    {
+        get
+        {
+            PruneOutputSamples();
+            int units = 0;
+            foreach (OutputSample sample in outputSamples) units += sample.units;
+            float window = Mathf.Clamp(Time.time - outputTrackingStartedAt, 1f, 60f);
+            return units * 60f / window;
+        }
+    }
 
     public static StationRuntimeMetrics EnsureOn(GameObject station)
     {
@@ -448,6 +469,21 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
     void Awake()
     {
         node = GetComponent<StationNode>();
+        outputTrackingStartedAt = Time.time;
+    }
+
+    public void RecordOutput(int units)
+    {
+        if (units <= 0) return;
+        outputSamples.Enqueue(new OutputSample { time = Time.time, units = units });
+        PruneOutputSamples();
+    }
+
+    void PruneOutputSamples()
+    {
+        float cutoff = Time.time - 60f;
+        while (outputSamples.Count > 0 && outputSamples.Peek().time < cutoff)
+            outputSamples.Dequeue();
     }
 
     void Update()
@@ -492,13 +528,16 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         AssemblyStation assembly = GetComponent<AssemblyStation>();
         if (assembly != null)
         {
+            if (assembly.IsProcessing) return StationRuntimeState.Working;
             if (assembly.BufferedOutputCount >= assembly.OutputSlotCapacity)
                 return StationRuntimeState.Blocked;
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
             if (recipe != null)
             {
                 if (assembly.BufferedProcessedInputCount < Mathf.Max(1, recipe.processedInputAmount)
-                    || assembly.BufferedPantryInputCount < Mathf.Max(1, recipe.pantryInputAmount))
+                    || assembly.BufferedPantryInputCount < Mathf.Max(1, recipe.pantryInputAmount)
+                    || (recipe.thirdInput != null && assembly.BufferedThirdInputCount
+                        < Mathf.Max(1, recipe.thirdInputAmount)))
                     return StationRuntimeState.Starved;
             }
         }
@@ -507,8 +546,36 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         if (grill != null)
         {
             if (grill.IsCookingPatty) return StationRuntimeState.Working;
-            if (grill.IsCooked()) return StationRuntimeState.Blocked;
+            if (grill.IsCooked() && grill.BufferedPattyCount >= grill.SlotCapacity)
+                return StationRuntimeState.Blocked;
             if (!grill.HasPattyOnGrill) return StationRuntimeState.Starved;
+        }
+
+        // No queued demand and no physical work-in-progress is intentional idle
+        // time. It must not be reported as starvation or reduce efficiency.
+        ProductionManager manager = ProductionManager.Instance;
+        if (!HasBufferedWork() && (manager == null || !manager.HasActiveDemandForStation(gameObject)))
+            return StationRuntimeState.Idle;
+
+        CuttingStation cutting = GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            if (cutting.IsProcessing) return StationRuntimeState.Working;
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            if (recipe != null && cutting.GetOutputCount(recipe.output) >= cutting.OutputSlotCapacity)
+                return StationRuntimeState.Blocked;
+            if (recipe != null && cutting.GetInputCount(recipe.input) <= 0)
+                return StationRuntimeState.Starved;
+        }
+
+        FryerStation fryer = GetComponent<FryerStation>();
+        if (fryer != null)
+        {
+            if (fryer.IsCooking) return StationRuntimeState.Working;
+            if (fryer.GetOutputCount(fryer.GetSelectedOutput()) >= fryer.OutputSlotCapacity)
+                return StationRuntimeState.Blocked;
+            if (fryer.GetInputCount(fryer.GetSelectedInput()) <= 0)
+                return StationRuntimeState.Starved;
         }
 
         HeatLampStation pickup = GetComponent<HeatLampStation>();
@@ -528,5 +595,26 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
             return StationRuntimeState.Starved;
 
         return StationRuntimeState.Idle;
+    }
+
+    bool HasBufferedWork()
+    {
+        AssemblyStation assembly = GetComponent<AssemblyStation>();
+        if (assembly != null)
+            return assembly.IsProcessing || assembly.BufferedProcessedInputCount > 0
+                || assembly.BufferedPantryInputCount > 0 || assembly.BufferedThirdInputCount > 0
+                || assembly.BufferedOutputCount > 0;
+        GrillStation grill = GetComponent<GrillStation>();
+        if (grill != null) return grill.BufferedPattyCount > 0;
+        CuttingStation cutting = GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            return recipe != null && (cutting.GetInputCount(recipe.input) > 0
+                || cutting.GetOutputCount(recipe.output) > 0 || cutting.IsProcessing);
+        }
+        FryerStation fryer = GetComponent<FryerStation>();
+        if (fryer != null) return fryer.BufferedUnitCount > 0;
+        return false;
     }
 }

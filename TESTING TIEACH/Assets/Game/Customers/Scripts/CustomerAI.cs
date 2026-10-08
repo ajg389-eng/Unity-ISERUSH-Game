@@ -193,7 +193,7 @@ public class CustomerAI : MonoBehaviour
         OriginalOrder = order.Clone();
         OrderNumber = ++nextOrderNumber;
         CustomerDisplayName = orderNames[customerNameRandom.Next(orderNames.Length)] + " " + (char)('A' + customerNameRandom.Next(26)) + ".";
-        salePrice = order.GetSalePrice();
+        salePrice = GetGenericOrderBasePrice(order);
         if (ProductionManager.Instance != null)
             ProductionManager.Instance.RecordCustomerOrder(order);
         if (orderLabel != null)
@@ -232,7 +232,31 @@ public class CustomerAI : MonoBehaviour
     public void ApplyPickupSaleValue(ItemDefinition item, int adjustedValue)
     {
         if (item == null) return;
-        salePrice = Mathf.Max(0, salePrice - Mathf.Max(0, item.price) + Mathf.Max(0, adjustedValue));
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config != null && config.IsBurger(item))
+            salePrice = Mathf.Max(0, salePrice
+                - Mathf.Max(0, config.burgerBase != null ? config.burgerBase.price : item.price)
+                + Mathf.Max(0, adjustedValue));
+        else
+            salePrice = Mathf.Max(0, salePrice - Mathf.Max(0, item.price)
+                + Mathf.Max(0, adjustedValue));
+    }
+
+    static int GetGenericOrderBasePrice(CustomerOrder customerOrder)
+    {
+        if (customerOrder?.lines == null) return 0;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        int total = 0;
+        foreach (CustomerOrder.OrderLine line in customerOrder.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            ItemDefinition pricedItem = config != null && config.IsBurger(line.item)
+                && config.burgerBase != null ? config.burgerBase : line.item;
+            total += Mathf.Max(0, pricedItem.price) * line.quantity;
+        }
+        return total;
     }
 
     void RefreshOrderLabel()

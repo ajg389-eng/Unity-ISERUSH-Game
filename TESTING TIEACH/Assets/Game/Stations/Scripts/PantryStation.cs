@@ -15,7 +15,7 @@ public class PantryStation : MonoBehaviour
     public ItemDefinition secondItem;
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one pantry operation.")]
-    [Min(0f)] public float processTimeSeconds = 0.5f;
+    [Min(0f)] public float processTimeSeconds = 0f;
     [Tooltip("Show a caution sign when the assigned ingredient reaches this stock level or lower.")]
     [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
@@ -66,16 +66,18 @@ public class PantryStation : MonoBehaviour
     {
         if (item == null || !CanDispense(item)) return false;
         var inv = KitchenInventory.Instance;
-        if (inv == null) return true;
-        return inv.TryConsume(item, 1);
+        bool taken = inv == null || inv.TryConsume(item, 1);
+        if (taken) StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+        return taken;
     }
 
     public bool TakeItems(ItemDefinition item, int amount)
     {
         if (item == null || amount <= 0 || !CanDispense(item)) return false;
         var inv = KitchenInventory.Instance;
-        if (inv == null) return true;
-        return inv.TryConsume(item, amount);
+        bool taken = inv == null || inv.TryConsume(item, amount);
+        if (taken) StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(amount);
+        return taken;
     }
 
     public bool HasItemSelected => selectedItem != null || secondItem != null;

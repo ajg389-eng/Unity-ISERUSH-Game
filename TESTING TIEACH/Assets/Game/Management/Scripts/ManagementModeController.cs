@@ -1037,8 +1037,8 @@ public class ManagementModeController : MonoBehaviour
         StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(selectedStation.gameObject);
         string state = metrics != null ? metrics.CurrentState.ToString() : "Idle";
         if (productionEfficiencyText != null)
-            productionEfficiencyText.text = metrics != null && metrics.TotalSeconds >= 1f
-                ? metrics.WorkingPercent.ToString("0") + "%" : "0%";
+            productionEfficiencyText.text = metrics != null && metrics.DemandSeconds >= 1f
+                ? metrics.EfficiencyPercent.ToString("0") + "%" : "0%";
         string utilization = metrics != null && metrics.TotalSeconds >= 1f
             ? "Working " + metrics.WorkingPercent.ToString("0") + "%  |  Blocked "
                 + metrics.BlockedPercent.ToString("0") + "%  |  Starved "
@@ -1450,7 +1450,11 @@ public class ManagementModeController : MonoBehaviour
             productionSecondInputRate.text = FormatPerMinute(secondInputRate) + "/min";
         }
         productionOutputName.text = outputName;
-        productionOutputRate.text = FormatPerMinute(node.outputAmountPerMinute) + "/min";
+        float maximumRate = node.outputAmountPerMinute;
+        StationRuntimeMetrics runtimeMetrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
+        float actualRate = runtimeMetrics != null ? runtimeMetrics.ActualOutputPerMinute : 0f;
+        productionOutputRate.text = FormatPerMinute(actualRate) + "/min actual\n"
+            + FormatPerMinute(maximumRate) + "/min max";
         if (pantry != null)
         {
             ItemDefinition second = pantry.secondItem;

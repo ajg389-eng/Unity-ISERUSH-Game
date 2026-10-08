@@ -143,9 +143,14 @@ public class CustomerOrderLabel : MonoBehaviour
         {
             if (line.item == null || line.quantity <= 0)
                 continue;
+            ItemDefinition displayItem = line.item;
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            if (config != null && config.IsBurger(line.item) && config.burgerBase != null)
+                displayItem = config.burgerBase;
             int copies = Mathf.Max(1, line.quantity);
             for (int i = 0; i < copies; i++)
-                items.Add(line.item);
+                items.Add(displayItem);
         }
 
         if (items.Count == 0)

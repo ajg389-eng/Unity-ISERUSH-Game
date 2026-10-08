@@ -489,7 +489,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FryerStation
   selectedProduct: {fileID: 0}
-  processTimeSeconds: 12
+  processTimeSeconds: 4
   interactionOffset: {x: 0, y: 0, z: 0}
   basketUnits: 0
 --- !u!1 &8055094355580598925

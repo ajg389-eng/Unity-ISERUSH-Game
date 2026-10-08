@@ -16,9 +16,12 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one grill operation. Loading, cooking, and unloading are included.")]
     [Min(0f)] public float processTimeSeconds = 4f;
+    [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
     [SerializeField, Min(0)] int pattyUnits;
+    [SerializeField, Min(0)] int waitingInputUnits;
+    [SerializeField, Min(0)] int cookedOutputUnits;
     float cookTimer;
     CustomerOrder bufferedOrder;
     Transform itemDisplayRoot;
@@ -27,49 +30,60 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     int displayedUnits = -1;
     bool displayedCooked;
     ItemDefinition displayedProduct;
+    StationProcessProgressIndicator processProgressIndicator;
 
     public bool HasProductSelected => selectedProduct != null;
     public bool HasPattyOnGrill => pattyUnits > 0;
     public bool IsCookingPatty => pattyUnits > 0 && cookTimer < processTimeSeconds;
-    public int BufferedPattyCount => pattyUnits;
+    public int BufferedPattyCount => waitingInputUnits + pattyUnits + cookedOutputUnits;
     public float CookProgressSeconds => cookTimer;
-    public int InputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, inputMarkers.Count); } }
-    public int OutputSlotCapacity { get { EnsureBufferMarkers(); return Mathf.Max(DefaultBufferCapacity, outputMarkers.Count); } }
+    public float ProcessRemainingSeconds => IsCookingPatty
+        ? Mathf.Max(0f, processTimeSeconds - cookTimer) : 0f;
+    public int SlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
+    public int InputSlotCapacity => SlotCapacity;
+    public int OutputSlotCapacity => SlotCapacity;
 
     void OnEnable()
     {
+        processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         NormalizeLegacySelection();
         FindBufferMarkers();
-        pattyUnits = Mathf.Clamp(pattyUnits, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
+        // Legacy saves could contain a full input buffer and a separate full
+        // output buffer. Collapse them into the shared physical slot pool,
+        // retaining completed food first.
+        cookedOutputUnits = Mathf.Clamp(cookedOutputUnits, 0, SlotCapacity);
+        pattyUnits = Mathf.Clamp(pattyUnits, 0, SlotCapacity - cookedOutputUnits);
+        waitingInputUnits = Mathf.Clamp(waitingInputUnits, 0,
+            SlotCapacity - cookedOutputUnits - pattyUnits);
+        StartNextBatchIfPossible();
         RefreshItemDisplay(force: true);
     }
 
     public int GetInputCount(ItemDefinition item) =>
-        IsSelectedInput(item) && IsCookingPatty ? pattyUnits : 0;
+        IsSelectedInput(item) ? waitingInputUnits : 0;
     public int GetOutputCount(ItemDefinition item) =>
-        IsSelectedOutput(item) && IsCooked() ? pattyUnits : 0;
+        IsSelectedOutput(item) ? cookedOutputUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && IsSelectedInput(item) && pattyUnits == 0 && amount <= InputSlotCapacity;
+        amount > 0 && IsSelectedInput(item)
+            && BufferedPattyCount + amount <= SlotCapacity;
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;
-        pattyUnits = amount;
-        cookTimer = 0f;
+        waitingInputUnits += amount;
         bufferedOrder = sourceOrder;
+        StartNextBatchIfPossible();
+        RefreshItemDisplay(true);
         return amount;
     }
     public int TakeOutput(ItemDefinition item, int amount)
     {
-        if (amount <= 0 || !IsSelectedOutput(item) || !IsCooked()) return 0;
-        int taken = Mathf.Min(amount, pattyUnits);
-        pattyUnits -= taken;
-        if (pattyUnits <= 0)
-        {
-            pattyUnits = 0;
-            cookTimer = 0f;
-            bufferedOrder = null;
-        }
+        if (amount <= 0 || !IsSelectedOutput(item) || cookedOutputUnits <= 0) return 0;
+        int taken = Mathf.Min(amount, cookedOutputUnits);
+        cookedOutputUnits -= taken;
+        if (waitingInputUnits + pattyUnits + cookedOutputUnits == 0) bufferedOrder = null;
+        StartNextBatchIfPossible();
+        RefreshItemDisplay(true);
         return taken;
     }
 
@@ -97,6 +111,8 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         if (selectedProduct != output)
         {
             pattyUnits = 0;
+            waitingInputUnits = 0;
+            cookedOutputUnits = 0;
             cookTimer = 0f;
             bufferedOrder = null;
         }
@@ -128,7 +144,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     }
 
     public bool IsHoldingOrder(CustomerOrder order) =>
-        !HasPattyOnGrill || bufferedOrder == null || order == null || bufferedOrder == order;
+        BufferedPattyCount == 0 || bufferedOrder == null || order == null || bufferedOrder == order;
 
     public Vector3 GetInteractionPosition()
     {
@@ -139,7 +155,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public bool CanPlacePatty()
     {
-        return pattyUnits == 0 && HasProductSelected;
+        return CanAcceptInput(SelectedInput, 1);
     }
 
     public void PlacePatty()
@@ -158,11 +174,31 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     {
         if (pattyUnits > 0 && cookTimer < processTimeSeconds)
             cookTimer += deltaTime;
+        if (pattyUnits > 0 && cookTimer >= processTimeSeconds)
+        {
+            cookedOutputUnits += pattyUnits;
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(pattyUnits);
+            pattyUnits = 0;
+            cookTimer = 0f;
+            StartNextBatchIfPossible();
+        }
     }
 
     public bool IsCooked()
     {
-        return pattyUnits > 0 && cookTimer >= processTimeSeconds;
+        return cookedOutputUnits > 0;
+    }
+
+    void StartNextBatchIfPossible()
+    {
+        if (pattyUnits > 0 || waitingInputUnits <= 0) return;
+        // Raw food already occupies its final grill slots. Starting or finishing
+        // cooking changes item state without moving it into another buffer.
+        int batch = Mathf.Min(waitingInputUnits, SlotCapacity - cookedOutputUnits);
+        if (batch <= 0) return;
+        waitingInputUnits -= batch;
+        pattyUnits = batch;
+        cookTimer = 0f;
     }
 
     public bool TakeCookedPatty()
@@ -179,6 +215,8 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     {
         selectedProduct = product;
         NormalizeLegacySelection();
+        waitingInputUnits = 0;
+        cookedOutputUnits = 0;
         pattyUnits = Mathf.Clamp(units, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
         cookTimer = pattyUnits > 0
             ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
@@ -189,13 +227,15 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     void Update()
     {
         UpdateCooking(Time.deltaTime);
+        processProgressIndicator?.SetProgress(
+            IsCookingPatty, cookTimer / Mathf.Max(0.01f, processTimeSeconds));
         RefreshItemDisplay(force: false);
     }
 
     void RefreshItemDisplay(bool force)
     {
         bool cooked = IsCooked();
-        if (!force && displayedUnits == pattyUnits && displayedCooked == cooked
+        if (!force && displayedUnits == BufferedPattyCount && displayedCooked == cooked
             && displayedProduct == selectedProduct) return;
 
         EnsureBufferMarkers();
@@ -203,23 +243,27 @@ public class GrillStation : MonoBehaviour, IStationBuffer
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "GrillItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
 
-        displayedUnits = pattyUnits;
+        displayedUnits = BufferedPattyCount;
         displayedCooked = cooked;
         displayedProduct = selectedProduct;
-        if (pattyUnits <= 0) return;
+        if (BufferedPattyCount <= 0) return;
 
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig
             : null;
-        ItemDefinition visualItem = cooked ? selectedProduct : SelectedInput;
-        GameObject prefab = visualItem != null ? visualItem.prefab : null;
-        if (prefab == null) return;
-
-        List<Transform> activeMarkers = cooked ? outputMarkers : inputMarkers;
-        int visibleCount = Mathf.Min(pattyUnits, activeMarkers.Count);
-        for (int i = 0; i < visibleCount; i++)
-            StationItemVisualUtility.SpawnAtMarker(prefab, activeMarkers[i], itemDisplayRoot,
-                (cooked ? "CookedPatty_" : "RawPatty_") + i);
+        GameObject inputPrefab = SelectedInput != null ? SelectedInput.prefab : null;
+        GameObject outputPrefab = selectedProduct != null ? selectedProduct.prefab : null;
+        // Completed food stays in the same authored slots. Newly loaded raw food
+        // occupies only the remaining shared slots instead of a separate row.
+        int outputVisible = Mathf.Min(cookedOutputUnits, inputMarkers.Count);
+        for (int i = 0; outputPrefab != null && i < outputVisible; i++)
+            StationItemVisualUtility.SpawnAtMarker(outputPrefab, inputMarkers[i], itemDisplayRoot,
+                "GrillOutput_" + i);
+        int rawVisible = Mathf.Min(waitingInputUnits + pattyUnits,
+            Mathf.Max(0, inputMarkers.Count - outputVisible));
+        for (int i = 0; inputPrefab != null && i < rawVisible; i++)
+            StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[outputVisible + i], itemDisplayRoot,
+                "GrillInput_" + i);
     }
 
     void FindBufferMarkers()
@@ -229,6 +273,6 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     void EnsureBufferMarkers()
     {
-        if (inputMarkers.Count == 0 && outputMarkers.Count == 0) FindBufferMarkers();
+        if (inputMarkers.Count == 0) FindBufferMarkers();
     }
 }

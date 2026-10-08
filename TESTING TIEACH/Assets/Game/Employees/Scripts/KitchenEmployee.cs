@@ -623,8 +623,13 @@ public class KitchenEmployee : MonoBehaviour
                 // Station contents are the source of truth. Jobs are rebuilt
                 // after loading and recovery, so object-reference order checks
                 // can reject a perfectly valid patty and leave every worker idle.
-                if (requireReady && !grill.HasPattyOnGrill) continue;
-                if (requireReady && grill.IsCooked())
+                ItemDefinition grillInput = grill.GetSelectedInput();
+                bool canLoadCarriedInput = job.heldUnits > 0
+                    && grillInput != null
+                    && grill.CanAcceptInput(grillInput, 1);
+                bool canCollectOutput = grill.IsCooked();
+                if (requireReady && !canLoadCarriedInput && !canCollectOutput) continue;
+                if (requireReady && canCollectOutput && !canLoadCarriedInput)
                 {
                     GameObject destination = production.GetFlowOutput(this, candidate, job);
                     ItemDefinition item = production.GetBranchTransferItem(job);
@@ -658,8 +663,7 @@ public class KitchenEmployee : MonoBehaviour
                         Mathf.Min(CarryCapacity, assembly.MaxProcessBatch));
                     bool canDeliverStoredOutput = HasRoutableStoredAssemblyOutput(
                         assembly, job.CurrentWorkProduct, job);
-                    if (!canDeliverStoredOutput && !assembly.HasRequiredInputs(
-                            job.CurrentWorkProduct, job.ingredientsHeld, units))
+                    if (!canDeliverStoredOutput)
                         continue;
                 }
             }
@@ -679,9 +683,8 @@ public class KitchenEmployee : MonoBehaviour
                 {
                     int requiredUnits = Mathf.Max(1, job.heldUnits);
                     bool carriedInput = ContainsItemCount(job.ingredientsHeld, requiredInput, requiredUnits);
-                    bool bufferedInput = cutting.GetInputCount(requiredInput) > 0;
                     bool bufferedOutput = cutting.GetOutputCount(requiredOutput) > 0;
-                    if (!carriedInput && !bufferedInput && !bufferedOutput) continue;
+                    if (!carriedInput && !bufferedOutput) continue;
                 }
             }
             else if (stationType == StationType.Fryer)
@@ -690,8 +693,14 @@ public class KitchenEmployee : MonoBehaviour
                 ItemDefinition fryerOutput = job.isAssemblySupply
                     ? production.GetAssemblySupplyStepOutput(job) : production.CookedPotatoItem;
                 if (fryer == null || !fryer.CanProcess(fryerOutput)) continue;
-                if (requireReady && !fryer.IsCooking && !fryer.IsCooked()) continue;
-                if (fryer.IsCooked())
+                ItemDefinition fryerInput = job.isAssemblySupply
+                    ? production.GetAssemblySupplyStepInput(job) : production.SlicedPotatoItem;
+                bool canLoadCarriedInput = job.heldUnits > 0
+                    && fryerInput != null
+                    && fryer.CanAcceptInput(fryerInput, 1);
+                bool canCollectOutput = fryer.IsCooked();
+                if (requireReady && !canLoadCarriedInput && !canCollectOutput) continue;
+                if (canCollectOutput && !canLoadCarriedInput)
                 {
                     GameObject destination = production.GetFlowOutput(this, candidate, job);
                     ItemDefinition item = production.GetBranchTransferItem(job);
@@ -1243,11 +1252,14 @@ public class KitchenEmployee : MonoBehaviour
         List<Vector3> route = grid.GetPath(transform.position, grid.GetCellCenter(destination));
         if (route == null || route.Count == 0)
             return Vector3.Distance(transform.position, destination) * 4f;
+        // Measure grid edges, not Euclidean length. Diagonal and cardinal
+        // neighbor steps both cost one tile, matching actual movement timing.
         float distance = 0f;
         Vector3 previous = transform.position;
         foreach (Vector3 point in route)
         {
-            distance += Vector3.Distance(previous, point);
+            distance += Mathf.Max(Mathf.Abs(point.x - previous.x),
+                Mathf.Abs(point.z - previous.z));
             previous = point;
         }
         return distance;
@@ -1832,6 +1844,35 @@ public class KitchenEmployee : MonoBehaviour
         ResetProgressTracking();
     }
 
+    void YieldAutomaticProcessingStep()
+    {
+        if (currentJob == null) return;
+        GameObject processingStation = currentJob.reservedWorkStation;
+        if (processingStation == null && currentJob.CurrentStationType.HasValue)
+            processingStation = GetOperatedStationObject(currentJob.CurrentStationType.Value);
+        currentJob.hasPatty = false;
+        currentJob.heldUnits = 0;
+        currentJob.ingredientsHeld.Clear();
+        // The physical input now belongs to one exact station. Preserve that
+        // identity while its autonomous timer runs so duplicate station types
+        // cannot redirect the collection task to a different machine.
+        currentJob.taskPhase = ProductionTaskPhase.CollectOutput;
+        currentJob.taskSourceStation = processingStation;
+        manager?.ReleaseJob(currentJob);
+        currentJob = null;
+        ClearHeldInventory();
+        deliverTarget = null;
+        awaitingOutputDelivery = false;
+        step = Step.None;
+        stateTimer = 0f;
+        ShowTaskBar = false;
+        TaskProgress = 0f;
+        SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
+        ResetNavigationPath(true);
+        nextTaskEvaluationTime = Time.time;
+        ResetProgressTracking();
+    }
+
     void RewindInvalidCuttingTask()
     {
         if (currentJob == null) return;
@@ -2062,16 +2103,19 @@ public class KitchenEmployee : MonoBehaviour
         if (depositedUnits == 0)
             currentJob.ingredientsHeld.AddRange(ingredientsHeld);
         currentJob.currentStepIndex = idx;
-        currentJob.taskPhase = ProductionTaskPhase.Work;
-        currentJob.taskSourceStation = null;
-        manager.ReleaseJob(currentJob);
-
-        // Keep one worker responsible for the job from source to pickup. The
-        // previous implementation released every intermediate step into a
-        // shared queue, which created orphaned ingredients and reservation races.
-        // If the next station is temporarily missing another input, release the
-        // intact job so another useful task can run and retry it later.
-        bool continueImmediately = manager.TryReserveCurrentStation(currentJob, this, true);
+        bool destinationProcessesBufferedInput = depositedUnits > 0
+            && (outType == StationType.Grill || outType == StationType.Cutting
+                || outType == StationType.Fryer || outType == StationType.Assembly);
+        currentJob.taskPhase = destinationProcessesBufferedInput
+            ? ProductionTaskPhase.CollectOutput : ProductionTaskPhase.Work;
+        currentJob.taskSourceStation = destinationProcessesBufferedInput
+            ? deliverTarget : null;
+        // Keep ownership while replacing the completed station reservation with
+        // the next one. Releasing first exposed the same job to another worker
+        // for part of this handoff and produced split ownership in shared flows.
+        // If the next step is not runnable, the manager releases it exactly once
+        // after the reservation attempt fails.
+        bool continueImmediately = manager.TryContinueJobAtNextStation(currentJob, this);
         ClearHeldInventory();
         deliverTarget = null;
         awaitingOutputDelivery = false;
@@ -2081,7 +2125,6 @@ public class KitchenEmployee : MonoBehaviour
         SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
         if (continueImmediately)
         {
-            currentJob.assignedTo = this;
             // Non-buffer stations such as Cutting receive ingredients in the
             // worker's hands. ClearHeldInventory above resets the local view,
             // so restore the inventory that was persisted on the job before
@@ -3016,7 +3059,8 @@ public class KitchenEmployee : MonoBehaviour
                         }
 
                         int grillLoad = grill != null
-                            ? Mathf.Min(heldUnits, grill.InputSlotCapacity) : heldUnits;
+                            ? Mathf.Min(heldUnits, Mathf.Max(0,
+                                grill.SlotCapacity - grill.BufferedPattyCount)) : heldUnits;
                         int placed = heldUnits > 0
                             ? manager.PlacePattiesOnGrill(this,
                                 grillOutput,
@@ -3033,17 +3077,13 @@ public class KitchenEmployee : MonoBehaviour
                                 heldUnits);
                             heldUnits = 0;
                             SyncHasPattyFlag();
-                            step = Step.AtGrill;
-                            stateTimer = 0f;
+                            YieldAutomaticProcessingStep();
                         }
                         else if (grill != null && grill.HasPattyOnGrill)
                         {
-                            // Already cooking — watch this cycle instead of path-thrashing.
-                            FaceStationObject(grill.gameObject);
-                            step = Step.AtGrill;
-                            stateTimer = 0f;
-                            ShowTaskBar = true;
-                            TaskProgress = 0f;
+                            // Processing belongs to the station, so another active batch
+                            // must not reserve this worker while it cooks.
+                            YieldAutomaticProcessingStep();
                         }
                         else
                         {
@@ -3147,6 +3187,8 @@ public class KitchenEmployee : MonoBehaviour
                                 ingredientsHeld.Clear();
                                 heldUnits = 0;
                                 SyncHasPattyFlag();
+                                YieldAutomaticProcessingStep();
+                                break;
                             }
                         }
 
@@ -3419,10 +3461,16 @@ public class KitchenEmployee : MonoBehaviour
                     if (manager.IsEmployeeOnFryerTile(transform.position, this))
                     {
                         FryerStation fryer = manager.GetFryerFor(this);
-                        if (fryer != null && (fryer.IsCooking || fryer.IsCooked()))
+                        if (fryer != null && fryer.IsCooked())
                         {
                             step = Step.AtFryer;
                             stateTimer = 0f;
+                        }
+                        else if (fryer != null && fryer.IsCooking)
+                        {
+                            // Frying continues autonomously while the worker services
+                            // another runnable task in the production graph.
+                            YieldAutomaticProcessingStep();
                         }
                         else
                         {
@@ -3444,8 +3492,7 @@ public class KitchenEmployee : MonoBehaviour
                                     : manager.SlicedPotatoItem, heldUnits);
                                 heldUnits = 0;
                                 SyncHasPattyFlag();
-                                step = Step.AtFryer;
-                                stateTimer = 0f;
+                                YieldAutomaticProcessingStep();
                             }
                             else { path.Clear(); pathDestination = Vector3.zero; }
                         }
@@ -3747,10 +3794,10 @@ public class KitchenEmployee : MonoBehaviour
         Vector3 waypoint = path[0];
         waypoint.y = GroundY;
 
-        float step = moveSpeed * Time.deltaTime;
         Vector3 pos = transform.position;
         pos.y = GroundY;
         float dist = Vector3.Distance(pos, waypoint);
+        float step = GetGridNormalizedStep(pos, waypoint);
 
         if (dist <= step)
         {
@@ -3782,7 +3829,7 @@ public class KitchenEmployee : MonoBehaviour
         Vector3 pos = transform.position;
         pos.y = GroundY;
         float dist = Vector3.Distance(pos, target);
-        float step = moveSpeed * Time.deltaTime;
+        float step = GetGridNormalizedStep(pos, target);
         if (dist <= step || dist <= ArrivalRadius)
         {
             SnapToWorldXZ(target);
@@ -3793,6 +3840,21 @@ public class KitchenEmployee : MonoBehaviour
         transform.position = nextPos;
         FaceMoveTarget(target);
         return false;
+    }
+
+    /// <summary>
+    /// Measures movement in grid edges. A one-tile diagonal receives the exact
+    /// speed multiplier required to take as long as a cardinal tile.
+    /// </summary>
+    float GetGridNormalizedStep(Vector3 from, Vector3 to)
+    {
+        float dx = Mathf.Abs(to.x - from.x);
+        float dz = Mathf.Abs(to.z - from.z);
+        float axialDistance = Mathf.Max(dx, dz);
+        float worldDistance = Mathf.Sqrt(dx * dx + dz * dz);
+        float directionMultiplier = axialDistance > 0.0001f
+            ? worldDistance / axialDistance : 1f;
+        return moveSpeed * directionMultiplier * Time.deltaTime;
     }
 
     void FaceMoveTarget(Vector3 worldPoint)

@@ -611,7 +611,7 @@ public class CustomerOrderConfig : ScriptableObject
         }
 
         if (wantBurger)
-            order.lines.Add(new CustomerOrder.OrderLine(orderedBurger ?? PickEnabledBurger(), 1));
+            order.lines.Add(new CustomerOrder.OrderLine(burgerBase ?? orderedBurger, 1));
         if (wantFries)
             order.lines.Add(new CustomerOrder.OrderLine(PickEnabledProduct(ProductKind.Fries), 1));
         if (wantDrink)
@@ -637,6 +637,8 @@ public class CustomerOrderConfig : ScriptableObject
         if (options.Count == 0) return new CustomerOrder();
 
         var pick = options[Random.Range(0, options.Count)];
+        if (IsBurger(pick) && burgerBase != null)
+            pick = burgerBase;
         return CustomerOrder.FromItem(pick, 1);
     }
 

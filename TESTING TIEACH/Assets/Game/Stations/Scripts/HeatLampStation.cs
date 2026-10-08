@@ -1139,8 +1139,12 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
                 source = station;
             }
 
-            if (source == null || !source.TryCustomerTakeSingleItem(line.item, out adjustedSaleValue)) continue;
-            item = line.item;
+            if (source == null) continue;
+            CustomerOrder taken = source.TryTakeSingleItem(line.item, out adjustedSaleValue);
+            ItemDefinition actualItem = taken != null ? taken.PrimaryItem : null;
+            if (actualItem == null) continue;
+            source.totalSold++;
+            item = actualItem;
             return true;
         }
 
@@ -1199,9 +1203,9 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
-        ItemDefinition held = item;
+        ItemDefinition held = meal?.order?.PrimaryItem;
         if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
-        adjustedSaleValue = GetFreshnessSaleValue(meal, item);
+        adjustedSaleValue = GetFreshnessSaleValue(meal, held);
         if (meal.order.GetTotalQuantity() <= 0)
             meals.RemoveAt(idx);
         RefreshStatusLabel();
