@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_05_steady_service
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_05_steady_service
-  title: Maintain steady service
-  description: Serve 20 customers - prioritize correct, complete orders over raw speed.
+  title: Maintain consistent service
+  description: Serve 25 customers while balancing order accuracy and speed.
   completionEventId: order_served
-  requiredCount: 20
+  requiredCount: 25
   showBeforeComplete: 1
   showAfterComplete: 1

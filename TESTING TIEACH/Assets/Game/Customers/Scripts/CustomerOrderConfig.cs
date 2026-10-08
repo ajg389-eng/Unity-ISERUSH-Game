@@ -147,7 +147,8 @@ public class CustomerOrderConfig : ScriptableObject
     [System.NonSerialized] readonly HashSet<ItemDefinition> disabledExpandedBurgers = new HashSet<ItemDefinition>();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
-        || item == cheeseburgerItem || item == cheeseBaconBurgerItem
+        || item == cheeseburgerItem || item == clBurgerItem || item == cltBurgerItem
+        || item == cheeseBaconBurgerItem
         || item == cheeseBaconLettuceBurgerItem || item == cheeseBaconLettuceOnionBurgerItem
         || item == cheeseBaconLettuceOnionTomatoBurgerItem
         || item == cheeseBaconLettuceOnionTomatoEggBurgerItem);
@@ -155,8 +156,114 @@ public class CustomerOrderConfig : ScriptableObject
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
     public bool IsDrink(ItemDefinition item) => item != null && (item == drinkItem || item == whippedCreamShakeItem || item == whippedCreamSprinkleShakeItem);
 
+    public int GetMenuItemUnlockMilestone(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        if (item == burgerBase || item == cheeseburgerItem || item == friesItem) return 1;
+        if (item == clBurgerItem || item == cltBurgerItem || item == cheeseFriesItem) return 2;
+        if (item == cheeseBaconBurgerItem || item == cheeseBaconLettuceBurgerItem || item == drinkItem) return 3;
+        if (item == cheeseBaconLettuceOnionBurgerItem
+            || item == cheeseBaconLettuceOnionTomatoBurgerItem
+            || item == cheeseBaconLettuceOnionTomatoEggBurgerItem
+            || item == cheeseBaconFriesItem || item == whippedCreamShakeItem
+            || item == whippedCreamSprinkleShakeItem) return 4;
+        return 0;
+    }
+
+    public bool IsMenuItemUnlocked(ItemDefinition item)
+    {
+        int milestone = GetMenuItemUnlockMilestone(item);
+        return milestone <= 0 || MilestoneProgressManager.Instance == null
+            || MilestoneFeatures.HasReached(milestone);
+    }
+
+    public bool IsIngredientUnlocked(ItemDefinition item)
+    {
+        return item != null && HasReachedMilestone(GetIngredientMilestone(item));
+    }
+
+    public int GetIngredientUnlockMilestone(ItemDefinition item) => GetIngredientMilestone(item);
+
+    static bool HasReachedMilestone(int milestone)
+    {
+        return MilestoneProgressManager.Instance == null || MilestoneFeatures.HasReached(milestone);
+    }
+
+    int GetRecipeUnlockMilestone(AssemblyRecipeDefinition recipe)
+    {
+        if (recipe == null) return int.MaxValue;
+        int milestone = GetMenuItemUnlockMilestone(recipe.output);
+        if (milestone == 0) milestone = GetIngredientMilestone(recipe.output);
+        milestone = Mathf.Max(milestone, GetIngredientMilestone(recipe.processedInput));
+        milestone = Mathf.Max(milestone, GetIngredientMilestone(recipe.pantryInput));
+        milestone = Mathf.Max(milestone, GetIngredientMilestone(recipe.rawPantryInput));
+        milestone = Mathf.Max(milestone, GetIngredientMilestone(recipe.thirdInput));
+        milestone = Mathf.Max(milestone, GetIngredientMilestone(recipe.rawThirdInput));
+        return Mathf.Max(1, milestone);
+    }
+
+    int GetIngredientMilestone(ItemDefinition item)
+    {
+        if (item == null) return 1;
+        int knownMilestone = GetKnownIngredientMilestone(item);
+        if (knownMilestone > 0) return knownMilestone;
+
+        // Recipe inputs without their own config field (such as milk and shake cups)
+        // inherit the earliest milestone of a product that needs them.
+        int earliestRecipeMilestone = 0;
+        if (assemblyRecipes != null)
+        {
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe == null || !RecipeUsesIngredient(recipe, item)) continue;
+                int recipeMilestone = GetKnownIngredientMilestone(recipe.output);
+                recipeMilestone = Mathf.Max(recipeMilestone, GetKnownIngredientMilestone(recipe.processedInput == item ? null : recipe.processedInput));
+                recipeMilestone = Mathf.Max(recipeMilestone, GetKnownIngredientMilestone(recipe.pantryInput == item ? null : recipe.pantryInput));
+                recipeMilestone = Mathf.Max(recipeMilestone, GetKnownIngredientMilestone(recipe.rawPantryInput == item ? null : recipe.rawPantryInput));
+                recipeMilestone = Mathf.Max(recipeMilestone, GetKnownIngredientMilestone(recipe.thirdInput == item ? null : recipe.thirdInput));
+                recipeMilestone = Mathf.Max(recipeMilestone, GetKnownIngredientMilestone(recipe.rawThirdInput == item ? null : recipe.rawThirdInput));
+                if (recipeMilestone > 0 && (earliestRecipeMilestone == 0 || recipeMilestone < earliestRecipeMilestone))
+                    earliestRecipeMilestone = recipeMilestone;
+            }
+        }
+        return earliestRecipeMilestone > 0 ? earliestRecipeMilestone : 1;
+    }
+
+    int GetKnownIngredientMilestone(ItemDefinition item)
+    {
+        if (item == null) return 0;
+        int menuMilestone = GetMenuItemUnlockMilestone(item);
+        if (menuMilestone > 0) return menuMilestone;
+        if (item == cheeseIngredient || item == slicedCheeseIngredient
+            || item == rawPattyIngredient || item == cookedPattyIngredient
+            || item == friesIngredient || item == slicedPotatoIngredient
+            || item == cookedPotatoIngredient || item == fryContainerIngredient) return 1;
+        if (item == lettuceIngredient || item == slicedLettuceIngredient
+            || item == tomatoIngredient || item == slicedTomatoIngredient
+            || item == cheeseSauceIngredient) return 2;
+        if (item == baconSlabIngredient || item == cutBaconIngredient || item == cookedBaconIngredient) return 3;
+        if (item == onionIngredient || item == onionRingIngredient || item == friedOnionRingIngredient
+            || item == eggIngredient || item == cookedEggIngredient
+            || item == whippedCreamIngredient || item == sprinklesIngredient) return 4;
+        return 0;
+    }
+
+    static bool RecipeUsesIngredient(AssemblyRecipeDefinition recipe, ItemDefinition item)
+    {
+        return recipe != null && item != null && (recipe.processedInput == item
+            || recipe.pantryInput == item || recipe.rawPantryInput == item
+            || recipe.thirdInput == item || recipe.rawThirdInput == item);
+    }
+
+    bool IsRecipeUnlocked(AssemblyRecipeDefinition recipe)
+    {
+        return MilestoneProgressManager.Instance == null
+            || MilestoneFeatures.HasReached(GetRecipeUnlockMilestone(recipe));
+    }
+
     public bool IsItemEnabled(ItemDefinition item)
     {
+        if (!IsMenuItemUnlocked(item)) return false;
         if (IsCheeseburger(item)) return cheeseburgerEnabled;
         if (item == clBurgerItem) return clBurgerEnabled;
         if (item == cltBurgerItem) return cltBurgerEnabled;
@@ -169,6 +276,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public void SetItemEnabled(ItemDefinition item, bool enabled)
     {
+        if (enabled && !IsMenuItemUnlocked(item)) return;
         if (IsCheeseburger(item)) cheeseburgerEnabled = enabled;
         else if (item == clBurgerItem) clBurgerEnabled = enabled;
         else if (item == cltBurgerItem) cltBurgerEnabled = enabled;
@@ -182,14 +290,15 @@ public class CustomerOrderConfig : ScriptableObject
         else if (IsDrink(item)) drinkEnabled = enabled;
     }
 
-    public bool HasEnabledItems =>
-        (burgerBase != null && burgerEnabled)
-        || (cheeseburgerItem != null && cheeseburgerEnabled)
-        || (clBurgerItem != null && clBurgerEnabled)
-        || (cltBurgerItem != null && cltBurgerEnabled)
-        || (cheeseBaconBurgerItem != null && !disabledExpandedBurgers.Contains(cheeseBaconBurgerItem))
-        || (friesItem != null && friesEnabled)
-        || (drinkItem != null && drinkEnabled);
+    public bool HasEnabledItems
+    {
+        get
+        {
+            foreach (ItemDefinition item in GetMenuItems())
+                if (IsItemEnabled(item)) return true;
+            return false;
+        }
+    }
 
     public enum ProductKind { None, Burger, Fries, Drink }
 
@@ -275,44 +384,59 @@ public class CustomerOrderConfig : ScriptableObject
     public IEnumerable<ItemDefinition> GetGrillProducts()
     {
         var yielded = new HashSet<ItemDefinition>();
-        if (cookedPattyIngredient != null && yielded.Add(cookedPattyIngredient)) yield return cookedPattyIngredient;
+        if (cookedPattyIngredient != null && IsIngredientUnlocked(cookedPattyIngredient)
+            && yielded.Add(cookedPattyIngredient)) yield return cookedPattyIngredient;
         if (grillRecipes != null)
             foreach (StationProcessingRecipeDefinition recipe in grillRecipes)
-                if (recipe != null && recipe.output != null && yielded.Add(recipe.output)) yield return recipe.output;
+                if (recipe != null && recipe.output != null && IsProcessingRecipeUnlocked(recipe)
+                    && yielded.Add(recipe.output)) yield return recipe.output;
     }
 
     public StationProcessingRecipeDefinition GetGrillRecipe(ItemDefinition output) =>
-        grillRecipes != null ? grillRecipes.Find(r => r != null && r.output == output) : null;
+        grillRecipes != null ? grillRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
     public StationProcessingRecipeDefinition GetFryerRecipe(ItemDefinition output) =>
-        fryerRecipes != null ? fryerRecipes.Find(r => r != null && r.output == output) : null;
+        fryerRecipes != null ? fryerRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
+
+    bool IsProcessingRecipeUnlocked(StationProcessingRecipeDefinition recipe)
+    {
+        if (recipe == null) return false;
+        return MilestoneProgressManager.Instance == null
+            || MilestoneFeatures.HasReached(Mathf.Max(GetIngredientMilestone(recipe.input), GetIngredientMilestone(recipe.output)));
+    }
+
     public IEnumerable<ItemDefinition> GetFryerProducts()
     {
         var yielded = new HashSet<ItemDefinition>();
-        if (cookedPotatoIngredient != null && yielded.Add(cookedPotatoIngredient)) yield return cookedPotatoIngredient;
+        if (cookedPotatoIngredient != null && IsIngredientUnlocked(cookedPotatoIngredient)
+            && yielded.Add(cookedPotatoIngredient)) yield return cookedPotatoIngredient;
         if (fryerRecipes != null)
             foreach (StationProcessingRecipeDefinition recipe in fryerRecipes)
-                if (recipe != null && recipe.output != null && yielded.Add(recipe.output)) yield return recipe.output;
+                if (recipe != null && recipe.output != null && IsProcessingRecipeUnlocked(recipe)
+                    && yielded.Add(recipe.output)) yield return recipe.output;
     }
 
     /// <summary>Raw ingredients a Freezer may be configured to dispense.</summary>
-    public IEnumerable<ItemDefinition> GetFreezerIngredients()
+    public IEnumerable<ItemDefinition> GetFreezerIngredients(bool includeLocked = false)
     {
         var yielded = new HashSet<ItemDefinition>();
-        if (rawPattyIngredient != null && yielded.Add(rawPattyIngredient)) yield return rawPattyIngredient;
-        if (lettuceIngredient != null && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
-        if (tomatoIngredient != null && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
-        if (baconSlabIngredient != null && yielded.Add(baconSlabIngredient)) yield return baconSlabIngredient;
-        if (onionIngredient != null && yielded.Add(onionIngredient)) yield return onionIngredient;
-        if (eggIngredient != null && yielded.Add(eggIngredient)) yield return eggIngredient;
+        if (rawPattyIngredient != null && (includeLocked || IsIngredientUnlocked(rawPattyIngredient)) && yielded.Add(rawPattyIngredient)) yield return rawPattyIngredient;
+        if (lettuceIngredient != null && (includeLocked || IsIngredientUnlocked(lettuceIngredient)) && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
+        if (tomatoIngredient != null && (includeLocked || IsIngredientUnlocked(tomatoIngredient)) && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
+        if (baconSlabIngredient != null && (includeLocked || IsIngredientUnlocked(baconSlabIngredient)) && yielded.Add(baconSlabIngredient)) yield return baconSlabIngredient;
+        if (onionIngredient != null && (includeLocked || IsIngredientUnlocked(onionIngredient)) && yielded.Add(onionIngredient)) yield return onionIngredient;
+        if (eggIngredient != null && (includeLocked || IsIngredientUnlocked(eggIngredient)) && yielded.Add(eggIngredient)) yield return eggIngredient;
+        if (whippedCreamIngredient != null && (includeLocked || IsIngredientUnlocked(whippedCreamIngredient))
+            && yielded.Add(whippedCreamIngredient)) yield return whippedCreamIngredient;
         if (assemblyRecipes != null)
             foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
                 if (recipe != null && recipe.processedInputFromFreezer
-                    && recipe.processedInput != null && !IsDrink(recipe.processedInput) && yielded.Add(recipe.processedInput))
+                    && recipe.processedInput != null && !IsDrink(recipe.processedInput)
+                    && (includeLocked || IsRecipeUnlocked(recipe)) && yielded.Add(recipe.processedInput))
                     yield return recipe.processedInput;
     }
 
     /// <summary>Raw ingredients a Pantry may be configured to dispense.</summary>
-    public IEnumerable<ItemDefinition> GetPantryIngredients()
+    public IEnumerable<ItemDefinition> GetPantryIngredients(bool includeLocked = false)
     {
         var yielded = new HashSet<ItemDefinition>();
         if (assemblyRecipes != null)
@@ -320,26 +444,30 @@ public class CustomerOrderConfig : ScriptableObject
             foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             {
                 ItemDefinition source = GetAssemblySupplySource(recipe);
-                if (source != null && !IsFreezerIngredient(source) && yielded.Add(source)) yield return source;
+                if (source != null && (includeLocked || IsRecipeUnlocked(recipe))
+                    && (includeLocked || IsIngredientUnlocked(source))
+                    && !IsFreezerIngredient(source, includeLocked) && yielded.Add(source)) yield return source;
                 if (recipe != null && recipe.processedInputFromPantry
-                    && recipe.processedInput != null && yielded.Add(recipe.processedInput))
+                    && recipe.processedInput != null && (includeLocked || IsRecipeUnlocked(recipe))
+                    && yielded.Add(recipe.processedInput))
                     yield return recipe.processedInput;
             }
         }
-        if (friesIngredient != null && yielded.Add(friesIngredient)) yield return friesIngredient;
-        if (cheeseIngredient != null && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
-        if (sprinklesIngredient != null && yielded.Add(sprinklesIngredient)) yield return sprinklesIngredient;
+        if (friesIngredient != null && (includeLocked || IsIngredientUnlocked(friesIngredient)) && yielded.Add(friesIngredient)) yield return friesIngredient;
+        if (cheeseIngredient != null && (includeLocked || IsIngredientUnlocked(cheeseIngredient)) && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
+        if (sprinklesIngredient != null && (includeLocked || IsIngredientUnlocked(sprinklesIngredient)) && yielded.Add(sprinklesIngredient)) yield return sprinklesIngredient;
     }
 
-    public bool IsFreezerIngredient(ItemDefinition item)
+    public bool IsFreezerIngredient(ItemDefinition item, bool includeLocked = false)
     {
         if (item == null || IsDrink(item)) return false;
         if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
-            || item == baconSlabIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient) return true;
+            || item == baconSlabIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient)
+            return includeLocked || IsIngredientUnlocked(item);
         if (assemblyRecipes == null) return false;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)
-                return true;
+                return includeLocked || IsRecipeUnlocked(recipe);
         return false;
     }
 
@@ -347,14 +475,11 @@ public class CustomerOrderConfig : ScriptableObject
     public IEnumerable<ItemDefinition> GetAssemblyProducts()
     {
         bool yielded = false;
-        if (assemblyRecipes != null)
+        foreach (AssemblyRecipeDefinition recipe in GetAssemblyRecipes())
         {
-            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            {
-                if (recipe == null || recipe.output == null) continue;
-                yielded = true;
-                yield return recipe.output;
-            }
+            if (recipe == null || recipe.output == null) continue;
+            yielded = true;
+            yield return recipe.output;
         }
         if (!yielded && burgerBase != null) yield return burgerBase;
     }
@@ -363,7 +488,7 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (assemblyRecipes == null) yield break;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            if (recipe != null && recipe.output != null)
+            if (recipe != null && recipe.output != null && IsRecipeUnlocked(recipe))
                 yield return recipe;
     }
 
@@ -371,7 +496,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (cuttingRecipes == null) yield break;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
-            if (recipe != null && recipe.input != null && recipe.output != null)
+            if (recipe != null && recipe.input != null && recipe.output != null
+                && IsIngredientUnlocked(recipe.input) && IsIngredientUnlocked(recipe.output))
                 yield return recipe;
     }
 
@@ -379,7 +505,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (output == null || cuttingRecipes == null) return null;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
-            if (recipe != null && recipe.output == output)
+            if (recipe != null && recipe.output == output
+                && IsIngredientUnlocked(recipe.input) && IsIngredientUnlocked(recipe.output))
                 return recipe;
         return null;
     }
@@ -388,7 +515,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (input == null || cuttingRecipes == null) return null;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
-            if (recipe != null && recipe.input == input)
+            if (recipe != null && recipe.input == input
+                && IsIngredientUnlocked(recipe.input) && IsIngredientUnlocked(recipe.output))
                 return recipe;
         return null;
     }
@@ -397,10 +525,12 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (output == null || assemblyRecipes == null) return null;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            if (recipe != null && recipe.Produces(output))
+            if (recipe != null && recipe.Produces(output) && IsRecipeUnlocked(recipe))
                 return recipe;
         return null;
     }
+
+    public bool IsAssemblyRecipeUnlocked(AssemblyRecipeDefinition recipe) => IsRecipeUnlocked(recipe);
 
     public ItemDefinition GetAssemblySupplySource(AssemblyRecipeDefinition recipe)
     {
@@ -457,8 +587,8 @@ public class CustomerOrderConfig : ScriptableObject
         // customer order includes one. Fries and drinks remain optional sides.
         ItemDefinition orderedBurger = PickEnabledBurger();
         bool wantBurger = orderedBurger != null;
-        bool wantFries = friesItem != null && friesEnabled && Random.value < friesChance;
-        bool wantDrink = drinkItem != null && drinkEnabled && Random.value < drinkChance;
+        bool wantFries = PickEnabledProduct(ProductKind.Fries) != null && Random.value < friesChance;
+        bool wantDrink = PickEnabledProduct(ProductKind.Drink) != null && Random.value < drinkChance;
 
         if (!wantBurger && !wantFries && !wantDrink)
         {
@@ -466,8 +596,8 @@ public class CustomerOrderConfig : ScriptableObject
             // currently available menu so this fallback does not favor burgers.
             var available = new List<ProductKind>();
             if (PickEnabledBurger() != null) available.Add(ProductKind.Burger);
-            if (friesItem != null && friesEnabled) available.Add(ProductKind.Fries);
-            if (drinkItem != null && drinkEnabled) available.Add(ProductKind.Drink);
+            if (PickEnabledProduct(ProductKind.Fries) != null) available.Add(ProductKind.Fries);
+            if (PickEnabledProduct(ProductKind.Drink) != null) available.Add(ProductKind.Drink);
 
             if (available.Count > 0)
             {
@@ -483,11 +613,19 @@ public class CustomerOrderConfig : ScriptableObject
         if (wantBurger)
             order.lines.Add(new CustomerOrder.OrderLine(orderedBurger ?? PickEnabledBurger(), 1));
         if (wantFries)
-            order.lines.Add(new CustomerOrder.OrderLine(friesItem, 1));
+            order.lines.Add(new CustomerOrder.OrderLine(PickEnabledProduct(ProductKind.Fries), 1));
         if (wantDrink)
-            order.lines.Add(new CustomerOrder.OrderLine(drinkItem, 1));
+            order.lines.Add(new CustomerOrder.OrderLine(PickEnabledProduct(ProductKind.Drink), 1));
 
         return order;
+    }
+
+    ItemDefinition PickEnabledProduct(ProductKind kind)
+    {
+        var available = new List<ItemDefinition>();
+        foreach (ItemDefinition item in GetMenuItems())
+            if (GetProductKind(item) == kind && IsItemEnabled(item)) available.Add(item);
+        return available.Count > 0 ? available[Random.Range(0, available.Count)] : null;
     }
 
     /// <summary>One random heat-lamp item (burger or fries — drinks are cashier-served).</summary>
@@ -506,6 +644,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (burgerBase != null) yield return burgerBase;
         if (cheeseburgerItem != null) yield return cheeseburgerItem;
+        if (clBurgerItem != null) yield return clBurgerItem;
+        if (cltBurgerItem != null) yield return cltBurgerItem;
         if (cheeseBaconBurgerItem != null) yield return cheeseBaconBurgerItem;
         if (cheeseBaconLettuceBurgerItem != null) yield return cheeseBaconLettuceBurgerItem;
         if (cheeseBaconLettuceOnionBurgerItem != null) yield return cheeseBaconLettuceOnionBurgerItem;
@@ -526,12 +666,12 @@ public class CustomerOrderConfig : ScriptableObject
                 yield return item;
     }
 
-    public IEnumerable<ItemDefinition> GetIngredientItems()
+    public IEnumerable<ItemDefinition> GetIngredientItems(bool includeLocked = false)
     {
         var yielded = new HashSet<ItemDefinition>();
-        foreach (ItemDefinition freezerItem in GetFreezerIngredients())
+        foreach (ItemDefinition freezerItem in GetFreezerIngredients(includeLocked))
             if (freezerItem != null && !IsDrink(freezerItem) && yielded.Add(freezerItem)) yield return freezerItem;
-        foreach (ItemDefinition pantryItem in GetPantryIngredients())
+        foreach (ItemDefinition pantryItem in GetPantryIngredients(includeLocked))
             if (pantryItem != null && !IsDrink(pantryItem) && yielded.Add(pantryItem)) yield return pantryItem;
         if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
     }

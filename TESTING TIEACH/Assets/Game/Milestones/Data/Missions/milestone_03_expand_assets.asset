@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_03_expand_assets
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_expand_assets
-  title: Invest in capacity
-  description: Buy a station from the shop or expand the floor - spend to grow throughput.
-  completionEventId: capacity_invested
+  title: Add shakes to the menu
+  description: Configure the basic Shake recipe at a Shake Station.
+  completionEventId: recipe_configured_shake
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

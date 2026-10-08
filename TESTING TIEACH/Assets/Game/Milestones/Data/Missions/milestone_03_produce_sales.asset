@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_03_produce_sales
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_produce_sales
-  title: Generate sales
-  description: Serve 12 customers and watch revenue against your costs.
-  completionEventId: order_served
-  requiredCount: 12
+  title: Purchase an MK2 workstation
+  description: Purchase any MK2 workstation upgrade.
+  completionEventId: mk2_station_purchased
+  requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

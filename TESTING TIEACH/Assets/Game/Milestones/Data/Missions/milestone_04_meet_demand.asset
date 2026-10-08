@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_04_meet_demand
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_04_meet_demand
-  title: Serve forecasted demand
-  description: Serve 12 customers while keeping the kitchen stocked.
-  completionEventId: order_served
-  requiredCount: 12
+  title: Configure cheese bacon fries
+  description: Choose the Cheese Bacon Fries recipe at an Assembly Station.
+  completionEventId: recipe_configured_cheese_bacon_fries
+  requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_02_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_finish_shift
-  title: Evaluate the day
-  description: Finish a full shift and review how capacity held up until close.
-  completionEventId: day_ended
-  requiredCount: 1
+  title: Serve 5 Cheese Fries
+  description: Serve five orders that include Cheese Fries.
+  completionEventId: menu_item_served_cheese_fries
+  requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

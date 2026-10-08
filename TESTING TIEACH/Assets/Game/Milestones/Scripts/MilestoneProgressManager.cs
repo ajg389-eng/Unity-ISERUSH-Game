@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Progression frame: Tutorial + six milestones.
+/// Progression frame: Tutorial + the numbered milestones in the active database.
 /// Flow: complete all milestone missions → pass quiz (all answers correct) → unlock rewards → next milestone.
 /// </summary>
 public class MilestoneProgressManager : MonoBehaviour
@@ -37,9 +37,10 @@ public class MilestoneProgressManager : MonoBehaviour
     public string ActiveMilestoneId => activeMilestoneId;
     public bool IsQuizReady => quizReady;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
+    public IReadOnlyCollection<string> GetCompletedMilestoneIds() => completedMilestoneIds;
 
     /// <summary>
-    /// Highest numbered milestone the player has reached (1–6). Tutorial does not count.
+    /// Highest numbered milestone the player has reached. Tutorial does not count.
     /// A milestone counts as reached when it is active or already completed.
     /// </summary>
     public int GetHighestReachedNumberedStage()
@@ -57,6 +58,34 @@ public class MilestoneProgressManager : MonoBehaviour
                 highest = numbered;
         }
         return highest;
+    }
+
+    public int GetNumberedMilestoneCount()
+    {
+        if (database?.milestones == null) return 0;
+        int count = 0;
+        foreach (MilestoneDefinition milestone in database.milestones)
+            if (milestone != null && !milestone.isTutorial && !string.IsNullOrEmpty(milestone.milestoneId))
+                count++;
+        return count;
+    }
+
+    public string GetMilestoneDisplayLabel(MilestoneDefinition milestone)
+    {
+        if (milestone == null) return "Milestone";
+        if (milestone.isTutorial) return "Tutorial";
+        int number = 0;
+        if (database?.milestones != null)
+        {
+            foreach (MilestoneDefinition entry in database.milestones)
+            {
+                if (entry == null || entry.isTutorial) continue;
+                number++;
+                if (entry.milestoneId == milestone.milestoneId)
+                    return "Milestone " + number;
+            }
+        }
+        return string.IsNullOrWhiteSpace(milestone.displayName) ? milestone.milestoneId : milestone.displayName;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -171,9 +200,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
         OnMilestoneCompleted?.Invoke(current);
 
-        string completionMessage = string.IsNullOrWhiteSpace(current.displayName)
-            ? "Milestone completed."
-            : current.displayName + " completed.";
+        string completionMessage = GetMilestoneDisplayLabel(current) + " completed.";
         var unlockedNames = new List<string>();
         if (current.unlocks != null)
         {
@@ -209,7 +236,7 @@ public class MilestoneProgressManager : MonoBehaviour
         return true;
     }
 
-    /// <summary>Debug: complete every milestone before this numbered stage (1-6) and make it active.</summary>
+    /// <summary>Debug: complete every milestone before this numbered stage and make it active.</summary>
     public bool DebugJumpToNumberedMilestone(int number, out string label)
     {
         label = null;
@@ -228,7 +255,7 @@ public class MilestoneProgressManager : MonoBehaviour
             return false;
 
         MilestoneDefinition target = numbered[number - 1];
-        label = number + ". " + (string.IsNullOrEmpty(target.displayName) ? target.milestoneId : target.displayName);
+        label = GetMilestoneDisplayLabel(target);
 
         completedMilestoneIds.Clear();
         unlockedFeatureIds.Clear();
@@ -249,24 +276,8 @@ public class MilestoneProgressManager : MonoBehaviour
         return true;
     }
 
-    public string GetActiveMilestoneDebugLabel()
-    {
-        var current = GetActiveMilestone();
-        if (current == null) return "None";
-        if (current.isTutorial) return "Tutorial";
-        int number = 0;
-        if (database != null && database.milestones != null)
-        {
-            foreach (var milestone in database.milestones)
-            {
-                if (milestone == null || milestone.isTutorial) continue;
-                number++;
-                if (milestone.milestoneId == current.milestoneId)
-                    return number + ". " + current.displayName;
-            }
-        }
-        return current.displayName;
-    }
+    public string GetActiveMilestoneDebugLabel() =>
+        GetActiveMilestone() != null ? GetMilestoneDisplayLabel(GetActiveMilestone()) : "None";
 
     /// <summary>Debug / stub helper: mark missions complete enough to open the quiz.</summary>
     public void DebugForceQuizReady()
@@ -295,7 +306,7 @@ public class MilestoneProgressManager : MonoBehaviour
         if (!string.IsNullOrEmpty(activeMilestoneId) && database.GetById(activeMilestoneId) != null)
             return;
 
-        // First incomplete milestone, else first entry
+        // First incomplete milestone. A null active id is valid after the final milestone.
         foreach (var m in database.milestones)
         {
             if (m == null || string.IsNullOrEmpty(m.milestoneId)) continue;
@@ -306,7 +317,46 @@ public class MilestoneProgressManager : MonoBehaviour
             }
         }
 
-        activeMilestoneId = database.milestones[0] != null ? database.milestones[0].milestoneId : null;
+        activeMilestoneId = null;
+    }
+
+    public void RestoreCheckpoint(string savedActiveMilestoneId, IReadOnlyList<string> savedCompletedMilestoneIds)
+    {
+        completedMilestoneIds.Clear();
+        unlockedFeatureIds.Clear();
+        quizReady = false;
+
+        if (database?.milestones != null && savedCompletedMilestoneIds != null)
+        {
+            foreach (string id in savedCompletedMilestoneIds)
+            {
+                MilestoneDefinition milestone = database.GetById(id);
+                if (milestone == null || string.IsNullOrEmpty(id)) continue;
+                completedMilestoneIds.Add(id);
+                GrantUnlocks(milestone);
+            }
+        }
+
+        MilestoneDefinition active = database != null ? database.GetById(savedActiveMilestoneId) : null;
+        activeMilestoneId = active != null && !completedMilestoneIds.Contains(active.milestoneId)
+            ? active.milestoneId : null;
+        if (activeMilestoneId == null && !AreAllMilestonesComplete())
+            EnsureActiveMilestone();
+
+        ApplyActiveMissions(reset: true);
+        EvaluateActiveMilestone();
+        OnMilestonesChanged?.Invoke();
+    }
+
+    bool AreAllMilestonesComplete()
+    {
+        if (database?.milestones == null || database.milestones.Count == 0) return false;
+        foreach (MilestoneDefinition milestone in database.milestones)
+        {
+            if (milestone == null || string.IsNullOrEmpty(milestone.milestoneId)) continue;
+            if (!completedMilestoneIds.Contains(milestone.milestoneId)) return false;
+        }
+        return true;
     }
 
     void ApplyActiveMissions(bool reset)

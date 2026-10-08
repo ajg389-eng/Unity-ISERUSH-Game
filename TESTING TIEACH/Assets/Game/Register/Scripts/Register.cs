@@ -379,6 +379,7 @@ public class Register : MonoBehaviour
 
     void CompleteServeFront(CustomerAI front, int sale)
     {
+        CustomerOrder servedOrder = front != null ? front.OriginalOrder : null;
         bool removed = pickup.Remove(front);
         if (queue.Count > 0 && queue[0] == front)
         {
@@ -408,6 +409,15 @@ public class Register : MonoBehaviour
         UpdateQueueTargets();
 
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.OrderServed);
+        if (servedOrder != null && servedOrder.lines != null)
+        {
+            foreach (CustomerOrder.OrderLine line in servedOrder.lines)
+            {
+                if (line.item == null) continue;
+                for (int i = 0; i < Mathf.Max(0, line.quantity); i++)
+                    TutorialVoiceEvents.Raise(TutorialVoiceEventId.MenuItemServed(line.item));
+            }
+        }
         if (!raisedFirstOrderServedEvent)
         {
             raisedFirstOrderServedEvent = true;

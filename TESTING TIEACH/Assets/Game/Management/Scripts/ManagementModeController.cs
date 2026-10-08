@@ -2161,7 +2161,10 @@ public class ManagementModeController : MonoBehaviour
         {
             var manager = ProductionManager.Instance;
             var config = manager != null ? manager.orderConfig : null;
-            assembly.SetRecipe(config != null ? config.GetAssemblyRecipe(item) : null);
+            AssemblyRecipeDefinition recipe = config != null ? config.GetAssemblyRecipe(item) : null;
+            assembly.SetRecipe(recipe);
+            if (recipe != null)
+                TutorialVoiceEvents.Raise(TutorialVoiceEventId.RecipeConfigured(recipe.output));
             RevalidateSelectedStationOutput();
             WorkerAssignmentLinkVisuals.NotifyLinksChanged();
             RefreshPopup();
@@ -2175,6 +2178,7 @@ public class ManagementModeController : MonoBehaviour
         AssemblyStation assembly = selectedStation.GetComponent<AssemblyStation>();
         if (assembly == null) return;
         assembly.SetRecipe(recipe);
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.RecipeConfigured(recipe.output));
         RevalidateSelectedStationOutput();
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
         RefreshPopup();

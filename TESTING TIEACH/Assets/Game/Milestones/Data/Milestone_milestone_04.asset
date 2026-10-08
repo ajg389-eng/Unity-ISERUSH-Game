@@ -13,20 +13,17 @@ MonoBehaviour:
   m_Name: Milestone_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_04
-  displayName: Supply Chain & Forecasting
-  description: 'Manage suppliers, inventory, and predicted demand.
-
-
-    Topics:
-    Supply Chain Management, Inventory Control, Demand Forecasting'
+  displayName: "4"
+  description: Complete the menu with the most involved recipes and production chains.
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: d1f592cabf1b4c13a8fe1382f8035757, type: 2}
   - {fileID: 11400000, guid: 26890e37f245430bbdcda2edde7ca593, type: 2}
   - {fileID: 11400000, guid: 928a3defdbfd4a0f8c1647989ee8b4da, type: 2}
+  - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: 001cbbddee7e95143bce8d46fabcf385, type: 2}
   unlocks:
   - kind: 3
     unlockId: milestone_04_complete
-    displayName: Supply Chain & Forecasting Complete
+    displayName: Full menu complete

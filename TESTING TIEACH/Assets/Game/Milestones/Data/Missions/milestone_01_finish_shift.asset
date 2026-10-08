@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_01_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_finish_shift
-  title: Study a full day
-  description: Run until closing (10 PM) to observe a complete service day.
-  completionEventId: day_ended
+  title: Reposition a workstation
+  description: Move a workstation to improve the layout of your kitchen.
+  completionEventId: station_repositioned
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

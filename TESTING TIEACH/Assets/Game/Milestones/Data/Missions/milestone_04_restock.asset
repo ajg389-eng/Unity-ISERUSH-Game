@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_04_restock
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_04_restock
-  title: Replenish inventory
-  description: Order ingredient packs twice to practice replenishment decisions.
-  completionEventId: ingredients_ordered
-  requiredCount: 2
+  title: Configure the fully loaded burger
+  description: Choose the Cheese Bacon Lettuce Onion Tomato Egg Burger recipe.
+  completionEventId: recipe_configured_cheese_bacon_lettuce_onion_tomato_egg_burger
+  requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

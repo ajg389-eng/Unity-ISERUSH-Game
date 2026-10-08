@@ -283,9 +283,9 @@ public class MissionListUI : MonoBehaviour
             if (active == null)
                 progressionDetailText.text = "All milestones complete.";
             else if (milestones.IsQuizReady)
-                progressionDetailText.text = $"Active: {active.displayName}\nMissions done — quiz ready.";
+                progressionDetailText.text = $"Active: {milestones.GetMilestoneDisplayLabel(active)}\nTasks done — quiz ready.";
             else
-                progressionDetailText.text = $"Active: {active.displayName}\nFinish all tasks, then take the quiz.";
+                progressionDetailText.text = $"Active: {milestones.GetMilestoneDisplayLabel(active)}\nFinish all tasks, then take the quiz.";
         }
 
         if (openQuizButton != null)
@@ -331,8 +331,10 @@ public class MissionListUI : MonoBehaviour
         go.GetComponent<LayoutElement>().minHeight = 52f;
         go.GetComponent<Image>().color = ProgressionStateColor(state);
 
-        string prefix = milestone.isTutorial ? "Tutorial" : $"Milestone {Mathf.Max(1, index)}";
-        string label = $"{prefix}: {milestone.displayName}\n{ProgressionStateLabel(state)}";
+        string milestoneLabel = milestones != null
+            ? milestones.GetMilestoneDisplayLabel(milestone)
+            : milestone.isTutorial ? "Tutorial" : $"Milestone {Mathf.Max(1, index)}";
+        string label = $"{milestoneLabel}\n{ProgressionStateLabel(state)}";
         AddText(go.transform, "Label", label, 13, Color.white, FontStyles.Normal, stretch: true);
     }
 

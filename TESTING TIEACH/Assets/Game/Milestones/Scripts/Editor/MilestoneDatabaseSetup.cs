@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Creates Tutorial + six main milestones with authored quizzes and tasks.
+/// Creates Tutorial + four numbered milestones with authored quizzes and tasks.
 /// Menu: Game / Setup Milestone Database
 /// </summary>
 public static class MilestoneDatabaseSetup
@@ -92,7 +92,7 @@ public static class MilestoneDatabaseSetup
         Selection.activeObject = database;
         EditorUtility.DisplayDialog(
             "Milestone Database",
-            "Created Tutorial + 6 milestones with tasks and quizzes at:\n" + DatabasePath,
+            "Created Tutorial + 4 milestones with tasks and quizzes at:\n" + DatabasePath,
             "OK");
     }
 
@@ -149,7 +149,7 @@ public static class MilestoneDatabaseSetup
             }
 
             quiz.quizId = id + "_quiz";
-            quiz.title = displayName + " Quiz";
+            quiz.title = "Milestone " + displayName + " Quiz";
             quiz.introText = "Answer every question correctly to unlock the next milestone.";
             quiz.questions = questions != null
                 ? new List<QuizQuestion>(questions)
@@ -237,25 +237,25 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_01",
-                name = "Flow & Work Design",
-                description = "Understand queues, layout, and how work moves through the restaurant.",
-                topics = "Queueing Theory, Work Design & Measurement, Facilities Planning",
+                name = "1",
+                description = "Build a small menu and learn to shape a kitchen workflow.",
+                topics = "Burgers, fries, recipes, and station layout",
                 unlockId = "milestone_01_complete",
-                unlockName = "Flow & Work Design Complete",
+                unlockName = "Lettuce, tomato, and cheese fries",
                 missions = new[]
                 {
-                    M("observe_queue", "Spot a bottleneck",
-                        "Let at least 3 customers line up so you can see work pile up at the register.",
-                        TutorialVoiceEventId.QueueGrowing),
-                    M("serve_orders", "Measure throughput",
-                        "Serve 8 customers to see how fast the system can move orders.",
-                        TutorialVoiceEventId.OrderServed, 8),
-                    M("relink_flow", "Improve the layout",
-                        "Set or change a station Output link to redesign how work flows.",
+                    M("observe_queue", "Set up the cheeseburger recipe",
+                        "Choose the cheeseburger recipe at an Assembly Station to add cheese to the burger workflow.",
+                        "recipe_configured_cheeseburger"),
+                    M("relink_flow", "Connect the production flow",
+                        "Link a station's output to the next workstation in the recipe workflow.",
                         TutorialVoiceEventId.OutputLinked),
-                    M("finish_shift", "Study a full day",
-                        "Run until closing (10 PM) to observe a complete service day.",
-                        TutorialVoiceEventId.DayEnded)
+                    M("serve_orders", "Serve 25 customers",
+                        "Serve 25 customers with your burger and fries menu.",
+                        TutorialVoiceEventId.OrderServed, 25),
+                    M("finish_shift", "Reposition a workstation",
+                        "Move a workstation to improve the layout of your kitchen.",
+                        TutorialVoiceEventId.StationRepositioned)
                 },
                 questions = new[]
                 {
@@ -288,25 +288,25 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_02",
-                name = "Capacity & Optimization",
-                description = "Find bottlenecks, allocate capacity, and balance labor.",
-                topics = "Operations Research, Capacity Planning, Human Factors",
+                name = "2",
+                description = "Expand the burger and fries recipes with fresh ingredients.",
+                topics = "Lettuce, tomato, and cheese fries",
                 unlockId = "milestone_02_complete",
-                unlockName = "Capacity & Optimization Complete",
+                unlockName = "Bacon, shakes, and MK2 stations",
                 missions = new[]
                 {
-                    M("hire_capacity", "Add labor capacity",
-                        "Hire a worker to increase the restaurant's productive capacity.",
-                        TutorialVoiceEventId.WorkerHired),
-                    M("assign_labor", "Allocate the worker",
-                        "Assign a worker to a station so capacity is placed where work happens.",
-                        TutorialVoiceEventId.WorkerAssigned),
-                    M("balance_output", "Balance the line",
-                        "Serve 15 orders after staffing to test whether the bottleneck moved.",
-                        TutorialVoiceEventId.OrderServed, 15),
-                    M("finish_shift", "Evaluate the day",
-                        "Finish a full shift and review how capacity held up until close.",
-                        TutorialVoiceEventId.DayEnded)
+                    M("hire_capacity", "Add lettuce and tomato to a burger",
+                        "Configure the CLT Burger recipe at an Assembly Station.",
+                        "recipe_configured_clt_burger"),
+                    M("assign_labor", "Add cheese fries to the menu",
+                        "Configure the Cheese Fries recipe at an Assembly Station.",
+                        "recipe_configured_cheese_fries"),
+                    M("balance_output", "Serve 5 CLT Burgers",
+                        "Serve five customers who ordered the lettuce-and-tomato burger.",
+                        "menu_item_served_clt_burger", 5),
+                    M("finish_shift", "Serve 5 Cheese Fries",
+                        "Serve five orders that include Cheese Fries.",
+                        "menu_item_served_cheese_fries", 5)
                 },
                 questions = new[]
                 {
@@ -339,25 +339,25 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_03",
-                name = "Production & Economics",
-                description = "Connect production decisions to cost, profit, and scheduling.",
-                topics = "Production Planning & Control, Engineering Economics",
+                name = "3",
+                description = "Add bacon and shakes, then invest in faster MK2 workstations.",
+                topics = "Bacon recipes, shakes, MK2 stations",
                 unlockId = "milestone_03_complete",
-                unlockName = "Production & Economics Complete",
+                unlockName = "Advanced burger, fries, and shake recipes",
                 missions = new[]
                 {
-                    M("buy_inputs", "Invest in inputs",
-                        "Order an ingredient pack — a production cost that enables throughput.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("expand_assets", "Invest in capacity",
-                        "Buy a station from the shop or expand the floor — spend to grow throughput.",
-                        TutorialVoiceEventId.CapacityInvested),
-                    M("produce_sales", "Generate sales",
-                        "Serve 12 customers and watch revenue against your costs.",
-                        TutorialVoiceEventId.OrderServed, 12),
-                    M("finish_shift", "Close the books",
-                        "Finish the shift and check end-of-day profit vs. spending.",
-                        TutorialVoiceEventId.DayEnded)
+                    M("buy_inputs", "Configure a bacon burger",
+                        "Choose the Cheese Bacon Burger recipe at an Assembly Station.",
+                        "recipe_configured_cheese_bacon_burger"),
+                    M("expand_assets", "Add shakes to the menu",
+                        "Configure the basic Shake recipe at a Shake Station.",
+                        "recipe_configured_shake"),
+                    M("produce_sales", "Purchase an MK2 workstation",
+                        "Purchase any MK2 workstation upgrade.",
+                        TutorialVoiceEventId.Mk2StationPurchased),
+                    M("finish_shift", "Serve 5 shakes",
+                        "Serve five customers who ordered a Shake.",
+                        "menu_item_served_shake", 5)
                 },
                 questions = new[]
                 {
@@ -390,22 +390,25 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_04",
-                name = "Supply Chain & Forecasting",
-                description = "Manage suppliers, inventory, and predicted demand.",
-                topics = "Supply Chain Management, Inventory Control, Demand Forecasting",
+                name = "4",
+                description = "Complete the menu with the most involved recipes and production chains.",
+                topics = "Onions, eggs, premium fries, and finished shakes",
                 unlockId = "milestone_04_complete",
-                unlockName = "Supply Chain & Forecasting Complete",
+                unlockName = "Full menu complete",
                 missions = new[]
                 {
-                    M("restock", "Replenish inventory",
-                        "Order ingredient packs twice to practice replenishment decisions.",
-                        TutorialVoiceEventId.IngredientsOrdered, 2),
-                    M("meet_demand", "Serve forecasted demand",
-                        "Serve 12 customers while keeping the kitchen stocked.",
-                        TutorialVoiceEventId.OrderServed, 12),
-                    M("multi_day", "Compare two days",
-                        "Complete 2 full shifts so you can compare demand across days.",
-                        TutorialVoiceEventId.DayEnded, 2)
+                    M("restock", "Configure the fully loaded burger",
+                        "Choose the Cheese Bacon Lettuce Onion Tomato Egg Burger recipe.",
+                        "recipe_configured_cheese_bacon_lettuce_onion_tomato_egg_burger"),
+                    M("meet_demand", "Configure cheese bacon fries",
+                        "Choose the Cheese Bacon Fries recipe at an Assembly Station.",
+                        "recipe_configured_cheese_bacon_fries"),
+                    M("multi_day", "Configure the premium shake",
+                        "Choose the Whipped Cream Sprinkle Shake recipe.",
+                        "recipe_configured_whipped_cream_sprinkle_shake"),
+                    M("configure_recipe", "Serve 5 fully loaded burgers",
+                        "Serve five customers who ordered the fully loaded burger.",
+                        "menu_item_served_cheese_bacon_lettuce_onion_tomato_egg_burger", 5)
                 },
                 questions = new[]
                 {
@@ -435,111 +438,6 @@ public static class MilestoneDatabaseSetup
                         'B')
                 }
             },
-            new MilestoneContent
-            {
-                id = "milestone_05",
-                name = "Quality & Reliability",
-                description = "Balance speed with quality and keep equipment reliable.",
-                topics = "Quality Engineering, Reliability Engineering",
-                unlockId = "milestone_05_complete",
-                unlockName = "Quality & Reliability Complete",
-                missions = new[]
-                {
-                    M("steady_service", "Maintain steady service",
-                        "Serve 20 customers — prioritize correct, complete orders over raw speed.",
-                        TutorialVoiceEventId.OrderServed, 20),
-                    M("keep_stocked", "Prevent stockouts",
-                        "Order ingredients to keep production reliable through the rush.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("finish_shift", "Survive a full day",
-                        "Finish a shift with the kitchen still able to serve — reliability over time.",
-                        TutorialVoiceEventId.DayEnded)
-                },
-                questions = new[]
-                {
-                    Q("Increasing service speed causes the order-error rate to rise significantly. What does this demonstrate?",
-                        "A quality-throughput trade-off",
-                        "A supplier lead-time problem",
-                        "A forecasting error",
-                        "A facility expansion problem",
-                        'A'),
-                    Q("What is the purpose of preventive maintenance?",
-                        "Increase demand",
-                        "Reduce the likelihood or impact of equipment failures",
-                        "Increase inventory",
-                        "Reduce employee wages",
-                        'B'),
-                    Q("A grill frequently fails during rush periods. Which information would be most useful when evaluating the problem?",
-                        "Failure frequency and repair time",
-                        "Customer menu preferences only",
-                        "Restaurant decoration cost",
-                        "Pantry location only",
-                        'A'),
-                    Q("Which restaurant is performing better overall?",
-                        "Restaurant A serves 120 orders with 20% errors",
-                        "Restaurant B serves 110 orders with 1% errors and higher overall profit",
-                        "Restaurant A because throughput is always the only objective",
-                        "They are automatically equal",
-                        'B')
-                }
-            },
-            new MilestoneContent
-            {
-                id = "milestone_06",
-                name = "Systems Integration",
-                description = "See the restaurant as one interconnected system of people, process, and technology.",
-                topics = "Systems Engineering, Information Engineering, Engineering Management",
-                unlockId = "milestone_06_complete",
-                unlockName = "Systems Integration Complete",
-                missions = new[]
-                {
-                    M("staff_system", "Staff the system",
-                        "Hire a worker — people are part of the production system.",
-                        TutorialVoiceEventId.WorkerHired),
-                    M("connect_process", "Connect the process",
-                        "Assign a worker and set a station Output so people, stations, and flow align.",
-                        TutorialVoiceEventId.WorkerAssigned),
-                    M("link_output", "Link information flow",
-                        "Set a station Output link — the routing decision connects the whole kitchen.",
-                        TutorialVoiceEventId.OutputLinked),
-                    M("supply_ops", "Supply operations",
-                        "Order ingredients so upstream supply supports downstream service.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("system_output", "Deliver system output",
-                        "Serve 25 customers as proof the whole system works together.",
-                        TutorialVoiceEventId.OrderServed, 25),
-                    M("multi_day", "Run the enterprise",
-                        "Complete 2 full days managing people, process, inventory, and service together.",
-                        TutorialVoiceEventId.DayEnded, 2)
-                },
-                questions = new[]
-                {
-                    Q("The kitchen increases cooking output, but customers are not served any faster because assembly cannot keep up. What does this demonstrate?",
-                        "Improving one component does not necessarily improve the entire system",
-                        "More cooking capacity always reduces throughput",
-                        "Customer demand no longer matters",
-                        "Inventory should always be eliminated",
-                        'A'),
-                    Q("Which dashboard would be most useful for making system-level decisions?",
-                        "Profit only",
-                        "Customer count only",
-                        "Throughput, wait time, utilization, inventory, quality, and profit together",
-                        "Employee names only",
-                        'C'),
-                    Q("A catering contract is highly profitable but would use most kitchen capacity during the lunch rush. What should the player consider?",
-                        "Catering revenue only",
-                        "Effects on regular customers, capacity, costs, and total profit",
-                        "Whether the catering order contains burgers",
-                        "Only the number of employees",
-                        'B'),
-                    Q("Which statement best describes Industrial & Systems Engineering after completing the game?",
-                        "It is primarily about manufacturing machines",
-                        "It is primarily about managing employees",
-                        "It involves designing and improving interconnected systems of people, processes, resources, information, and technology",
-                        "It is primarily about reducing customer queues",
-                        'C')
-                }
-            }
         };
     }
 

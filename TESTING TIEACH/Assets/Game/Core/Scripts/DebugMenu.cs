@@ -112,6 +112,20 @@ public class DebugMenu : MonoBehaviour
         string speed = time != null ? time.GetSpeedLabel() : $"{Time.timeScale:0.##}x";
         var milestones = MilestoneProgressManager.Instance;
         string stage = milestones != null ? milestones.GetActiveMilestoneDebugLabel() : "—";
+        string taskProgress = "—";
+        if (milestones != null)
+        {
+            var active = milestones.GetActiveMilestone();
+            var missions = active != null ? active.GetMissions() : null;
+            var progress = MissionProgressManager.Instance;
+            if (missions != null && missions.Count > 0 && progress != null)
+            {
+                int complete = 0;
+                foreach (var mission in missions)
+                    if (mission != null && progress.IsComplete(mission)) complete++;
+                taskProgress = $"{complete}/{missions.Count} complete";
+            }
+        }
 
         statusText.text =
             $"Money: ${cash}\n" +
@@ -119,7 +133,7 @@ public class DebugMenu : MonoBehaviour
             $"Pickup Station: {lampCount}/{lampCap}\n" +
             $"Kitchen stock units: {stockUnits}\n" +
             $"Clock: {clock}   Speed: {speed}\n" +
-            $"Milestone: {stage}";
+            $"Milestone: {stage}  Tasks: {taskProgress}";
     }
 
     void EnsureUI()
@@ -162,7 +176,7 @@ public class DebugMenu : MonoBehaviour
 
         statusText = CreateLabel(panel.transform, "", 13, FontStyles.Normal);
         statusText.alignment = TextAlignmentOptions.Left;
-        statusText.GetComponent<LayoutElement>().minHeight = 92;
+        statusText.GetComponent<LayoutElement>().minHeight = 112;
 
         toastText = CreateLabel(panel.transform, "", 12, FontStyles.Italic);
         toastText.color = new Color(0.55f, 0.95f, 0.65f);
@@ -284,6 +298,13 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateSectionHeader(actionContent, "PROGRESSION");
+        Transform taskAccessRow = CreateButtonRow(actionContent, "CurrentTasksRow");
+        CreateButton(taskAccessRow, "Open Current Tasks", () =>
+        {
+            if (MissionListUI.Instance == null) { Toast("No task list"); return; }
+            MissionListUI.Instance.ShowTasksTab();
+            Toast("Current milestone tasks");
+        });
         Transform progressionRow = CreateButtonRow(actionContent, "ProgressionRow");
         CreateButton(progressionRow, "Force Quiz", () =>
         {
@@ -312,6 +333,7 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateLabel(actionContent, "Jump to milestone", 12, FontStyles.Bold);
+        CreateLabel(actionContent, "Sets the selected milestone active and marks earlier milestones complete.", 10, FontStyles.Normal);
         var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));
         jumpRow.transform.SetParent(actionContent, false);
         jumpRow.AddComponent<LayoutElement>().minHeight = 32;
@@ -322,7 +344,9 @@ public class DebugMenu : MonoBehaviour
         jumpLayout.childControlHeight = true;
         jumpLayout.childForceExpandWidth = true;
         jumpLayout.childForceExpandHeight = true;
-        for (int n = 1; n <= 6; n++)
+        MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
+        int milestoneCount = milestoneProgress != null ? milestoneProgress.GetNumberedMilestoneCount() : 0;
+        for (int n = 1; n <= milestoneCount; n++)
         {
             int milestoneNumber = n;
             CreateButton(jumpRow.transform, milestoneNumber.ToString(), () => JumpToMilestone(milestoneNumber));
@@ -360,8 +384,10 @@ public class DebugMenu : MonoBehaviour
         CollectEquipment<FreezerStation>(equipment);
         CollectEquipment<GrillStation>(equipment);
         CollectEquipment<FryerStation>(equipment);
+        CollectEquipment<CuttingStation>(equipment);
         CollectEquipment<DrinkStation>(equipment);
         CollectEquipment<AssemblyStation>(equipment);
+        CollectEquipment<ShakeStation>(equipment);
         CollectEquipment<PantryStation>(equipment);
         CollectEquipment<HeatLampStation>(equipment);
         CollectEquipment<Register>(equipment);

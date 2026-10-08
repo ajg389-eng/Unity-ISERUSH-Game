@@ -13,12 +13,8 @@ MonoBehaviour:
   m_Name: Milestone_milestone_03
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_03
-  displayName: Production & Economics
-  description: 'Connect production decisions to cost, profit, and scheduling.
-
-
-    Topics:
-    Production Planning & Control, Engineering Economics'
+  displayName: "3"
+  description: Add bacon and shakes, then invest in faster MK2 workstations.
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: e5621d6c34624c468ba8caa9bd54a043, type: 2}
@@ -30,4 +26,4 @@ MonoBehaviour:
   unlocks:
   - kind: 3
     unlockId: milestone_03_complete
-    displayName: Production & Economics Complete
+    displayName: Advanced burger, fries, and shake recipes

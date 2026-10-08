@@ -334,7 +334,11 @@ public class BuildPlacer : MonoBehaviour
     public void BeginPlacement(ItemDefinition item)
     {
         if (item == null || item.prefab == null) return;
-        if (OnboardingTutorial.IsStationLocked(item)) return;
+        bool shakeStationLocked = item.IsTieredStation && item.stationFamily == "Shake Station"
+            && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
+        bool mk2StationLocked = item.IsTieredStation && item.stationMark >= 2
+            && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
+        if (OnboardingTutorial.IsStationLocked(item) || shakeStationLocked || mk2StationLocked) return;
         if (inventory == null)
             inventory = FindFirstObjectByType<InventoryManager>();
         if (inventory == null || inventory.GetCount(item) <= 0)
@@ -1034,6 +1038,8 @@ public class BuildPlacer : MonoBehaviour
         grid.SetOccupied(ox, oy, sx, sy, false);
         draggingObject = target;
         dragFootprint = fp;
+        dragOriginalPosition = target.transform.position;
+        dragOriginalWorldRotation = target.transform.rotation;
         dragOrigX = ox;
         dragOrigY = oy;
         dragRotation = dragOrigRotation = rot;
@@ -1433,6 +1439,13 @@ public class BuildPlacer : MonoBehaviour
 
     void EndDrag()
     {
+        GameObject movedObject = draggingObject;
+        bool moved = movedObject != null
+            && (Vector3.Distance(movedObject.transform.position, dragOriginalPosition) > 0.05f
+                || Quaternion.Angle(movedObject.transform.rotation, dragOriginalWorldRotation) > 1f);
+        if (moved && movedObject.GetComponent<StationNode>() != null)
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.StationRepositioned);
+
         if (draggingWallDoor != null)
             draggingWallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(false);
         ClearDraggedObjectHighlight();

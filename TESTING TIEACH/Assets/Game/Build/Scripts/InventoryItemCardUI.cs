@@ -27,6 +27,7 @@ public class InventoryItemCardUI : MonoBehaviour
     Color cardBaseColor = CardColor;
     Outline cardOutline;
     TextMeshProUGUI tutorialPrompt;
+    TextMeshProUGUI unlockRequirementText;
     ItemDefinition boundItem;
 
     void Awake()
@@ -196,14 +197,56 @@ public class InventoryItemCardUI : MonoBehaviour
         if (nameText != null) nameText.text = displayName;
     }
 
+    public void SetUnlockRequirement(string requirement)
+    {
+        if (unlockRequirementText == null)
+        {
+            var row = new GameObject("UnlockRequirement", typeof(RectTransform),
+                typeof(Image), typeof(LayoutElement));
+            row.transform.SetParent(transform, false);
+            row.transform.SetSiblingIndex(Mathf.Min(2, transform.childCount - 1));
+            row.GetComponent<LayoutElement>().preferredHeight = 24f;
+            row.GetComponent<Image>().color = new Color(0.28f, 0.24f, 0.16f, 1f);
+            unlockRequirementText = CreateRequirementLabel(row.transform);
+        }
+
+        unlockRequirementText.transform.parent.gameObject.SetActive(!string.IsNullOrWhiteSpace(requirement));
+        if (!string.IsNullOrWhiteSpace(requirement))
+            unlockRequirementText.text = requirement;
+    }
+
+    static TextMeshProUGUI CreateRequirementLabel(Transform parent)
+    {
+        var go = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        go.transform.SetParent(parent, false);
+        var rect = (RectTransform)go.transform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(4f, 1f);
+        rect.offsetMax = new Vector2(-4f, -1f);
+        var label = go.GetComponent<TextMeshProUGUI>();
+        label.fontSize = 11f;
+        label.fontStyle = FontStyles.Bold;
+        label.color = new Color(1f, 0.84f, 0.48f, 1f);
+        label.alignment = TextAlignmentOptions.Center;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 9f;
+        label.fontSizeMax = 11f;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.overflowMode = TextOverflowModes.Ellipsis;
+        label.raycastTarget = false;
+        return label;
+    }
+
     public void ConfigureMarkSelector(bool hasMk1, bool hasMk2, int selectedMark,
-        System.Action<int> onSelected)
+        System.Action<int> onSelected, bool mark2Locked = false, int mark2UnlockMilestone = 0)
     {
         EnsureMarkSelector();
         Transform row = mark1Button != null ? mark1Button.transform.parent : null;
         if (row != null) row.gameObject.SetActive(true);
-        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected);
-        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected);
+        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, false, 0);
+        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected,
+            mark2Locked, mark2UnlockMilestone);
     }
 
     public void HideMarkSelector()
@@ -253,21 +296,29 @@ public class InventoryItemCardUI : MonoBehaviour
     }
 
     static void ConfigureMarkButton(UnityEngine.UI.Button button, int mark, bool exists,
-        int selectedMark, System.Action<int> onSelected)
+        int selectedMark, System.Action<int> onSelected, bool locked, int unlockMilestone)
     {
         if (button == null) return;
         button.onClick.RemoveAllListeners();
-        button.interactable = exists;
-        if (exists && onSelected != null)
+        bool unlocked = exists && !locked;
+        button.interactable = unlocked;
+        TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (label != null)
+        {
+            label.text = "MK" + mark + (locked && exists ? " · LOCKED" : "");
+            label.fontSize = locked ? 9f : 10f;
+            label.color = unlocked ? TextColor : new Color(0.62f, 0.66f, 0.72f, 1f);
+        }
+        if (unlocked && onSelected != null)
             button.onClick.AddListener(() => onSelected(mark));
         var image = button.GetComponent<UnityEngine.UI.Image>();
         if (image != null)
-            image.color = mark == selectedMark
+            image.color = unlocked && mark == selectedMark
                 ? new Color(0.34f, 0.63f, 0.51f, 1f)
-                : new Color(0.15f, 0.19f, 0.23f, exists ? 1f : 0.45f);
+                : new Color(0.15f, 0.19f, 0.23f, unlocked ? 1f : 0.45f);
         var outline = button.GetComponent<UnityEngine.UI.Outline>();
         if (outline == null) outline = button.gameObject.AddComponent<UnityEngine.UI.Outline>();
-        outline.enabled = mark == selectedMark;
+        outline.enabled = unlocked && mark == selectedMark;
         outline.effectColor = new Color(0.72f, 0.95f, 0.84f, 1f);
         outline.effectDistance = new Vector2(2f, -2f);
     }

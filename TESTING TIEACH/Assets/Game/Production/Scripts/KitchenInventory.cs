@@ -57,7 +57,8 @@ public class KitchenInventory : MonoBehaviour
         var list = new List<ItemDefinition>();
         void Add(ItemDefinition item)
         {
-            if (item != null && (orderConfig == null || !orderConfig.IsDrink(item)) && !list.Contains(item))
+            if (item != null && (orderConfig == null || (!orderConfig.IsDrink(item)
+                && IsOrderItemUnlocked(item))) && !list.Contains(item))
                 list.Add(item);
         }
 
@@ -74,6 +75,40 @@ public class KitchenInventory : MonoBehaviour
         }
 
         return list;
+    }
+
+    /// <summary>Full ingredient catalog for UI previews, including future locked items.</summary>
+    public IReadOnlyList<ItemDefinition> GetIngredientCatalogItems()
+    {
+        var list = new List<ItemDefinition>();
+        void Add(ItemDefinition item)
+        {
+            if (item != null && (orderConfig == null || !orderConfig.IsDrink(item)) && !list.Contains(item))
+                list.Add(item);
+        }
+
+        if (orderConfig != null)
+            foreach (ItemDefinition item in orderConfig.GetIngredientItems(includeLocked: true))
+                Add(item);
+
+        if (extraOrderableItems != null)
+            foreach (ItemDefinition item in extraOrderableItems)
+                Add(item);
+
+        return list;
+    }
+
+    public bool IsOrderItemUnlocked(ItemDefinition item)
+    {
+        return item != null && (orderConfig == null
+            || (orderConfig.IsIngredientUnlocked(item) && orderConfig.IsMenuItemUnlocked(item)));
+    }
+
+    public int GetOrderItemUnlockMilestone(ItemDefinition item)
+    {
+        if (item == null || orderConfig == null) return 0;
+        return Mathf.Max(orderConfig.GetIngredientUnlockMilestone(item),
+            orderConfig.GetMenuItemUnlockMilestone(item));
     }
 
     void EnsureCatalogStock()
@@ -227,6 +262,7 @@ public class KitchenInventory : MonoBehaviour
         foreach (var pair in packCounts)
         {
             if (pair.Key == null || pair.Value <= 0) continue;
+            if (!IsOrderItemUnlocked(pair.Key)) return false;
             items.Add(pair.Key);
             amounts.Add(GetPackSize(pair.Key) * pair.Value);
             totalPrice += GetPackPrice(pair.Key) * pair.Value;

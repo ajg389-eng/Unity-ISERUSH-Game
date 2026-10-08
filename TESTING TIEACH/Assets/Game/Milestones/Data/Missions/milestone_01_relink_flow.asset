@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: milestone_01_relink_flow
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_relink_flow
-  title: Improve the layout
-  description: Set or change a station Output link to redesign how work flows.
+  title: Connect the production flow
+  description: Link a station's output to the next workstation in the recipe workflow.
   completionEventId: output_linked
   requiredCount: 1
   showBeforeComplete: 1

@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: milestone_06_connect_process
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_connect_process
-  title: Connect the process
-  description: Assign a worker and set a station Output so people, stations, and flow align.
+  title: Connect people to the process
+  description: Assign the worker to a station that supports the process bottleneck.
   completionEventId: worker_assigned
   requiredCount: 1
   showBeforeComplete: 1

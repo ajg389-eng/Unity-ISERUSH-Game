@@ -21,8 +21,8 @@ MonoBehaviour:
     Quality Engineering, Reliability Engineering'
   isTutorial: 0
   missions:
-  - {fileID: 11400000, guid: 87def93dacac42be9ebe5230394d6279, type: 2}
   - {fileID: 11400000, guid: d82ccab227e8478499a826b153e046a2, type: 2}
+  - {fileID: 11400000, guid: 87def93dacac42be9ebe5230394d6279, type: 2}
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: a2558a7b983aa0a488984e02f87f88f9, type: 2}

@@ -992,14 +992,20 @@ public static class WorkflowAnalysis
         var products = new List<ItemDefinition>();
         int assemblyCount = CountStations(flow, typeof(AssemblyStation));
         if (canBurger && config != null)
-            foreach (ItemDefinition menuItem in config.GetMenuItems())
+            foreach (ItemDefinition menuItem in config.GetEnabledMenuItems())
                 if (menuItem != null && config.IsBurger(menuItem)
                     && assemblyCount >= config.GetAssemblyChain(menuItem).Count)
                     products.Add(menuItem);
-        if (canFries && config != null && config.friesItem != null)
-            products.Add(config.friesItem);
-        if (hasShake && config != null && config.drinkItem != null)
-            products.Add(config.drinkItem);
+        if (canFries && config != null)
+            foreach (ItemDefinition menuItem in config.GetEnabledMenuItems())
+                if (config.IsFries(menuItem)
+                    && assemblyCount >= config.GetAssemblyChain(menuItem).Count)
+                    products.Add(menuItem);
+        if (hasShake && config != null)
+            foreach (ItemDefinition menuItem in config.GetEnabledMenuItems())
+                if (config.IsDrink(menuItem)
+                    && assemblyCount >= config.GetAssemblyChain(menuItem).Count)
+                    products.Add(menuItem);
 
         // Report actual configured outputs, not every recipe this collection of
         // station types could theoretically make. The producer must be selected

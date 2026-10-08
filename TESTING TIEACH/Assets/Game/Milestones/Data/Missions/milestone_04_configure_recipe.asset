@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
-  m_Name: milestone_01_serve_orders
+  m_Name: milestone_04_configure_recipe
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_01_serve_orders
-  title: Serve 25 customers
-  description: Serve 25 customers with your burger and fries menu.
-  completionEventId: order_served
-  requiredCount: 25
+  missionId: milestone_04_configure_recipe
+  title: Serve 5 fully loaded burgers
+  description: Serve five customers who ordered the fully loaded burger.
+  completionEventId: menu_item_served_cheese_bacon_lettuce_onion_tomato_egg_burger
+  requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

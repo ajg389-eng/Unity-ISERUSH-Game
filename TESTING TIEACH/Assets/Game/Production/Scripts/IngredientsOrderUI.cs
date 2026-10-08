@@ -42,6 +42,7 @@ public class IngredientsOrderUI : MonoBehaviour
     TextMeshProUGUI expandedChevron;
     GameObject recipesOverlay;
     Transform recipeChartRoot;
+    CustomerOrderConfig recipeChartMenu;
     readonly List<Button> recipeTabButtons = new List<Button>();
 
     void OnEnable()
@@ -189,7 +190,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
         int firstSupplyRow = listContainer.childCount;
         CreateSectionHeader("Order ingredient packs");
-        foreach (var item in inventory.GetOrderableItems())
+        foreach (var item in inventory.GetIngredientCatalogItems())
         {
             if (item == null) continue;
             CreateOrderRow(item);
@@ -364,6 +365,7 @@ public class IngredientsOrderUI : MonoBehaviour
     void ShowRecipeTab(CustomerOrderConfig menu, int tab)
     {
         if (recipeChartRoot == null) return;
+        recipeChartMenu = menu;
         RectTransform chart = (RectTransform)recipeChartRoot;
         chart.anchoredPosition = new Vector2(0f, -240f);
         chart.localScale = Vector3.one;
@@ -491,6 +493,11 @@ public class IngredientsOrderUI : MonoBehaviour
 
     RectTransform AddGraphNode(ItemDefinition item, string fallback, string station, Vector2 position, bool final = false)
     {
+        int unlockMilestone = item != null && recipeChartMenu != null
+            ? Mathf.Max(recipeChartMenu.GetMenuItemUnlockMilestone(item),
+                recipeChartMenu.GetIngredientUnlockMilestone(item)) : 0;
+        bool locked = item != null && recipeChartMenu != null
+            && (!recipeChartMenu.IsMenuItemUnlocked(item) || !recipeChartMenu.IsIngredientUnlocked(item));
         var node = new GameObject("GraphNode_" + fallback, typeof(RectTransform), typeof(Image));
         node.transform.SetParent(recipeChartRoot, false);
         RectTransform rt = (RectTransform)node.transform;
@@ -498,8 +505,9 @@ public class IngredientsOrderUI : MonoBehaviour
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.sizeDelta = new Vector2(220f, 92f);
         rt.anchoredPosition = position;
-        node.GetComponent<Image>().color = final
-            ? new Color(0.18f, 0.43f, 0.34f, 1f)
+        node.GetComponent<Image>().color = locked
+            ? new Color(0.11f, 0.12f, 0.16f, 1f)
+            : final ? new Color(0.18f, 0.43f, 0.34f, 1f)
             : new Color(0.15f, 0.17f, 0.22f, 1f);
 
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage));
@@ -511,7 +519,8 @@ public class IngredientsOrderUI : MonoBehaviour
         previewRt.offsetMax = new Vector2(80f, -8f);
         RawImage preview = previewGo.GetComponent<RawImage>();
         if (item != null) preview.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
-        preview.color = item != null ? Color.white : Color.clear;
+        preview.color = item == null ? Color.clear
+            : locked ? new Color(0.58f, 0.61f, 0.67f, 0.55f) : Color.white;
         preview.raycastTarget = false;
 
         var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -523,9 +532,11 @@ public class IngredientsOrderUI : MonoBehaviour
         labelRt.offsetMax = new Vector2(-8f, -8f);
         TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
         string display = item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback;
-        label.text = "<b>" + display + "</b>\n<size=70%><color=#91A4C3>" + station + "</color></size>";
-        label.fontSize = 15f;
-        label.color = Color.white;
+        label.text = "<b>" + display + "</b>\n<size=70%><color=#91A4C3>" + station + "</color></size>"
+            + (locked && unlockMilestone > 0
+                ? "\n<size=68%><color=#F1C66D>LOCKED · MILESTONE " + unlockMilestone + "</color></size>" : "");
+        label.fontSize = locked ? 13f : 15f;
+        label.color = locked ? new Color(0.68f, 0.7f, 0.74f, 1f) : Color.white;
         label.alignment = TextAlignmentOptions.MidlineLeft;
         label.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
@@ -774,10 +785,18 @@ public class IngredientsOrderUI : MonoBehaviour
         nameLe.minHeight = 44f;
         nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
-        nameText.text = inventory.GetDisplayName(item);
+        int unlockMilestone = menu.GetMenuItemUnlockMilestone(item);
+        bool itemUnlocked = menu.IsMenuItemUnlocked(item);
+        nameText.text = inventory.GetDisplayName(item)
+            + (!itemUnlocked && unlockMilestone > 0
+                ? $"  <color=#F1C66D>LOCKED · MILESTONE {unlockMilestone}</color>" : "");
         nameText.fontSize = 16;
         nameText.fontStyle = FontStyles.Bold;
-        nameText.color = Color.white;
+        nameText.color = itemUnlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+        row.GetComponent<Image>().color = itemUnlocked
+            ? new Color(0.18f, 0.19f, 0.24f, 0.98f)
+            : new Color(0.11f, 0.12f, 0.16f, 0.98f);
+        preview.color = itemUnlocked ? Color.white : new Color(0.58f, 0.61f, 0.67f, 0.62f);
         nameText.alignment = TextAlignmentOptions.MidlineLeft;
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
@@ -803,6 +822,8 @@ public class IngredientsOrderUI : MonoBehaviour
             (production != null ? production.GetProductionTarget(captured) : 0);
         Button targetPlus = CreateCartButton(header.transform, "TargetPlus", "+", 28f,
             new Color(0.27f, 0.62f, 0.4f, 1f), out _);
+        targetMinus.interactable = itemUnlocked;
+        targetPlus.interactable = itemUnlocked;
         targetMinus.onClick.AddListener(() =>
         {
             if (production != null) production.SetProductionTarget(captured,
@@ -833,6 +854,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
         Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
+        toggle.interactable = itemUnlocked;
         toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
@@ -866,6 +888,15 @@ public class IngredientsOrderUI : MonoBehaviour
         headerButton.transition = Selectable.Transition.None;
         headerButton.onClick.AddListener(() => ToggleMenuWorkflow(row, workflowGo, le, chevron,
             collapsedHeight, expandedHeight));
+
+        MilestoneLockedMenuRow rowState = row.AddComponent<MilestoneLockedMenuRow>();
+        rowState.item = item;
+        rowState.label = nameText;
+        rowState.preview = preview;
+        rowState.rowBackground = row.GetComponent<Image>();
+        rowState.toggle = toggle;
+        rowState.targetMinus = targetMinus;
+        rowState.targetPlus = targetPlus;
     }
 
     void ToggleMenuWorkflow(GameObject row, GameObject workflow, LayoutElement rowLayout,
@@ -1221,11 +1252,36 @@ public class IngredientsOrderUI : MonoBehaviour
             moneyHintText.text = money != null ? ("Money: $" + money.CurrentMoney) : "Money: —";
 
         if (listContainer == null || inventory == null) return;
+        foreach (GameObject child in menuRows)
+        {
+            if (child == null) continue;
+            MilestoneLockedMenuRow row = child.GetComponent<MilestoneLockedMenuRow>();
+            if (row == null || row.item == null || inventory.orderConfig == null) continue;
+            int unlockMilestone = inventory.orderConfig.GetMenuItemUnlockMilestone(row.item);
+            bool unlocked = inventory.orderConfig.IsMenuItemUnlocked(row.item);
+            if (row.label != null)
+            {
+                row.label.text = inventory.GetDisplayName(row.item)
+                    + (!unlocked && unlockMilestone > 0
+                        ? $"  <color=#F1C66D>LOCKED · MILESTONE {unlockMilestone}</color>" : "");
+                row.label.color = unlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+            }
+            if (row.rowBackground != null)
+                row.rowBackground.color = unlocked
+                    ? new Color(0.18f, 0.19f, 0.24f, 0.98f)
+                    : new Color(0.11f, 0.12f, 0.16f, 0.98f);
+            if (row.preview != null)
+                row.preview.color = unlocked ? Color.white : new Color(0.58f, 0.61f, 0.67f, 0.62f);
+            if (row.toggle != null) row.toggle.interactable = unlocked;
+            if (row.targetMinus != null) row.targetMinus.interactable = unlocked;
+            if (row.targetPlus != null) row.targetPlus.interactable = unlocked;
+        }
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
         if (addAllButton != null) addAllButton.interactable = !deliveryActive;
         int cartTotal = 0;
         int cartPackCount = 0;
+        int cartLockMilestone = 0;
         foreach (GameObject child in supplyRows)
         {
             if (child == null) continue;
@@ -1235,26 +1291,43 @@ public class IngredientsOrderUI : MonoBehaviour
             string name = inventory.GetDisplayName(row.item);
             int pack = inventory.GetPackSize(row.item);
             int price = inventory.GetPackPrice(row.item);
-            int stock = inventory.GetCount(row.item);
+            bool itemUnlocked = inventory.IsOrderItemUnlocked(row.item);
+            int unlockMilestone = inventory.GetOrderItemUnlockMilestone(row.item);
+            int stock = itemUnlocked ? inventory.GetCount(row.item) : 0;
 
             int incoming = 0;
             if (delivery != null)
                 incoming = delivery.GetIncomingCount(row.item);
 
             if (row.infoText != null)
-                row.infoText.text = name + "\n<size=85%>Pack of " + pack + "  |  $" + price + "</size>";
+            {
+                row.infoText.text = itemUnlocked
+                    ? name + "\n<size=85%>Pack of " + pack + "  |  $" + price + "</size>"
+                    : name + "\n<size=85%><color=#F1C66D>LOCKED · UNLOCKS IN MILESTONE "
+                        + unlockMilestone + "</color></size>";
+                row.infoText.color = itemUnlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+            }
+            Image rowImage = child.GetComponent<Image>();
+            if (rowImage != null)
+                rowImage.color = itemUnlocked
+                    ? new Color(0.22f, 0.22f, 0.28f, 0.95f)
+                    : new Color(0.12f, 0.13f, 0.17f, 0.95f);
             if (row.stockText != null)
             {
-                row.stockText.text = incoming > 0
+                row.stockText.text = !itemUnlocked ? "LOCKED" : incoming > 0
                     ? "Stock\n" + stock + "\n<size=80%>+" + incoming + " incoming</size>"
                     : "Stock\n" + stock;
+                row.stockText.color = itemUnlocked
+                    ? new Color(0.85f, 0.9f, 1f, 1f) : new Color(0.68f, 0.7f, 0.74f, 1f);
             }
             int selected = GetCartPacks(row.item);
             cartPackCount += selected;
             cartTotal += selected * price;
+            if (!itemUnlocked && selected > 0 && cartLockMilestone == 0)
+                cartLockMilestone = unlockMilestone;
             if (row.cartCountText != null) row.cartCountText.text = "x" + selected;
             if (row.removeButton != null) row.removeButton.interactable = !deliveryActive && selected > 0;
-            if (row.addButton != null) row.addButton.interactable = !deliveryActive;
+            if (row.addButton != null) row.addButton.interactable = !deliveryActive && itemUnlocked;
         }
 
 
@@ -1274,9 +1347,12 @@ public class IngredientsOrderUI : MonoBehaviour
         if (clearCartButton != null)
             clearCartButton.interactable = !deliveryActive && cartPackCount > 0;
         if (placeOrderButton != null)
-            placeOrderButton.interactable = !deliveryActive && cartPackCount > 0 && affordable;
+            placeOrderButton.interactable = !deliveryActive && cartPackCount > 0 && affordable
+                && cartLockMilestone == 0;
         if (placeOrderLabel != null)
-            placeOrderLabel.text = deliveryActive ? "Delivery Active" : (!affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal);
+            placeOrderLabel.text = deliveryActive ? "Delivery Active"
+                : cartLockMilestone > 0 ? "Unlock Milestone " + cartLockMilestone
+                : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal;
     }
 }
 
@@ -1289,6 +1365,17 @@ public class IngredientOrderRow : MonoBehaviour
     public Button removeButton;
     public Button addButton;
     public TextMeshProUGUI cartCountText;
+}
+
+public sealed class MilestoneLockedMenuRow : MonoBehaviour
+{
+    public ItemDefinition item;
+    public TextMeshProUGUI label;
+    public RawImage preview;
+    public Image rowBackground;
+    public Toggle toggle;
+    public Button targetMinus;
+    public Button targetPlus;
 }
 
 /// <summary>Click-and-drag panning for the recipe dependency graph.</summary>

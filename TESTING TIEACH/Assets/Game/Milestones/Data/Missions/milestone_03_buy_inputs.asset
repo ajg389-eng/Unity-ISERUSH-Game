@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_03_buy_inputs
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_buy_inputs
-  title: Invest in inputs
-  description: Order an ingredient pack - a production cost that enables throughput.
-  completionEventId: ingredients_ordered
+  title: Configure a bacon burger
+  description: Choose the Cheese Bacon Burger recipe at an Assembly Station.
+  completionEventId: recipe_configured_cheese_bacon_burger
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

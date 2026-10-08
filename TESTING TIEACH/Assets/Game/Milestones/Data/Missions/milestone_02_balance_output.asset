@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_02_balance_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_balance_output
-  title: Balance the line
-  description: Serve 15 orders after staffing to test whether the bottleneck moved.
-  completionEventId: order_served
-  requiredCount: 15
+  title: Serve 5 CLT Burgers
+  description: Serve five customers who ordered the lettuce-and-tomato burger.
+  completionEventId: menu_item_served_clt_burger
+  requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

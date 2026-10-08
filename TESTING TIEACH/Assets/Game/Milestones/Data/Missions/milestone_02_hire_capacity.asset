@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_02_hire_capacity
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_hire_capacity
-  title: Add labor capacity
-  description: Hire a worker to increase the restaurant's productive capacity.
-  completionEventId: worker_hired
+  title: Add lettuce and tomato to a burger
+  description: Configure the CLT Burger recipe at an Assembly Station.
+  completionEventId: recipe_configured_clt_burger
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

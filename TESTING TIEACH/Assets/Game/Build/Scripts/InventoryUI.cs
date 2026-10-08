@@ -576,7 +576,7 @@ public class InventoryUI : MonoBehaviour
             inventory.GetStationCapacity(captured));
         card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
             inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
-        card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(captured));
+        card.SetTutorialLocked(IsMilestoneStationLocked(captured));
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
             card.transform.SetAsFirstSibling();
     }
@@ -605,6 +605,9 @@ public class InventoryUI : MonoBehaviour
         refresh = () =>
         {
             ItemDefinition active = selected;
+            bool shakeStationLocked = family == "Shake Station"
+                && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
+            bool mk2Unlocked = MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
             card.SetTutorialLocked(false);
             card.Bind(active, inventory.GetAcquiredCount(active),
                 onSelect: () => BeginItemPlacement(active),
@@ -621,21 +624,35 @@ public class InventoryUI : MonoBehaviour
                 },
                 displayPrice: inventory.GetPurchasePrice(active));
             card.SetDisplayName(family);
+            bool mk2Locked = mk2 != null && !mk2Unlocked;
+            card.SetUnlockRequirement(shakeStationLocked
+                ? "Station unlocks at Milestone " + MilestoneFeatures.Mk2Stations
+                : mk2Locked ? "MK2 unlocks at Milestone " + MilestoneFeatures.Mk2Stations
+                : null);
             card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
                 inventory.GetStationCapacity(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
                 inventory.GetCount(active), inventory.GetAcquiredCount(active));
-            card.SetTutorialLocked(OnboardingTutorial.IsStationLocked(active));
-            card.ConfigureMarkSelector(mk1 != null, mk2 != null, active.stationMark, mark =>
+            card.SetTutorialLocked(IsMilestoneStationLocked(active));
+            card.ConfigureMarkSelector(mk1 != null && !shakeStationLocked,
+                mk2 != null, active.stationMark, mark =>
             {
                 selected = mark == 2 ? mk2 : mk1;
                 if (selected != null) refresh();
-            });
+            }, mark2Locked: mk2 != null && !mk2Unlocked,
+                mark2UnlockMilestone: MilestoneFeatures.Mk2Stations);
         };
         refresh();
 
         if (OnboardingTutorial.ShouldHighlightInventoryItem(selected))
             card.transform.SetAsFirstSibling();
+    }
+
+    static bool IsMilestoneStationLocked(ItemDefinition item)
+    {
+        return item != null && (OnboardingTutorial.IsStationLocked(item)
+            || (item.IsTieredStation && (item.stationMark >= 2 || item.stationFamily == "Shake Station")
+                && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations)));
     }
 
     void CreateLegacyRow(ItemDefinition item)
@@ -654,7 +671,7 @@ public class InventoryUI : MonoBehaviour
         qtyText.text = owned + "/" + capacity;
         int price = inventory.GetPurchasePrice(item);
         bool atCapacity = inventory.IsAtStationCapacity(item);
-        bool tutorialLocked = OnboardingTutorial.IsStationLocked(item);
+        bool tutorialLocked = IsMilestoneStationLocked(item);
         priceText.text = tutorialLocked ? "LOCKED" : atCapacity
             ? "MAX"
             : price <= 0 ? "FREE" : "$" + price;

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_link_output
   title: Link information flow
-  description: Set a station Output link - the routing decision connects the whole kitchen.
+  description: Set a station Output so work is routed through the connected kitchen.
   completionEventId: output_linked
   requiredCount: 1
   showBeforeComplete: 1

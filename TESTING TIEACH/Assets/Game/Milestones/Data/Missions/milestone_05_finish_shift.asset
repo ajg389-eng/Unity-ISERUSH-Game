@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: milestone_05_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_05_finish_shift
-  title: Survive a full day
-  description: Finish a shift with the kitchen still able to serve - reliability over time.
+  title: Sustain service for a full shift
+  description: Run to closing with ingredients available and service operating reliably.
   completionEventId: day_ended
   requiredCount: 1
   showBeforeComplete: 1

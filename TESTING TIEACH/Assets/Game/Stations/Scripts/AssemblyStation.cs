@@ -113,6 +113,13 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     public AssemblyRecipeDefinition GetSelectedRecipe()
     {
+        var manager = ProductionManager.Instance;
+        var config = manager != null ? manager.orderConfig : null;
+        if (selectedRecipe != null)
+        {
+            if (config != null && !config.IsAssemblyRecipeUnlocked(selectedRecipe))
+                selectedRecipe = null;
+        }
         if (selectedRecipe != null)
         {
             if (selectedProduct != selectedRecipe.output)
@@ -120,8 +127,6 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
             return selectedRecipe;
         }
 
-        var manager = ProductionManager.Instance;
-        var config = manager != null ? manager.orderConfig : null;
         selectedRecipe = config != null ? config.GetAssemblyRecipe(selectedProduct) : null;
         if (selectedRecipe != null)
             selectedProduct = selectedRecipe.output;

@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_system_output
   title: Deliver system output
-  description: Serve 25 customers as proof the whole system works together.
+  description: Serve 30 customers while monitoring how staffing, routing, and supply affect the result.
   completionEventId: order_served
-  requiredCount: 25
+  requiredCount: 30
   showBeforeComplete: 1
   showAfterComplete: 1

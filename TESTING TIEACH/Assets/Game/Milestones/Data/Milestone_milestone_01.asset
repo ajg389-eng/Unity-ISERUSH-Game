@@ -13,21 +13,17 @@ MonoBehaviour:
   m_Name: Milestone_milestone_01
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_01
-  displayName: Flow & Work Design
-  description: 'Understand queues, layout, and how work moves through the restaurant.
-
-
-    Topics:
-    Queueing Theory, Work Design & Measurement, Facilities Planning'
+  displayName: "1"
+  description: Build a small menu and learn to shape a kitchen workflow.
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: 7a8ccd56baa7476eb83291c1650c9c38, type: 2}
-  - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: d1486712a5db494ea3b04884fbde2522, type: 2}
+  - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: 6f785e371c9c82f409c695c26e381abc, type: 2}
   unlocks:
   - kind: 3
     unlockId: milestone_01_complete
-    displayName: Flow & Work Design Complete
+    displayName: Lettuce, tomato, and cheese fries

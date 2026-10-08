@@ -151,8 +151,8 @@ public sealed class ResearchTreeUI : MonoBehaviour
         new Entry("Additional Stations", "Buy extra station copies", 2, new Vector2(-250, 150), 0),
         new Entry("MK2 Stations", "4 input and 4 output slots", 3, new Vector2(250, 150), 0),
         new Entry("Expanded Capacity", "Higher station ownership limits", 4, new Vector2(-250, -110), 1),
-        new Entry("Advanced Processing", "Higher-volume production layouts", 5, new Vector2(250, -110), 2),
-        new Entry("Industrial Kitchen", "Maximum production capacity", 6, new Vector2(0, -370), 3)
+        new Entry("Advanced Processing", "Higher-volume production layouts", 4, new Vector2(250, -110), 2),
+        new Entry("Industrial Kitchen", "Maximum production capacity", 4, new Vector2(0, -370), 3)
     };
 
     static List<Entry> WorkforceEntries() => new List<Entry>
@@ -162,7 +162,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         new Entry("Multi-Worker Flows", "Assign two workers to one flow", 2, new Vector2(250, 150), 0),
         new Entry("Carry Training", "Unlock higher carry upgrades", 3, new Vector2(-250, -110), 1),
         new Entry("Specialist Training", "Improve processing efficiency", 4, new Vector2(250, -110), 2),
-        new Entry("Expert Workforce", "Maximum worker capacity", 6, new Vector2(0, -370), 3)
+        new Entry("Expert Workforce", "Maximum worker capacity", 4, new Vector2(0, -370), 3)
     };
 
     static List<Entry> AutomationEntries() => new List<Entry>
@@ -172,7 +172,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         new Entry("Production Targets", "Set desired product inventory", 3, new Vector2(250, 150), 0),
         new Entry("Automatic Ordering", "Reorder ingredients below a target", 4, new Vector2(-250, -110), 1),
         new Entry("Bottleneck Insights", "Identify constrained stations", 4, new Vector2(250, -110), 2),
-        new Entry("Smart Operations", "Coordinate targets and supplies", 6, new Vector2(0, -370), 3)
+        new Entry("Smart Operations", "Coordinate targets and supplies", 4, new Vector2(0, -370), 3)
     };
 
     RectTransform CreateNode(Entry entry)

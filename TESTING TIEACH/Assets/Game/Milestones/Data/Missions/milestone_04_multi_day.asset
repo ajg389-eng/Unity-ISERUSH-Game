@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_04_multi_day
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_04_multi_day
-  title: Compare two days
-  description: Complete 2 full shifts so you can compare demand across days.
-  completionEventId: day_ended
-  requiredCount: 2
+  title: Configure the premium shake
+  description: Choose the Whipped Cream Sprinkle Shake recipe.
+  completionEventId: recipe_configured_whipped_cream_sprinkle_shake
+  requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

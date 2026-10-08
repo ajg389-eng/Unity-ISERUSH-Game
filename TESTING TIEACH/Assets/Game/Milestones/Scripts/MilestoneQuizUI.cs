@@ -148,7 +148,9 @@ public class MilestoneQuizUI : MonoBehaviour
         if (titleText != null)
             titleText.text = quiz != null && !string.IsNullOrEmpty(quiz.title)
                 ? quiz.title
-                : (milestone != null ? milestone.displayName + " Quiz" : "Milestone Quiz");
+                : (milestone != null
+                    ? MilestoneProgressManager.Instance.GetMilestoneDisplayLabel(milestone) + " Quiz"
+                    : "Milestone Quiz");
 
         if (statusText != null)
         {

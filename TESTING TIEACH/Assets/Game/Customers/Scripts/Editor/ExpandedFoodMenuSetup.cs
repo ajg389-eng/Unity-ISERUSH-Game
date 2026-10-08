@@ -27,6 +27,12 @@ public static class ExpandedFoodMenuSetup
         config.whippedCreamShakeItem = creamShake;
         config.whippedCreamSprinkleShakeItem = sprinkleShake;
 
+        AddRecipe(config, "CL Burger", config.clBurgerItem, config.cheeseburgerItem,
+            config.slicedLettuceIngredient, config.lettuceIngredient,
+            new[] { StationType.Cutting }, new[] { config.lettuceIngredient, config.slicedLettuceIngredient });
+        AddRecipe(config, "CLT Burger", config.cltBurgerItem, config.clBurgerItem,
+            config.slicedTomatoIngredient, config.tomatoIngredient,
+            new[] { StationType.Cutting }, new[] { config.tomatoIngredient, config.slicedTomatoIngredient });
         AddRecipe(config, "Cheese Sauce", sauce, null, config.cheeseIngredient, sauce,
             new[] { StationType.Pantry, StationType.Grill }, new[] { config.cheeseIngredient, sauce });
         AddRecipe(config, "Cheese Fries", cheeseFries, config.friesItem, sauce, null, null, null);
@@ -36,7 +42,7 @@ public static class ExpandedFoodMenuSetup
         AddRecipe(config, "Whipped Cream Shake", creamShake, config.drinkItem, cream, null, null, null, false);
         AddRecipe(config, "Whipped Cream Sprinkle Shake", sprinkleShake, creamShake, sprinkles, null, null, null);
         EditorUtility.SetDirty(config); AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
-        Debug.Log("Installed Cheese Fries, Cheese Bacon Fries, and whipped-cream shake recipes.");
+        Debug.Log("Installed CL/CLT burgers, Cheese Fries, Cheese Bacon Fries, and whipped-cream shake recipes.");
     }
 
     static ItemDefinition Item(string name, string prefabName, int price, int packPrice)
@@ -51,7 +57,7 @@ public static class ExpandedFoodMenuSetup
 
     static void AddRecipe(CustomerOrderConfig c, string name, ItemDefinition output, ItemDefinition processed, ItemDefinition pantry, ItemDefinition raw, StationType[] pipe, ItemDefinition[] stages, bool fromFreezer = false)
     {
-        if (c.GetAssemblyRecipe(output) != null) return;
+        if (c.assemblyRecipes.Exists(recipe => recipe != null && recipe.output == output)) return;
         c.assemblyRecipes.Add(new AssemblyRecipeDefinition { recipeName=name, output=output, processedInput=processed,
             processedInputName=processed != null ? processed.itemName : "", pantryInput=pantry, rawPantryInput=raw,
             processedInputFromFreezer=fromFreezer, supplyPipeline=pipe, supplyStageOutputs=stages });

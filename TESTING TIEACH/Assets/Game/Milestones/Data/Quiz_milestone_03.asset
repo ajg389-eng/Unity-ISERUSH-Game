@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Quiz_milestone_03
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_03_quiz
-  title: Production & Economics Quiz
+  title: Milestone 3 Quiz
   introText: Answer every question correctly to unlock the next milestone.
   questions:
   - prompt: A $1,000 equipment upgrade is expected to increase profit by $250 per

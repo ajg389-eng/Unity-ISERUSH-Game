@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Quiz_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_04_quiz
-  title: Supply Chain & Forecasting Quiz
+  title: Milestone 4 Quiz
   introText: Answer every question correctly to unlock the next milestone.
   questions:
   - prompt: Supplier A is cheaper but frequently delivers late. Supplier B costs

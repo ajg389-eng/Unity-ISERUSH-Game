@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_03_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_finish_shift
-  title: Close the books
-  description: Finish the shift and check end-of-day profit vs. spending.
-  completionEventId: day_ended
-  requiredCount: 1
+  title: Serve 5 shakes
+  description: Serve five customers who ordered a Shake.
+  completionEventId: menu_item_served_shake
+  requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

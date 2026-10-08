@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_01_observe_queue
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_observe_queue
-  title: Spot a bottleneck
-  description: Let at least 3 customers line up so you can see work pile up at the register.
-  completionEventId: queue_growing
+  title: Set up the cheeseburger recipe
+  description: Choose the cheeseburger recipe at an Assembly Station to add cheese to the burger workflow.
+  completionEventId: recipe_configured_cheeseburger
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

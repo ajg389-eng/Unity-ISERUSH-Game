@@ -7,6 +7,8 @@ public static class MilestoneFeatures
 {
     public const int RestaurantBasics = 1;
     public const int CapacityAndOptimization = 2;
+    public const int Mk2Stations = 3;
+    public const int AdvancedMenuRecipes = 4;
 
     public static int HighestReachedNumberedStage()
     {

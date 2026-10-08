@@ -35,4 +35,37 @@ public static class TutorialVoiceEventId
     public const string StationPurchased = "station_purchased";
     public const string FloorExpanded = "floor_expanded";
     public const string CapacityInvested = "capacity_invested";
+    public const string StationRepositioned = "station_repositioned";
+    public const string Mk2StationPurchased = "mk2_station_purchased";
+
+    public static string RecipeConfigured(ItemDefinition item) =>
+        ItemEvent("recipe_configured", item);
+
+    public static string MenuItemServed(ItemDefinition item) =>
+        ItemEvent("menu_item_served", item);
+
+    static string ItemEvent(string prefix, ItemDefinition item)
+    {
+        if (item == null) return null;
+        string value = !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : item.name;
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var key = new System.Text.StringBuilder(value.Length);
+        bool lastWasSeparator = false;
+        foreach (char character in value)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                key.Append(char.ToLowerInvariant(character));
+                lastWasSeparator = false;
+            }
+            else if (!lastWasSeparator && key.Length > 0)
+            {
+                key.Append('_');
+                lastWasSeparator = true;
+            }
+        }
+        if (key.Length > 0 && key[key.Length - 1] == '_') key.Length--;
+        return key.Length > 0 ? prefix + "_" + key : null;
+    }
 }

@@ -6,7 +6,8 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 9, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 11, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
@@ -16,6 +17,8 @@ public class KitchenSaveSnapshot
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     public List<WallPhoto> wallPhotos = new List<WallPhoto>();
+    public List<string> completedMilestoneIds = new List<string>();
+    public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
@@ -35,6 +38,13 @@ public class KitchenSaveSnapshot
         s.tutorialComplete = OnboardingTutorial.IsComplete;
         s.tutorialStep = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.SaveStepIndex : 0;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
+        if (MilestoneProgressManager.Instance != null)
+        {
+            s.activeMilestoneId = MilestoneProgressManager.Instance.ActiveMilestoneId;
+            s.completedMilestoneIds.AddRange(MilestoneProgressManager.Instance.GetCompletedMilestoneIds());
+        }
+        if (MissionProgressManager.Instance != null)
+            s.missionProgress = MissionProgressManager.Instance.CaptureProgress();
         var appearance = StoreAppearanceController.Instance;
         if (appearance != null)
         {
@@ -118,7 +128,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>9 || inv==null || pm==null) return false;
+        if(version<1 || version>11 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -254,7 +264,21 @@ public class KitchenSaveSnapshot
             ? tutorialStep - 1
             : tutorialStep;
         if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
-        if(milestone>0 && MilestoneProgressManager.Instance!=null) MilestoneProgressManager.Instance.DebugJumpToNumberedMilestone(milestone,out _);
+        MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
+        if (milestoneProgress != null)
+        {
+            if (version >= 10 && (completedMilestoneIds != null && completedMilestoneIds.Count > 0
+                || !string.IsNullOrEmpty(activeMilestoneId)))
+                milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds);
+            else if (milestone > 0)
+                milestoneProgress.DebugJumpToNumberedMilestone(
+                    Mathf.Clamp(milestone, 1, Mathf.Max(1, milestoneProgress.GetNumberedMilestoneCount())), out _);
+        }
+        // Version 11 replaces the active milestone task definitions. Preserve the
+        // saved milestone checkpoint from v10, but don't carry old task progress
+        // into tasks whose objectives have changed.
+        if (version >= 11 && MissionProgressManager.Instance != null)
+            MissionProgressManager.Instance.RestoreProgress(missionProgress);
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var appearance = StoreAppearanceController.Ensure();
         if (version >= 4)

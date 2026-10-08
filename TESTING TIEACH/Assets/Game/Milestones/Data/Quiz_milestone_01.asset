@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Quiz_milestone_01
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_01_quiz
-  title: Flow & Work Design Quiz
+  title: Milestone 1 Quiz
   introText: Answer every question correctly to unlock the next milestone.
   questions:
   - prompt: Customers are waiting for burgers while the assembly station is frequently

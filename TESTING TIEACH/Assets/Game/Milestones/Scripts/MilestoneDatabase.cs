@@ -2,12 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Ordered progression: Tutorial + six main milestones.
+/// Ordered progression: Tutorial followed by the configured numbered milestones.
 /// </summary>
 [CreateAssetMenu(fileName = "MilestoneDatabase", menuName = "ISE/Milestone Database")]
 public class MilestoneDatabase : ScriptableObject
 {
-    [Tooltip("Index 0 should be the Tutorial section, then six main milestones.")]
+    [Tooltip("Index 0 should be the Tutorial section, followed by numbered milestones.")]
     public List<MilestoneDefinition> milestones = new List<MilestoneDefinition>();
 
     public MilestoneDefinition GetById(string milestoneId)

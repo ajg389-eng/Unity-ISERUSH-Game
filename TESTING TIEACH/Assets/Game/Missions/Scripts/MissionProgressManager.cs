@@ -6,6 +6,14 @@ using UnityEngine;
 /// </summary>
 public class MissionProgressManager : MonoBehaviour
 {
+    [System.Serializable]
+    public class SavedMissionProgress
+    {
+        public string missionId;
+        public int progress;
+        public bool complete;
+    }
+
     public static MissionProgressManager Instance { get; private set; }
 
     public MissionDatabase database;
@@ -183,6 +191,52 @@ public class MissionProgressManager : MonoBehaviour
     {
         completedMissionIds.Clear();
         progressByMissionId.Clear();
+        OnMissionsChanged?.Invoke();
+    }
+
+    public List<SavedMissionProgress> CaptureProgress()
+    {
+        var saved = new List<SavedMissionProgress>();
+        if (database?.missions == null) return saved;
+        foreach (MissionDefinition mission in database.missions)
+        {
+            if (mission == null || string.IsNullOrEmpty(mission.missionId)) continue;
+            int progress = GetProgress(mission.missionId);
+            bool complete = completedMissionIds.Contains(mission.missionId);
+            if (progress <= 0 && !complete) continue;
+            saved.Add(new SavedMissionProgress
+            {
+                missionId = mission.missionId,
+                progress = progress,
+                complete = complete
+            });
+        }
+        return saved;
+    }
+
+    public void RestoreProgress(IReadOnlyList<SavedMissionProgress> saved)
+    {
+        completedMissionIds.Clear();
+        progressByMissionId.Clear();
+        if (saved != null && database?.missions != null)
+        {
+            var activeIds = new HashSet<string>();
+            foreach (MissionDefinition mission in database.missions)
+                if (mission != null && !string.IsNullOrEmpty(mission.missionId)) activeIds.Add(mission.missionId);
+
+            foreach (SavedMissionProgress entry in saved)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.missionId) || !activeIds.Contains(entry.missionId)) continue;
+                MissionDefinition mission = database.missions.Find(m => m != null && m.missionId == entry.missionId);
+                if (mission == null) continue;
+                int progress = Mathf.Clamp(entry.progress, 0, Mathf.Max(1, mission.requiredCount));
+                bool complete = entry.complete || progress >= Mathf.Max(1, mission.requiredCount);
+                progressByMissionId[entry.missionId] = complete
+                    ? Mathf.Max(1, mission.requiredCount) : progress;
+                if (complete)
+                    completedMissionIds.Add(entry.missionId);
+            }
+        }
         OnMissionsChanged?.Invoke();
     }
 }

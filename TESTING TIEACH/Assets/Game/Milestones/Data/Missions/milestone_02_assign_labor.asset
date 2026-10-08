@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_02_assign_labor
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_assign_labor
-  title: Allocate the worker
-  description: Assign a worker to a station so capacity is placed where work happens.
-  completionEventId: worker_assigned
+  title: Add cheese fries to the menu
+  description: Configure the Cheese Fries recipe at an Assembly Station.
+  completionEventId: recipe_configured_cheese_fries
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

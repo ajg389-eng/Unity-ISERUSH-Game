@@ -538,11 +538,19 @@ public class ProductionManager : MonoBehaviour
         if (orderConfig == null) return chances;
 
         // Matches GenerateRandomOrder: independent rolls, with fallback to at least one item.
-        bool anyBurgerEnabled = (orderConfig.burgerBase != null && orderConfig.IsItemEnabled(orderConfig.burgerBase))
-            || (orderConfig.cheeseburgerItem != null && orderConfig.IsItemEnabled(orderConfig.cheeseburgerItem));
+        var enabledBurgers = new List<ItemDefinition>();
+        var enabledFries = new List<ItemDefinition>();
+        var enabledDrinks = new List<ItemDefinition>();
+        foreach (ItemDefinition item in orderConfig.GetEnabledMenuItems())
+        {
+            if (orderConfig.IsBurger(item)) enabledBurgers.Add(item);
+            else if (orderConfig.IsFries(item)) enabledFries.Add(item);
+            else if (orderConfig.IsDrink(item)) enabledDrinks.Add(item);
+        }
+        bool anyBurgerEnabled = enabledBurgers.Count > 0;
         float b = anyBurgerEnabled ? Mathf.Clamp01(orderConfig.burgerChance) : 0f;
-        float f = orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem) ? Mathf.Clamp01(orderConfig.friesChance) : 0f;
-        float d = orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem) ? Mathf.Clamp01(orderConfig.drinkChance) : 0f;
+        float f = enabledFries.Count > 0 ? Mathf.Clamp01(orderConfig.friesChance) : 0f;
+        float d = enabledDrinks.Count > 0 ? Mathf.Clamp01(orderConfig.drinkChance) : 0f;
         float none = (1f - b) * (1f - f) * (1f - d);
 
         float burgerP = b;
@@ -551,24 +559,23 @@ public class ProductionManager : MonoBehaviour
         if (none > 0f)
         {
             if (anyBurgerEnabled) burgerP += none;
-            else if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem)) friesP += none;
-            else if (orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem)) drinkP += none;
+            else if (enabledFries.Count > 0) friesP += none;
+            else if (enabledDrinks.Count > 0) drinkP += none;
         }
 
-        var enabledBurgers = new List<ItemDefinition>();
-        foreach (ItemDefinition item in orderConfig.GetMenuItems())
-            if (orderConfig.IsBurger(item) && orderConfig.IsItemEnabled(item)) enabledBurgers.Add(item);
-        if (enabledBurgers.Count > 0)
-        {
-            float perBurger = burgerP / enabledBurgers.Count;
-            foreach (ItemDefinition burger in enabledBurgers)
-                chances[burger] = perBurger;
-        }
-        if (orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
-            chances[orderConfig.friesItem] = friesP;
-        if (includeDrinks && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem))
-            chances[orderConfig.drinkItem] = drinkP;
+        AddCategoryChances(chances, enabledBurgers, burgerP);
+        AddCategoryChances(chances, enabledFries, friesP);
+        if (includeDrinks) AddCategoryChances(chances, enabledDrinks, drinkP);
         return chances;
+    }
+
+    static void AddCategoryChances(Dictionary<ItemDefinition, float> chances,
+        List<ItemDefinition> items, float categoryChance)
+    {
+        if (items == null || items.Count == 0) return;
+        float perItem = categoryChance / items.Count;
+        foreach (ItemDefinition item in items)
+            if (item != null) chances[item] = perItem;
     }
 
     void Awake()
@@ -1500,15 +1507,21 @@ public class ProductionManager : MonoBehaviour
             }
         }
         if (canFries && HasPantrySelection(PotatoItem, hasConfiguredFlow)
-            && HasCuttingSupplyPath(PotatoItem, SlicedPotatoItem, hasConfiguredFlow)
-            && HasAssemblyChainAvailable(FriesItem, hasConfiguredFlow)
-            && HasAssemblyPantrySupplies(FriesItem, hasConfiguredFlow)
-            && orderConfig.friesItem != null && orderConfig.IsItemEnabled(orderConfig.friesItem))
-            list.Add(orderConfig.friesItem);
-        if (canShake && orderConfig.drinkItem != null && orderConfig.IsItemEnabled(orderConfig.drinkItem)
-            && HasAssemblyChainAvailable(orderConfig.drinkItem, hasConfiguredFlow)
-            && HasAssemblyPantrySupplies(orderConfig.drinkItem, hasConfiguredFlow))
-            list.Add(orderConfig.drinkItem);
+            && HasCuttingSupplyPath(PotatoItem, SlicedPotatoItem, hasConfiguredFlow))
+        {
+            foreach (ItemDefinition item in orderConfig.GetEnabledMenuItems())
+                if (orderConfig.IsFries(item) && HasAssemblyChainAvailable(item, hasConfiguredFlow)
+                    && HasAssemblyPantrySupplies(item, hasConfiguredFlow)
+                    && HasRequiredCuttingSupplyAvailable(item, hasConfiguredFlow))
+                    list.Add(item);
+        }
+        if (canShake)
+        {
+            foreach (ItemDefinition item in orderConfig.GetEnabledMenuItems())
+                if (orderConfig.IsDrink(item) && HasAssemblyChainAvailable(item, hasConfiguredFlow)
+                    && HasAssemblyPantrySupplies(item, hasConfiguredFlow))
+                    list.Add(item);
+        }
         return list;
     }
 

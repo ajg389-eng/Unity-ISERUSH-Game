@@ -70,7 +70,9 @@ public class InventoryManager : MonoBehaviour
             return 1;
         int completed = MilestoneProgressManager.Instance != null
             ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
-        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone);
+        int advancedRecipeCapacityBonus = MilestoneFeatures.HasReached(MilestoneFeatures.AdvancedMenuRecipes) ? 1 : 0;
+        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone
+            + advancedRecipeCapacityBonus);
     }
 
     public bool IsAtStationCapacity(ItemDefinition item)
@@ -94,7 +96,15 @@ public class InventoryManager : MonoBehaviour
 
     public bool CanPurchase(ItemDefinition item)
     {
-        return item != null && !OnboardingTutorial.IsStationLocked(item) && !IsAtStationCapacity(item);
+        return item != null && !OnboardingTutorial.IsStationLocked(item)
+            && !IsMilestoneLocked(item) && !IsAtStationCapacity(item);
+    }
+
+    static bool IsMilestoneLocked(ItemDefinition item)
+    {
+        if (item == null || !item.IsTieredStation) return false;
+        return (item.stationMark >= 2 || item.stationFamily == "Shake Station")
+            && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
     }
 
     public bool PurchaseOne(ItemDefinition item)
@@ -117,6 +127,8 @@ public class InventoryManager : MonoBehaviour
         if (undo != null)
             undo.RecordStationPurchase(item, paid);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.StationPurchased);
+        if (item.IsTieredStation && item.stationMark >= 2)
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.Mk2StationPurchased);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.CapacityInvested);
         return true;
     }
@@ -132,7 +144,7 @@ public class InventoryManager : MonoBehaviour
     public bool TryConsumeOne(ItemDefinition item)
     {
         if (item == null) return false;
-        if (OnboardingTutorial.IsStationLocked(item)) return false;
+        if (OnboardingTutorial.IsStationLocked(item) || IsMilestoneLocked(item)) return false;
         if (!counts.TryGetValue(item, out int c)) return false;
         if (c <= 0) return false;
         counts[item] = c - 1;

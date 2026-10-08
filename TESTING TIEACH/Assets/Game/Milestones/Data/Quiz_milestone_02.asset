@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Quiz_milestone_02
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_02_quiz
-  title: Capacity & Optimization Quiz
+  title: Milestone 2 Quiz
   introText: Answer every question correctly to unlock the next milestone.
   questions:
   - prompt: The grill is 98% utilized while assembly is 55% utilized, and orders
