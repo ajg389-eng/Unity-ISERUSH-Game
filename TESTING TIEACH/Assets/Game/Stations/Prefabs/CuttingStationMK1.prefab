@@ -714,7 +714,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CuttingStation
   selectedProduct: {fileID: 0}
-  processTimeSeconds: 4
+  processTimeSeconds: 8
   interactionOffset: {x: 0, y: 0, z: 0}
   inputUnits: 0
   outputUnits: 0

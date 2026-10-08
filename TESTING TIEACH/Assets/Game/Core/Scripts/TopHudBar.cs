@@ -152,7 +152,16 @@ public class TopHudBar : MonoBehaviour
             le.preferredWidth = 110f;
             le.flexibleWidth = 0f;
             PositionSection(moneySection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(16f, 0f), new Vector2(110f, barHeight - 16f));
+                new Vector2(66f, 0f), new Vector2(110f, barHeight - 16f));
+        }
+
+        var gusHelpSection = transform.Find(TopHudUtilityControls.GusHelpSectionName) as RectTransform;
+        if (gusHelpSection != null)
+        {
+            var le = gusHelpSection.GetComponent<LayoutElement>() ?? gusHelpSection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            PositionSection(gusHelpSection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(14f, 0f), new Vector2(42f, 42f));
         }
 
         var timeSection = transform.Find(TimeSectionName) as RectTransform;

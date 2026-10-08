@@ -256,12 +256,17 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     {
         if (!HasConfiguration())
         {
-            details = "This station is not configured. Select its recipe or ingredient before workers can use it.";
+            details = "NOT CONFIGURED\nSelect a recipe or ingredient.";
             return true;
         }
         if (HasLowPantryStock())
         {
-            details = "Ingredient stock is running low. Order more stock before this pantry starves its downstream stations.";
+            PantryStation pantry = GetComponent<PantryStation>();
+            string item = pantry != null && pantry.selectedItem != null
+                ? (!string.IsNullOrEmpty(pantry.selectedItem.itemName)
+                    ? pantry.selectedItem.itemName : pantry.selectedItem.name)
+                : "Ingredient";
+            details = item.ToUpperInvariant() + " LOW\nOrder more stock.";
             return true;
         }
         return TryGetBottleneckDetails(out details);
@@ -288,10 +293,8 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
                 StationRuntimeMetrics upstream = connection.from.GetComponent<StationRuntimeMetrics>();
                 if (upstream == null || upstream.CurrentState != StationRuntimeState.Blocked
                     || upstream.CurrentStateSeconds < 4f) continue;
-                details = "BOTTLENECK: " + ownNode.DisplayName
-                    + " is not accepting output fast enough. Upstream work has been waiting for "
-                    + upstream.CurrentStateSeconds.ToString("0")
-                    + "s. Check this station's input space, recipe, processing capacity, and worker access.";
+                details = "INPUT BLOCKED " + upstream.CurrentStateSeconds.ToString("0") + "s\n"
+                    + "Free space at " + ownNode.DisplayName + ".";
                 return true;
             }
 
@@ -311,9 +314,8 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
             }
             if (minimumRate == float.MaxValue || ownRate > minimumRate + 0.01f) continue;
 
-            details = "BOTTLENECK: " + ownNode.DisplayName + " is the slowest active station in "
-                + flow.flowName + " at " + ownRate.ToString("0.0")
-                + " items/min and has remained continuously busy. Upgrade it, add parallel capacity, or reduce its workload.";
+            details = "BOTTLENECK: " + ownNode.DisplayName.ToUpperInvariant() + "\n"
+                + ownRate.ToString("0.0") + "/min. Upgrade or add another.";
             return true;
         }
         return false;
@@ -380,29 +382,44 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         image.texture = texture;
         image.raycastTarget = false;
 
-        var message = new GameObject("CautionExplanation", typeof(RectTransform),
-            typeof(CanvasGroup), typeof(TextMeshProUGUI));
-        message.transform.SetParent(root.transform, false);
+        var panel = new GameObject("CautionExplanation", typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(UnityEngine.UI.Image), typeof(CanvasGroup));
+        panel.transform.SetParent(root.transform, false);
+        var panelRect = panel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 0f);
+        panelRect.anchoredPosition = new Vector2(0f, 14f);
+        panelRect.sizeDelta = new Vector2(360f, 78f);
+
+        var background = panel.GetComponent<UnityEngine.UI.Image>();
+        background.color = new Color(0.055f, 0.07f, 0.09f, 0.94f);
+        background.raycastTarget = false;
+        var border = panel.AddComponent<UnityEngine.UI.Outline>();
+        border.effectColor = new Color(1f, 0.73f, 0.12f, 0.95f);
+        border.effectDistance = new Vector2(2f, -2f);
+
+        var message = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        message.transform.SetParent(panel.transform, false);
         var messageRect = message.GetComponent<RectTransform>();
-        messageRect.anchorMin = new Vector2(0.5f, 1f);
-        messageRect.anchorMax = new Vector2(0.5f, 1f);
-        messageRect.pivot = new Vector2(0.5f, 0f);
-        messageRect.anchoredPosition = new Vector2(0f, 12f);
-        messageRect.sizeDelta = new Vector2(430f, 120f);
-        explanationGroup = message.GetComponent<CanvasGroup>();
+        messageRect.anchorMin = Vector2.zero;
+        messageRect.anchorMax = Vector2.one;
+        messageRect.offsetMin = new Vector2(12f, 8f);
+        messageRect.offsetMax = new Vector2(-12f, -8f);
+
+        explanationGroup = panel.GetComponent<CanvasGroup>();
         explanationGroup.alpha = 0f;
         explanationGroup.interactable = false;
         explanationGroup.blocksRaycasts = false;
         explanation = message.GetComponent<TextMeshProUGUI>();
-        explanation.fontSize = 23f;
+        explanation.fontSize = 21f;
         explanation.fontStyle = FontStyles.Bold;
-        explanation.alignment = TextAlignmentOptions.Bottom;
+        explanation.alignment = TextAlignmentOptions.Center;
         explanation.color = Color.white;
-        explanation.outlineColor = new Color32(35, 38, 40, 255);
-        explanation.outlineWidth = 0.28f;
+        explanation.outlineWidth = 0f;
         explanation.textWrappingMode = TextWrappingModes.Normal;
         explanation.raycastTarget = false;
-        message.SetActive(false);
+        panel.SetActive(false);
         return root;
     }
 

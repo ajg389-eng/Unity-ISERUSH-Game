@@ -231,6 +231,12 @@ public class SelectionOutlineEffect : MonoBehaviour
     {
         if (runtimeMaterial != null) return;
 
+        // A Resources material is an explicit build dependency, preventing the
+        // custom rim shader and its variant from being stripped in players.
+        Material includedMaterial = Resources.Load<Material>("SelectionRimGlow");
+        if (includedMaterial != null)
+            rimShader = includedMaterial.shader;
+
         if (rimShader == null)
             rimShader = Shader.Find("TIEACH/SelectionRimGlow");
 
@@ -241,7 +247,9 @@ public class SelectionOutlineEffect : MonoBehaviour
         }
 
         if (sharedMaterial == null)
-            sharedMaterial = new Material(rimShader) { name = "SelectionRim_Shared" };
+            sharedMaterial = includedMaterial != null
+                ? includedMaterial
+                : new Material(rimShader) { name = "SelectionRim_Shared" };
 
         runtimeMaterial = new Material(sharedMaterial)
         {

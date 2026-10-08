@@ -8,14 +8,15 @@ using UnityEngine.Serialization;
 /// </summary>
 public class GrillStation : MonoBehaviour, IStationBuffer
 {
-    const int DefaultBufferCapacity = 2;
+    const int Mk1SlotCapacity = 4;
+    const int Mk2SlotCapacity = 8;
     [Header("Product")]
     [Tooltip("Output this grill produces. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one grill operation. Loading, cooking, and unloading are included.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 8f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -27,6 +28,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     Transform itemDisplayRoot;
     readonly List<Transform> inputMarkers = new List<Transform>();
     readonly List<Transform> outputMarkers = new List<Transform>();
+    readonly List<Transform> slotMarkers = new List<Transform>();
     int displayedUnits = -1;
     bool displayedCooked;
     ItemDefinition displayedProduct;
@@ -39,7 +41,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public float CookProgressSeconds => cookTimer;
     public float ProcessRemainingSeconds => IsCookingPatty
         ? Mathf.Max(0f, processTimeSeconds - cookTimer) : 0f;
-    public int SlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
+    public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
     public int InputSlotCapacity => SlotCapacity;
     public int OutputSlotCapacity => SlotCapacity;
 
@@ -255,24 +257,32 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         GameObject outputPrefab = selectedProduct != null ? selectedProduct.prefab : null;
         // Completed food stays in the same authored slots. Newly loaded raw food
         // occupies only the remaining shared slots instead of a separate row.
-        int outputVisible = Mathf.Min(cookedOutputUnits, inputMarkers.Count);
+        int outputVisible = Mathf.Min(cookedOutputUnits, slotMarkers.Count);
         for (int i = 0; outputPrefab != null && i < outputVisible; i++)
-            StationItemVisualUtility.SpawnAtMarker(outputPrefab, inputMarkers[i], itemDisplayRoot,
+            StationItemVisualUtility.SpawnAtMarker(outputPrefab, slotMarkers[i], itemDisplayRoot,
                 "GrillOutput_" + i);
         int rawVisible = Mathf.Min(waitingInputUnits + pattyUnits,
-            Mathf.Max(0, inputMarkers.Count - outputVisible));
+            Mathf.Max(0, slotMarkers.Count - outputVisible));
         for (int i = 0; inputPrefab != null && i < rawVisible; i++)
-            StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[outputVisible + i], itemDisplayRoot,
+            StationItemVisualUtility.SpawnAtMarker(inputPrefab, slotMarkers[outputVisible + i], itemDisplayRoot,
                 "GrillInput_" + i);
     }
 
     void FindBufferMarkers()
     {
         StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+        slotMarkers.Clear();
+        slotMarkers.AddRange(inputMarkers);
+        slotMarkers.AddRange(outputMarkers);
+        slotMarkers.Sort((a, b) =>
+        {
+            int z = a.position.z.CompareTo(b.position.z);
+            return z != 0 ? z : a.position.x.CompareTo(b.position.x);
+        });
     }
 
     void EnsureBufferMarkers()
     {
-        if (inputMarkers.Count == 0) FindBufferMarkers();
+        if (slotMarkers.Count == 0) FindBufferMarkers();
     }
 }

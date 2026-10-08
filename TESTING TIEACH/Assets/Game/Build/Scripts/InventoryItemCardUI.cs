@@ -22,6 +22,7 @@ public class InventoryItemCardUI : MonoBehaviour
     public UnityEngine.UI.Button mark2Button;
 
     bool tutorialHighlight;
+    public bool IsTutorialHighlighted => tutorialHighlight;
     bool tutorialLocked;
     Image cardImage;
     Color cardBaseColor = CardColor;

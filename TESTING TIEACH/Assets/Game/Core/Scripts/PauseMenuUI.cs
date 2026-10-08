@@ -1305,6 +1305,13 @@ public class PauseMenuUI : MonoBehaviour
 
         confirmationOwnsOverlay = !overlay.activeSelf;
         confirmationPausedGame = !visible && !IsTitleVisible();
+        if (confirmationOwnsOverlay)
+        {
+            if (mainPage != null) mainPage.SetActive(false);
+            if (optionsPage != null) optionsPage.SetActive(false);
+            if (creditsPage != null) creditsPage.SetActive(false);
+            if (guidebook != null) guidebook.Close();
+        }
         if (confirmationPausedGame)
         {
             if (GameTimeManager.Instance != null)

@@ -35,7 +35,9 @@ public class IngredientsOrderUI : MonoBehaviour
     Button clearCartButton;
     Button addAllButton;
     Button placeOrderButton;
+    Button expressOrderButton;
     TextMeshProUGUI placeOrderLabel;
+    TextMeshProUGUI expressOrderLabel;
     GameObject expandedMenuRow;
     GameObject expandedWorkflow;
     LayoutElement expandedMenuLayout;
@@ -164,7 +166,9 @@ public class IngredientsOrderUI : MonoBehaviour
         cartSummaryText = null;
         clearCartButton = null;
         placeOrderButton = null;
+        expressOrderButton = null;
         placeOrderLabel = null;
+        expressOrderLabel = null;
         expandedMenuRow = null;
         expandedWorkflow = null;
         expandedMenuLayout = null;
@@ -1215,6 +1219,10 @@ public class IngredientsOrderUI : MonoBehaviour
         placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, new Color(0.27f, 0.62f, 0.4f, 1f), out placeOrderLabel);
         placeOrderLabel.fontSize = 12f;
         placeOrderButton.onClick.AddListener(SubmitCart);
+
+        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 112f, new Color(0.85f, 0.53f, 0.16f, 1f), out expressOrderLabel);
+        expressOrderLabel.fontSize = 12f;
+        expressOrderButton.onClick.AddListener(SubmitExpressCart);
         clearCartButton.transform.SetAsLastSibling();
     }
 
@@ -1235,6 +1243,17 @@ public class IngredientsOrderUI : MonoBehaviour
         if (showMenu) return;
         if (inventory == null || cartPacks.Count == 0) return;
         if (inventory.TryOrderCart(cartPacks))
+        {
+            cartPacks.Clear();
+            RefreshAll();
+        }
+    }
+
+    void SubmitExpressCart()
+    {
+        if (showMenu) return;
+        if (inventory == null || cartPacks.Count == 0) return;
+        if (inventory.TryOrderCart(cartPacks, true))
         {
             cartPacks.Clear();
             RefreshAll();
@@ -1332,6 +1351,8 @@ public class IngredientsOrderUI : MonoBehaviour
 
 
         bool affordable = money == null || money.CanAfford(cartTotal);
+        int expressTotal = cartTotal + KitchenInventory.ExpressDeliveryFee;
+        bool expressAffordable = money == null || money.CanAfford(expressTotal);
         if (deliveryStatusText != null)
         {
             float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
@@ -1353,6 +1374,14 @@ public class IngredientsOrderUI : MonoBehaviour
             placeOrderLabel.text = deliveryActive ? "Delivery Active"
                 : cartLockMilestone > 0 ? "Unlock Milestone " + cartLockMilestone
                 : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal;
+        if (expressOrderButton != null)
+            expressOrderButton.interactable = !deliveryActive && cartPackCount > 0 && expressAffordable
+                && cartLockMilestone == 0;
+        if (expressOrderLabel != null)
+            expressOrderLabel.text = deliveryActive ? "Delivery Active"
+                : cartLockMilestone > 0 ? "Unlock Milestone " + cartLockMilestone
+                : !expressAffordable && cartPackCount > 0 ? "Need $" + expressTotal
+                : "EXPRESS $" + expressTotal + "\nDispatch now (+$" + KitchenInventory.ExpressDeliveryFee + ")";
     }
 }
 

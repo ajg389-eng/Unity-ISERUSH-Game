@@ -100,9 +100,7 @@ public static class WorkerCardPrefabBuilder
         var taskFitter = currentTask.GetComponent<ContentSizeFitter>();
         if (taskFitter != null) taskFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 
-        var carryingSection = CreateSection(detailsGo.transform, "CarryingSection", minHeight: 48);
-        CreateSectionHeader(carryingSection, "CARRYING");
-        heldItems = CreateBodyLabel(carryingSection, "HeldItems", "Nothing", 13, MutedColor, minHeight: 20);
+        heldItems = null;
     }
 
     static Transform CreateHeaderRow(Transform parent, out GameObject nameInputGo, out Button customizeBtn, out Button fireBtn)

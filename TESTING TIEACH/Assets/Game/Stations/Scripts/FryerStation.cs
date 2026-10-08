@@ -11,7 +11,7 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     public ItemDefinition selectedProduct;
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 8f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 

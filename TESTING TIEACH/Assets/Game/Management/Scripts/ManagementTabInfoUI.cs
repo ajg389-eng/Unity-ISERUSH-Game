@@ -75,6 +75,7 @@ public class ManagementTabInfoUI : MonoBehaviour
 
         infoButton.onClick.RemoveListener(ToggleInfo);
         infoButton.onClick.AddListener(ToggleInfo);
+        infoButton.gameObject.SetActive(false);
         overlay.SetActive(false);
     }
 
@@ -113,16 +114,17 @@ public class ManagementTabInfoUI : MonoBehaviour
         overlay.transform.SetParent(transform, false);
         Stretch(overlay.GetComponent<RectTransform>(), 0f);
         var blocker = overlay.GetComponent<Image>();
-        blocker.color = new Color(0.025f, 0.03f, 0.05f, 0.82f);
+        blocker.color = new Color(0.025f, 0.03f, 0.05f, 0.55f);
         blocker.raycastTarget = true;
 
         var card = new GameObject("Card", typeof(RectTransform), typeof(Image));
         card.transform.SetParent(overlay.transform, false);
         var cardRt = card.GetComponent<RectTransform>();
-        cardRt.anchorMin = new Vector2(0.08f, 0.10f);
-        cardRt.anchorMax = new Vector2(0.92f, 0.90f);
-        cardRt.offsetMin = Vector2.zero;
-        cardRt.offsetMax = Vector2.zero;
+        cardRt.anchorMin = new Vector2(0.5f, 0.5f);
+        cardRt.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRt.pivot = new Vector2(0.5f, 0.5f);
+        cardRt.anchoredPosition = Vector2.zero;
+        cardRt.sizeDelta = new Vector2(700f, 620f);
         card.GetComponent<Image>().color = new Color(0.105f, 0.115f, 0.16f, 1f);
 
         var accent = new GameObject("Accent", typeof(RectTransform), typeof(Image));
@@ -236,9 +238,34 @@ public class ManagementTabInfoUI : MonoBehaviour
     void Open()
     {
         RefreshCopy();
+        Canvas rootCanvas = GetComponentInParent<Canvas>();
+        if (rootCanvas != null && overlay.transform.parent != rootCanvas.transform)
+            overlay.transform.SetParent(rootCanvas.transform, false);
+        Stretch((RectTransform)overlay.transform, 0f);
         overlay.SetActive(true);
         overlay.transform.SetAsLastSibling();
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    void OnDisable()
+    {
+        if (overlay != null)
+            overlay.SetActive(false);
+    }
+
+    public static bool OpenActiveHelp()
+    {
+        ManagementTabInfoUI[] helpers = FindObjectsByType<ManagementTabInfoUI>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < helpers.Length; i++)
+        {
+            ManagementTabInfoUI helper = helpers[i];
+            if (helper == null || !helper.gameObject.activeInHierarchy || helper.activePanel == null)
+                continue;
+            helper.Open();
+            return true;
+        }
+        return false;
     }
 
     public void Close()
@@ -257,7 +284,7 @@ public class ManagementTabInfoUI : MonoBehaviour
     void RefreshCopy()
     {
         GetCopy(activePanel, out string title, out string body);
-        if (titleText != null) titleText.text = title;
+        if (titleText != null) titleText.text = "GUS  |  " + title;
         if (bodyText != null) bodyText.text = body;
     }
 

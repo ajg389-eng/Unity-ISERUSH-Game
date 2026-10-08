@@ -23,6 +23,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     bool running;
     bool pendingStart;
+    bool gameplayReady;
     bool liveCustomerSpawned;
     bool starterKitchenHidden;
     int stepIndex;
@@ -30,19 +31,28 @@ public class OnboardingTutorial : MonoBehaviour
     public void RestoreCheckpoint(bool complete, int savedStep)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
-        pendingStart = false;
-        running = !complete;
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
         furthestStepIndex = stepIndex;
         if (complete)
         {
+            pendingStart = false;
+            running = false;
             HideUI();
             ClearHighlight();
             GameTimeManager.Instance?.ReleaseExternalPause(PauseSource);
         }
-        else ShowStep();
+        else
+        {
+            pendingStart = true;
+            running = false;
+            HideUI();
+            if (gameplayReady)
+                TryBegin();
+        }
     }
     int furthestStepIndex = -1;
+    int autoAdvanceStep = -1;
+    float autoAdvanceAt;
     bool flowEditCompleted;
     readonly Dictionary<Graphic, GameObject> tutorialBorders = new Dictionary<Graphic, GameObject>();
     float nextControlHighlightRefresh;
@@ -56,6 +66,8 @@ public class OnboardingTutorial : MonoBehaviour
     Button backButton;
     Button nextButton;
     TextMeshProUGUI nextLabel;
+    RectTransform calloutTarget;
+    RectTransform calloutArrow;
     GameObject highlight;
     Transform highlightTarget;
     Highlight currentHighlight;
@@ -93,6 +105,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireHiredWorker;
         public bool requireEditedFlow;
         public bool requireRecipes;
+        public bool requireIngredients;
 
         public Step(
             string title,
@@ -109,7 +122,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireFlow = false,
             bool requireWorkerOnFlow = false,
             bool requireHiredWorker = false,
-            bool requireEditedFlow = false, bool requireRecipes = false)
+            bool requireEditedFlow = false, bool requireRecipes = false,
+            bool requireIngredients = false)
         {
             this.title = title;
             this.body = body;
@@ -127,6 +141,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireHiredWorker = requireHiredWorker;
             this.requireEditedFlow = requireEditedFlow;
             this.requireRecipes = requireRecipes;
+            this.requireIngredients = requireIngredients;
         }
     }
 
@@ -187,7 +202,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then <b>Menu & Supply</b>.\n\n" +
             "Buy Raw Patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
-            "Next", Highlight.Management, openIngredients: true),
+            "Next", Highlight.Management, openIngredients: true, requireIngredients: true),
         new Step(
             "Hire workers",
             "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
@@ -284,6 +299,27 @@ public class OnboardingTutorial : MonoBehaviour
         "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then click Finish."
     };
 
+    static readonly string[] CompactTutorialText =
+    {
+        "Build a small burger line, connect it, and serve one test customer.",
+        "Open <b>Build</b>. The highlighted MK1 station is free for this tutorial.",
+        "Buy the <b>Register</b>, then place it on a lobby counter.",
+        "Buy a <b>Freezer</b>. You will assign Raw Patty after placement.",
+        "Buy a <b>Grill</b>. It turns Raw Patty into Cooked Patty.",
+        "Buy a <b>Fryer</b>. Fries use Potato Slices, then combine Cooked Potato Slices with a Fry Container at Assembly.",
+        "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
+        "Buy an <b>Assembly Station</b>. Its selected recipe determines its required inputs.",
+        "Buy a <b>Pickup Station</b>. Only finished products delivered here are sold.",
+        "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Burger.",
+        "In <b>Food</b>, order Raw Patties and Buns. Express costs $200 and makes the delivery van arrive immediately.",
+        "In <b>Staff</b>, hire one worker. Worker priorities can favor specific task types.",
+        "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station.",
+        "Use <b>Edit Flow</b> to adjust connections, then click Finish.",
+        "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
+        "Customers request a burger and pay for whichever burger reaches the Pickup Station. Food targets control how many to keep ready.",
+        "Watch one order move through the line. Use <b>Food > Recipes</b> for recipe trees and <b>Progression > Research</b> for upgrades."
+    };
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
@@ -327,19 +363,20 @@ public class OnboardingTutorial : MonoBehaviour
     void TryBeginIfNoTitle()
     {
         var title = FindFirstObjectByType<TitleScreenController>();
-        if (title != null && title.IsShowingTitle)
-            return;
+        if (title != null) return;
+        gameplayReady = true;
         TryBegin();
     }
 
     public void NotifyGameStarted()
     {
+        gameplayReady = true;
         TryBegin();
     }
 
     public void TryBegin()
     {
-        if (running || IsComplete)
+        if (running || IsComplete || !gameplayReady)
             return;
 
         var title = FindFirstObjectByType<TitleScreenController>();
@@ -354,8 +391,6 @@ public class OnboardingTutorial : MonoBehaviour
         }
         running = true;
         pendingStart = false;
-        stepIndex = 0;
-        furthestStepIndex = -1;
         flowEditCompleted = false;
         liveCustomerSpawned = false;
         EnsureUI();
@@ -392,11 +427,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (eventId != TutorialVoiceEventId.FirstOrderServed && eventId != TutorialVoiceEventId.OrderServed)
             return;
         if (stepIndex != Steps.Length - 1) return;
-        if (nextLabel != null)
-            nextLabel.text = "Finish";
-        if (bodyText != null)
-            bodyText.text = "That's it. You just watched a full service loop: order in, product made, and meal handed off.\n\n" +
-                "Click <b>Finish</b>. From here on, I am counting on you to use the data and improve the business.";
+        Complete(skipped: false);
     }
 
     void OnBack()
@@ -440,16 +471,18 @@ public class OnboardingTutorial : MonoBehaviour
         if (titleText != null)
             titleText.text = step.title;
         if (bodyText != null)
-            bodyText.text = stepIndex < GusDialogue.Length ? GusDialogue[stepIndex] : step.body;
+            bodyText.text = stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
         if (stepLabel != null)
             stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
-        if (backButton != null)
-            backButton.interactable = stepIndex > 0;
+        if (nextButton != null)
+            nextButton.gameObject.SetActive(!AutomaticallyAdvances(step));
+        autoAdvanceStep = -1;
 
         ApplyPause(step.pauseSim);
         currentHighlight = step.highlight;
+        calloutTarget = null;
         UpdateHighlight(step.highlight);
 
         if (step.openInventory)
@@ -505,6 +538,120 @@ public class OnboardingTutorial : MonoBehaviour
             bodyText.ForceMeshUpdate();
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)panel.transform);
+        UpdateContextualCallout();
+    }
+
+    void UpdateContextualCallout()
+    {
+        if (canvasRoot == null || panel == null) return;
+
+        RectTransform rootRect = (RectTransform)canvasRoot.transform;
+        RectTransform panelRect = (RectTransform)panel.transform;
+        Vector2 targetPosition;
+        bool hasTarget = TryGetCalloutTarget(rootRect, out targetPosition);
+
+        panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
+        float panelWidth = panelRect.rect.width > 1f ? panelRect.rect.width : 720f;
+        float panelHeight = panelRect.rect.height > 1f ? panelRect.rect.height : 220f;
+        float rootWidth = rootRect.rect.width > 1f ? rootRect.rect.width : 1920f;
+        float rootHeight = rootRect.rect.height > 1f ? rootRect.rect.height : 1080f;
+
+        Vector2 panelPosition;
+        if (hasTarget)
+        {
+            bool targetOnLeft = targetPosition.x < 0f;
+            panelPosition = new Vector2(
+                targetPosition.x + (targetOnLeft ? 1f : -1f) * (panelWidth * 0.5f + 92f),
+                targetPosition.y);
+            panelPosition.x = Mathf.Clamp(panelPosition.x,
+                -rootWidth * 0.5f + panelWidth * 0.5f + 18f,
+                rootWidth * 0.5f - panelWidth * 0.5f - 18f);
+            panelPosition.y = Mathf.Clamp(panelPosition.y,
+                -rootHeight * 0.5f + panelHeight * 0.5f + 76f,
+                rootHeight * 0.5f - panelHeight * 0.5f - 18f);
+        }
+        else
+        {
+            panelPosition = new Vector2(0f, -rootHeight * 0.5f + panelHeight * 0.5f + 82f);
+        }
+
+        panelRect.anchoredPosition = panelPosition;
+        PositionTutorialButtons(panelPosition, panelHeight);
+        PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight), targetPosition, hasTarget);
+    }
+
+    bool TryGetCalloutTarget(RectTransform rootRect, out Vector2 localPoint)
+    {
+        localPoint = Vector2.zero;
+        Vector2 screenPoint;
+        if (calloutTarget != null && calloutTarget.gameObject.activeInHierarchy)
+        {
+            Vector3[] corners = new Vector3[4];
+            calloutTarget.GetWorldCorners(corners);
+            Vector3 center = (corners[0] + corners[2]) * 0.5f;
+            Canvas targetCanvas = calloutTarget.GetComponentInParent<Canvas>();
+            Camera eventCamera = targetCanvas != null && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? targetCanvas.worldCamera : null;
+            screenPoint = RectTransformUtility.WorldToScreenPoint(eventCamera, center);
+        }
+        else if (highlightTarget != null && Camera.main != null)
+        {
+            Vector3 worldPoint = highlightTarget.position + Vector3.up * 1.8f;
+            Vector3 projected = Camera.main.WorldToScreenPoint(worldPoint);
+            if (projected.z <= 0f) return false;
+            screenPoint = projected;
+        }
+        else
+        {
+            return false;
+        }
+
+        return RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screenPoint, null, out localPoint);
+    }
+
+    void PositionTutorialButtons(Vector2 panelPosition, float panelHeight)
+    {
+        float y = panelPosition.y - panelHeight * 0.5f - 30f;
+        PositionTutorialButton(nextButton, new Vector2(panelPosition.x, y));
+    }
+
+    static void PositionTutorialButton(Button button, Vector2 position)
+    {
+        if (button == null) return;
+        RectTransform rect = (RectTransform)button.transform;
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+    }
+
+    void PositionCalloutArrow(Vector2 panelPosition, Vector2 panelSize, Vector2 targetPosition, bool visible)
+    {
+        if (calloutArrow == null) return;
+        Vector2 delta = targetPosition - panelPosition;
+        if (!visible || delta.sqrMagnitude < 6400f)
+        {
+            calloutArrow.gameObject.SetActive(false);
+            return;
+        }
+
+        Vector2 direction = delta.normalized;
+        float tx = Mathf.Abs(direction.x) > 0.001f ? panelSize.x * 0.5f / Mathf.Abs(direction.x) : float.MaxValue;
+        float ty = Mathf.Abs(direction.y) > 0.001f ? panelSize.y * 0.5f / Mathf.Abs(direction.y) : float.MaxValue;
+        Vector2 start = panelPosition + direction * Mathf.Min(tx, ty);
+        Vector2 end = targetPosition - direction * 16f;
+        float length = Vector2.Distance(start, end);
+        if (length < 24f)
+        {
+            calloutArrow.gameObject.SetActive(false);
+            return;
+        }
+
+        calloutArrow.gameObject.SetActive(true);
+        calloutArrow.anchorMin = calloutArrow.anchorMax = calloutArrow.pivot = new Vector2(0.5f, 0.5f);
+        calloutArrow.anchoredPosition = (start + end) * 0.5f;
+        calloutArrow.sizeDelta = new Vector2(length, 24f);
+        calloutArrow.localRotation = Quaternion.Euler(0f, 0f,
+            Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
+        calloutArrow.SetAsLastSibling();
     }
 
     void RefreshAdvanceGate()
@@ -527,6 +674,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
+        if (step.requireIngredients) return "Order Raw Patties and Buns";
         if (step.requireRecipes) return MissingRecipeLabel();
         if (step.requireEditedFlow) return "Edit and save flow";
         if (step.requireHiredWorker)
@@ -555,6 +703,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.requireIngredients && !HasTutorialIngredients()) return false;
         if (step.requireRecipes && !BurgerRecipesReady()) return false;
         if (step.requireEditedFlow && !flowEditCompleted) return false;
         if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
@@ -571,6 +720,54 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
             return false;
         return true;
+    }
+
+    static bool AutomaticallyAdvances(Step step)
+    {
+        return step.liveCustomer || step.requirePlaced || step.requireAllStations
+            || step.requireFlow || step.requireWorkerOnFlow || step.requireHiredWorker
+            || step.requireEditedFlow || step.requireRecipes || step.requireIngredients;
+    }
+
+    void RefreshAutomaticAdvance()
+    {
+        if (stepIndex < 0 || stepIndex >= Steps.Length) return;
+        Step step = Steps[stepIndex];
+        if (!AutomaticallyAdvances(step) || step.liveCustomer || !StepRequirementMet())
+        {
+            autoAdvanceStep = -1;
+            return;
+        }
+
+        if (autoAdvanceStep != stepIndex)
+        {
+            autoAdvanceStep = stepIndex;
+            autoAdvanceAt = Time.unscaledTime + 0.45f;
+            return;
+        }
+
+        if (Time.unscaledTime < autoAdvanceAt) return;
+        autoAdvanceStep = -1;
+        OnNext();
+    }
+
+    static bool HasTutorialIngredients()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        KitchenInventory inventory = KitchenInventory.Instance;
+        if (production == null || production.orderConfig == null || inventory == null)
+            return false;
+
+        CustomerOrderConfig config = production.orderConfig;
+        AssemblyRecipeDefinition burgerRecipe = config.GetAssemblyRecipe(config.burgerBase);
+        ItemDefinition patty = config.rawPattyIngredient;
+        ItemDefinition bun = config.GetAssemblySupplySource(burgerRecipe);
+        if (patty == null || bun == null) return false;
+
+        IngredientDeliveryService delivery = IngredientDeliveryService.Instance;
+        int patties = inventory.GetCount(patty) + (delivery != null ? delivery.GetIncomingCount(patty) : 0);
+        int buns = inventory.GetCount(bun) + (delivery != null ? delivery.GetIncomingCount(bun) : 0);
+        return patties > 0 && buns > 0;
     }
 
     bool HasHiredWorker()
@@ -897,6 +1094,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         Transform target = FindHighlightTarget(kind);
         highlightTarget = target;
+        if (target is RectTransform targetRect && target.gameObject.activeInHierarchy)
+            calloutTarget = targetRect;
         if (target == null)
         {
             ClearHighlight();
@@ -944,6 +1143,8 @@ public class OnboardingTutorial : MonoBehaviour
     void HighlightControl(Component control)
     {
         if (control == null || !control.gameObject.activeInHierarchy) return;
+        if (calloutTarget == null)
+            calloutTarget = control.transform as RectTransform;
         var graphic = control.GetComponent<Graphic>();
         if (graphic == null) return;
         if (!tutorialBorders.TryGetValue(graphic, out var border) || border == null)
@@ -980,7 +1181,26 @@ public class OnboardingTutorial : MonoBehaviour
         if (Time.unscaledTime < nextControlHighlightRefresh) return;
         nextControlHighlightRefresh = Time.unscaledTime + 0.25f;
         ClearControlHighlights();
+        calloutTarget = null;
         var step = Steps[stepIndex];
+
+        if (step.openInventory)
+        {
+            foreach (var card in FindObjectsByType<InventoryItemCardUI>(FindObjectsInactive.Exclude,
+                         FindObjectsSortMode.None))
+            {
+                if (card != null && card.IsTutorialHighlighted)
+                {
+                    calloutTarget = card.transform as RectTransform;
+                    break;
+                }
+            }
+        }
+
+        if (calloutTarget == null && highlightTarget is RectTransform targetRect
+            && targetRect.gameObject.activeInHierarchy)
+            calloutTarget = targetRect;
+
         if (!step.openWorkers) return;
         var workers = FindFirstObjectByType<WorkersUI>();
         if (workers != null)
@@ -1015,12 +1235,16 @@ public class OnboardingTutorial : MonoBehaviour
         if (!running)
         {
             ClearControlHighlights();
+            if (pendingStart && !IsComplete)
+                TryBegin();
             return;
         }
         RefreshAdvanceGate();
         RefreshControlHighlights();
+        UpdateContextualCallout();
         if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
             SpawnPracticeCustomer();
+        RefreshAutomaticAdvance();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
@@ -1238,9 +1462,51 @@ public class OnboardingTutorial : MonoBehaviour
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
 
-        backButton = CreateSideButton(canvasRoot.transform, "Back", OnBack, new Color(0.28f, 0.32f, 0.4f, 1f), -1);
         nextButton = CreateSideButton(canvasRoot.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f), 1);
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
+        calloutArrow = CreateCalloutArrow(canvasRoot.transform);
+    }
+
+    static RectTransform CreateCalloutArrow(Transform parent)
+    {
+        var root = new GameObject("TutorialArrow", typeof(RectTransform), typeof(CanvasGroup));
+        root.transform.SetParent(parent, false);
+        var rootRect = (RectTransform)root.transform;
+        rootRect.sizeDelta = new Vector2(80f, 24f);
+        var group = root.GetComponent<CanvasGroup>();
+        group.interactable = false;
+        group.blocksRaycasts = false;
+
+        var shaft = new GameObject("Shaft", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        shaft.transform.SetParent(root.transform, false);
+        var shaftRect = (RectTransform)shaft.transform;
+        shaftRect.anchorMin = new Vector2(0f, 0.5f);
+        shaftRect.anchorMax = new Vector2(1f, 0.5f);
+        shaftRect.offsetMin = new Vector2(0f, -3f);
+        shaftRect.offsetMax = new Vector2(-12f, 3f);
+        var shaftImage = shaft.GetComponent<UnityEngine.UI.Image>();
+        shaftImage.color = GameUITheme.Accent;
+        shaftImage.raycastTarget = false;
+
+        CreateArrowHead(root.transform, "HeadUpper", 38f);
+        CreateArrowHead(root.transform, "HeadLower", -38f);
+        root.SetActive(false);
+        return rootRect;
+    }
+
+    static void CreateArrowHead(Transform parent, string name, float rotation)
+    {
+        var head = new GameObject(name, typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        head.transform.SetParent(parent, false);
+        var rect = (RectTransform)head.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
+        rect.pivot = new Vector2(1f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(20f, 6f);
+        rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
+        var image = head.GetComponent<UnityEngine.UI.Image>();
+        image.color = GameUITheme.Accent;
+        image.raycastTarget = false;
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string text, float size, FontStyles style, Color color)

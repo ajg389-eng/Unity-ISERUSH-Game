@@ -126,7 +126,7 @@ public class StationNode : MonoBehaviour
         PantryStation pantry = GetComponent<PantryStation>();
         if (grill != null)
         {
-            int stationBatch = Mathf.Min(batchSize, grill.InputSlotCapacity, grill.OutputSlotCapacity);
+            int stationBatch = grill.SlotCapacity;
             SetIo(RateForCycle(grill.processTimeSeconds, stationBatch),
                 RateForCycle(grill.processTimeSeconds, stationBatch),
                 ItemLabel(grill.GetSelectedInput(), "select recipe"),

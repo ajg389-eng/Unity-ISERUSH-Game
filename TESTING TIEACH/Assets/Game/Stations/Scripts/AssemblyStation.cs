@@ -8,8 +8,10 @@ using UnityEngine.Serialization;
 /// </summary>
 public class AssemblyStation : MonoBehaviour, IStationBuffer
 {
-    const int DefaultInputCapacity = 2;
-    const int DefaultOutputCapacity = 2;
+    const int Mk1InputCapacityPerType = 4;
+    const int Mk1OutputCapacity = 4;
+    const int Mk2InputCapacityPerType = 8;
+    const int Mk2OutputCapacity = 8;
 
     [Header("Product")]
     [Tooltip("Recipe output this station assembles. Must be chosen in Manage mode.")]
@@ -18,7 +20,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one assembly operation.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 8f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
     [SerializeField, Min(0)] int bufferedProcessedInputs;
@@ -34,12 +36,12 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     [Tooltip("Fallback model for an output whose ItemDefinition has no prefab.")]
     public GameObject defaultOutputDisplayPrefab;
     [Tooltip("Authored tabletop markers for the processed ingredient.")]
-    public Transform[] processedInputDisplaySlots = new Transform[2];
+    public Transform[] processedInputDisplaySlots = new Transform[4];
     [Tooltip("Authored tabletop markers for the pantry ingredient.")]
-    public Transform[] pantryInputDisplaySlots = new Transform[2];
-    public Transform[] thirdInputDisplaySlots = new Transform[2];
+    public Transform[] pantryInputDisplaySlots = new Transform[4];
+    public Transform[] thirdInputDisplaySlots = new Transform[4];
     [Tooltip("Authored tabletop markers for completed outputs.")]
-    public Transform[] outputDisplaySlots = new Transform[2];
+    public Transform[] outputDisplaySlots = new Transform[4];
 
     Transform tableDisplayRoot;
     readonly List<Transform> inputMarkers = new List<Transform>();
@@ -55,11 +57,15 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public bool IsProcessing => processingUnits > 0;
     public float ProcessRemainingSeconds => IsProcessing
         ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
-    public int InputSlotCapacity => IsMk2 ? 12 : 4;
-    public int OutputSlotCapacity => IsMk2 ? 4 : DefaultOutputCapacity;
-    public int ProcessedInputCapacity => IsMk2 ? 4 : 2;
-    public int PantryInputCapacity => IsMk2 ? 4 : 2;
-    public int ThirdInputCapacity => IsMk2 ? 4 : 0;
+    public int InputSlotCapacity => IsMk2
+        ? Mk2InputCapacityPerType * 3
+        : Mk1InputCapacityPerType * 2;
+    public int OutputSlotCapacity => IsMk2 ? Mk2OutputCapacity : Mk1OutputCapacity;
+    public int ProcessedInputCapacity => IsMk2
+        ? Mk2InputCapacityPerType : Mk1InputCapacityPerType;
+    public int PantryInputCapacity => IsMk2
+        ? Mk2InputCapacityPerType : Mk1InputCapacityPerType;
+    public int ThirdInputCapacity => IsMk2 ? Mk2InputCapacityPerType : 0;
     /// <summary>Per-ingredient capacity retained for UI and legacy callers.</summary>
     public int IngredientCapacity => Mathf.Max(ProcessedInputCapacity,
         Mathf.Max(PantryInputCapacity, ThirdInputCapacity));

@@ -8,7 +8,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 8f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 

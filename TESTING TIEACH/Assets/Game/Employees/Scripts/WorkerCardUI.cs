@@ -190,7 +190,7 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         SetNameText(emp.employeeName ?? "Worker");
-        EnableNameEditing();
+        DisableNameEditing();
         EnsureExpandArrow();
         RefreshDetails();
         ApplyExpandedState();
@@ -221,13 +221,6 @@ public class WorkerCardUI : MonoBehaviour
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
         RefreshPriorityDropdown();
-
-        string held = employee.GetHeldInventoryDisplay();
-        bool carrying = !string.IsNullOrEmpty(held);
-        SetDetailText(heldItemsText, carrying ? held : "—");
-        var carryingSection = heldItemsText != null ? heldItemsText.transform.parent : null;
-        if (carryingSection != null)
-            carryingSection.gameObject.SetActive(carrying);
 
         if (stationsLabel != null)
             stationsLabel.gameObject.SetActive(false);
@@ -451,6 +444,9 @@ public class WorkerCardUI : MonoBehaviour
         EnsureExpandArrow();
 
         var detailsRoot = transform.Find("WorkerDetails");
+        var carryingSection = detailsRoot != null ? detailsRoot.Find("CarryingSection") : null;
+        if (carryingSection != null)
+            carryingSection.gameObject.SetActive(false);
         if (detailsRoot != null && detailsRoot.gameObject.activeSelf != detailsExpanded)
             detailsRoot.gameObject.SetActive(detailsExpanded);
     }
@@ -618,7 +614,7 @@ public class WorkerCardUI : MonoBehaviour
             hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandWidth = false;
             hlg.childForceExpandHeight = true;
 
             EnsureExpandArrow();
@@ -682,7 +678,9 @@ public class WorkerCardUI : MonoBehaviour
                 detailsVlg.spacing = 4;
             CompactSection(statusRow != null ? statusRow.Find("TaskSection") : null, 28);
             CompactSection(statusRow != null ? statusRow.Find("StationsSection") : null, 28);
-            CompactSection(details.Find("CarryingSection"), 28);
+            var carryingSection = details.Find("CarryingSection");
+            if (carryingSection != null)
+                carryingSection.gameObject.SetActive(false);
         }
     }
 
@@ -941,24 +939,22 @@ public class WorkerCardUI : MonoBehaviour
         if (legacyInput != null) legacyInput.onEndEdit.AddListener(OnNameChanged);
     }
 
-    void EnableNameEditing()
+    void DisableNameEditing()
     {
         if (nameInputObject == null) return;
         var tmpInput = nameInputObject.GetComponent<TMP_InputField>();
         if (tmpInput != null)
         {
-            tmpInput.readOnly = false;
-            tmpInput.interactable = true;
-            tmpInput.enabled = true;
+            tmpInput.readOnly = true;
+            tmpInput.enabled = false;
         }
         var legacyInput = nameInputObject.GetComponent<InputField>();
         if (legacyInput != null)
         {
-            legacyInput.interactable = true;
-            legacyInput.enabled = true;
+            legacyInput.readOnly = true;
+            legacyInput.enabled = false;
         }
         RemoveNameListener();
-        AddNameListener();
     }
 
     void RemoveNameListener()

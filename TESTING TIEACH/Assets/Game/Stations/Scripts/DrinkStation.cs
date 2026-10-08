@@ -8,7 +8,7 @@ public class DrinkStation : MonoBehaviour
 {
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one drink-station operation.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 8f;
     public Vector3 interactionOffset = Vector3.zero;
 
     public Vector3 GetInteractionPosition()

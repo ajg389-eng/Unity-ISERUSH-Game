@@ -8,6 +8,7 @@ public class TopHudUtilityControls : MonoBehaviour
 {
     public const string MusicSectionName = "MusicSection";
     public const string NotificationSectionName = "NotificationSection";
+    public const string GusHelpSectionName = "GusHelpSection";
     public const string InvestorLetterId = "investor-welcome-letter";
     const string PanelName = "NotificationHistoryPanel";
     const string MusicPanelName = "MusicTrackPicker";
@@ -91,6 +92,7 @@ public class TopHudUtilityControls : MonoBehaviour
         EnsureMusicSection();
         EnsureMusicPanel();
         EnsureNotificationSection();
+        EnsureGusHelpSection();
         EnsureHistoryPanel();
         var bar = GetComponent<TopHudBar>();
         if (bar != null) bar.ApplyFitLayout();
@@ -224,6 +226,66 @@ public class TopHudUtilityControls : MonoBehaviour
         buttonRect.sizeDelta = new Vector2(88f, 34f);
         notificationButton.onClick.RemoveAllListeners();
         notificationButton.onClick.AddListener(ToggleHistory);
+    }
+
+    void EnsureGusHelpSection()
+    {
+        Transform existing = transform.Find(GusHelpSectionName);
+        GameObject section = existing != null
+            ? existing.gameObject
+            : new GameObject(GusHelpSectionName, typeof(RectTransform));
+        if (section.transform.parent != transform)
+            section.transform.SetParent(transform, false);
+
+        UnityEngine.UI.Button button = FindButton(section.transform, "GusHelpButton");
+        if (button == null)
+        {
+            var buttonObject = new GameObject("GusHelpButton", typeof(RectTransform),
+                typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
+            buttonObject.transform.SetParent(section.transform, false);
+            button = buttonObject.GetComponent<UnityEngine.UI.Button>();
+            buttonObject.GetComponent<UnityEngine.UI.Image>().color = new Color(0.10f, 0.12f, 0.17f, 1f);
+
+            var portraitObject = new GameObject("GusPortrait", typeof(RectTransform),
+                typeof(UnityEngine.UI.RawImage), typeof(GusCutscenePreview));
+            portraitObject.transform.SetParent(buttonObject.transform, false);
+            RectTransform portraitRect = (RectTransform)portraitObject.transform;
+            portraitRect.anchorMin = Vector2.zero;
+            portraitRect.anchorMax = Vector2.one;
+            portraitRect.offsetMin = new Vector2(3f, 3f);
+            portraitRect.offsetMax = new Vector2(-3f, -3f);
+            portraitObject.GetComponent<UnityEngine.UI.RawImage>().raycastTarget = false;
+
+            TitleScreenController title = FindFirstObjectByType<TitleScreenController>(FindObjectsInactive.Include);
+            GameObject gusPrefab = title != null ? title.gusPrefab : null;
+            if (gusPrefab != null)
+                portraitObject.GetComponent<GusCutscenePreview>().Configure(
+                    gusPrefab, portraitObject.GetComponent<UnityEngine.UI.RawImage>(), true);
+            else
+            {
+                Destroy(portraitObject.GetComponent<GusCutscenePreview>());
+                var label = CreateLabel(portraitObject.transform, "Fallback", "G", 24f);
+                label.alignment = TextAlignmentOptions.Center;
+                label.fontStyle = FontStyles.Bold;
+                label.color = GameUITheme.Accent;
+                SetRect(label.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            }
+        }
+
+        RectTransform buttonRect = (RectTransform)button.transform;
+        buttonRect.anchorMin = Vector2.zero;
+        buttonRect.anchorMax = Vector2.one;
+        buttonRect.offsetMin = Vector2.zero;
+        buttonRect.offsetMax = Vector2.zero;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            if (!ManagementTabInfoUI.OpenActiveHelp())
+                NotificationCenter.Post("Open a management tab and ask Gus for details.",
+                    GameNotificationKind.Message, "gus-help-no-tab", 2f);
+        });
+        GameUITheme.ApplyCompactControlEffects(button);
     }
 
     void EnsureHistoryPanel()

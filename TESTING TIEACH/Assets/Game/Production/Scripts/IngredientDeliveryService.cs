@@ -139,6 +139,26 @@ public class IngredientDeliveryService : MonoBehaviour
         return true;
     }
 
+    /// <summary>Queue a shipment whose van is dispatched on the next update without a delivery countdown.</summary>
+    public bool QueueExpressOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts)
+    {
+        if (items == null || amounts == null || items.Count != amounts.Count)
+            return false;
+
+        var shipment = new Shipment { remaining = 0f, duration = 0f };
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i] == null || amounts[i] <= 0) continue;
+            shipment.packs.Add(new Pack { item = items[i], amount = amounts[i] });
+        }
+
+        if (shipment.packs.Count == 0)
+            return false;
+
+        shipments.Add(shipment);
+        return true;
+    }
+
     /// <summary>Cancel the outstanding shipment only when it matches the recorded order.</summary>
     public bool TryCancelOrder(IReadOnlyList<ItemDefinition> items, IReadOnlyList<int> amounts)
     {
@@ -265,7 +285,7 @@ public class IngredientDeliveryService : MonoBehaviour
         Vector3 stall;
         Quaternion facing;
         int stallId = -1;
-        bool useExactTruckSpot = TryGetDeliveryTruckSpot(out stall, out facing);
+        bool useExactTruckSpot = TryGetDeliveryVanParkingSpot(out stall, out facing);
         if (!useExactTruckSpot &&
             !ParkingLotDressing.TryClaimRandomStall(out stallId, out stall, out facing))
         {
@@ -298,9 +318,9 @@ public class IngredientDeliveryService : MonoBehaviour
         shipment.van = van;
     }
 
-    static bool TryGetDeliveryTruckSpot(out Vector3 position, out Quaternion rotation)
+    static bool TryGetDeliveryVanParkingSpot(out Vector3 position, out Quaternion rotation)
     {
-        Transform marker = FindDeliveryTruckMarker();
+        Transform marker = FindDeliveryVanParkingMarker();
         if (marker != null)
         {
             position = marker.position;
@@ -313,24 +333,27 @@ public class IngredientDeliveryService : MonoBehaviour
         return false;
     }
 
-    static Transform FindDeliveryTruckMarker()
+    static Transform FindDeliveryVanParkingMarker()
     {
         Transform[] transforms = FindObjectsByType<Transform>(
             FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Transform legacyMarker = null;
         for (int i = 0; i < transforms.Length; i++)
         {
             Transform candidate = transforms[i];
-            if (candidate == null || !string.Equals(candidate.name, "DeliveryTruckSpot",
+            if (candidate == null) continue;
+            if (string.Equals(candidate.name, "DeliverVanParkingSpot", System.StringComparison.Ordinal))
+                return candidate;
+            if (legacyMarker == null && string.Equals(candidate.name, "DeliveryTruckSpot",
                 System.StringComparison.Ordinal))
-                continue;
-            return candidate;
+                legacyMarker = candidate;
         }
-        return null;
+        return legacyMarker;
     }
 
     static void HideDeliveryTruckMarker()
     {
-        Transform marker = FindDeliveryTruckMarker();
+        Transform marker = FindDeliveryVanParkingMarker();
         if (marker == null) return;
 
         marker.gameObject.SetActive(false);

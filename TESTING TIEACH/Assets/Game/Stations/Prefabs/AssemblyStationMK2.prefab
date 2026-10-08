@@ -3484,13 +3484,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AssemblyStation
   selectedProduct: {fileID: 0}
-  processTimeSeconds: 4
+  processTimeSeconds: 8
   stationMark: 2
   interactionOffset: {x: 0, y: 0, z: 0}
   bufferedProcessedInputs: 0
   bufferedPantryInputs: 0
   bufferedThirdInputs: 0
   bufferedOutputs: 0
+  processingUnits: 0
+  processingTimer: 0
   defaultProcessedInputDisplayPrefab: {fileID: 5182101408359990397, guid: 9a410000000000000000000000000006, type: 3}
   defaultOutputDisplayPrefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   processedInputDisplaySlots:

@@ -172,6 +172,8 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsMenuItemUnlocked(ItemDefinition item)
     {
+        if (OnboardingTutorial.BlocksProgression && item == burgerBase)
+            return true;
         int milestone = GetMenuItemUnlockMilestone(item);
         return milestone <= 0 || MilestoneProgressManager.Instance == null
             || MilestoneFeatures.HasReached(milestone);
@@ -179,7 +181,21 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsIngredientUnlocked(ItemDefinition item)
     {
+        if (IsTutorialBurgerItem(item))
+            return true;
         return item != null && HasReachedMilestone(GetIngredientMilestone(item));
+    }
+
+    bool IsTutorialBurgerItem(ItemDefinition item)
+    {
+        if (!OnboardingTutorial.BlocksProgression || item == null) return false;
+        if (item == rawPattyIngredient || item == cookedPattyIngredient || item == burgerBase)
+            return true;
+        if (assemblyRecipes == null) return false;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.Produces(burgerBase) && RecipeUsesIngredient(recipe, item))
+                return true;
+        return false;
     }
 
     public int GetIngredientUnlockMilestone(ItemDefinition item) => GetIngredientMilestone(item);
@@ -257,6 +273,8 @@ public class CustomerOrderConfig : ScriptableObject
 
     bool IsRecipeUnlocked(AssemblyRecipeDefinition recipe)
     {
+        if (OnboardingTutorial.BlocksProgression && recipe != null && recipe.Produces(burgerBase))
+            return true;
         return MilestoneProgressManager.Instance == null
             || MilestoneFeatures.HasReached(GetRecipeUnlockMilestone(recipe));
     }

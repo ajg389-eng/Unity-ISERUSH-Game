@@ -714,7 +714,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShakeStation
   selectedProduct: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
-  processTimeSeconds: 4
+  processTimeSeconds: 8
   interactionOffset: {x: 0, y: 0, z: 0}
   bufferedProcessedInputs: 0
   bufferedPantryInputs: 0

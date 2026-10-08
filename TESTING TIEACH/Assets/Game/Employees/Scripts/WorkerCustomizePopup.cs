@@ -19,6 +19,7 @@ public class WorkerCustomizePopup : MonoBehaviour
     KitchenEmployee employee;
     PartyCharacterRandomizer appearance;
     TextMeshProUGUI titleText;
+    TMP_InputField nameInput;
 
     Transform colorGrid;
     Transform faceRow;
@@ -109,7 +110,7 @@ public class WorkerCustomizePopup : MonoBehaviour
         panelRt.anchorMin = new Vector2(0.5f, 0.5f);
         panelRt.anchorMax = new Vector2(0.5f, 0.5f);
         panelRt.pivot = new Vector2(0.5f, 0.5f);
-        panelRt.sizeDelta = new Vector2(540f, 700f);
+        panelRt.sizeDelta = new Vector2(540f, 760f);
         var panelImg = panel.GetComponent<Image>();
         panelImg.color = PanelBg;
         panelImg.raycastTarget = true;
@@ -124,6 +125,7 @@ public class WorkerCustomizePopup : MonoBehaviour
         vlg.childForceExpandHeight = false;
 
         titleText = CreateLabel(panel.transform, "Title", "Customize Worker", 20, FontStyles.Bold, 26f);
+        CreateNameEditor(panel.transform);
         CreateLabel(panel.transform, "Hint", "Free defaults are unlocked. Click a locked option to buy it.", 12,
             FontStyles.Normal, 18f, new Color(0.75f, 0.78f, 0.86f, 1f));
 
@@ -150,6 +152,86 @@ public class WorkerCustomizePopup : MonoBehaviour
 
         CreateActionButton(buttons.transform, "Randomize", new Color(0.28f, 0.38f, 0.52f, 1f), OnRandomize);
         CreateActionButton(buttons.transform, "Done", new Color(0.22f, 0.52f, 0.36f, 1f), Close);
+    }
+
+    void CreateNameEditor(Transform parent)
+    {
+        var row = new GameObject("NameEditor", typeof(RectTransform), typeof(UnityEngine.UI.HorizontalLayoutGroup), typeof(UnityEngine.UI.LayoutElement));
+        row.transform.SetParent(parent, false);
+        var rowLayout = row.GetComponent<UnityEngine.UI.LayoutElement>();
+        rowLayout.minHeight = 40f;
+        rowLayout.preferredHeight = 40f;
+
+        var horizontal = row.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+        horizontal.spacing = 10f;
+        horizontal.childAlignment = TextAnchor.MiddleLeft;
+        horizontal.childControlWidth = true;
+        horizontal.childControlHeight = true;
+        horizontal.childForceExpandWidth = false;
+        horizontal.childForceExpandHeight = true;
+
+        TextMeshProUGUI label = CreateLabel(row.transform, "NameLabel", "Name", 14f, FontStyles.Bold, 36f);
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        var labelLayout = label.GetComponent<UnityEngine.UI.LayoutElement>();
+        labelLayout.minWidth = 72f;
+        labelLayout.preferredWidth = 72f;
+        labelLayout.flexibleWidth = 0f;
+
+        var field = new GameObject("NameInput", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(TMPro.TMP_InputField), typeof(UnityEngine.UI.LayoutElement));
+        field.transform.SetParent(row.transform, false);
+        field.GetComponent<UnityEngine.UI.Image>().color = new Color(0.08f, 0.1f, 0.14f, 1f);
+        var fieldLayout = field.GetComponent<UnityEngine.UI.LayoutElement>();
+        fieldLayout.minHeight = 36f;
+        fieldLayout.preferredHeight = 36f;
+        fieldLayout.flexibleWidth = 1f;
+
+        var textArea = new GameObject("Text Area", typeof(RectTransform), typeof(UnityEngine.UI.RectMask2D));
+        textArea.transform.SetParent(field.transform, false);
+        var areaRect = (RectTransform)textArea.transform;
+        areaRect.anchorMin = Vector2.zero;
+        areaRect.anchorMax = Vector2.one;
+        areaRect.offsetMin = new Vector2(10f, 4f);
+        areaRect.offsetMax = new Vector2(-10f, -4f);
+
+        TextMeshProUGUI inputText = CreateLabel(textArea.transform, "Text", "", 14f, FontStyles.Normal, 28f);
+        inputText.alignment = TextAlignmentOptions.MidlineLeft;
+        RectTransform inputRect = inputText.rectTransform;
+        inputRect.anchorMin = Vector2.zero;
+        inputRect.anchorMax = Vector2.one;
+        inputRect.offsetMin = Vector2.zero;
+        inputRect.offsetMax = Vector2.zero;
+
+        nameInput = field.GetComponent<TMPro.TMP_InputField>();
+        nameInput.textViewport = areaRect;
+        nameInput.textComponent = inputText;
+        nameInput.lineType = TMPro.TMP_InputField.LineType.SingleLine;
+        nameInput.characterLimit = 24;
+        nameInput.onSelect.AddListener(SelectEntireName);
+        nameInput.onEndEdit.AddListener(ApplyName);
+    }
+
+    void SelectEntireName(string _)
+    {
+        if (nameInput == null) return;
+
+        nameInput.selectionAnchorPosition = 0;
+        nameInput.selectionFocusPosition = nameInput.text != null ? nameInput.text.Length : 0;
+    }
+
+    void ApplyName(string value)
+    {
+        if (employee == null) return;
+
+        string cleaned = string.IsNullOrWhiteSpace(value) ? "Worker" : value.Trim();
+        employee.employeeName = cleaned;
+        if (nameInput != null)
+            nameInput.SetTextWithoutNotify(cleaned);
+        if (titleText != null)
+            titleText.text = "Customize " + cleaned;
+
+        WorkersUI workers = FindObjectOfType<WorkersUI>();
+        if (workers != null)
+            workers.Refresh();
     }
 
     Transform CreateScrollGridSection(Transform parent, string title, float gridHeight, float cell, int columns)
@@ -555,6 +637,8 @@ public class WorkerCustomizePopup : MonoBehaviour
 
         if (titleText != null)
             titleText.text = "Customize " + (string.IsNullOrEmpty(emp.employeeName) ? "Worker" : emp.employeeName);
+        if (nameInput != null)
+            nameInput.SetTextWithoutNotify(string.IsNullOrEmpty(emp.employeeName) ? "Worker" : emp.employeeName);
 
         RebuildAllOptions();
         gameObject.SetActive(true);
@@ -598,6 +682,8 @@ public class WorkerCustomizePopup : MonoBehaviour
 
     void Close()
     {
+        if (employee != null && nameInput != null)
+            ApplyName(nameInput.text);
         gameObject.SetActive(false);
         employee = null;
         appearance = null;

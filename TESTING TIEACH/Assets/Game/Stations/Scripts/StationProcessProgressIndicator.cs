@@ -5,6 +5,7 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
 {
     const float WorldScale = 0.006f;
     const float Diameter = 46f;
+    const float HeightPadding = 0.45f;
     static Sprite circleSprite;
 
     Canvas canvas;
@@ -29,10 +30,30 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
     void LateUpdate()
     {
         if (canvas == null || !canvas.gameObject.activeSelf) return;
+        UpdateWorldTransform();
+    }
+
+    void OnDestroy()
+    {
+        if (canvas != null)
+            Destroy(canvas.gameObject);
+    }
+
+    void UpdateWorldTransform()
+    {
+        if (canvas == null) return;
+
+        canvas.transform.position = FindWorldPosition();
+        canvas.transform.localScale = Vector3.one * WorldScale;
         if (cachedCamera == null || !cachedCamera.isActiveAndEnabled)
             cachedCamera = Camera.main;
         if (cachedCamera != null)
-            canvas.transform.rotation = cachedCamera.transform.rotation;
+        {
+            Vector3 cameraToIndicator = canvas.transform.position - cachedCamera.transform.position;
+            if (cameraToIndicator.sqrMagnitude > 0.0001f)
+                canvas.transform.rotation = Quaternion.LookRotation(
+                    cameraToIndicator.normalized, cachedCamera.transform.up);
+        }
     }
 
     void EnsureVisuals()
@@ -40,16 +61,14 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
         if (canvas != null) return;
 
         var root = new GameObject("ProcessProgress", typeof(RectTransform), typeof(Canvas));
-        root.transform.SetParent(transform, false);
-        root.transform.position = FindWorldPosition();
-        root.transform.localScale = Vector3.one * WorldScale;
 
         canvas = root.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
         canvas.overrideSorting = true;
-        canvas.sortingOrder = 40;
+        canvas.sortingOrder = 100;
         var canvasRect = (RectTransform)root.transform;
         canvasRect.sizeDelta = new Vector2(Diameter, Diameter);
+        UpdateWorldTransform();
 
         CreateCircle(root.transform, "Background", new Color(0.055f, 0.07f, 0.09f, 0.92f), false);
         fill = CreateCircle(root.transform, "Fill", new Color(0.20f, 0.85f, 0.55f, 1f), true);
@@ -61,12 +80,16 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
     Vector3 FindWorldPosition()
     {
         Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return transform.position + Vector3.up * 1.5f;
+        if (renderers.Length == 0)
+            return transform.position + Vector3.up * (1.5f + HeightPadding);
 
-        Bounds bounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            bounds.Encapsulate(renderers[i].bounds);
-        return new Vector3(bounds.center.x, bounds.max.y + 0.28f, bounds.center.z);
+        float top = transform.position.y + 1.5f;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null && renderers[i].enabled)
+                top = Mathf.Max(top, renderers[i].bounds.max.y);
+        }
+        return new Vector3(transform.position.x, top + HeightPadding, transform.position.z);
     }
 
     static UnityEngine.UI.Image CreateCircle(Transform parent, string objectName, Color color, bool radial)

@@ -1157,24 +1157,24 @@ public class ProductionManager : MonoBehaviour
     {
         if (station == null || recipe == null || sourceItem == null || outputItem == null) return;
         ProductionJob parentDemand = FindParentDemand(recipe.output);
-        // Demand-driven production asks for one complete recipe set first. Extra
-        // buffer filling is allowed only when no final-product demand is waiting.
-        int target = parentDemand != null ? 1 : station.IngredientCapacity;
+        // Assembly supply is buffer-driven. Active demand increases urgency in
+        // worker scoring, but it must not collapse the requested stock to one.
+        int target = GetAssemblyInputCapacity(station, outputItem);
+        if (target <= 0) return;
         int reserved = buffered;
-        bool alreadyQueued = false;
         foreach (ProductionJob queued in pendingJobs)
         {
             if (queued == null || !queued.isAssemblySupply || queued.assemblySupplyTarget != station
                 || queued.assemblySupplyOutputItem != outputItem) continue;
             reserved += Mathf.Max(1, queued.requestedSupplyUnits);
-            alreadyQueued = true;
         }
-        if (reserved >= target || alreadyQueued) return;
+        if (reserved >= target) return;
         StationType sourceType = orderConfig != null && orderConfig.IsFreezerIngredient(sourceItem)
             ? StationType.Freezer : StationType.Pantry;
         StationType[] pipeline = pipelineOverride != null && pipelineOverride.Length > 0
             ? pipelineOverride : (requiresCutting ? new[] { sourceType, StationType.Cutting }
                 : new[] { sourceType });
+        int requestBatch = Mathf.Min(target - reserved, GetLargestCarryCapacityForStation(station));
         var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1), pipeline, null,
             parentDemand != null ? parentDemand.rootDemandId : 0)
         {
@@ -1183,7 +1183,7 @@ public class ProductionManager : MonoBehaviour
             assemblySupplySourceItem = sourceItem,
             assemblySupplyOutputItem = outputItem,
             assemblySupplyStageItems = stageItems,
-            requestedSupplyUnits = target - reserved
+            requestedSupplyUnits = requestBatch
         };
         if (CanAnyWorkerContinue(supply))
         {
@@ -2202,6 +2202,20 @@ public class ProductionManager : MonoBehaviour
                 }
             }
         }
+    }
+
+    int GetLargestCarryCapacityForStation(AssemblyStation station)
+    {
+        int capacity = 1;
+        if (station == null) return capacity;
+        foreach (KitchenEmployee employee in employees)
+        {
+            if (employee == null) continue;
+            ProductionFlowPlan flow = GetFlowForWorker(employee);
+            if (flow?.stations == null || !flow.stations.Contains(station.gameObject)) continue;
+            capacity = Mathf.Max(capacity, employee.CarryCapacity);
+        }
+        return capacity;
     }
 
     bool IsBurgerBaseBlockingAssembly(KitchenEmployee employee, ProductionJob job)

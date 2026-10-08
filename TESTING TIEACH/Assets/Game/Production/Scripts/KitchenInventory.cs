@@ -15,6 +15,8 @@ public class IngredientStockEntry
 /// </summary>
 public class KitchenInventory : MonoBehaviour
 {
+    public const int ExpressDeliveryFee = 200;
+
     public static KitchenInventory Instance { get; private set; }
 
     [Header("Catalog")]
@@ -64,7 +66,8 @@ public class KitchenInventory : MonoBehaviour
 
         if (orderConfig != null)
         {
-            foreach (var item in orderConfig.GetIngredientItems())
+            foreach (var item in orderConfig.GetIngredientItems(
+                         includeLocked: OnboardingTutorial.BlocksProgression))
                 Add(item);
         }
 
@@ -245,6 +248,12 @@ public class KitchenInventory : MonoBehaviour
     /// <summary>Pay for and dispatch every selected pack as one atomic shipment.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
     {
+        return TryOrderCart(packCounts, false);
+    }
+
+    /// <summary>Pay for a cart and either queue normal delivery or add it to stock immediately.</summary>
+    public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts, bool express)
+    {
         if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
@@ -254,7 +263,7 @@ public class KitchenInventory : MonoBehaviour
             var host = new GameObject("IngredientDeliveryService");
             service = host.AddComponent<IngredientDeliveryService>();
         }
-        if (service.HasPending) return false;
+        if (!express && service.HasPending) return false;
 
         var items = new List<ItemDefinition>();
         var amounts = new List<int>();
@@ -269,10 +278,16 @@ public class KitchenInventory : MonoBehaviour
         }
         if (items.Count == 0) return false;
 
+        if (express)
+            totalPrice += ExpressDeliveryFee;
+
         if (money != null && !money.TrySpend(totalPrice))
             return false;
 
-        if (!service.QueueOrder(items, amounts))
+        bool accepted = express
+            ? service.QueueExpressOrder(items, amounts)
+            : service.QueueOrder(items, amounts);
+        if (!accepted)
         {
             if (money != null) money.AddMoney(totalPrice);
             return false;
