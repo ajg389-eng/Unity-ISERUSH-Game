@@ -20,6 +20,8 @@ public class StationInteractionTiles : MonoBehaviour
     public GameObject buildModeHighlight;
     [Tooltip("Max XZ distance from a quad center to count as standing on it. If 0, uses 10% of cell size (or 0.1).")]
     public float interactionRadius = 0f;
+    [Tooltip("Extra distance to keep an employee clear of the station after reaching its stand tile.")]
+    [Min(0f)] public float employeeClearance = 0.4f;
 
     BuildFootprint footprint;
     bool? lastShown;
@@ -440,7 +442,8 @@ public class StationInteractionTiles : MonoBehaviour
     }
 
     /// <summary>
-    /// Stand positions: green quad centers first (exact XZ), then grid-offset fallback.
+    /// Stand positions: authored green quad centers first, then configured offsets
+    /// and free cells around the station footprint as reachable alternatives.
     /// </summary>
     public List<Vector3> GetInteractionStandCenters()
     {
@@ -451,16 +454,79 @@ public class StationInteractionTiles : MonoBehaviour
         {
             foreach (var p in fromModel)
                 AddUniqueTileCenter(list, p);
-            return list;
+        }
+        else
+        {
+            var fromOffsets = GetInteractionTileWorldPositions();
+            if (fromOffsets != null)
+            {
+                foreach (var p in fromOffsets)
+                    AddUniqueTileCenter(list, p);
+            }
         }
 
-        var fromOffsets = GetInteractionTileWorldPositions();
-        if (fromOffsets != null)
-        {
-            foreach (var p in fromOffsets)
-                AddUniqueTileCenter(list, p);
-        }
+        AddReachableFootprintStandCenters(list);
         return list;
+    }
+
+    void AddReachableFootprintStandCenters(List<Vector3> centers)
+    {
+        if (centers == null)
+            return;
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        if (grid == null)
+            return;
+        if (footprint == null)
+            footprint = GetComponent<BuildFootprint>();
+        if (footprint == null)
+            return;
+
+        int sizeX = Mathf.Max(1, footprint.sizeX);
+        int sizeY = Mathf.Max(1, footprint.sizeY);
+        int yaw = Mathf.RoundToInt(transform.eulerAngles.y / 90f) & 3;
+        if (yaw == 1 || yaw == 3)
+        {
+            int temp = sizeX;
+            sizeX = sizeY;
+            sizeY = temp;
+        }
+
+        if (!grid.TryGetFootprintOriginFromCenter(transform.position, sizeX, sizeY,
+            out int originX, out int originY))
+            return;
+
+        // Authored green tiles remain preferred, but if nearby equipment blocks
+        // them workers can use any free cell directly beside the station. These
+        // cells are also accepted by IsEmployeeOnInteractionTile, so the worker
+        // can finish the action after routing to an alternate side.
+        int minX = originX - 1;
+        int maxX = originX + sizeX;
+        int minY = originY - 1;
+        int maxY = originY + sizeY;
+        for (int x = minX; x <= maxX; x++)
+        {
+            AddReachableFootprintStandCenter(centers, x, minY);
+            AddReachableFootprintStandCenter(centers, x, maxY);
+        }
+        for (int y = originY; y < originY + sizeY; y++)
+        {
+            AddReachableFootprintStandCenter(centers, minX, y);
+            AddReachableFootprintStandCenter(centers, maxX, y);
+        }
+    }
+
+    void AddReachableFootprintStandCenter(List<Vector3> centers, int x, int y)
+    {
+        if (grid == null || !grid.IsWalkable(x, y))
+            return;
+
+        Vector3 center = grid.CellToWorld(x, y);
+        center.y = grid.Origin.y;
+        for (int i = 0; i < centers.Count; i++)
+            if ((centers[i] - center).sqrMagnitude < 0.001f)
+                return;
+        centers.Add(center);
     }
 
     Vector3 SnapToTileCenter(Vector3 world)
@@ -477,6 +543,36 @@ public class StationInteractionTiles : MonoBehaviour
     void AddUniqueTileCenter(List<Vector3> list, Vector3 world)
     {
         Vector3 centered = SnapToTileCenter(world);
+        if (grid != null && IsInsideOwnFootprint(centered))
+        {
+            Vector3 exitDirection = centered - transform.position;
+            exitDirection.y = 0f;
+            if (exitDirection.sqrMagnitude < 0.001f)
+            {
+                exitDirection = transform.forward;
+                exitDirection.y = 0f;
+            }
+            if (exitDirection.sqrMagnitude < 0.001f)
+                exitDirection = Vector3.forward;
+            exitDirection.Normalize();
+
+            int maxSteps = Mathf.Max(3, footprint != null
+                ? Mathf.Max(footprint.sizeX, footprint.sizeY) + 2
+                : 4);
+            for (int i = 0; i < maxSteps && IsInsideOwnFootprint(centered); i++)
+                centered = SnapToTileCenter(centered + exitDirection * grid.cellSize);
+        }
+
+        if (employeeClearance > 0f)
+        {
+            Vector3 awayFromStation = centered - transform.position;
+            awayFromStation.y = 0f;
+            if (awayFromStation.sqrMagnitude > 0.001f)
+            {
+                centered += awayFromStation.normalized * employeeClearance;
+                if (grid != null) centered.y = grid.Origin.y;
+            }
+        }
         for (int i = 0; i < list.Count; i++)
         {
             float dx = list[i].x - centered.x;
@@ -485,6 +581,31 @@ public class StationInteractionTiles : MonoBehaviour
                 return;
         }
         list.Add(centered);
+    }
+
+    bool IsInsideOwnFootprint(Vector3 world)
+    {
+        if (grid == null) return false;
+        if (footprint == null) footprint = GetComponent<BuildFootprint>();
+        if (footprint == null) return false;
+
+        int sizeX = Mathf.Max(1, footprint.sizeX);
+        int sizeY = Mathf.Max(1, footprint.sizeY);
+        int yaw = Mathf.RoundToInt(transform.eulerAngles.y / 90f) & 3;
+        if (yaw == 1 || yaw == 3)
+        {
+            int temp = sizeX;
+            sizeX = sizeY;
+            sizeY = temp;
+        }
+
+        if (!grid.TryGetFootprintOriginFromCenter(transform.position, sizeX, sizeY, out int originX, out int originY))
+            return false;
+        if (!grid.WorldToCell(world, out int cellX, out int cellY))
+            return false;
+
+        return cellX >= originX && cellX < originX + sizeX
+            && cellY >= originY && cellY < originY + sizeY;
     }
 
     float GetStandTolerance()

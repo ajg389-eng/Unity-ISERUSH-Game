@@ -485,6 +485,60 @@ public class GridManager : MonoBehaviour
         return n != null && n.walkable && !n.occupied;
     }
 
+    /// <summary>
+    /// Measures how far a circular XZ footprint overlaps occupied grid cells.
+    /// Employees move by setting their transforms, so their collider cannot stop
+    /// them from crossing station footprints unless movement checks this first.
+    /// </summary>
+    public float MeasureOccupiedCellPenetration(Vector3 worldPosition, float radius)
+    {
+        if (Nodes == null || Width <= 0 || Height <= 0 || cellSize <= 0f)
+            return 0f;
+
+        radius = Mathf.Max(0f, radius);
+        int minX = Mathf.Max(0, Mathf.FloorToInt((worldPosition.x - radius - Origin.x) / cellSize));
+        int maxX = Mathf.Min(Width - 1, Mathf.FloorToInt((worldPosition.x + radius - Origin.x) / cellSize));
+        int minY = Mathf.Max(0, Mathf.FloorToInt((worldPosition.z - radius - Origin.z) / cellSize));
+        int maxY = Mathf.Min(Height - 1, Mathf.FloorToInt((worldPosition.z + radius - Origin.z) / cellSize));
+
+        float penetration = 0f;
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++)
+            {
+                Node node = Nodes[x, y];
+                if (node == null || !node.occupied) continue;
+
+                float minCellX = Origin.x + x * cellSize;
+                float maxCellX = minCellX + cellSize;
+                float minCellZ = Origin.z + y * cellSize;
+                float maxCellZ = minCellZ + cellSize;
+                bool insideX = worldPosition.x >= minCellX && worldPosition.x <= maxCellX;
+                bool insideZ = worldPosition.z >= minCellZ && worldPosition.z <= maxCellZ;
+
+                float overlap;
+                if (insideX && insideZ)
+                {
+                    float edgeDistance = Mathf.Min(
+                        Mathf.Min(worldPosition.x - minCellX, maxCellX - worldPosition.x),
+                        Mathf.Min(worldPosition.z - minCellZ, maxCellZ - worldPosition.z));
+                    overlap = radius + edgeDistance;
+                }
+                else
+                {
+                    float dx = insideX ? 0f : Mathf.Max(minCellX - worldPosition.x, worldPosition.x - maxCellX);
+                    float dz = insideZ ? 0f : Mathf.Max(minCellZ - worldPosition.z, worldPosition.z - maxCellZ);
+                    overlap = radius - Mathf.Sqrt(dx * dx + dz * dz);
+                }
+
+                if (overlap > 0f)
+                    penetration += overlap;
+            }
+        }
+
+        return penetration;
+    }
+
     public void ClearOccupancy()
     {
         if (Nodes == null) return;
@@ -563,9 +617,33 @@ public class GridManager : MonoBehaviour
             if (tile == null || ShouldIgnoreOccupancyObject(tile.gameObject)) continue;
             var centers = tile.GetInteractionStandCenters();
             if (centers == null) continue;
+
+            var footprint = tile.GetComponent<BuildFootprint>();
+            int sizeX = footprint != null ? Mathf.Max(1, footprint.sizeX) : 0;
+            int sizeY = footprint != null ? Mathf.Max(1, footprint.sizeY) : 0;
+            int footprintOriginX = 0;
+            int footprintOriginY = 0;
+            if (footprint != null)
+            {
+                int yaw = Mathf.RoundToInt(tile.transform.eulerAngles.y / 90f) & 3;
+                if (yaw == 1 || yaw == 3)
+                {
+                    int temp = sizeX;
+                    sizeX = sizeY;
+                    sizeY = temp;
+                }
+                if (!TryGetFootprintOriginFromCenter(tile.transform.position, sizeX, sizeY,
+                    out footprintOriginX, out footprintOriginY))
+                    continue;
+            }
+
             for (int i = 0; i < centers.Count; i++)
             {
                 if (!WorldToCell(centers[i], out int x, out int y)) continue;
+                if (footprint != null
+                    && x >= footprintOriginX && x < footprintOriginX + sizeX
+                    && y >= footprintOriginY && y < footprintOriginY + sizeY)
+                    continue;
                 if (Nodes[x, y] != null)
                     Nodes[x, y].occupied = false;
             }
@@ -682,12 +760,17 @@ public class GridManager : MonoBehaviour
     /// <summary>Returns the nearest walkable cell to (cx, cy), including (cx,cy) or a neighbor.</summary>
     public bool FindNearestWalkable(int cx, int cy, out int outX, out int outY)
     {
+        return FindNearestWalkable(cx, cy, 0f, out outX, out outY);
+    }
+
+    bool FindNearestWalkable(int cx, int cy, float clearanceRadius, out int outX, out int outY)
+    {
         outX = cx;
         outY = cy;
         if (Nodes == null || Width == 0 || Height == 0) return false;
         int px = Mathf.Clamp(cx, 0, Width - 1);
         int py = Mathf.Clamp(cy, 0, Height - 1);
-        if (IsWalkable(px, py)) { outX = px; outY = py; return true; }
+        if (IsWalkableForRadius(px, py, clearanceRadius)) { outX = px; outY = py; return true; }
         for (int r = 1; r <= Mathf.Max(Width, Height); r++)
         {
             for (int dx = -r; dx <= r; dx++)
@@ -695,7 +778,8 @@ public class GridManager : MonoBehaviour
                 {
                     if (dx != 0 && dy != 0) continue;
                     int nx = px + dx, ny = py + dy;
-                    if (nx >= 0 && nx < Width && ny >= 0 && ny < Height && IsWalkable(nx, ny))
+                    if (nx >= 0 && nx < Width && ny >= 0 && ny < Height
+                        && IsWalkableForRadius(nx, ny, clearanceRadius))
                     {
                         outX = nx; outY = ny;
                         return true;
@@ -705,8 +789,19 @@ public class GridManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>Path from current world position to target world position using only walkable cells. Returns cell-center world positions.</summary>
-    public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld)
+    bool IsWalkableForRadius(int x, int y, float clearanceRadius)
+    {
+        if (!IsWalkable(x, y)) return false;
+        if (clearanceRadius <= 0f) return true;
+        return MeasureOccupiedCellPenetration(CellToWorld(x, y), clearanceRadius) <= 0.001f;
+    }
+
+    /// <summary>
+    /// Path from the current position to a target using walkable cells. When a
+    /// clearance radius is supplied, the whole employee footprint must also fit
+    /// at every route cell. Returns cell-center world positions.
+    /// </summary>
+    public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius = 0f)
     {
         var result = new List<Vector3>();
         if (Nodes == null || Width == 0 || Height == 0) return result;
@@ -715,8 +810,9 @@ public class GridManager : MonoBehaviour
         WorldToCell(toWorld, out int tx, out int ty);
         sx = Mathf.Clamp(sx, 0, Width - 1);
         sy = Mathf.Clamp(sy, 0, Height - 1);
-        if (!FindNearestWalkable(tx, ty, out int gx, out int gy)) return result;
-        if (!IsWalkable(sx, sy) && !FindNearestWalkable(sx, sy, out sx, out sy)) return result;
+        if (!FindNearestWalkable(tx, ty, clearanceRadius, out int gx, out int gy)) return result;
+        if (!IsWalkableForRadius(sx, sy, clearanceRadius)
+            && !FindNearestWalkable(sx, sy, clearanceRadius, out sx, out sy)) return result;
 
         // Already on the goal cell — still return that cell center so the worker can snap to it
         if (sx == gx && sy == gy)
@@ -781,9 +877,11 @@ public class GridManager : MonoBehaviour
                 int nx = cur.x + dx;
                 int ny = cur.y + dy;
                 if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
-                if (dx != 0 && dy != 0 && (!IsWalkable(cur.x + dx, cur.y) || !IsWalkable(cur.x, cur.y + dy)))
+                if (dx != 0 && dy != 0
+                    && (!IsWalkableForRadius(cur.x + dx, cur.y, clearanceRadius)
+                        || !IsWalkableForRadius(cur.x, cur.y + dy, clearanceRadius)))
                     continue;
-                if (!IsWalkable(nx, ny) || closed.Contains((nx, ny))) continue;
+                if (!IsWalkableForRadius(nx, ny, clearanceRadius) || closed.Contains((nx, ny))) continue;
                 bool diagonal = nx != cur.x && ny != cur.y;
                 float g = cur.g + (diagonal ? 1.41421356f : 1f);
                 if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)

@@ -817,6 +817,8 @@ public class KitchenEmployee : MonoBehaviour
     public static Vector3 GetInteractionPosition(GameObject go)
     {
         if (go == null) return Vector3.zero;
+        var tiles = GetStationInteractionTiles(go);
+        if (tiles != null) return tiles.GetFirstInteractionPosition();
         var f = go.GetComponent<FreezerStation>();
         if (f != null) return f.GetInteractionPosition();
         var g = go.GetComponent<GrillStation>();
@@ -836,6 +838,15 @@ public class KitchenEmployee : MonoBehaviour
         var h = go.GetComponent<HeatLampStation>();
         if (h != null) return h.GetInteractionPosition();
         return go.transform.position;
+    }
+
+    static StationInteractionTiles GetStationInteractionTiles(GameObject station)
+    {
+        if (station == null)
+            return null;
+        return station.GetComponent<StationInteractionTiles>()
+            ?? station.GetComponentInChildren<StationInteractionTiles>(true)
+            ?? station.GetComponentInParent<StationInteractionTiles>();
     }
 
     public Register GetRegisterStation()
@@ -966,7 +977,9 @@ public class KitchenEmployee : MonoBehaviour
 
     float stateTimer;
     List<Vector3> path = new List<Vector3>();
+    CapsuleCollider movementCapsule;
     Vector3 pathDestination;
+    Vector3 pathRequestTarget;
     Vector3 moveVelocity;
     [Header("Navigation recovery")]
     [Tooltip("Minimum delay before retrying a route that could not be found.")]
@@ -1169,6 +1182,7 @@ public class KitchenEmployee : MonoBehaviour
             grid.GridChanged += OnGridChanged;
         if (groundHeight == 0f && grid != null)
             groundHeight = grid.Origin.y;
+        movementCapsule = GetComponent<CapsuleCollider>();
         if (GetComponent<EmployeeInventoryLabel>() == null)
             gameObject.AddComponent<EmployeeInventoryLabel>();
         characterAnimator = PartyCharacterAnimator.EnsureOn(gameObject);
@@ -1187,6 +1201,7 @@ public class KitchenEmployee : MonoBehaviour
     {
         path.Clear();
         pathDestination = Vector3.zero;
+        pathRequestTarget = Vector3.zero;
         consecutivePathFailures = 0;
         if (retryImmediately)
             nextPathAttemptTime = 0f;
@@ -2471,7 +2486,7 @@ public class KitchenEmployee : MonoBehaviour
         Vector3 position = GetInteractionPosition(returnFlowTarget);
         if (!CloseEnough(position, Mathf.Max(0.2f, ArrivalRadius * 2f)))
         {
-            MoveToward(position);
+            MoveToward(position, GetStationInteractionTiles(returnFlowTarget));
             return;
         }
 
@@ -2671,7 +2686,9 @@ public class KitchenEmployee : MonoBehaviour
             }
             return;
         }
-        MoveToward(stand);
+        GameObject station = operatedStations != null && operatedStations.Count > 0
+            ? operatedStations[0] : null;
+        MoveToward(stand, GetStationInteractionTiles(station));
     }
 
     void RunRegisterDuty()
@@ -2715,7 +2732,7 @@ public class KitchenEmployee : MonoBehaviour
         else
         {
             SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
-            MoveToward(idle);
+            MoveToward(idle, GetStationInteractionTiles(reg.gameObject));
         }
     }
 
@@ -2997,7 +3014,9 @@ public class KitchenEmployee : MonoBehaviour
         switch (step)
         {
             case Step.GoToFreezer:
-                if (MoveToward(manager.GetFreezerPosition(this)))
+                if (MoveToward(manager.GetFreezerPosition(this),
+                    GetStationInteractionTiles(GetFreezerStation() != null
+                        ? GetFreezerStation().gameObject : null)))
                 {
                     if (manager.IsEmployeeOnFreezerTile(transform.position, this))
                     {
@@ -3055,7 +3074,9 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.GoToGrill:
-                if (MoveToward(manager.GetGrillPosition(this)))
+                if (MoveToward(manager.GetGrillPosition(this),
+                    GetStationInteractionTiles(manager.GetGrillFor(this) != null
+                        ? manager.GetGrillFor(this).gameObject : null)))
                 {
                     if (manager.IsEmployeeOnGrillTile(transform.position, this))
                     {
@@ -3196,7 +3217,8 @@ public class KitchenEmployee : MonoBehaviour
                 {
                     var cutting = GetCuttingStation();
                     if (cutting == null) break;
-                    if (MoveToward(cutting.GetInteractionPosition()))
+                    if (MoveToward(cutting.GetInteractionPosition(),
+                        GetStationInteractionTiles(cutting.gameObject)))
                     {
                         CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
                         int carriedAmount = Mathf.Max(0, heldUnits);
@@ -3317,7 +3339,9 @@ public class KitchenEmployee : MonoBehaviour
                 }
 
             case Step.GoToAssembly:
-                if (MoveToward(manager.GetAssemblyPosition(this)))
+                if (MoveToward(manager.GetAssemblyPosition(this),
+                    GetStationInteractionTiles(GetAssemblyStation(CurrentWorkProduct) != null
+                        ? GetAssemblyStation(CurrentWorkProduct).gameObject : null)))
                 {
                     if (manager.IsEmployeeOnAssemblyTile(transform.position, this))
                     {
@@ -3407,7 +3431,8 @@ public class KitchenEmployee : MonoBehaviour
                     ItemDefinition pantryItem = currentJob != null && currentJob.isAssemblySupply
                         ? manager.GetAssemblySupplySource(currentJob)
                         : manager.GetPantryItemForProduct(currentJob != null ? currentJob.product : null);
-                    if (MoveToward(pantry.GetInteractionPosition()))
+                    if (MoveToward(pantry.GetInteractionPosition(),
+                        GetStationInteractionTiles(pantry.gameObject)))
                     {
                         FaceStationObject(GetOperatedStationObject(StationType.Pantry) ?? pantry.gameObject);
                         if (pantryItem == null || !pantry.HasItem(pantryItem))
@@ -3493,7 +3518,9 @@ public class KitchenEmployee : MonoBehaviour
                 }
 
             case Step.GoToFryer:
-                if (MoveToward(manager.GetFryerPosition(this)))
+                if (MoveToward(manager.GetFryerPosition(this),
+                    GetStationInteractionTiles(GetFryerStation() != null
+                        ? GetFryerStation().gameObject : null)))
                 {
                     if (manager.IsEmployeeOnFryerTile(transform.position, this))
                     {
@@ -3612,7 +3639,9 @@ public class KitchenEmployee : MonoBehaviour
                 break;
 
             case Step.GoToDrink:
-                if (MoveToward(manager.GetDrinkStationPosition(this)))
+                if (MoveToward(manager.GetDrinkStationPosition(this),
+                    GetStationInteractionTiles(GetDrinkStation() != null
+                        ? GetDrinkStation().gameObject : null)))
                 {
                     if (manager.IsEmployeeOnDrinkTile(transform.position, this))
                     {
@@ -3681,7 +3710,9 @@ public class KitchenEmployee : MonoBehaviour
                     break;
                 }
                 Vector3 dest = GetInteractionPosition(deliverTarget);
-                if (MoveToward(dest))
+                StationInteractionTiles outputTiles = deliverTarget.GetComponent<StationInteractionTiles>()
+                    ?? deliverTarget.GetComponentInChildren<StationInteractionTiles>(true);
+                if (MoveToward(dest, outputTiles))
                 {
                     if (IsAtDeliverTarget())
                         step = Step.AtOutput;
@@ -3745,10 +3776,133 @@ public class KitchenEmployee : MonoBehaviour
         transform.position = p;
     }
 
-    void SnapToWorldXZ(Vector3 world)
+    bool SnapToWorldXZ(Vector3 world)
     {
-        transform.position = new Vector3(world.x, GroundY, world.z);
+        world.y = GroundY;
+        if (!CanMoveToWorldPosition(world))
+            return false;
+
+        transform.position = world;
         moveVelocity = Vector3.zero;
+        return true;
+    }
+
+    float GetMovementFootprintRadius()
+    {
+        if (movementCapsule == null)
+            movementCapsule = GetComponent<CapsuleCollider>();
+
+        if (movementCapsule == null)
+            return 0.48f;
+
+        Vector3 scale = transform.lossyScale;
+        float perpendicularScale = movementCapsule.direction == 0
+            ? Mathf.Max(Mathf.Abs(scale.y), Mathf.Abs(scale.z))
+            : movementCapsule.direction == 2
+                ? Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y))
+                : Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z));
+
+        // The small tolerance lets a worker pass through a one-cell aisle where
+        // its capsule is exactly tangent to a station's occupied cell.
+        return Mathf.Max(0.05f, movementCapsule.radius * perpendicularScale - 0.015f);
+    }
+
+    bool CanMoveToWorldPosition(Vector3 destination)
+    {
+        Vector3 current = transform.position;
+        current.y = GroundY;
+        destination.y = GroundY;
+        return CanMoveAlongSegment(current, destination);
+    }
+
+    bool CanMoveAlongSegment(Vector3 from, Vector3 destination)
+    {
+        if (grid == null || grid.Nodes == null)
+            return true;
+
+        from.y = GroundY;
+        destination.y = GroundY;
+        float distance = Mathf.Sqrt(HorizontalDistSq(from, destination));
+        float sampleSpacing = Mathf.Max(0.05f, grid.cellSize * 0.2f);
+        int sampleCount = Mathf.Max(1, Mathf.CeilToInt(distance / sampleSpacing));
+        float radius = GetMovementFootprintRadius();
+        float previousPenetration = grid.MeasureOccupiedCellPenetration(from, radius);
+
+        for (int i = 1; i <= sampleCount; i++)
+        {
+            float t = i / (float)sampleCount;
+            Vector3 sample = Vector3.Lerp(from, destination, t);
+            float penetration = grid.MeasureOccupiedCellPenetration(sample, radius);
+
+            // Permit a worker that was already clipped to move out, but never
+            // let a new step deepen or continue a collision with a station.
+            if (penetration > 0.001f
+                && penetration >= previousPenetration - 0.001f)
+                return false;
+
+            previousPenetration = penetration;
+        }
+
+        return true;
+    }
+
+    void SmoothPathToFarthestVisiblePoint()
+    {
+        if (path == null || path.Count <= 1)
+            return;
+
+        // Skip grid corners whenever a direct, clearance-safe segment exists.
+        // This keeps the route on the A* corridor without making the worker stop
+        // and pivot at every cell boundary.
+        for (int i = path.Count - 1; i > 0; i--)
+        {
+            Vector3 candidate = path[i];
+            candidate.y = GroundY;
+            if (!CanMoveToWorldPosition(candidate))
+                continue;
+
+            path.RemoveRange(0, i);
+            return;
+        }
+    }
+
+    bool TryGetSafeMovementStep(Vector3 from, Vector3 target, float step, out Vector3 safePosition)
+    {
+        Vector3 desired = Vector3.MoveTowards(from, target, step);
+        desired.y = GroundY;
+        if (CanMoveToWorldPosition(desired))
+        {
+            safePosition = desired;
+            return true;
+        }
+
+        // A diagonal can clip a station corner even when both route cells are
+        // valid. Slide along one axis for this frame and continue following the
+        // same waypoint on the next update.
+        Vector3 xOnly = new Vector3(desired.x, GroundY, from.z);
+        Vector3 zOnly = new Vector3(from.x, GroundY, desired.z);
+        bool xIsSafe = Mathf.Abs(xOnly.x - from.x) > 0.0001f
+            && CanMoveToWorldPosition(xOnly);
+        bool zIsSafe = Mathf.Abs(zOnly.z - from.z) > 0.0001f
+            && CanMoveToWorldPosition(zOnly);
+
+        if (!xIsSafe && !zIsSafe)
+        {
+            safePosition = from;
+            return false;
+        }
+
+        if (xIsSafe && zIsSafe)
+        {
+            safePosition = HorizontalDistSq(xOnly, target) <= HorizontalDistSq(zOnly, target)
+                ? xOnly : zOnly;
+        }
+        else
+        {
+            safePosition = xIsSafe ? xOnly : zOnly;
+        }
+
+        return true;
     }
 
     /// <summary>Snap a destination to its grid cell center when a grid is available.</summary>
@@ -3761,21 +3915,104 @@ public class KitchenEmployee : MonoBehaviour
     }
 
     /// <summary>
-    /// Move along grid cells toward target, ending exactly on the requested XZ
-    /// (so workers finish on green interaction quad centers).
+    /// Move along grid cells toward the selected station stand point and finish
+    /// exactly on its XZ coordinate so station interaction checks succeed.
     /// </summary>
-    bool MoveToward(Vector3 target)
+    Vector3 ResolveReachableInteractionTarget(Vector3 requestedTarget, StationInteractionTiles tiles,
+        out bool foundReachableTarget)
     {
-        Vector3 exactTarget = target;
-        exactTarget.y = GroundY;
+        foundReachableTarget = true;
+        if (tiles == null || grid == null || grid.Nodes == null)
+            return requestedTarget;
+
+        List<Vector3> centers = tiles.GetInteractionStandCenters();
+        if (centers == null || centers.Count == 0)
+            return requestedTarget;
+
+        float radius = GetMovementFootprintRadius();
+        float bestDistance = float.PositiveInfinity;
+        Vector3 bestTarget = requestedTarget;
+        foundReachableTarget = false;
+        float maxApproach = grid.cellSize * 1.25f;
+
+        for (int i = 0; i < centers.Count; i++)
+        {
+            Vector3 candidate = centers[i];
+            candidate.y = GroundY;
+            if (!grid.WorldToCell(candidate, out int x, out int y)
+                || !grid.IsWalkable(x, y)
+                || grid.MeasureOccupiedCellPenetration(candidate, radius) > 0.001f)
+                continue;
+
+            Vector3 cellCenter = grid.GetCellCenter(candidate);
+            List<Vector3> route = grid.GetPath(transform.position, cellCenter, radius);
+            if (route == null || route.Count == 0)
+                continue;
+
+            Vector3 last = route[route.Count - 1];
+            if (HorizontalDistSq(last, candidate) > maxApproach * maxApproach
+                || !CanMoveAlongSegment(last, candidate))
+                continue;
+
+            float routeDistance = 0f;
+            Vector3 previous = transform.position;
+            for (int pointIndex = 0; pointIndex < route.Count; pointIndex++)
+            {
+                routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, route[pointIndex]));
+                previous = route[pointIndex];
+            }
+            routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, candidate));
+
+            if (routeDistance >= bestDistance)
+                continue;
+
+            bestDistance = routeDistance;
+            bestTarget = candidate;
+            foundReachableTarget = true;
+        }
+
+        return foundReachableTarget ? bestTarget : requestedTarget;
+    }
+
+    bool MoveToward(Vector3 target, StationInteractionTiles targetTiles = null)
+    {
+        Vector3 requestedTarget = target;
+        requestedTarget.y = GroundY;
 
         if (grid == null)
-            return MoveTowardStraight(exactTarget);
+            return MoveTowardStraight(requestedTarget);
+
+        bool requestChanged = HorizontalDistSq(pathRequestTarget, requestedTarget) > 0.0001f;
+        if (path.Count == 0 && !requestChanged && Time.time < nextPathAttemptTime)
+            return false;
+
+        Vector3 exactTarget;
+        if (path.Count == 0 || requestChanged)
+        {
+            exactTarget = ResolveReachableInteractionTarget(requestedTarget, targetTiles,
+                out bool foundReachableTarget);
+            if (!foundReachableTarget)
+            {
+                pathRequestTarget = requestedTarget;
+                pathDestination = Vector3.zero;
+                consecutivePathFailures++;
+                float retryDelay = Mathf.Min(1f,
+                    Mathf.Max(0.05f, pathRetryDelay) * Mathf.Pow(1.6f, consecutivePathFailures - 1));
+                nextPathAttemptTime = Time.time + retryDelay;
+                return false;
+            }
+        }
+        else
+        {
+            exactTarget = pathDestination;
+        }
+        exactTarget.y = GroundY;
 
         // Already at the exact stand point
         if (HorizontalDistSq(transform.position, exactTarget) <= ArrivalRadius * ArrivalRadius)
         {
-            SnapToWorldXZ(exactTarget);
+            if (!SnapToWorldXZ(exactTarget))
+                return false;
             path.Clear();
             return true;
         }
@@ -3786,32 +4023,51 @@ public class KitchenEmployee : MonoBehaviour
             if (!destinationChanged && Time.time < nextPathAttemptTime)
                 return false;
 
+            pathRequestTarget = requestedTarget;
             pathDestination = exactTarget;
             // Pathfind via nearest walkable cell, then finish on the exact stand point when close.
             Vector3 pathQuery = grid.GetCellCenter(exactTarget);
-            path = grid.GetPath(transform.position, pathQuery);
-            bool hadRoute = path.Count > 0;
+            float movementRadius = GetMovementFootprintRadius();
+            path = grid.GetPath(transform.position, pathQuery, movementRadius);
             float maxApproach = grid.cellSize * 1.25f;
+
+            // A* includes the worker's starting cell. Don't walk back to that
+            // cell's center before following the route; start moving toward the
+            // next waypoint from the worker's current position instead.
+            if (path.Count > 1
+                && grid.WorldToCell(transform.position, out int startX, out int startY)
+                && grid.WorldToCell(path[0], out int firstX, out int firstY)
+                && startX == firstX && startY == firstY
+                && grid.IsWalkable(startX, startY)
+                && grid.MeasureOccupiedCellPenetration(transform.position, movementRadius) <= 0.001f)
+                path.RemoveAt(0);
 
             while (path.Count > 0 && HorizontalDistSq(transform.position, path[0]) <= ArrivalRadius * ArrivalRadius)
             {
-                SnapToWorldXZ(path[0]);
+                if (!SnapToWorldXZ(path[0]))
+                    break;
                 path.RemoveAt(0);
             }
 
             if (path.Count > 0)
             {
                 Vector3 last = path[path.Count - 1];
-                if (HorizontalDistSq(last, exactTarget) <= maxApproach * maxApproach)
+                if (HorizontalDistSq(last, exactTarget) <= maxApproach * maxApproach
+                    && CanMoveAlongSegment(last, exactTarget))
                     path[path.Count - 1] = exactTarget;
+                else
+                    path.Clear();
             }
-            else if (hadRoute || HorizontalDistSq(transform.position, exactTarget) <= maxApproach * maxApproach)
+            if (path.Count == 0
+                && HorizontalDistSq(transform.position, exactTarget) <= maxApproach * maxApproach
+                && CanMoveToWorldPosition(exactTarget))
             {
                 // Already on/near the goal cell — walk the last step onto the interaction point
                 // (do not treat stripped waypoints as "no route").
                 path.Add(exactTarget);
             }
-            else
+
+            if (path.Count == 0)
             {
                 // Truly unreachable without cutting through walls/stations.
                 consecutivePathFailures++;
@@ -3828,28 +4084,46 @@ public class KitchenEmployee : MonoBehaviour
         if (path.Count == 0)
             return false;
 
-        Vector3 waypoint = path[0];
-        waypoint.y = GroundY;
-
-        Vector3 pos = transform.position;
-        pos.y = GroundY;
-        float dist = Vector3.Distance(pos, waypoint);
-        float step = GetGridNormalizedStep(pos, waypoint);
-
-        if (dist <= step)
+        SmoothPathToFarthestVisiblePoint();
+        float remainingMovementTime = Time.deltaTime;
+        while (path.Count > 0)
         {
-            SnapToWorldXZ(waypoint);
+            Vector3 waypoint = path[0];
+            waypoint.y = GroundY;
+
+            Vector3 pos = transform.position;
+            pos.y = GroundY;
+            float dist = Mathf.Sqrt(HorizontalDistSq(pos, waypoint));
+            float step = GetGridNormalizedStep(pos, waypoint, remainingMovementTime);
+
+            if (dist > step)
+            {
+                if (!TryGetSafeMovementStep(pos, waypoint, step, out Vector3 nextPos))
+                    return false;
+                transform.position = nextPos;
+                FaceMoveTarget(waypoint);
+                moveVelocity = Vector3.zero;
+                return false;
+            }
+
+            if (!SnapToWorldXZ(waypoint))
+                return false;
             path.RemoveAt(0);
             if (path.Count == 0)
                 return true;
-            return false;
+
+            // Spend only the time needed to reach this corner, then use the
+            // rest of the frame to continue along the next safe segment.
+            float axialDistance = Mathf.Max(Mathf.Abs(waypoint.x - pos.x),
+                Mathf.Abs(waypoint.z - pos.z));
+            float directionMultiplier = dist / Mathf.Max(0.0001f, axialDistance);
+            float movementRate = moveSpeed * directionMultiplier;
+            if (movementRate > 0.0001f)
+                remainingMovementTime -= dist / movementRate;
+            if (remainingMovementTime <= 0.0001f)
+                return false;
         }
 
-        Vector3 nextPos = Vector3.MoveTowards(pos, waypoint, step);
-        nextPos.y = GroundY;
-        transform.position = nextPos;
-        FaceMoveTarget(waypoint);
-        moveVelocity = Vector3.zero;
         return false;
     }
 
@@ -3869,11 +4143,10 @@ public class KitchenEmployee : MonoBehaviour
         float step = GetGridNormalizedStep(pos, target);
         if (dist <= step || dist <= ArrivalRadius)
         {
-            SnapToWorldXZ(target);
-            return true;
+            return SnapToWorldXZ(target);
         }
-        Vector3 nextPos = Vector3.MoveTowards(pos, target, step);
-        nextPos.y = GroundY;
+        if (!TryGetSafeMovementStep(pos, target, step, out Vector3 nextPos))
+            return false;
         transform.position = nextPos;
         FaceMoveTarget(target);
         return false;
@@ -3883,15 +4156,17 @@ public class KitchenEmployee : MonoBehaviour
     /// Measures movement in grid edges. A one-tile diagonal receives the exact
     /// speed multiplier required to take as long as a cardinal tile.
     /// </summary>
-    float GetGridNormalizedStep(Vector3 from, Vector3 to)
+    float GetGridNormalizedStep(Vector3 from, Vector3 to, float deltaTime = -1f)
     {
+        if (deltaTime < 0f)
+            deltaTime = Time.deltaTime;
         float dx = Mathf.Abs(to.x - from.x);
         float dz = Mathf.Abs(to.z - from.z);
         float axialDistance = Mathf.Max(dx, dz);
         float worldDistance = Mathf.Sqrt(dx * dx + dz * dz);
         float directionMultiplier = axialDistance > 0.0001f
             ? worldDistance / axialDistance : 1f;
-        return moveSpeed * directionMultiplier * Time.deltaTime;
+        return moveSpeed * directionMultiplier * deltaTime;
     }
 
     void FaceMoveTarget(Vector3 worldPoint)

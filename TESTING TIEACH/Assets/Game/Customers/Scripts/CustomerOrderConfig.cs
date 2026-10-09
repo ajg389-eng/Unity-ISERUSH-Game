@@ -140,13 +140,7 @@ public class CustomerOrderConfig : ScriptableObject
     public float drinkChance = 0.7f;
 
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
-    [System.NonSerialized] bool burgerEnabled = true;
-    [System.NonSerialized] bool cheeseburgerEnabled = true;
-    [System.NonSerialized] bool clBurgerEnabled = true;
-    [System.NonSerialized] bool cltBurgerEnabled = true;
-    [System.NonSerialized] bool friesEnabled = true;
-    [System.NonSerialized] bool drinkEnabled = true;
-    [System.NonSerialized] readonly HashSet<ItemDefinition> disabledExpandedBurgers = new HashSet<ItemDefinition>();
+    [System.NonSerialized] readonly HashSet<ItemDefinition> disabledMenuItems = new HashSet<ItemDefinition>();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
         || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem);
@@ -285,31 +279,17 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsItemEnabled(ItemDefinition item)
     {
-        if (!IsMenuItemUnlocked(item)) return false;
-        if (IsCheeseburger(item)) return cheeseburgerEnabled;
-        if (item == clBurgerItem) return clBurgerEnabled;
-        if (item == cltBurgerItem) return cltBurgerEnabled;
-        if (item == burgerBase) return burgerEnabled;
-        if (IsBurger(item)) return !disabledExpandedBurgers.Contains(item);
-        if (IsFries(item)) return friesEnabled;
-        if (IsDrink(item)) return drinkEnabled;
-        return false;
+        if (item == null || !IsMenuItemUnlocked(item)) return false;
+        return (IsBurger(item) || IsFries(item) || IsDrink(item))
+            && !disabledMenuItems.Contains(item);
     }
 
     public void SetItemEnabled(ItemDefinition item, bool enabled)
     {
+        if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
         if (enabled && !IsMenuItemUnlocked(item)) return;
-        if (IsCheeseburger(item)) cheeseburgerEnabled = enabled;
-        else if (item == clBurgerItem) clBurgerEnabled = enabled;
-        else if (item == cltBurgerItem) cltBurgerEnabled = enabled;
-        else if (item == burgerBase) burgerEnabled = enabled;
-        else if (IsBurger(item))
-        {
-            if (enabled) disabledExpandedBurgers.Remove(item);
-            else disabledExpandedBurgers.Add(item);
-        }
-        else if (IsFries(item)) friesEnabled = enabled;
-        else if (IsDrink(item)) drinkEnabled = enabled;
+        if (enabled) disabledMenuItems.Remove(item);
+        else disabledMenuItems.Add(item);
     }
 
     public bool HasEnabledItems
@@ -633,7 +613,7 @@ public class CustomerOrderConfig : ScriptableObject
         }
 
         if (wantBurger)
-            order.lines.Add(new CustomerOrder.OrderLine(burgerBase ?? orderedBurger, 1));
+            order.lines.Add(new CustomerOrder.OrderLine(orderedBurger, 1));
         if (wantFries)
             order.lines.Add(new CustomerOrder.OrderLine(PickEnabledProduct(ProductKind.Fries), 1));
         if (wantDrink)
@@ -658,10 +638,7 @@ public class CustomerOrderConfig : ScriptableObject
             if (IsItemEnabled(item)) options.Add(item);
         if (options.Count == 0) return new CustomerOrder();
 
-        var pick = options[Random.Range(0, options.Count)];
-        if (IsBurger(pick) && burgerBase != null)
-            pick = burgerBase;
-        return CustomerOrder.FromItem(pick, 1);
+        return CustomerOrder.FromItem(options[Random.Range(0, options.Count)], 1);
     }
 
     public IEnumerable<ItemDefinition> GetMenuItems()
