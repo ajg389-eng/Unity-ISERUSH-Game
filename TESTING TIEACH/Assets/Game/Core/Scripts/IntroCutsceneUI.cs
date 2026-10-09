@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -352,9 +353,13 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 public sealed class GusCutscenePreview : MonoBehaviour
 {
     const int PreviewLayer = 31;
+    const float PreviewWorldSpacing = 10f;
+    static readonly HashSet<int> ActivePreviewSlots = new HashSet<int>();
+
     GameObject previewWorld;
     RenderTexture renderTexture;
     Camera previewCamera;
+    int previewSlot = -1;
 
     public void Configure(GameObject prefab, RawImage target, bool headshot = false)
     {
@@ -373,7 +378,10 @@ public sealed class GusCutscenePreview : MonoBehaviour
 
         previewWorld = new GameObject("__GusCutscenePreviewWorld");
         previewWorld.hideFlags = HideFlags.HideAndDontSave;
-        previewWorld.transform.position = new Vector3(0f, -8000f, 0f);
+        // Every preview camera uses the same private render layer. Give each preview
+        // a nearby, recycled slot so its camera cannot see other Gus clones.
+        previewSlot = AcquirePreviewSlot();
+        previewWorld.transform.position = new Vector3(previewSlot * PreviewWorldSpacing, -8000f, 0f);
 
         GameObject model = Instantiate(prefab, previewWorld.transform, false);
         model.name = "Gus";
@@ -457,6 +465,15 @@ public sealed class GusCutscenePreview : MonoBehaviour
             SetLayerRecursively(root.transform.GetChild(i).gameObject, layer);
     }
 
+    static int AcquirePreviewSlot()
+    {
+        int slot = 0;
+        while (ActivePreviewSlots.Contains(slot))
+            slot++;
+        ActivePreviewSlots.Add(slot);
+        return slot;
+    }
+
     void OnEnable()
     {
         if (previewCamera != null)
@@ -471,6 +488,11 @@ public sealed class GusCutscenePreview : MonoBehaviour
 
     void OnDestroy()
     {
+        if (previewSlot >= 0)
+        {
+            ActivePreviewSlots.Remove(previewSlot);
+            previewSlot = -1;
+        }
         if (previewCamera != null)
             previewCamera.targetTexture = null;
         if (previewWorld != null)
