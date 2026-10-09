@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 9214535082824740009}
   - component: {fileID: 611780065668053195}
   m_Layer: 0
-  m_Name: Whiped Cream Sprinkles Shake
+  m_Name: Loaded Shake
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -101,7 +101,7 @@ GameObject:
   - component: {fileID: 524051117299682124}
   - component: {fileID: 1940889906277628033}
   m_Layer: 0
-  m_Name: CB Fries
+  m_Name: Cheese Fries
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

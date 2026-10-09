@@ -948,7 +948,8 @@ public class ProductionManager : MonoBehaviour
         if (recipe == null) return false;
         ItemDefinition processed = recipe.processedInput != null
             ? recipe.processedInput : orderConfig.cookedPattyIngredient;
-        return item == processed || item == recipe.pantryInput;
+        return item == processed || item == recipe.pantryInput
+            || (assembly.IsMk2 && item == recipe.thirdInput);
     }
 
     public void AddWorkerToSelectedFlow(KitchenEmployee employee)
@@ -1132,7 +1133,9 @@ public class ProductionManager : MonoBehaviour
             if (station == null) continue;
             AssemblyRecipeDefinition recipe = station.GetSelectedRecipe();
             if (recipe == null || recipe.output == null) continue;
-            if (recipe.pantryInput != null)
+            // Assembly-produced ingredients are transferred by the producer's
+            // output task, not fetched from a Pantry as raw stock.
+            if (recipe.pantryInput != null && orderConfig?.GetAssemblyRecipe(recipe.pantryInput) == null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe,
                     orderConfig != null ? orderConfig.GetAssemblySupplySource(recipe) : recipe.pantryInput,
                     recipe.pantryInput, station.BufferedPantryInputCount,
@@ -1142,7 +1145,24 @@ public class ProductionManager : MonoBehaviour
                 && recipe.processedInput != null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe, recipe.processedInput,
                     recipe.processedInput, station.BufferedProcessedInputCount, false, null, null);
-            if (recipe.thirdInput != null)
+            else if (recipe.processedInput != null && orderConfig != null)
+            {
+                // Input 1 normally arrives from the main production chain. Some
+                // branch assemblies, such as Veggie Mix, instead use a processed
+                // ingredient there. Infer its raw-to-cutting supply route from the
+                // configured cutting recipe so it cannot be silently ignored.
+                CuttingRecipeDefinition processedRecipe = orderConfig.GetCuttingRecipe(recipe.processedInput);
+                if (processedRecipe != null && processedRecipe.input != null)
+                {
+                    StationType sourceType = orderConfig.IsFreezerIngredient(processedRecipe.input)
+                        ? StationType.Freezer : StationType.Pantry;
+                    EnsureAssemblyIngredientSupplyJob(station, recipe, processedRecipe.input,
+                        recipe.processedInput, station.BufferedProcessedInputCount, true,
+                        new[] { sourceType, StationType.Cutting },
+                        new[] { processedRecipe.input, recipe.processedInput });
+                }
+            }
+            if (recipe.thirdInput != null && orderConfig?.GetAssemblyRecipe(recipe.thirdInput) == null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe,
                     orderConfig != null ? orderConfig.GetAssemblyThirdSupplySource(recipe) : recipe.thirdInput,
                     recipe.thirdInput, station.BufferedThirdInputCount,
@@ -1633,13 +1653,37 @@ public class ProductionManager : MonoBehaviour
         {
             AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(stage);
             ItemDefinition source = orderConfig.GetAssemblySupplySource(recipe);
-            if (source != null && !HasIngredientSourceSelection(source, useFlows)) return false;
+            if (recipe != null && recipe.pantryInput != null)
+            {
+                if (orderConfig.GetAssemblyRecipe(recipe.pantryInput) != null)
+                {
+                    if (!HasAssemblyProducer(recipe.pantryInput, useFlows)) return false;
+                }
+                else if (source != null && !HasIngredientSourceSelection(source, useFlows)) return false;
+            }
+            if (recipe != null && recipe.thirdInput != null)
+            {
+                ItemDefinition thirdSource = orderConfig.GetAssemblyThirdSupplySource(recipe);
+                if (orderConfig.GetAssemblyRecipe(recipe.thirdInput) != null)
+                {
+                    if (!HasAssemblyProducer(recipe.thirdInput, useFlows)) return false;
+                }
+                else if (thirdSource != null && !HasIngredientSourceSelection(thirdSource, useFlows)) return false;
+            }
             if (recipe != null && recipe.processedInputFromPantry
                 && recipe.processedInput != null
                 && !HasPantrySelection(recipe.processedInput, useFlows)) return false;
             if (recipe != null && recipe.processedInputFromFreezer
                 && recipe.processedInput != null
                 && !HasFreezerSelection(recipe.processedInput, useFlows)) return false;
+            if (recipe != null && !recipe.processedInputFromPantry
+                && !recipe.processedInputFromFreezer && recipe.processedInput != null)
+            {
+                CuttingRecipeDefinition processedRecipe = orderConfig.GetCuttingRecipe(recipe.processedInput);
+                if (processedRecipe != null
+                    && !HasCuttingSupplyPath(processedRecipe.input, recipe.processedInput, useFlows))
+                    return false;
+            }
         }
         return true;
     }
@@ -1710,12 +1754,19 @@ public class ProductionManager : MonoBehaviour
         foreach (ItemDefinition stage in chain)
         {
             AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(stage);
-            if (recipe != null && recipe.supplyPipeline != null && recipe.supplyPipeline.Length > 0)
-                continue;
-            if (!orderConfig.AssemblySupplyRequiresCutting(recipe)) continue;
-            ItemDefinition requiredRaw = orderConfig.GetAssemblySupplySource(recipe);
-            ItemDefinition requiredOutput = recipe.pantryInput;
-            if (!HasCuttingSupplyPath(requiredRaw, requiredOutput, useFlows)) return false;
+            if (recipe == null) continue;
+            if (orderConfig.AssemblySupplyRequiresCutting(recipe)
+                && (recipe.supplyPipeline == null || recipe.supplyPipeline.Length == 0))
+            {
+                ItemDefinition requiredRaw = orderConfig.GetAssemblySupplySource(recipe);
+                if (!HasCuttingSupplyPath(requiredRaw, recipe.pantryInput, useFlows)) return false;
+            }
+            if (orderConfig.AssemblyThirdSupplyRequiresProcessing(recipe)
+                && (recipe.thirdSupplyPipeline == null || recipe.thirdSupplyPipeline.Length == 0))
+            {
+                ItemDefinition requiredRaw = orderConfig.GetAssemblyThirdSupplySource(recipe);
+                if (!HasCuttingSupplyPath(requiredRaw, recipe.thirdInput, useFlows)) return false;
+            }
         }
         return true;
     }
@@ -2409,6 +2460,30 @@ public class ProductionManager : MonoBehaviour
         return true;
     }
 
+    bool HasAssemblyProducer(ItemDefinition product, bool useFlows)
+    {
+        if (product == null) return false;
+        if (useFlows && productionFlows != null)
+        {
+            foreach (ProductionFlowPlan flow in productionFlows)
+            {
+                if (flow?.stations == null) continue;
+                foreach (GameObject stationObject in flow.stations)
+                {
+                    AssemblyStation station = stationObject != null
+                        ? stationObject.GetComponent<AssemblyStation>() : null;
+                    if (station != null && station.CanProcess(product)) return true;
+                }
+            }
+            return false;
+        }
+
+        EnsureStationCache();
+        foreach (AssemblyStation station in cachedAssemblyStations)
+            if (station != null && station.CanProcess(product)) return true;
+        return false;
+    }
+
     public bool HasPendingCollectionTask(GameObject source, ItemDefinition item)
     {
         if (source == null || item == null) return false;
@@ -2459,6 +2534,20 @@ public class ProductionManager : MonoBehaviour
                 continue;
             if (job.taskSourceStation == null || job.taskSourceStation == fryerStation
                 || job.reservedWorkStation == fryerStation)
+                return true;
+        }
+        return false;
+    }
+
+    public bool HasPendingGrillTask(GameObject grillStation)
+    {
+        if (grillStation == null) return false;
+        foreach (ProductionJob job in pendingJobs)
+        {
+            if (job == null || job.CurrentStationType != StationType.Grill)
+                continue;
+            if (job.taskSourceStation == grillStation
+                || job.reservedWorkStation == grillStation)
                 return true;
         }
         return false;

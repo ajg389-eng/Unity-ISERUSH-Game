@@ -394,7 +394,7 @@ public class IngredientsOrderUI : MonoBehaviour
         ConnectGraphNodes(rawPatty, cookedPatty, "COOK");
 
         var bun = AddGraphNode(FindRecipeInput(menu, menu.burgerBase, false), "BUN", "PANTRY", new Vector2(-250f, 310f));
-        var burger = AddGraphNode(menu.burgerBase, "BURGER", "ASSEMBLY", new Vector2(-390f, 100f), true);
+        var burger = AddGraphNode(menu.burgerBase, "HAMBURGER", "ASSEMBLY", new Vector2(-390f, 100f), true);
         ConnectGraphNodes(cookedPatty, burger);
         ConnectGraphNodes(bun, burger, "ASSEMBLE");
 
@@ -414,36 +414,28 @@ public class IngredientsOrderUI : MonoBehaviour
         ConnectGraphNodes(cheesePatty, cheeseburger);
         ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE");
 
-        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 0f));
-        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(330f, -150f));
-        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -300f));
-        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "CHEESE BACON BURGER", "ASSEMBLY", new Vector2(-80f, -350f), true);
+        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 100f));
+        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(330f, -80f));
+        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -260f));
+        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(40f, -480f), true);
         ConnectGraphNodes(baconSlab, cutBacon, "CUT"); ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
-        ConnectGraphNodes(cheeseburger, cb); ConnectGraphNodes(cookedBacon, cb, "ASSEMBLE");
+        ConnectGraphNodes(cheesePatty, cb);
+        ConnectGraphNodes(cookedBacon, cb);
+        ConnectGraphNodes(bun, cb, "ASSEMBLE");
 
-        AddBurgerToppingBranch(menu, menu.cheeseBaconLettuceBurgerItem, cb, menu.lettuceIngredient,
-            menu.slicedLettuceIngredient, "LETTUCE", "SLICED LETTUCE", new Vector2(380f, -340f),
-            new Vector2(380f, -520f), new Vector2(-40f, -690f), out RectTransform cbl);
-
-        var onion = AddGraphNode(menu.onionIngredient, "ONION", "FREEZER", new Vector2(430f, -680f));
-        var onionRing = AddGraphNode(menu.onionRingIngredient, "ONION RING", "CUTTING", new Vector2(430f, -850f));
-        var friedOnion = AddGraphNode(menu.friedOnionRingIngredient, "FRIED ONION RING", "FRYER", new Vector2(430f, -1020f));
-        var cblo = AddGraphNode(menu.cheeseBaconLettuceOnionBurgerItem, "CHEESE BACON LETTUCE ONION BURGER",
-            "ASSEMBLY", new Vector2(-20f, -1180f), true);
-        ConnectGraphNodes(onion, onionRing, "SLICE"); ConnectGraphNodes(onionRing, friedOnion, "FRY");
-        ConnectGraphNodes(cbl, cblo); ConnectGraphNodes(friedOnion, cblo, "ASSEMBLE");
-
-        AddBurgerToppingBranch(menu, menu.cheeseBaconLettuceOnionTomatoBurgerItem, cblo,
-            menu.tomatoIngredient, menu.slicedTomatoIngredient, "TOMATOES", "TOMATO SLICE",
-            new Vector2(420f, -1170f), new Vector2(420f, -1340f), new Vector2(-10f, -1510f),
-            out RectTransform cblot);
-
-        var egg = AddGraphNode(menu.eggIngredient, "EGG", "FREEZER", new Vector2(410f, -1500f));
-        var cookedEgg = AddGraphNode(menu.cookedEggIngredient, "COOKED EGG", "GRILL", new Vector2(410f, -1680f));
-        var finalBurger = AddGraphNode(menu.cheeseBaconLettuceOnionTomatoEggBurgerItem,
-            "CHEESE BACON LETTUCE ONION TOMATO EGG BURGER", "ASSEMBLY", new Vector2(-10f, -1870f), true);
-        ConnectGraphNodes(egg, cookedEgg, "COOK"); ConnectGraphNodes(cblot, finalBurger);
-        ConnectGraphNodes(cookedEgg, finalBurger, "ASSEMBLE");
+        var lettuce = AddGraphNode(menu.lettuceIngredient, "LETTUCE", "FREEZER", new Vector2(-520f, -410f));
+        var slicedLettuce = AddGraphNode(menu.slicedLettuceIngredient, "LETTUCE SLICE", "CUTTING", new Vector2(-520f, -600f));
+        var tomato = AddGraphNode(menu.tomatoIngredient, "TOMATO", "FREEZER", new Vector2(-230f, -410f));
+        var slicedTomato = AddGraphNode(menu.slicedTomatoIngredient, "TOMATO SLICE", "CUTTING", new Vector2(-230f, -600f));
+        var veggieMix = AddGraphNode(menu.veggieMixIngredient, "VEGGIE MIX", "ASSEMBLY", new Vector2(-375f, -800f), true);
+        var classic = AddGraphNode(menu.clBurgerItem, "CLASSIC BURGER", "ASSEMBLY", new Vector2(-375f, -1030f), true);
+        ConnectGraphNodes(lettuce, slicedLettuce, "SLICE");
+        ConnectGraphNodes(tomato, slicedTomato, "SLICE");
+        ConnectGraphNodes(slicedLettuce, veggieMix);
+        ConnectGraphNodes(slicedTomato, veggieMix, "ASSEMBLE");
+        ConnectGraphNodes(cookedPatty, classic);
+        ConnectGraphNodes(veggieMix, classic);
+        ConnectGraphNodes(bun, classic, "ASSEMBLE");
     }
 
     void BuildFriesTree(CustomerOrderConfig menu)
@@ -596,7 +588,10 @@ public class IngredientsOrderUI : MonoBehaviour
         if (recipe == null) return "Assembly recipe";
         string a = recipe.processedInput != null ? recipe.processedInput.itemName : recipe.processedInputName;
         string b = recipe.pantryInput != null ? recipe.pantryInput.itemName : "Ingredient";
-        return a + " + " + b;
+        string result = a + " + " + b;
+        if (recipe.thirdInput != null)
+            result += " + " + recipe.thirdInput.itemName;
+        return result;
     }
 
     void AddTreeBranch(ItemDefinition left, string leftFallback, ItemDefinition right, string rightFallback,
@@ -965,7 +960,9 @@ public class IngredientsOrderUI : MonoBehaviour
                 if (recipe == null) continue;
                 string processed = Name(recipe.processedInput, recipe.processedInputName);
                 string pantry = Name(recipe.pantryInput, "Ingredient");
-                flow.Add(Step("Assembly " + (i + 1), processed + " + " + pantry));
+                string third = recipe.thirdInput != null
+                    ? " + " + Name(recipe.thirdInput, "Ingredient") : "";
+                flow.Add(Step("Assembly " + (i + 1), processed + " + " + pantry + third));
                 if (menu.AssemblySupplyRequiresCutting(recipe))
                     supplies.Add(Step("Pantry", Name(recipe.rawPantryInput, "Raw ingredient"))
                         + arrow + Step("Cutting", pantry)
@@ -973,6 +970,17 @@ public class IngredientsOrderUI : MonoBehaviour
                 else
                     supplies.Add(Step("Pantry", pantry)
                         + arrow + Step("Assembly " + (i + 1), "Input 2"));
+                if (recipe.thirdInput != null)
+                {
+                    string thirdName = Name(recipe.thirdInput, "Ingredient");
+                    if (menu.AssemblyThirdSupplyRequiresProcessing(recipe))
+                        supplies.Add(Step("Ingredient source", Name(recipe.rawThirdInput, "Raw ingredient"))
+                            + arrow + Step("Processing", thirdName)
+                            + arrow + Step("Assembly " + (i + 1), "Input 3"));
+                    else
+                        supplies.Add(Step("Ingredient source", thirdName)
+                            + arrow + Step("Assembly " + (i + 1), "Input 3"));
+                }
             }
             flow.Add(Step("Pickup Station", Name(item, "Burger")));
             return label + string.Join(arrow, flow)

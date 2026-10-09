@@ -55,17 +55,21 @@ public class ManagementModeController : MonoBehaviour
     GameObject productionDiagramRoot;
     GameObject productionInputCard;
     GameObject productionSecondInputCard;
+    GameObject productionThirdInputCard;
     GameObject productionConversionRoot;
     GameObject productionOutputCard;
     GameObject productionSecondOutputCard;
     RawImage productionInputPreview;
     RawImage productionSecondInputPreview;
+    RawImage productionThirdInputPreview;
     RawImage productionOutputPreview;
     RawImage productionSecondOutputPreview;
     TextMeshProUGUI productionInputName;
     TextMeshProUGUI productionInputRate;
     TextMeshProUGUI productionSecondInputName;
     TextMeshProUGUI productionSecondInputRate;
+    TextMeshProUGUI productionThirdInputName;
+    TextMeshProUGUI productionThirdInputRate;
     TextMeshProUGUI productionOutputName;
     TextMeshProUGUI productionOutputRate;
     TextMeshProUGUI productionSecondOutputName;
@@ -1164,6 +1168,9 @@ public class ManagementModeController : MonoBehaviour
         productionSecondInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input 2",
             out productionSecondInputPreview, out productionSecondInputName, out productionSecondInputRate);
         productionSecondInputCard.SetActive(false);
+        productionThirdInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input 3",
+            out productionThirdInputPreview, out productionThirdInputName, out productionThirdInputRate);
+        productionThirdInputCard.SetActive(false);
 
         productionConversionRoot = new GameObject("Conversion", typeof(RectTransform),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));
@@ -1324,14 +1331,17 @@ public class ManagementModeController : MonoBehaviour
 
         GameObject inputPrefab = null;
         GameObject secondInputPrefab = null;
+        GameObject thirdInputPrefab = null;
         GameObject outputPrefab = null;
         string inputName = string.IsNullOrEmpty(node.inputUnit) || node.inputUnit == "-"
             ? "Kitchen stock" : ToTitleCase(node.inputUnit);
         string secondInputName = string.Empty;
+        string thirdInputName = string.Empty;
         string outputName = string.IsNullOrEmpty(node.outputUnit)
             ? "Items" : ToTitleCase(node.outputUnit);
         float inputRate = node.HasInputAmount ? node.inputAmountPerMinute : node.outputAmountPerMinute;
         float secondInputRate = inputRate;
+        float thirdInputRate = inputRate;
         float cycleSeconds = 0f;
 
         var freezer = node.GetComponent<FreezerStation>();
@@ -1383,6 +1393,10 @@ public class ManagementModeController : MonoBehaviour
                 ? DisplayItemName(recipe.pantryInput) : "Bun";
             inputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1);
             secondInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1);
+            thirdInputPrefab = recipe != null && recipe.thirdInput != null ? recipe.thirdInput.prefab : null;
+            thirdInputName = recipe != null && recipe.thirdInput != null
+                ? DisplayItemName(recipe.thirdInput) : string.Empty;
+            thirdInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1);
             outputName = recipe != null ? recipe.DisplayName
                 : (assembly.selectedProduct != null ? DisplayItemName(assembly.selectedProduct) : "Burger");
             cycleSeconds = assembly.processTimeSeconds;
@@ -1433,11 +1447,14 @@ public class ManagementModeController : MonoBehaviour
 
         productionDiagramRoot.SetActive(true);
         bool hasTwoInputs = assembly != null;
-        SetProductionDiagramMode(outputOnly, hasTwoInputs, pantry != null);
+        bool hasThreeInputs = assembly != null && assembly.GetSelectedRecipe()?.thirdInput != null;
+        SetProductionDiagramMode(outputOnly, hasTwoInputs, pantry != null, hasThreeInputs);
         if (!outputOnly)
             SetDiagramPreview(productionInputPreview, inputPrefab, inputName);
         if (hasTwoInputs)
             SetDiagramPreview(productionSecondInputPreview, secondInputPrefab, secondInputName);
+        if (hasThreeInputs)
+            SetDiagramPreview(productionThirdInputPreview, thirdInputPrefab, thirdInputName);
         SetDiagramPreview(productionOutputPreview, outputPrefab, outputName);
         if (!outputOnly)
         {
@@ -1448,6 +1465,11 @@ public class ManagementModeController : MonoBehaviour
         {
             productionSecondInputName.text = secondInputName;
             productionSecondInputRate.text = FormatPerMinute(secondInputRate) + "/min";
+        }
+        if (hasThreeInputs)
+        {
+            productionThirdInputName.text = thirdInputName;
+            productionThirdInputRate.text = FormatPerMinute(thirdInputRate) + "/min";
         }
         productionOutputName.text = outputName;
         float maximumRate = node.outputAmountPerMinute;
@@ -1467,7 +1489,8 @@ public class ManagementModeController : MonoBehaviour
         productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
     }
 
-    void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false, bool twoOutputs = false)
+    void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false, bool twoOutputs = false,
+        bool threeInputs = false)
     {
         var diagramSize = productionDiagramRoot != null
             ? productionDiagramRoot.GetComponent<LayoutElement>() : null;
@@ -1480,6 +1503,7 @@ public class ManagementModeController : MonoBehaviour
 
         if (productionInputCard != null) productionInputCard.SetActive(!outputOnly);
         if (productionSecondInputCard != null) productionSecondInputCard.SetActive(!outputOnly && twoInputs);
+        if (productionThirdInputCard != null) productionThirdInputCard.SetActive(!outputOnly && threeInputs);
         if (productionSecondOutputCard != null) productionSecondOutputCard.SetActive(twoOutputs);
         if (productionConversionRoot != null) productionConversionRoot.SetActive(true);
         if (productionArrowText != null) productionArrowText.gameObject.SetActive(!outputOnly);
@@ -1491,10 +1515,13 @@ public class ManagementModeController : MonoBehaviour
         outputSize.preferredWidth = outputOnly ? 180f : 104f;
         outputSize.flexibleWidth = outputOnly ? 0f : 1f;
 
-        SetProductionCardWidth(productionInputCard, twoInputs ? 66f : 98f, twoInputs ? 76f : 104f);
-        SetProductionCardWidth(productionSecondInputCard, 66f, 76f);
-        SetProductionCardWidth(productionOutputCard, twoOutputs ? 98f : (outputOnly ? 150f : (twoInputs ? 76f : 98f)),
-            twoOutputs ? 104f : (outputOnly ? 180f : (twoInputs ? 88f : 104f)));
+        float inputMin = threeInputs ? 88f : (twoInputs ? 108f : 118f);
+        float inputPreferred = threeInputs ? 96f : (twoInputs ? 120f : 132f);
+        SetProductionCardWidth(productionInputCard, inputMin, inputPreferred);
+        SetProductionCardWidth(productionSecondInputCard, inputMin, inputPreferred);
+        SetProductionCardWidth(productionThirdInputCard, inputMin, inputPreferred);
+        SetProductionCardWidth(productionOutputCard, twoOutputs ? 118f : (outputOnly ? 180f : (threeInputs ? 88f : (twoInputs ? 108f : 118f))),
+            twoOutputs ? 132f : (outputOnly ? 210f : (threeInputs ? 96f : (twoInputs ? 120f : 132f))));
         SetProductionCardWidth(productionSecondOutputCard, 98f, 104f);
         TextMeshProUGUI outputHeading = productionOutputCard.transform.Find("Heading")?.GetComponent<TextMeshProUGUI>();
         if (outputHeading != null) outputHeading.text = twoOutputs ? "OUTPUT 1" : "OUTPUT";
@@ -1646,12 +1673,22 @@ public class ManagementModeController : MonoBehaviour
         float minimumHeight = heatLampCompact ? 246f : 286f;
         float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
         float height = Mathf.Max(minimumHeight, preferredHeight);
-        float width = hasRecipeControls ? 340f : 300f;
+        AssemblyStation selectedAssembly = selectedStation != null
+            ? selectedStation.GetComponent<AssemblyStation>() : null;
+        bool hasThreeInputRecipe = selectedAssembly != null
+            && selectedAssembly.GetSelectedRecipe()?.thirdInput != null;
+        float width = hasRecipeControls ? 500f : 300f;
 
         if (!usingScenePopup)
             ApplyPopupLayout(rt, width, height);
         else
-            rt.sizeDelta = new Vector2(Mathf.Max(width, rt.sizeDelta.x), height);
+        {
+            float currentWidth = rt.sizeDelta.x;
+            float resolvedWidth = hasThreeInputRecipe
+                ? Mathf.Max(500f, currentWidth)
+                : (currentWidth >= 499f ? width : Mathf.Max(width, currentWidth));
+            rt.sizeDelta = new Vector2(resolvedWidth, height);
+        }
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
@@ -1903,12 +1940,12 @@ public class ManagementModeController : MonoBehaviour
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
             bool shakeStation = assembly.GetComponent<ShakeStation>() != null;
             productInfoText.text = assembly.IsMk2
-                ? "SELECT 3-INPUT MK2 RECIPE"
+                ? "SELECT MK2 RECIPE"
                 : "SELECT 2-INPUT MK1 RECIPE";
             foreach (AssemblyRecipeDefinition recipe in config.GetAssemblyRecipes())
             {
                 if (recipe == null) continue;
-                if (recipe.RequiresMk2 != assembly.IsMk2) continue;
+                if (recipe.RequiresMk2 && !assembly.IsMk2) continue;
                 bool shakeRecipe = config.IsDrink(recipe.output);
                 if (shakeStation != shakeRecipe) continue;
                 if (recipeCount % 3 == 0)

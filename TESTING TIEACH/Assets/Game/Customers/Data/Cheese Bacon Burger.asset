@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Cheese Bacon Burger
+  m_Name: Bacon Cheeseburger
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Cheese Bacon Burger
+  itemName: Bacon Cheeseburger
   prefab: {fileID: 3788165045944647515, guid: 404c13fe154f1f149a54397f7b5049e0, type: 3}
   price: 19
   startingQuantity: 0

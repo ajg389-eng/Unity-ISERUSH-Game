@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Burger
+  m_Name: Hamburger
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Burger
+  itemName: Hamburger
   prefab: {fileID: 3788165045944647515, guid: 829f12166ee578d40a45419d58583763, type: 3}
   price: 12
   startingQuantity: 12

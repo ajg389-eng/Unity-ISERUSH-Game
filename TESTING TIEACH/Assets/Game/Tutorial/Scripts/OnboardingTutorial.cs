@@ -186,7 +186,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Assembly",
             "Buy and place an <b>assembly</b> table. It always combines two inputs into one output.\n\n" +
-            "For the Burger recipe, the inputs are one cooked patty and one bun. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
+            "For the Hamburger recipe, the inputs are one cooked patty and one bun. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
             "Next", Highlight.Assembly, openInventory: true, requirePlaced: true),
         new Step(
             "Pickup Station",
@@ -195,7 +195,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Configure ingredients and recipes",
-            "Select stations under <b>Business > Staff</b> to configure them. Set the <b>Freezer to Raw Patty</b>, the <b>Pantry to Bun</b>, and the Assembly recipe to <b>Burger</b>.\n\n" +
+            "Select stations under <b>Business > Staff</b> to configure them. Set the <b>Freezer to Raw Patty</b>, the <b>Pantry to Bun</b>, and the Assembly recipe to <b>Hamburger</b>.\n\n" +
             "Set the <b>Grill to Cooked Patty</b> too. Assembly combines one cooked patty and one bun. Next unlocks when all four selections are ready.",
             "Next", Highlight.Management, openWorkers: true, requireRecipes: true),
         new Step(
@@ -273,7 +273,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
 
-        "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Burger recipe at Assembly.\n\n" +
+        "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Hamburger recipe at Assembly.\n\n" +
         "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
 
         "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Menu & Supply</b>.\n\n" +
@@ -310,7 +310,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
         "Buy an <b>Assembly Station</b>. Its selected recipe determines its required inputs.",
         "Buy a <b>Pickup Station</b>. Only finished products delivered here are sold.",
-        "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Burger.",
+        "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger.",
         "In <b>Food</b>, order Raw Patties and Buns. Express costs $200 and makes the delivery van arrive immediately.",
         "In <b>Staff</b>, hire one worker. Worker priorities can favor specific task types.",
         "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station.",

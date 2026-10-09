@@ -55,6 +55,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public bool IsMk2 => stationMark >= 2;
     public int BufferedOutputCount => bufferedOutputs;
     public bool IsProcessing => processingUnits > 0;
+    public int ProcessingUnitCount => processingUnits;
+    public float ProcessingProgressSeconds => processingTimer;
     public float ProcessRemainingSeconds => IsProcessing
         ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
     public int InputSlotCapacity => IsMk2
@@ -165,7 +167,8 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     public bool CanProcess(ItemDefinition product)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
-        return product != null && recipe != null && recipe.Produces(product) && recipe.RequiresMk2 == IsMk2;
+        return product != null && recipe != null && recipe.Produces(product)
+            && (!recipe.RequiresMk2 || IsMk2);
     }
 
     public ItemDefinition GetPantryInput(ItemDefinition product)
@@ -180,7 +183,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (recipe == null || item == null || item != recipe.pantryInput || amount <= 0) return 0;
         int accepted = Mathf.Min(amount, Mathf.Max(0, PantryInputCapacity - bufferedPantryInputs));
         bufferedPantryInputs += accepted;
-        if (accepted > 0) RefreshTableDisplay();
+        if (accepted > 0)
+        {
+            RefreshTableDisplay();
+            AdvanceAutomaticProcessing(0f);
+        }
         return accepted;
     }
 
@@ -190,7 +197,11 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (!IsMk2 || recipe == null || item == null || item != recipe.thirdInput || amount <= 0) return 0;
         int accepted = Mathf.Min(amount, Mathf.Max(0, ThirdInputCapacity - bufferedThirdInputs));
         bufferedThirdInputs += accepted;
-        if (accepted > 0) RefreshTableDisplay();
+        if (accepted > 0)
+        {
+            RefreshTableDisplay();
+            AdvanceAutomaticProcessing(0f);
+        }
         return accepted;
     }
 
@@ -207,6 +218,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         if (!CanReceiveProcessedInput(item, amount)) return 0;
         bufferedProcessedInputs += amount;
         RefreshTableDisplay();
+        AdvanceAutomaticProcessing(0f);
         return amount;
     }
 
@@ -278,13 +290,23 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     public void RestoreBufferedState(ItemDefinition product, int processedInputs, int pantryInputs, int outputs)
     {
+        RestoreBufferedState(product, processedInputs, pantryInputs, 0, outputs);
+    }
+
+    public void RestoreBufferedState(ItemDefinition product, int processedInputs, int pantryInputs,
+        int thirdInputs, int outputs, int activeProcessingUnits = 0, float activeProcessingProgress = 0f)
+    {
         selectedProduct = product;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
         selectedRecipe = config != null ? config.GetAssemblyRecipe(product) : null;
         bufferedProcessedInputs = Mathf.Clamp(processedInputs, 0, ProcessedInputCapacity);
         bufferedPantryInputs = Mathf.Clamp(pantryInputs, 0, PantryInputCapacity);
+        bufferedThirdInputs = Mathf.Clamp(thirdInputs, 0, ThirdInputCapacity);
         bufferedOutputs = Mathf.Clamp(outputs, 0, OutputSlotCapacity);
+        processingUnits = Mathf.Clamp(activeProcessingUnits, 0, MaxProcessBatch);
+        processingTimer = processingUnits > 0
+            ? Mathf.Clamp(activeProcessingProgress, 0f, Mathf.Max(0f, processTimeSeconds)) : 0f;
         RefreshTableDisplay();
     }
 
@@ -318,7 +340,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
     void AdvanceAutomaticProcessing(float deltaTime)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
-        if (recipe == null || recipe.RequiresMk2 != IsMk2) return;
+        if (recipe == null || (recipe.RequiresMk2 && !IsMk2)) return;
 
         if (processingUnits <= 0)
         {

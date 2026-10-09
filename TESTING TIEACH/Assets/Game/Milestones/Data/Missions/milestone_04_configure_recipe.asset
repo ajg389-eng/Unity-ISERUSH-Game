@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_04_configure_recipe
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_04_configure_recipe
-  title: Serve 5 fully loaded burgers
-  description: Serve five customers who ordered the fully loaded burger.
-  completionEventId: menu_item_served_cheese_bacon_lettuce_onion_tomato_egg_burger
+  title: Serve 5 Bacon Cheeseburgers
+  description: Serve five Bacon Cheeseburgers.
+  completionEventId: menu_item_served_bacon_cheeseburger
   requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

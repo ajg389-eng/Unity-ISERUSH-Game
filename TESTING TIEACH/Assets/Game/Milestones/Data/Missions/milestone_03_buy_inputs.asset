@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_buy_inputs
   title: Configure a bacon burger
-  description: Choose the Cheese Bacon Burger recipe at an Assembly Station.
-  completionEventId: recipe_configured_cheese_bacon_burger
+  description: Choose the Bacon Cheeseburger recipe at an Assembly Station.
+  completionEventId: recipe_configured_bacon_cheeseburger
   requiredCount: 1
   showBeforeComplete: 1
   showAfterComplete: 1

@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_02_balance_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_balance_output
-  title: Serve 5 CLT Burgers
-  description: Serve five customers who ordered the lettuce-and-tomato burger.
-  completionEventId: menu_item_served_clt_burger
+  title: Serve 5 Classic Burgers
+  description: Serve five Classic Burgers.
+  completionEventId: menu_item_served_classic_burger
   requiredCount: 5
   showBeforeComplete: 1
   showAfterComplete: 1

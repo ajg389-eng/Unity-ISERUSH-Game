@@ -21,6 +21,7 @@ MonoBehaviour:
   cheeseBaconLettuceOnionBurgerItem: {fileID: 11400000, guid: addf57dfe1d46fe4aa471b11721db9af, type: 2}
   cheeseBaconLettuceOnionTomatoBurgerItem: {fileID: 11400000, guid: 630a7c589ed298343bfefbf9d64da898, type: 2}
   cheeseBaconLettuceOnionTomatoEggBurgerItem: {fileID: 11400000, guid: 08611b6abdd72644da29ae1211acdbc3, type: 2}
+  veggieMixIngredient: {fileID: 11400000, guid: 7b59b4f74a14476da609f2569bb57f1a, type: 2}
   friesItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
   cheeseFriesItem: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
   cheeseBaconFriesItem: {fileID: 11400000, guid: 8ff4b007de730b947a71007696e5897b, type: 2}
@@ -31,7 +32,7 @@ MonoBehaviour:
   rawPattyIngredient: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
   cookedPattyIngredient: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   assemblyRecipes:
-  - recipeName: Burger
+  - recipeName: Hamburger
     output: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
     processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
     processedInputName: Cooked Patty
@@ -84,10 +85,10 @@ MonoBehaviour:
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
-  - recipeName: CL Burger
-    output: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
-    processedInput: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
-    processedInputName: Cheeseburger
+  - recipeName: Veggie Mix
+    output: {fileID: 11400000, guid: 7b59b4f74a14476da609f2569bb57f1a, type: 2}
+    processedInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
+    processedInputName: Tomato Slice
     processedInputAmount: 1
     processedInputFromPantry: 0
     processedInputFromFreezer: 0
@@ -103,29 +104,27 @@ MonoBehaviour:
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
-  - recipeName: CLT Burger
-    output: {fileID: 11400000, guid: c1110000000000000000000000000004, type: 2}
-    processedInput: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
-    processedInputName: CL Burger
+  - recipeName: Classic Burger
+    output: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
+    processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
+    processedInputName: Cooked Patty
     processedInputAmount: 1
     processedInputFromPantry: 0
     processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
+    pantryInput: {fileID: 11400000, guid: 7b59b4f74a14476da609f2569bb57f1a, type: 2}
     pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
-    supplyPipeline: 0000000007000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
-    - {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
-    thirdInput: {fileID: 0}
+    rawPantryInput: {fileID: 0}
+    supplyPipeline:
+    supplyStageOutputs: []
+    thirdInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     thirdInputAmount: 1
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
-  - recipeName: Cheese Bacon Burger
+  - recipeName: Bacon Cheeseburger
     output: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
-    processedInput: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
-    processedInputName: Cheeseburger
+    processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
+    processedInputName: Cheese Patty
     processedInputAmount: 1
     processedInputFromPantry: 0
     processedInputFromFreezer: 0
@@ -137,84 +136,7 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 73163869681dd054a8e5ed64a8fa8453, type: 2}
     - {fileID: 11400000, guid: 6cee302aec6e481458cb4eadcb0e8ea3, type: 2}
     - {fileID: 11400000, guid: 04d306ef11534d249a61f3fcc795c0cf, type: 2}
-    thirdInput: {fileID: 0}
-    thirdInputAmount: 1
-    rawThirdInput: {fileID: 0}
-    thirdSupplyPipeline:
-    thirdSupplyStageOutputs: []
-  - recipeName: Cheese Bacon Lettuce Burger
-    output: {fileID: 11400000, guid: 2aea384aa33ab1644b43a3d5921ec855, type: 2}
-    processedInput: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
-    processedInputName: Cheese Bacon Burger
-    processedInputAmount: 1
-    processedInputFromPantry: 0
-    processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
-    pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
-    supplyPipeline: 0000000007000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
-    - {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
-    thirdInput: {fileID: 0}
-    thirdInputAmount: 1
-    rawThirdInput: {fileID: 0}
-    thirdSupplyPipeline:
-    thirdSupplyStageOutputs: []
-  - recipeName: Cheese Bacon Lettuce Onion Burger
-    output: {fileID: 11400000, guid: addf57dfe1d46fe4aa471b11721db9af, type: 2}
-    processedInput: {fileID: 11400000, guid: 2aea384aa33ab1644b43a3d5921ec855, type: 2}
-    processedInputName: Cheese Bacon Lettuce Burger
-    processedInputAmount: 1
-    processedInputFromPantry: 0
-    processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: 04c7bfa1dd1e8fe42b53b7cae3ae0bf7, type: 2}
-    pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: d1d6f3572f3e19e4e8ce2ee16de2adf7, type: 2}
-    supplyPipeline: 000000000700000005000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: d1d6f3572f3e19e4e8ce2ee16de2adf7, type: 2}
-    - {fileID: 11400000, guid: e98c12eea6c888145a87ba87b8a1d3ff, type: 2}
-    - {fileID: 11400000, guid: 04c7bfa1dd1e8fe42b53b7cae3ae0bf7, type: 2}
-    thirdInput: {fileID: 0}
-    thirdInputAmount: 1
-    rawThirdInput: {fileID: 0}
-    thirdSupplyPipeline:
-    thirdSupplyStageOutputs: []
-  - recipeName: Cheese Bacon Lettuce Onion Tomato Burger
-    output: {fileID: 11400000, guid: 630a7c589ed298343bfefbf9d64da898, type: 2}
-    processedInput: {fileID: 11400000, guid: addf57dfe1d46fe4aa471b11721db9af, type: 2}
-    processedInputName: Cheese Bacon Lettuce Onion Burger
-    processedInputAmount: 1
-    processedInputFromPantry: 0
-    processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
-    pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
-    supplyPipeline: 0000000007000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
-    - {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
-    thirdInput: {fileID: 0}
-    thirdInputAmount: 1
-    rawThirdInput: {fileID: 0}
-    thirdSupplyPipeline:
-    thirdSupplyStageOutputs: []
-  - recipeName: Cheese Bacon Lettuce Onion Tomato Egg Burger
-    output: {fileID: 11400000, guid: 08611b6abdd72644da29ae1211acdbc3, type: 2}
-    processedInput: {fileID: 11400000, guid: 630a7c589ed298343bfefbf9d64da898, type: 2}
-    processedInputName: Cheese Bacon Lettuce Onion Tomato Burger
-    processedInputAmount: 1
-    processedInputFromPantry: 0
-    processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: 6ba9a38cba507d84a9634aaf82340b08, type: 2}
-    pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: a94596b1c47524f4fb2d099f0f1e72a8, type: 2}
-    supplyPipeline: 0000000001000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: a94596b1c47524f4fb2d099f0f1e72a8, type: 2}
-    - {fileID: 11400000, guid: 6ba9a38cba507d84a9634aaf82340b08, type: 2}
-    thirdInput: {fileID: 0}
+    thirdInput: {fileID: 11400000, guid: c0b9162f13634b67932d2d86aaa4f5a1, type: 2}
     thirdInputAmount: 1
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:

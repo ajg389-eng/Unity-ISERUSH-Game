@@ -1033,6 +1033,9 @@ public static class WorkflowAnalysis
                     ItemDefinition source = config.GetAssemblySupplySource(recipe);
                     if (source != null && !result.requiredResources.Contains(source))
                         result.requiredResources.Add(source);
+                    ItemDefinition thirdSource = config.GetAssemblyThirdSupplySource(recipe);
+                    if (thirdSource != null && !result.requiredResources.Contains(thirdSource))
+                        result.requiredResources.Add(thirdSource);
                 }
             }
         }
@@ -1066,6 +1069,10 @@ public static class WorkflowAnalysis
                     if (source != null)
                         unitCost += GetIngredientUnitCost(source, inventory)
                             * Mathf.Max(1, recipe.pantryInputAmount);
+                    ItemDefinition thirdSource = config.GetAssemblyThirdSupplySource(recipe);
+                    if (thirdSource != null)
+                        unitCost += GetIngredientUnitCost(thirdSource, inventory)
+                            * Mathf.Max(1, recipe.thirdInputAmount);
                 }
             }
             int sell = Mathf.Max(0, item.price);

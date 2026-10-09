@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 11, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 12, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
@@ -21,7 +21,7 @@ public class KitchenSaveSnapshot
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, bufferedOutputs, processingUnits; public float processProgress; public Vector3 counterPosition; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
@@ -80,8 +80,10 @@ public class KitchenSaveSnapshot
                     var freezer = go.GetComponent<FreezerStation>();
                     var pantry = go.GetComponent<PantryStation>();
                     var cutting = go.GetComponent<CuttingStation>();
+                    var fryer = go.GetComponent<FryerStation>();
                     ItemDefinition product = assembly != null ? assembly.selectedProduct
                         : grill != null ? grill.selectedProduct
+                        : fryer != null ? fryer.selectedProduct
                         : freezer != null ? freezer.selectedItem
                         : pantry != null ? pantry.selectedItem
                         : cutting != null ? cutting.selectedProduct : null;
@@ -92,9 +94,12 @@ public class KitchenSaveSnapshot
                             : groundPickup != null && groundPickup.surface != null ? groundPickup.surface.transform.position : Vector3.zero,
                         processedInputs=assembly != null ? assembly.BufferedProcessedInputCount : 0,
                         pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
+                        thirdInputs=assembly != null ? assembly.BufferedThirdInputCount : 0,
                         bufferedOutputs=assembly != null ? assembly.BufferedOutputCount : 0,
                         processingUnits=grill != null ? grill.BufferedPattyCount : 0,
-                        processProgress=grill != null ? grill.CookProgressSeconds : 0f });
+                        processProgress=grill != null ? grill.CookProgressSeconds : 0f,
+                        assemblyProcessingUnits=assembly != null ? assembly.ProcessingUnitCount : 0,
+                        assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -128,7 +133,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>11 || inv==null || pm==null) return false;
+        if(version<1 || version>12 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -184,14 +189,15 @@ public class KitchenSaveSnapshot
             var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
             ItemDefinition product = !string.IsNullOrEmpty(e.product) && definitions.TryGetValue(e.product,out var savedProduct) ? savedProduct : null;
             var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
-            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.bufferedOutputs);
+            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
+            var fryer=go.GetComponent<FryerStation>(); if(fryer!=null && product!=null) fryer.SetRecipeOutput(product);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
             var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) {
                 ItemDefinition second=null;
                 if(!string.IsNullOrEmpty(e.pantrySecondProduct)) definitions.TryGetValue(e.pantrySecondProduct,out second);
                 pantry.SetStoredItems(product,second);
             }
-            var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.SetRecipe(pm.orderConfig != null ? pm.orderConfig.GetCuttingRecipe(product) : null);
+            var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.RestoreSelectedProduct(product);
             if (item.stationFamily == "Pickup Station"
                 && item.placementSurface == ItemDefinition.PlacementSurface.Floor)
             {

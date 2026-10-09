@@ -99,7 +99,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void Update()
     {
         bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        bool show = manage && (focusedWorker != null || focusedFlow != null);
+        // Recipe badges belong to Business mode itself. Flow focus only controls
+        // route lines, markers, and worker highlighting.
+        bool show = manage;
 
         if (show != visible)
         {
@@ -171,8 +173,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             Instance.ApplyFocus();
             return;
         }
-        Instance.visible = false;
-        Instance.ClearVisuals();
+        Instance.ApplyFocus();
     }
 
     /// <summary>Explicitly releases the flow selected by the flow UI.</summary>
@@ -191,7 +192,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void ApplyFocus()
     {
-        visible = focusedWorker != null || focusedFlow != null;
+        bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
+        visible = manage;
         if (visible) Refresh();
         else
         {
@@ -211,6 +213,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             visible = false;
             return;
         }
+
+        DrawAllStationPreviews();
 
         if (focusedWorker != null)
         {
@@ -281,7 +285,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             bool merge = incomingCount.TryGetValue(station, out int sources) && sources > 1;
             string role = root ? "START" : end ? "END" : split ? "SPLIT" : merge ? "MERGE" : "STOP";
             CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
-            CreateSelectedItemPreview(station);
         }
 
         var edgePaths = new List<List<Vector3>>();
@@ -979,6 +982,18 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         bool twoItems = pantry != null && pantry.secondItem != null;
         CreateSelectedItemPreview(station, item, twoItems ? -0.32f : 0f);
         if (twoItems) CreateSelectedItemPreview(station, pantry.secondItem, 0.32f);
+    }
+
+    void DrawAllStationPreviews()
+    {
+        StationNode[] stations = FindObjectsByType<StationNode>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < stations.Length; i++)
+        {
+            StationNode station = stations[i];
+            if (station == null || !station.gameObject.scene.IsValid()) continue;
+            CreateSelectedItemPreview(station.gameObject);
+        }
     }
 
     void CreateSelectedItemPreview(GameObject station, ItemDefinition item, float horizontalOffset)

@@ -74,6 +74,8 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition cheeseBaconLettuceOnionBurgerItem;
     public ItemDefinition cheeseBaconLettuceOnionTomatoBurgerItem;
     public ItemDefinition cheeseBaconLettuceOnionTomatoEggBurgerItem;
+    [Tooltip("Intermediate made from Tomato Slice and Lettuce Slice.")]
+    public ItemDefinition veggieMixIngredient;
     [Tooltip("Fries side")]
     public ItemDefinition friesItem;
     public ItemDefinition cheeseFriesItem;
@@ -147,11 +149,7 @@ public class CustomerOrderConfig : ScriptableObject
     [System.NonSerialized] readonly HashSet<ItemDefinition> disabledExpandedBurgers = new HashSet<ItemDefinition>();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
-        || item == cheeseburgerItem || item == clBurgerItem || item == cltBurgerItem
-        || item == cheeseBaconBurgerItem
-        || item == cheeseBaconLettuceBurgerItem || item == cheeseBaconLettuceOnionBurgerItem
-        || item == cheeseBaconLettuceOnionTomatoBurgerItem
-        || item == cheeseBaconLettuceOnionTomatoEggBurgerItem);
+        || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem);
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
     public bool IsDrink(ItemDefinition item) => item != null && (item == drinkItem || item == whippedCreamShakeItem || item == whippedCreamSprinkleShakeItem);
@@ -160,8 +158,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null) return 0;
         if (item == burgerBase || item == cheeseburgerItem || item == friesItem) return 1;
-        if (item == clBurgerItem || item == cltBurgerItem || item == cheeseFriesItem) return 2;
-        if (item == cheeseBaconBurgerItem || item == cheeseBaconLettuceBurgerItem || item == drinkItem) return 3;
+        if (item == clBurgerItem || item == cheeseFriesItem) return 2;
+        if (item == cheeseBaconBurgerItem || item == drinkItem) return 3;
         if (item == cheeseBaconLettuceOnionBurgerItem
             || item == cheeseBaconLettuceOnionTomatoBurgerItem
             || item == cheeseBaconLettuceOnionTomatoEggBurgerItem
@@ -273,6 +271,12 @@ public class CustomerOrderConfig : ScriptableObject
 
     bool IsRecipeUnlocked(AssemblyRecipeDefinition recipe)
     {
+        if (recipe != null && (recipe.output == cheeseBaconLettuceBurgerItem
+            || recipe.output == cheeseBaconLettuceOnionBurgerItem
+            || recipe.output == cheeseBaconLettuceOnionTomatoBurgerItem
+            || recipe.output == cheeseBaconLettuceOnionTomatoEggBurgerItem
+            || recipe.output == cltBurgerItem))
+            return false;
         if (OnboardingTutorial.BlocksProgression && recipe != null && recipe.Produces(burgerBase))
             return true;
         return MilestoneProgressManager.Instance == null
@@ -665,12 +669,7 @@ public class CustomerOrderConfig : ScriptableObject
         if (burgerBase != null) yield return burgerBase;
         if (cheeseburgerItem != null) yield return cheeseburgerItem;
         if (clBurgerItem != null) yield return clBurgerItem;
-        if (cltBurgerItem != null) yield return cltBurgerItem;
         if (cheeseBaconBurgerItem != null) yield return cheeseBaconBurgerItem;
-        if (cheeseBaconLettuceBurgerItem != null) yield return cheeseBaconLettuceBurgerItem;
-        if (cheeseBaconLettuceOnionBurgerItem != null) yield return cheeseBaconLettuceOnionBurgerItem;
-        if (cheeseBaconLettuceOnionTomatoBurgerItem != null) yield return cheeseBaconLettuceOnionTomatoBurgerItem;
-        if (cheeseBaconLettuceOnionTomatoEggBurgerItem != null) yield return cheeseBaconLettuceOnionTomatoEggBurgerItem;
         if (friesItem != null) yield return friesItem;
         if (cheeseFriesItem != null) yield return cheeseFriesItem;
         if (cheeseBaconFriesItem != null) yield return cheeseBaconFriesItem;

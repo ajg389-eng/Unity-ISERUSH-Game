@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d0a64736da957674da67cbccc002e6c1, type: 3}
-  m_Name: Classic Burger
+  m_Name: Veggie Mix
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
-  itemName: Classic Burger
-  prefab: {fileID: 3788165045944647515, guid: 66884aa2efcfe3a49a6a6460633ddd8f, type: 3}
-  price: 18
+  itemName: Veggie Mix
+  prefab: {fileID: 6213259828783532099, guid: d2868ccab089b5d448edf90483a285e6, type: 3}
+  price: 0
   startingQuantity: 0
   orderPackSize: 0
   orderPackPrice: 0

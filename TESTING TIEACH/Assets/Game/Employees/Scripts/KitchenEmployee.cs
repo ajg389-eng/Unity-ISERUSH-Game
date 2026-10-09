@@ -2248,7 +2248,7 @@ public class KitchenEmployee : MonoBehaviour
             {
                 AssemblyRecipeDefinition nextRecipe = nextAssembly.GetSelectedRecipe();
                 if (nextRecipe != null && nextRecipe.output != null
-                    && nextRecipe.processedInput == stageProduct)
+                    && RecipeAcceptsInput(nextRecipe, stageProduct))
                 {
                     finalProduct = nextRecipe.output;
                     pipeline = new[] { StationType.Assembly, StationType.Assembly };
@@ -2319,12 +2319,42 @@ public class KitchenEmployee : MonoBehaviour
         foreach (GameObject stationObject in GetTaskStations(true))
         {
             if (stationObject == null) continue;
+            GrillStation grill = stationObject.GetComponent<GrillStation>();
+            QueueCookedGrillOutputTask(grill);
             FryerStation fryer = stationObject.GetComponent<FryerStation>();
             QueueCookedFryerOutputTask(fryer);
             AssemblyStation station = stationObject.GetComponent<AssemblyStation>();
             QueueStoredAssemblyOutputTask(station);
         }
         QueueReadyAssemblyProductionTasks();
+    }
+
+    void QueueCookedGrillOutputTask(GrillStation grill)
+    {
+        if (manager == null || manager.orderConfig == null || grill == null
+            || !grill.IsCooked() || manager.HasPendingGrillTask(grill.gameObject))
+            return;
+
+        ItemDefinition cookedPatty = grill.GetSelectedOutput();
+        if (cookedPatty == null || grill.GetOutputCount(cookedPatty) <= 0)
+            return;
+
+        GameObject output = manager.GetFlowOutput(this, grill.gameObject, null, cookedPatty);
+        AssemblyStation assembly = output != null ? output.GetComponent<AssemblyStation>() : null;
+        AssemblyRecipeDefinition recipe = assembly != null ? assembly.GetSelectedRecipe() : null;
+        if (recipe == null || recipe.output == null
+            || !RecipeAcceptsInput(recipe, cookedPatty)
+            || !assembly.CanAcceptInput(cookedPatty, 1))
+            return;
+
+        var recovery = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1),
+            new[] { StationType.Grill, StationType.Assembly },
+            new[] { recipe.output })
+        {
+            taskPhase = ProductionTaskPhase.CollectOutput,
+            taskSourceStation = grill.gameObject
+        };
+        manager.QueueRecoveryJob(recovery);
     }
 
     void QueueCookedFryerOutputTask(FryerStation fryer)
@@ -2394,7 +2424,7 @@ public class KitchenEmployee : MonoBehaviour
         {
             AssemblyRecipeDefinition nextRecipe = nextAssembly.GetSelectedRecipe();
             if (nextRecipe == null || nextRecipe.output == null
-                || nextRecipe.processedInput != station.selectedProduct
+                || !RecipeAcceptsInput(nextRecipe, station.selectedProduct)
                 || !manager.CanTransferAvailable(null, station.gameObject, output,
                     station.selectedProduct, 1))
                 return;
@@ -2413,6 +2443,13 @@ public class KitchenEmployee : MonoBehaviour
         deliveryJob.taskPhase = ProductionTaskPhase.CollectOutput;
         deliveryJob.taskSourceStation = station.gameObject;
         manager.QueueRecoveryJob(deliveryJob);
+    }
+
+    static bool RecipeAcceptsInput(AssemblyRecipeDefinition recipe, ItemDefinition item)
+    {
+        return recipe != null && item != null
+            && (recipe.processedInput == item || recipe.pantryInput == item
+                || recipe.thirdInput == item);
     }
 
     void ReturnToFlowStart()

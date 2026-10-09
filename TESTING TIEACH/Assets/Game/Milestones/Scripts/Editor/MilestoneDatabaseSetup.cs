@@ -290,20 +290,20 @@ public static class MilestoneDatabaseSetup
                 id = "milestone_02",
                 name = "2",
                 description = "Expand the burger and fries recipes with fresh ingredients.",
-                topics = "Lettuce, tomato, and cheese fries",
+                topics = "Classic burgers and cheese fries",
                 unlockId = "milestone_02_complete",
                 unlockName = "Bacon, shakes, and MK2 stations",
                 missions = new[]
                 {
-                    M("hire_capacity", "Add lettuce and tomato to a burger",
-                        "Configure the CLT Burger recipe at an Assembly Station.",
-                        "recipe_configured_clt_burger"),
+                    M("hire_capacity", "Configure a Classic Burger",
+                        "Choose the Classic Burger recipe at an Assembly Station.",
+                        "recipe_configured_classic_burger"),
                     M("assign_labor", "Add cheese fries to the menu",
                         "Configure the Cheese Fries recipe at an Assembly Station.",
                         "recipe_configured_cheese_fries"),
-                    M("balance_output", "Serve 5 CLT Burgers",
-                        "Serve five customers who ordered the lettuce-and-tomato burger.",
-                        "menu_item_served_clt_burger", 5),
+                    M("balance_output", "Serve 5 Classic Burgers",
+                        "Serve five Classic Burgers.",
+                        "menu_item_served_classic_burger", 5),
                     M("finish_shift", "Serve 5 Cheese Fries",
                         "Serve five orders that include Cheese Fries.",
                         "menu_item_served_cheese_fries", 5)
@@ -347,8 +347,8 @@ public static class MilestoneDatabaseSetup
                 missions = new[]
                 {
                     M("buy_inputs", "Configure a bacon burger",
-                        "Choose the Cheese Bacon Burger recipe at an Assembly Station.",
-                        "recipe_configured_cheese_bacon_burger"),
+                        "Choose the Bacon Cheeseburger recipe at an Assembly Station.",
+                        "recipe_configured_bacon_cheeseburger"),
                     M("expand_assets", "Add shakes to the menu",
                         "Configure the basic Shake recipe at a Shake Station.",
                         "recipe_configured_shake"),
@@ -391,24 +391,24 @@ public static class MilestoneDatabaseSetup
             {
                 id = "milestone_04",
                 name = "4",
-                description = "Complete the menu with the most involved recipes and production chains.",
-                topics = "Onions, eggs, premium fries, and finished shakes",
+                description = "Complete the menu with the most involved fries and shake production chains.",
+                topics = "Premium fries, finished shakes, and production balance",
                 unlockId = "milestone_04_complete",
                 unlockName = "Full menu complete",
                 missions = new[]
                 {
-                    M("restock", "Configure the fully loaded burger",
-                        "Choose the Cheese Bacon Lettuce Onion Tomato Egg Burger recipe.",
-                        "recipe_configured_cheese_bacon_lettuce_onion_tomato_egg_burger"),
+                    M("restock", "Configure a Bacon Cheeseburger",
+                        "Choose the Bacon Cheeseburger recipe.",
+                        "recipe_configured_bacon_cheeseburger"),
                     M("meet_demand", "Configure cheese bacon fries",
                         "Choose the Cheese Bacon Fries recipe at an Assembly Station.",
                         "recipe_configured_cheese_bacon_fries"),
                     M("multi_day", "Configure the premium shake",
                         "Choose the Whipped Cream Sprinkle Shake recipe.",
                         "recipe_configured_whipped_cream_sprinkle_shake"),
-                    M("configure_recipe", "Serve 5 fully loaded burgers",
-                        "Serve five customers who ordered the fully loaded burger.",
-                        "menu_item_served_cheese_bacon_lettuce_onion_tomato_egg_burger", 5)
+                    M("configure_recipe", "Serve 5 Bacon Cheeseburgers",
+                        "Serve five Bacon Cheeseburgers.",
+                        "menu_item_served_bacon_cheeseburger", 5)
                 },
                 questions = new[]
                 {

@@ -64,6 +64,20 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         RefreshItemDisplay(true);
     }
 
+    /// <summary>
+    /// Restores the authored selection without applying current tutorial or
+    /// milestone filters. Unlock state is restored later in the load sequence.
+    /// </summary>
+    public void RestoreSelectedProduct(ItemDefinition product)
+    {
+        selectedProduct = product;
+        inputUnits = 0;
+        outputUnits = 0;
+        bufferedOrder = null;
+        GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
+        RefreshItemDisplay(true);
+    }
+
     public int GetInputCount(ItemDefinition item)
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
