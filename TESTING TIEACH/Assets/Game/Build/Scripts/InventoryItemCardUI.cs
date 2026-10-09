@@ -47,6 +47,13 @@ public class InventoryItemCardUI : MonoBehaviour
         }
 
         ConfigureResponsiveText(nameText, 10f, 16f);
+        LayoutElement titleLayout = nameText != null && nameText.transform.parent != null
+            ? nameText.transform.parent.GetComponent<LayoutElement>() : null;
+        if (titleLayout != null)
+        {
+            titleLayout.minHeight = 24f;
+            titleLayout.preferredHeight = 24f;
+        }
         ConfigureResponsiveText(qtyText, 10f, 14f);
         ConfigureResponsiveText(priceText, 9f, 14f);
 
@@ -195,7 +202,15 @@ public class InventoryItemCardUI : MonoBehaviour
 
     public void SetDisplayName(string displayName)
     {
-        if (nameText != null) nameText.text = displayName;
+        if (nameText != null)
+        {
+            nameText.text = displayName;
+            nameText.gameObject.SetActive(true);
+            if (nameText.transform.parent != null)
+                nameText.transform.parent.gameObject.SetActive(true);
+            nameText.alignment = TextAlignmentOptions.Center;
+        }
+        OrderCardRows();
     }
 
     public void SetUnlockRequirement(string requirement)
@@ -205,8 +220,9 @@ public class InventoryItemCardUI : MonoBehaviour
             var row = new GameObject("UnlockRequirement", typeof(RectTransform),
                 typeof(Image), typeof(LayoutElement));
             row.transform.SetParent(transform, false);
-            row.transform.SetSiblingIndex(Mathf.Min(2, transform.childCount - 1));
-            row.GetComponent<LayoutElement>().preferredHeight = 24f;
+            var requirementLayout = row.GetComponent<LayoutElement>();
+            requirementLayout.minHeight = 20f;
+            requirementLayout.preferredHeight = 20f;
             row.GetComponent<Image>().color = new Color(0.28f, 0.24f, 0.16f, 1f);
             unlockRequirementText = CreateRequirementLabel(row.transform);
         }
@@ -214,6 +230,7 @@ public class InventoryItemCardUI : MonoBehaviour
         unlockRequirementText.transform.parent.gameObject.SetActive(!string.IsNullOrWhiteSpace(requirement));
         if (!string.IsNullOrWhiteSpace(requirement))
             unlockRequirementText.text = requirement;
+        OrderCardRows();
     }
 
     static TextMeshProUGUI CreateRequirementLabel(Transform parent)
@@ -231,23 +248,26 @@ public class InventoryItemCardUI : MonoBehaviour
         label.color = new Color(1f, 0.84f, 0.48f, 1f);
         label.alignment = TextAlignmentOptions.Center;
         label.enableAutoSizing = true;
-        label.fontSizeMin = 9f;
+        label.fontSizeMin = 10f;
         label.fontSizeMax = 11f;
         label.textWrappingMode = TextWrappingModes.NoWrap;
-        label.overflowMode = TextOverflowModes.Ellipsis;
+        label.overflowMode = TextOverflowModes.Overflow;
         label.raycastTarget = false;
+        go.AddComponent<GameUIThemeStyled>();
         return label;
     }
 
     public void ConfigureMarkSelector(bool hasMk1, bool hasMk2, int selectedMark,
-        System.Action<int> onSelected, bool mark2Locked = false, int mark2UnlockMilestone = 0)
+        System.Action<int> onSelected, bool mark1Locked = false, bool mark2Locked = false,
+        int mark2UnlockMilestone = 0)
     {
         EnsureMarkSelector();
         Transform row = mark1Button != null ? mark1Button.transform.parent : null;
         if (row != null) row.gameObject.SetActive(true);
-        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, false, 0);
+        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, mark1Locked, 0);
         ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected,
             mark2Locked, mark2UnlockMilestone);
+        OrderCardRows();
     }
 
     public void HideMarkSelector()
@@ -263,7 +283,8 @@ public class InventoryItemCardUI : MonoBehaviour
             typeof(UnityEngine.UI.HorizontalLayoutGroup), typeof(UnityEngine.UI.LayoutElement));
         row.transform.SetParent(transform, false);
         row.transform.SetSiblingIndex(Mathf.Min(1, transform.childCount - 1));
-        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 24f;
+        row.GetComponent<UnityEngine.UI.LayoutElement>().minHeight = 20f;
+        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 20f;
         var layout = row.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
         layout.spacing = 4f;
         layout.childControlWidth = true;
@@ -272,6 +293,7 @@ public class InventoryItemCardUI : MonoBehaviour
         layout.childForceExpandHeight = true;
         mark1Button = CreateMarkButton(row.transform, "MK1");
         mark2Button = CreateMarkButton(row.transform, "MK2");
+        OrderCardRows();
     }
 
     static UnityEngine.UI.Button CreateMarkButton(Transform parent, string label)
@@ -302,26 +324,78 @@ public class InventoryItemCardUI : MonoBehaviour
         if (button == null) return;
         button.onClick.RemoveAllListeners();
         bool unlocked = exists && !locked;
-        button.interactable = unlocked;
+        bool selected = exists && mark == selectedMark;
+        // A locked tier remains selectable as a preview. Its station card will
+        // show the lock state and disable placement and purchase controls.
+        button.interactable = exists;
         TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
         if (label != null)
         {
-            label.text = "MK" + mark + (locked && exists ? " · LOCKED" : "");
-            label.fontSize = locked ? 9f : 10f;
-            label.color = unlocked ? TextColor : new Color(0.62f, 0.66f, 0.72f, 1f);
+            label.text = locked && selected ? "MK" + mark + " LOCKED" : "MK" + mark;
+            label.fontSize = 11f;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 9f;
+            label.fontSizeMax = 11f;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.color = unlocked ? TextColor
+                : selected ? new Color(1f, 0.84f, 0.48f, 1f)
+                : new Color(0.62f, 0.66f, 0.72f, 1f);
         }
-        if (unlocked && onSelected != null)
+        if (exists && onSelected != null)
             button.onClick.AddListener(() => onSelected(mark));
         var image = button.GetComponent<UnityEngine.UI.Image>();
         if (image != null)
-            image.color = unlocked && mark == selectedMark
-                ? new Color(0.34f, 0.63f, 0.51f, 1f)
+            image.color = selected
+                ? unlocked ? new Color(0.34f, 0.63f, 0.51f, 1f) : new Color(0.35f, 0.29f, 0.16f, 1f)
                 : new Color(0.15f, 0.19f, 0.23f, unlocked ? 1f : 0.45f);
         var outline = button.GetComponent<UnityEngine.UI.Outline>();
         if (outline == null) outline = button.gameObject.AddComponent<UnityEngine.UI.Outline>();
-        outline.enabled = unlocked && mark == selectedMark;
-        outline.effectColor = new Color(0.72f, 0.95f, 0.84f, 1f);
+        outline.enabled = selected;
+        outline.effectColor = unlocked
+            ? new Color(0.72f, 0.95f, 0.84f, 1f)
+            : new Color(1f, 0.76f, 0.35f, 1f);
         outline.effectDistance = new Vector2(2f, -2f);
+    }
+
+    void OrderCardRows()
+    {
+        Transform title = nameText != null && nameText.transform.parent != null
+            ? nameText.transform.parent : transform.Find("Name");
+        Transform selector = mark1Button != null && mark1Button.transform.parent != null
+            ? mark1Button.transform.parent : transform.Find("MarkSelector");
+        Transform requirement = unlockRequirementText != null
+            ? unlockRequirementText.transform.parent : transform.Find("UnlockRequirement");
+        Transform preview = previewRawImage != null ? previewRawImage.transform.parent
+            : previewImage != null ? previewImage.transform.parent : transform.Find("Preview");
+        Transform footer = qtyText != null && qtyText.transform.parent != null
+            ? qtyText.transform.parent.parent : transform.Find("Footer");
+
+        int index = 0;
+        if (title != null) title.SetSiblingIndex(index++);
+        if (selector != null) selector.SetSiblingIndex(index++);
+        if (requirement != null) requirement.SetSiblingIndex(index++);
+        if (preview != null) preview.SetSiblingIndex(index++);
+        if (footer != null) footer.SetSiblingIndex(index);
+
+        if (preview != null)
+        {
+            LayoutElement previewLayout = preview.GetComponent<LayoutElement>();
+            if (previewLayout != null)
+            {
+                previewLayout.minHeight = 90f;
+                previewLayout.preferredHeight = 100f;
+            }
+        }
+        if (footer != null)
+        {
+            LayoutElement footerLayout = footer.GetComponent<LayoutElement>();
+            if (footerLayout != null)
+            {
+                footerLayout.minHeight = 36f;
+                footerLayout.preferredHeight = 36f;
+            }
+        }
     }
 
     void ApplyPreview(ItemDefinition item)

@@ -28,7 +28,7 @@ public class IngredientsOrderUI : MonoBehaviour
     GameObject navigation;
     readonly List<GameObject> menuRows = new List<GameObject>();
     readonly List<GameObject> supplyRows = new List<GameObject>();
-    Button suppliesTab, menuTab;
+    Button suppliesTab, menuTab, recipesTab;
     readonly Dictionary<ItemDefinition, int> cartPacks = new Dictionary<ItemDefinition, int>();
     TextMeshProUGUI deliveryStatusText;
     TextMeshProUGUI cartSummaryText;
@@ -44,6 +44,7 @@ public class IngredientsOrderUI : MonoBehaviour
     TextMeshProUGUI expandedChevron;
     GameObject recipesOverlay;
     Transform recipeChartRoot;
+    RectTransform recipeChartViewport;
     CustomerOrderConfig recipeChartMenu;
     readonly List<Button> recipeTabButtons = new List<Button>();
 
@@ -185,19 +186,47 @@ public class IngredientsOrderUI : MonoBehaviour
         if (menu != null)
         {
             int firstMenuRow = listContainer.childCount;
-            CreateSectionHeader("Items to sell");
-
-            foreach (var item in menu.GetMenuItems())
-                if (item != null) CreateMenuToggleRow(menu, item);
+            CreateSectionHeader("Items to Sell");
+            var menuItemsByMilestone = new SortedDictionary<int, List<ItemDefinition>>();
+            foreach (ItemDefinition item in menu.GetMenuItems())
+            {
+                if (item == null) continue;
+                int milestone = menu.GetMenuItemUnlockMilestone(item);
+                if (!menuItemsByMilestone.TryGetValue(milestone, out List<ItemDefinition> items))
+                {
+                    items = new List<ItemDefinition>();
+                    menuItemsByMilestone.Add(milestone, items);
+                }
+                items.Add(item);
+            }
+            foreach (var milestoneGroup in menuItemsByMilestone)
+            {
+                CreateMenuMilestoneHeader(milestoneGroup.Key);
+                foreach (ItemDefinition item in milestoneGroup.Value)
+                    CreateMenuToggleRow(menu, item);
+            }
             for (int i = firstMenuRow; i < listContainer.childCount; i++) menuRows.Add(listContainer.GetChild(i).gameObject);
         }
 
         int firstSupplyRow = listContainer.childCount;
-        CreateSectionHeader("Order ingredient packs");
-        foreach (var item in inventory.GetIngredientCatalogItems())
+        CreateSectionHeader("Order Ingredient Packs");
+        var ingredientsByMilestone = new SortedDictionary<int, List<ItemDefinition>>();
+        foreach (ItemDefinition item in inventory.GetIngredientCatalogItems())
         {
             if (item == null) continue;
-            CreateOrderRow(item);
+            int milestone = inventory.GetOrderItemUnlockMilestone(item);
+            if (!ingredientsByMilestone.TryGetValue(milestone, out List<ItemDefinition> items))
+            {
+                items = new List<ItemDefinition>();
+                ingredientsByMilestone.Add(milestone, items);
+            }
+            items.Add(item);
+        }
+        foreach (var milestoneGroup in ingredientsByMilestone)
+        {
+            CreateMilestoneHeader(milestoneGroup.Key);
+            foreach (ItemDefinition item in milestoneGroup.Value)
+                CreateOrderRow(item);
         }
         for (int i = firstSupplyRow; i < listContainer.childCount; i++) supplyRows.Add(listContainer.GetChild(i).gameObject);
         CreateCartFooter();
@@ -205,11 +234,14 @@ public class IngredientsOrderUI : MonoBehaviour
         SelectSection(showMenu);
 
         built = true;
+        GameUITheme.ApplyTo(transform);
+        SelectSection(showMenu);
     }
 
     void OnDisable()
     {
         if (recipesOverlay != null) recipesOverlay.SetActive(false);
+        UpdateNavigationTabs();
     }
 
     static void PinFooter(RectTransform rect, float bottom, float height)
@@ -238,13 +270,13 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childControlWidth = layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         TextMeshProUGUI label;
-        suppliesTab = CreateCartButton(navigation.transform, "SuppliesTab", "Supplies", 90, new Color(0.2f,0.3f,0.4f), out label);
+        suppliesTab = CreateCartButton(navigation.transform, "SuppliesTab", "Supplies", 90, GameUITheme.Surface, out label);
         suppliesTab.onClick.AddListener(() => SelectSection(false));
-        menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 80, new Color(0.2f,0.3f,0.4f), out label);
+        menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 80, GameUITheme.Surface, out label);
         menuTab.onClick.AddListener(() => SelectSection(true));
-        var recipes = CreateCartButton(navigation.transform, "RecipesTab", "Recipes", 90, new Color(0.24f,0.48f,0.58f), out label);
-        recipes.interactable = menu != null;
-        recipes.onClick.AddListener(() => OpenRecipes(menu));
+        recipesTab = CreateCartButton(navigation.transform, "RecipesTab", "Recipes", 90, GameUITheme.Surface, out label);
+        recipesTab.interactable = menu != null;
+        recipesTab.onClick.AddListener(() => OpenRecipes(menu));
     }
 
     void SelectSection(bool menu)
@@ -252,8 +284,7 @@ public class IngredientsOrderUI : MonoBehaviour
         showMenu = menu;
         foreach (var row in menuRows) if (row != null) row.SetActive(menu);
         foreach (var row in supplyRows) if (row != null) row.SetActive(!menu);
-        if (suppliesTab != null) suppliesTab.GetComponent<Image>().color = !menu ? new Color(0.68f,0.49f,0.19f) : new Color(0.49f,0.37f,0.18f);
-        if (menuTab != null) menuTab.GetComponent<Image>().color = menu ? new Color(0.27f,0.62f,0.4f) : new Color(0.23f,0.48f,0.33f);
+        UpdateNavigationTabs();
         if (placeOrderButton != null) placeOrderButton.transform.parent.gameObject.SetActive(!menu);
         if (deliveryStatusText != null) deliveryStatusText.transform.parent.gameObject.SetActive(!menu);
         PadListForUndoFooter();
@@ -261,6 +292,15 @@ public class IngredientsOrderUI : MonoBehaviour
         var scroll = listContainer.GetComponentInParent<ScrollRect>();
         if (scroll != null) { scroll.StopMovement(); scroll.verticalNormalizedPosition = 1f; }
     }
+
+    void UpdateNavigationTabs()
+    {
+        bool recipesOpen = recipesOverlay != null && recipesOverlay.activeSelf;
+        GameUITheme.ApplyTabButton(suppliesTab, !showMenu && !recipesOpen);
+        GameUITheme.ApplyTabButton(menuTab, showMenu && !recipesOpen);
+        GameUITheme.ApplyTabButton(recipesTab, recipesOpen);
+    }
+
     void CreateRecipesButton(CustomerOrderConfig menu)
     {
         var row = new GameObject("RecipesButtonRow", typeof(RectTransform), typeof(LayoutElement),
@@ -275,8 +315,8 @@ public class IngredientsOrderUI : MonoBehaviour
 
         TextMeshProUGUI label;
         Button button = CreateCartButton(row.transform, "OpenRecipes", "RECIPES", 132f,
-            new Color(0.24f, 0.48f, 0.58f, 1f), out label);
-        label.fontSize = 13f;
+            GameUITheme.Coral, out label);
+        label.fontSize = 14f;
         button.onClick.AddListener(() => OpenRecipes(menu));
     }
 
@@ -284,9 +324,17 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         if (recipesOverlay == null) BuildRecipesOverlay(menu);
         recipesOverlay.SetActive(true);
+        UpdateNavigationTabs();
         ShowRecipeTab(menu, 0);
         recipesOverlay.transform.SetAsLastSibling();
         Sfx.Play(SfxId.UiClick);
+    }
+
+    void CloseRecipes()
+    {
+        if (recipesOverlay != null)
+            recipesOverlay.SetActive(false);
+        UpdateNavigationTabs();
     }
 
     void BuildRecipesOverlay(CustomerOrderConfig menu)
@@ -300,22 +348,36 @@ public class IngredientsOrderUI : MonoBehaviour
         overlayRt.anchorMax = Vector2.one;
         overlayRt.offsetMin = Vector2.zero;
         overlayRt.offsetMax = Vector2.zero;
-        recipesOverlay.GetComponent<Image>().color = new Color(0.025f, 0.03f, 0.04f, 0.78f);
+        Color overlayColor = GameUITheme.Backdrop;
+        overlayColor.a = 0.78f;
+        recipesOverlay.GetComponent<Image>().color = overlayColor;
 
         var panel = new GameObject("RecipeBook", typeof(RectTransform), typeof(Image));
         panel.transform.SetParent(recipesOverlay.transform, false);
         RectTransform panelRt = (RectTransform)panel.transform;
         panelRt.anchorMin = panelRt.anchorMax = new Vector2(0.5f, 0.5f);
         panelRt.pivot = new Vector2(0.5f, 0.5f);
-        panelRt.sizeDelta = new Vector2(650f, 720f);
-        panel.GetComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 0.995f);
+        RectTransform canvasRect = parent as RectTransform;
+        float availableCanvasWidth = canvasRect != null && canvasRect.rect.width > 0f
+            ? canvasRect.rect.width : 682f;
+        float availableCanvasHeight = canvasRect != null && canvasRect.rect.height > 0f
+            ? canvasRect.rect.height : 752f;
+        float panelWidth = Mathf.Clamp(availableCanvasWidth - 32f, 240f, 650f);
+        float panelHeight = Mathf.Clamp(availableCanvasHeight - 32f, 260f, 720f);
+        panelRt.sizeDelta = new Vector2(panelWidth, panelHeight);
+        panel.GetComponent<Image>().color = GameUITheme.Panel;
 
-        CreateAbsoluteText(panel.transform, "Title", "RECIPES  •  DRAG TO PAN  •  SCROLL TO ZOOM", 18f, FontStyles.Bold,
+        TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes · Drag & Zoom", 18f, FontStyles.Bold,
             new Vector2(22f, -56f), new Vector2(-80f, -12f), TextAlignmentOptions.Center);
+        title.textWrappingMode = TextWrappingModes.NoWrap;
+        title.enableAutoSizing = true;
+        title.fontSizeMin = 12f;
+        title.fontSizeMax = 18f;
+        title.overflowMode = TextOverflowModes.Overflow;
         TextMeshProUGUI closeLabel;
         Button close = CreateAbsoluteButton(panel.transform, "Close", "X", new Vector2(-58f, -54f),
-            new Vector2(-14f, -14f), new Color(0.55f, 0.25f, 0.27f, 1f), out closeLabel);
-        close.onClick.AddListener(() => { recipesOverlay.SetActive(false); Sfx.Play(SfxId.UiClick); });
+            new Vector2(-14f, -14f), GameUITheme.Danger, out closeLabel);
+        close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         tabs.transform.SetParent(panel.transform, false);
@@ -337,9 +399,10 @@ public class IngredientsOrderUI : MonoBehaviour
         {
             int captured = i;
             TextMeshProUGUI tabLabel;
-            Button tab = CreateCartButton(tabs.transform, names[i], names[i], 150f,
-                new Color(0.17f, 0.2f, 0.25f, 1f), out tabLabel);
-            tabLabel.fontSize = 13f;
+            float tabWidth = Mathf.Min(150f, (panelWidth - 52f) / names.Length);
+            Button tab = CreateCartButton(tabs.transform, names[i], names[i], tabWidth,
+                GameUITheme.Surface, out tabLabel);
+            tabLabel.fontSize = 14f;
             tab.onClick.AddListener(() => { ShowRecipeTab(menu, captured); Sfx.Play(SfxId.UiClick); });
             recipeTabButtons.Add(tab);
         }
@@ -347,11 +410,12 @@ public class IngredientsOrderUI : MonoBehaviour
         var viewport = new GameObject("ChartViewport", typeof(RectTransform), typeof(Image), typeof(Mask));
         viewport.transform.SetParent(panel.transform, false);
         RectTransform viewportRt = (RectTransform)viewport.transform;
+        recipeChartViewport = viewportRt;
         viewportRt.anchorMin = Vector2.zero;
         viewportRt.anchorMax = Vector2.one;
         viewportRt.offsetMin = new Vector2(20f, 20f);
         viewportRt.offsetMax = new Vector2(-20f, -114f);
-        viewport.GetComponent<Image>().color = new Color(0.08f, 0.095f, 0.125f, 1f);
+        viewport.GetComponent<Image>().color = GameUITheme.Charcoal;
         viewport.GetComponent<Mask>().showMaskGraphic = true;
 
         var chart = new GameObject("RecipeChart", typeof(RectTransform));
@@ -364,6 +428,7 @@ public class IngredientsOrderUI : MonoBehaviour
         recipeChartRoot = chart.transform;
         RecipeGraphDrag drag = viewport.AddComponent<RecipeGraphDrag>();
         drag.content = chartRt;
+        GameUITheme.ApplyTo(recipesOverlay.transform);
     }
 
     void ShowRecipeTab(CustomerOrderConfig menu, int tab)
@@ -371,64 +436,107 @@ public class IngredientsOrderUI : MonoBehaviour
         if (recipeChartRoot == null) return;
         recipeChartMenu = menu;
         RectTransform chart = (RectTransform)recipeChartRoot;
-        chart.anchoredPosition = new Vector2(0f, -240f);
+        chart.anchoredPosition = Vector2.zero;
         chart.localScale = Vector3.one;
         for (int i = recipeChartRoot.childCount - 1; i >= 0; i--)
-            Destroy(recipeChartRoot.GetChild(i).gameObject);
+        {
+            GameObject oldNode = recipeChartRoot.GetChild(i).gameObject;
+            oldNode.SetActive(false);
+            Destroy(oldNode);
+        }
         for (int i = 0; i < recipeTabButtons.Count; i++)
-            recipeTabButtons[i].GetComponent<Image>().color = i == tab
-                ? new Color(0.28f, 0.63f, 0.49f, 1f)
-                : new Color(0.17f, 0.2f, 0.25f, 1f);
+            GameUITheme.ApplyTabButton(recipeTabButtons[i], i == tab);
 
         if (tab == 0) BuildBurgerTree(menu);
         else if (tab == 1) BuildFriesTree(menu);
         else BuildShakeTree(menu);
+        GameUITheme.ApplyTo(recipeChartRoot);
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)recipeChartRoot);
+        FitRecipeChartToViewport(chart);
+    }
+
+    void FitRecipeChartToViewport(RectTransform chart)
+    {
+        if (chart == null || recipeChartViewport == null) return;
+
+        Canvas.ForceUpdateCanvases();
+        float minX = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        float minY = float.PositiveInfinity;
+        float maxY = float.NegativeInfinity;
+        for (int i = 0; i < chart.childCount; i++)
+        {
+            RectTransform node = chart.GetChild(i) as RectTransform;
+            if (node == null || !node.gameObject.activeSelf || !node.name.StartsWith("GraphNode_")) continue;
+            Vector2 position = node.anchoredPosition;
+            Vector2 size = node.rect.size;
+            minX = Mathf.Min(minX, position.x - size.x * 0.5f);
+            maxX = Mathf.Max(maxX, position.x + size.x * 0.5f);
+            minY = Mathf.Min(minY, position.y - size.y * 0.5f);
+            maxY = Mathf.Max(maxY, position.y + size.y * 0.5f);
+        }
+        if (float.IsInfinity(minX)) return;
+
+        Vector2 graphSize = new Vector2(maxX - minX, maxY - minY);
+        Vector2 graphCenter = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+        Rect viewport = recipeChartViewport.rect;
+        float availableWidth = Mathf.Max(1f, viewport.width - 32f);
+        float availableHeight = Mathf.Max(1f, viewport.height - 32f);
+        float fitWidth = availableWidth / Mathf.Max(1f, graphSize.x);
+        float fitHeight = availableHeight / Mathf.Max(1f, graphSize.y);
+        float zoom = fitHeight >= 0.6f ? Mathf.Min(fitWidth, fitHeight) : fitWidth;
+        zoom = Mathf.Clamp(zoom, 0.45f, 1f);
+
+        chart.localScale = Vector3.one * zoom;
+        float chartY = graphSize.y * zoom <= availableHeight
+            ? -graphCenter.y * zoom
+            : recipeChartViewport.rect.height * 0.5f - 16f - maxY * zoom;
+        chart.anchoredPosition = new Vector2(-graphCenter.x * zoom, chartY);
     }
 
     void BuildBurgerTree(CustomerOrderConfig menu)
     {
-        var rawPatty = AddGraphNode(menu.rawPattyIngredient, "RAW PATTY", "FREEZER", new Vector2(-520f, 500f));
-        var cookedPatty = AddGraphNode(menu.cookedPattyIngredient, "COOKED PATTY", "GRILL", new Vector2(-520f, 310f));
+        var rawPatty = AddGraphNode(menu.rawPattyIngredient, "RAW PATTY", "FREEZER", new Vector2(-250f, 500f));
+        var cookedPatty = AddGraphNode(menu.cookedPattyIngredient, "COOKED PATTY", "GRILL", new Vector2(-250f, 310f));
         ConnectGraphNodes(rawPatty, cookedPatty, "COOK");
 
-        var bun = AddGraphNode(FindRecipeInput(menu, menu.burgerBase, false), "BUN", "PANTRY", new Vector2(-250f, 310f));
-        var burger = AddGraphNode(menu.burgerBase, "HAMBURGER", "ASSEMBLY", new Vector2(-390f, 100f), true);
+        var bun = AddGraphNode(FindRecipeInput(menu, menu.burgerBase, false), "BUN", "PANTRY", new Vector2(-20f, 310f));
+        var burger = AddGraphNode(menu.burgerBase, "HAMBURGER", "ASSEMBLY", new Vector2(-150f, 100f), true);
         ConnectGraphNodes(cookedPatty, burger);
         ConnectGraphNodes(bun, burger, "ASSEMBLE");
 
         AssemblyRecipeDefinition cheeseRecipe = FindRecipeFeeding(menu, menu.cheeseburgerItem);
         ItemDefinition rawCheese = cheeseRecipe != null ? cheeseRecipe.rawPantryInput : menu.cheeseIngredient;
         ItemDefinition slicedCheese = cheeseRecipe != null ? cheeseRecipe.pantryInput : menu.slicedCheeseIngredient;
-        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "FREEZER", new Vector2(40f, 500f));
-        var slicedCheeseNode = AddGraphNode(slicedCheese, "SLICED CHEESE", "CUTTING", new Vector2(40f, 310f));
+        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "FREEZER", new Vector2(250f, 500f));
+        var slicedCheeseNode = AddGraphNode(slicedCheese, "SLICED CHEESE", "CUTTING", new Vector2(250f, 310f));
         ConnectGraphNodes(rawCheeseNode, slicedCheeseNode, "SLICE");
         var cheesePatty = AddGraphNode(cheeseRecipe != null ? cheeseRecipe.output : null,
-            "CHEESE PATTY", "ASSEMBLY", new Vector2(-100f, 100f), true);
+            "CHEESE PATTY", "ASSEMBLY", new Vector2(100f, 100f), true);
         ConnectGraphNodes(cookedPatty, cheesePatty);
         ConnectGraphNodes(slicedCheeseNode, cheesePatty, "ASSEMBLE");
 
         var cheeseburger = AddGraphNode(menu.cheeseburgerItem, "CHEESEBURGER", "ASSEMBLY",
-            new Vector2(-245f, -120f), true);
+            new Vector2(-25f, -120f), true);
         ConnectGraphNodes(cheesePatty, cheeseburger);
         ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE");
 
-        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 100f));
-        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(330f, -80f));
-        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -260f));
-        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(40f, -480f), true);
+        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(250f, -280f));
+        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(250f, -460f));
+        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(250f, -640f));
+        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(250f, -820f), true);
         ConnectGraphNodes(baconSlab, cutBacon, "CUT"); ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
         ConnectGraphNodes(cheesePatty, cb);
         ConnectGraphNodes(cookedBacon, cb);
         ConnectGraphNodes(bun, cb, "ASSEMBLE");
 
-        var lettuce = AddGraphNode(menu.lettuceIngredient, "LETTUCE", "FREEZER", new Vector2(-520f, -410f));
-        var slicedLettuce = AddGraphNode(menu.slicedLettuceIngredient, "LETTUCE SLICE", "CUTTING", new Vector2(-520f, -600f));
-        var tomato = AddGraphNode(menu.tomatoIngredient, "TOMATO", "FREEZER", new Vector2(-230f, -410f));
-        var slicedTomato = AddGraphNode(menu.slicedTomatoIngredient, "TOMATO SLICE", "CUTTING", new Vector2(-230f, -600f));
-        var veggieMix = AddGraphNode(menu.veggieMixIngredient, "VEGGIE MIX", "ASSEMBLY", new Vector2(-375f, -800f), true);
-        var classic = AddGraphNode(menu.clBurgerItem, "CLASSIC BURGER", "ASSEMBLY", new Vector2(-375f, -1030f), true);
+        var lettuce = AddGraphNode(menu.lettuceIngredient, "LETTUCE", "FREEZER", new Vector2(-250f, -410f));
+        var slicedLettuce = AddGraphNode(menu.slicedLettuceIngredient, "LETTUCE SLICE", "CUTTING", new Vector2(-250f, -600f));
+        var tomato = AddGraphNode(menu.tomatoIngredient, "TOMATO", "FREEZER", new Vector2(0f, -410f));
+        var slicedTomato = AddGraphNode(menu.slicedTomatoIngredient, "TOMATO SLICE", "CUTTING", new Vector2(0f, -600f));
+        var veggieMix = AddGraphNode(menu.veggieMixIngredient, "VEGGIE MIX", "ASSEMBLY", new Vector2(-125f, -800f), true);
+        var classic = AddGraphNode(menu.clBurgerItem, "CLASSIC BURGER", "ASSEMBLY", new Vector2(-125f, -1030f), true);
         ConnectGraphNodes(lettuce, slicedLettuce, "SLICE");
         ConnectGraphNodes(tomato, slicedTomato, "SLICE");
         ConnectGraphNodes(slicedLettuce, veggieMix);
@@ -499,44 +607,67 @@ public class IngredientsOrderUI : MonoBehaviour
         RectTransform rt = (RectTransform)node.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(220f, 92f);
+        rt.sizeDelta = new Vector2(220f, 124f);
         rt.anchoredPosition = position;
-        node.GetComponent<Image>().color = locked
-            ? new Color(0.11f, 0.12f, 0.16f, 1f)
-            : final ? new Color(0.18f, 0.43f, 0.34f, 1f)
-            : new Color(0.15f, 0.17f, 0.22f, 1f);
+        node.GetComponent<Image>().color = locked ? GameUITheme.Backdrop
+            : final ? GameUITheme.Positive : GameUITheme.Panel;
 
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage));
         previewGo.transform.SetParent(node.transform, false);
         RectTransform previewRt = (RectTransform)previewGo.transform;
         previewRt.anchorMin = new Vector2(0f, 0f);
         previewRt.anchorMax = new Vector2(0f, 1f);
-        previewRt.offsetMin = new Vector2(8f, 8f);
-        previewRt.offsetMax = new Vector2(80f, -8f);
+        previewRt.offsetMin = new Vector2(8f, 10f);
+        previewRt.offsetMax = new Vector2(80f, -10f);
         RawImage preview = previewGo.GetComponent<RawImage>();
-        if (item != null) preview.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
-        preview.color = item == null ? Color.clear
-            : locked ? new Color(0.58f, 0.61f, 0.67f, 0.55f) : Color.white;
+        if (item != null && !locked)
+            preview.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
+        preview.color = item == null || locked ? Color.clear : Color.white;
         preview.raycastTarget = false;
+        if (locked)
+        {
+            RectTransform lockRect = CreateLockIcon(node.transform, "LockedIndicator", GameUITheme.Accent);
+            LayoutElement lockLayout = lockRect.GetComponent<LayoutElement>();
+            if (lockLayout != null) lockLayout.ignoreLayout = true;
+            lockRect.anchorMin = lockRect.anchorMax = new Vector2(0f, 0.5f);
+            lockRect.anchoredPosition = new Vector2(44f, 0f);
+        }
 
         var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
         labelGo.transform.SetParent(node.transform, false);
         RectTransform labelRt = (RectTransform)labelGo.transform;
         labelRt.anchorMin = Vector2.zero;
         labelRt.anchorMax = Vector2.one;
-        labelRt.offsetMin = new Vector2(88f, 8f);
+        labelRt.offsetMin = new Vector2(84f, 8f);
         labelRt.offsetMax = new Vector2(-8f, -8f);
         TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
-        string display = item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback;
-        label.text = "<b>" + display + "</b>\n<size=70%><color=#91A4C3>" + station + "</color></size>"
-            + (locked && unlockMilestone > 0
-                ? "\n<size=68%><color=#F1C66D>LOCKED · MILESTONE " + unlockMilestone + "</color></size>" : "");
-        label.fontSize = locked ? 13f : 15f;
-        label.color = locked ? new Color(0.68f, 0.7f, 0.74f, 1f) : Color.white;
-        label.alignment = TextAlignmentOptions.MidlineLeft;
+        string display = locked ? "Locked Item"
+            : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : FormatGraphLabel(fallback);
+        label.text = "<b>" + display + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(station) + "</color>"
+            + (locked ? "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>" : "");
+        label.fontSize = 14f;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 10.5f;
+        label.fontSizeMax = 14f;
+        label.textWrappingMode = TextWrappingModes.Normal;
+        label.overflowMode = TextOverflowModes.Overflow;
+        label.color = GameUITheme.TextPrimary;
+        label.alignment = TextAlignmentOptions.Center;
         label.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
         return rt;
+    }
+
+    static string FormatGraphLabel(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+        string[] words = value.ToLowerInvariant().Split(' ');
+        for (int i = 0; i < words.Length; i++)
+        {
+            if (words[i].Length == 0) continue;
+            words[i] = char.ToUpperInvariant(words[i][0]) + words[i].Substring(1);
+        }
+        return string.Join(" ", words);
     }
 
     void ConnectGraphNodes(RectTransform from, RectTransform to, string action = null)
@@ -550,20 +681,34 @@ public class IngredientsOrderUI : MonoBehaviour
         CreateGraphLine(new Vector2(end.x, middleY), new Vector2(end.x, end.y));
         if (!string.IsNullOrWhiteSpace(action))
         {
-            var textGo = new GameObject("Edge_" + action, typeof(RectTransform), typeof(TextMeshProUGUI));
-            textGo.transform.SetParent(recipeChartRoot, false);
-            RectTransform rt = (RectTransform)textGo.transform;
+            var labelGo = new GameObject("Edge_" + action, typeof(RectTransform), typeof(Image));
+            labelGo.transform.SetParent(recipeChartRoot, false);
+            RectTransform rt = (RectTransform)labelGo.transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(100f, 24f);
-            rt.anchoredPosition = new Vector2((start.x + end.x) * 0.5f, middleY + 14f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(96f, 24f);
+            rt.anchoredPosition = new Vector2((start.x + end.x) * 0.5f, middleY);
+            Image backing = labelGo.GetComponent<Image>();
+            backing.color = GameUITheme.Charcoal;
+            backing.raycastTarget = false;
+
+            var textGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            textGo.transform.SetParent(labelGo.transform, false);
+            RectTransform textRect = (RectTransform)textGo.transform;
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(2f, 0f);
+            textRect.offsetMax = new Vector2(-2f, 0f);
             TextMeshProUGUI text = textGo.GetComponent<TextMeshProUGUI>();
-            text.text = action;
-            text.fontSize = 10f;
+            text.text = FormatGraphLabel(action);
+            text.fontSize = 14f;
             text.fontStyle = FontStyles.Bold;
-            text.color = new Color(0.45f, 0.9f, 0.8f, 1f);
+            text.color = GameUITheme.PositiveAccent;
             text.alignment = TextAlignmentOptions.Center;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.overflowMode = TextOverflowModes.Overflow;
             text.raycastTarget = false;
-            rt.SetAsFirstSibling();
+            rt.SetAsLastSibling();
         }
     }
 
@@ -578,7 +723,7 @@ public class IngredientsOrderUI : MonoBehaviour
         rt.sizeDelta = new Vector2(Mathf.Max(3f, delta.magnitude), 3f);
         rt.anchoredPosition = (a + b) * 0.5f;
         rt.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
-        line.GetComponent<Image>().color = new Color(0.38f, 0.68f, 0.72f, 0.9f);
+        line.GetComponent<Image>().color = GameUITheme.PositiveAccent;
         line.GetComponent<Image>().raycastTarget = false;
         rt.SetAsFirstSibling();
     }
@@ -613,16 +758,20 @@ public class IngredientsOrderUI : MonoBehaviour
     void AddTreeNode(ItemDefinition item, string fallback, string subtitle, bool final,
         Transform parentOverride = null, float width = 500f)
     {
+        int unlockMilestone = item != null && recipeChartMenu != null
+            ? Mathf.Max(recipeChartMenu.GetMenuItemUnlockMilestone(item),
+                recipeChartMenu.GetIngredientUnlockMilestone(item)) : 0;
+        bool locked = item != null && recipeChartMenu != null
+            && (!recipeChartMenu.IsMenuItemUnlocked(item) || !recipeChartMenu.IsIngredientUnlocked(item));
         var node = new GameObject("Node_" + fallback, typeof(RectTransform), typeof(LayoutElement),
             typeof(Image), typeof(HorizontalLayoutGroup));
         node.transform.SetParent(parentOverride != null ? parentOverride : recipeChartRoot, false);
         var le = node.GetComponent<LayoutElement>();
         le.preferredWidth = width;
         le.minWidth = width;
-        le.preferredHeight = 88f;
-        node.GetComponent<Image>().color = final
-            ? new Color(0.20f, 0.42f, 0.34f, 1f)
-            : new Color(0.16f, 0.18f, 0.23f, 1f);
+        le.preferredHeight = 116f;
+        node.GetComponent<Image>().color = locked ? GameUITheme.Backdrop
+            : final ? GameUITheme.Positive : GameUITheme.Panel;
         var layout = node.GetComponent<HorizontalLayoutGroup>();
         layout.padding = new RectOffset(10, 14, 8, 8);
         layout.spacing = 12f;
@@ -636,20 +785,35 @@ public class IngredientsOrderUI : MonoBehaviour
         previewGo.GetComponent<LayoutElement>().preferredWidth = 70f;
         previewGo.GetComponent<LayoutElement>().preferredHeight = 70f;
         RawImage preview = previewGo.GetComponent<RawImage>();
-        if (item != null)
+        if (item != null && !locked)
             preview.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
-        preview.color = item != null ? Color.white : new Color(1f, 1f, 1f, 0f);
+        preview.color = item != null && !locked ? Color.white : Color.clear;
         preview.raycastTarget = false;
+        if (locked)
+        {
+            RectTransform lockRect = CreateLockIcon(node.transform, "LockedIndicator", GameUITheme.Accent);
+            LayoutElement lockLayout = lockRect.GetComponent<LayoutElement>();
+            if (lockLayout != null) lockLayout.ignoreLayout = true;
+            lockRect.anchorMin = lockRect.anchorMax = new Vector2(0f, 0.5f);
+            lockRect.anchoredPosition = new Vector2(48f, 0f);
+        }
 
         var textGo = new GameObject("Label", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         textGo.transform.SetParent(node.transform, false);
         textGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
         TextMeshProUGUI text = textGo.GetComponent<TextMeshProUGUI>();
-        text.text = "<b>" + (item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback)
-            + "</b>\n<size=75%><color=#AFC0D8>" + subtitle + "</color></size>";
-        text.fontSize = 17f;
-        text.alignment = TextAlignmentOptions.MidlineLeft;
-        text.color = Color.white;
+        text.text = "<b>" + (locked ? "Locked Item"
+                : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback)
+            + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(subtitle) + "</color>"
+            + (locked ? "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>" : "");
+        text.fontSize = 14f;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = 10.5f;
+        text.fontSizeMax = 14f;
+        text.textWrappingMode = TextWrappingModes.Normal;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = GameUITheme.TextPrimary;
         text.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
     }
@@ -660,10 +824,8 @@ public class IngredientsOrderUI : MonoBehaviour
         go.transform.SetParent(recipeChartRoot, false);
         go.GetComponent<LayoutElement>().preferredHeight = string.IsNullOrWhiteSpace(action) ? 30f : 42f;
         TextMeshProUGUI arrow = go.GetComponent<TextMeshProUGUI>();
-        arrow.text = string.IsNullOrWhiteSpace(action)
-            ? "▼"
-            : "<size=55%>" + action + "</size>\n▼";
-        arrow.fontSize = 20f;
+        arrow.text = string.IsNullOrWhiteSpace(action) ? "▼" : FormatGraphLabel(action) + "\n▼";
+        arrow.fontSize = string.IsNullOrWhiteSpace(action) ? 20f : 14f;
         arrow.fontStyle = FontStyles.Bold;
         arrow.color = GameUITheme.Accent;
         arrow.alignment = TextAlignmentOptions.Center;
@@ -722,7 +884,7 @@ public class IngredientsOrderUI : MonoBehaviour
         tmp.text = label;
         tmp.fontSize = 17;
         tmp.fontStyle = FontStyles.Bold;
-        tmp.color = new Color(1f, 0.82f, 0.38f, 1f);
+        tmp.color = GameUITheme.Accent;
         tmp.alignment = TextAlignmentOptions.BottomLeft;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
     }
@@ -730,14 +892,14 @@ public class IngredientsOrderUI : MonoBehaviour
     void CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item)
     {
         const float collapsedHeight = 62f;
-        const float expandedHeight = 154f;
+        const float expandedHeight = 190f;
 
         var row = new GameObject("Sell_" + item.name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
         row.transform.SetParent(listContainer, false);
         var le = row.AddComponent<LayoutElement>();
         le.minHeight = collapsedHeight;
         le.preferredHeight = collapsedHeight;
-        row.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
+        row.GetComponent<Image>().color = GameUITheme.Surface;
 
         var rowLayout = row.GetComponent<VerticalLayoutGroup>();
         rowLayout.padding = new RectOffset(8, 8, 5, 5);
@@ -765,6 +927,9 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childForceExpandWidth = false;
         layout.childForceExpandHeight = false;
 
+        int unlockMilestone = menu.GetMenuItemUnlockMilestone(item);
+        bool itemUnlocked = menu.IsMenuItemUnlocked(item);
+
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         previewGo.transform.SetParent(header.transform, false);
         var previewLe = previewGo.GetComponent<LayoutElement>();
@@ -774,8 +939,13 @@ public class IngredientsOrderUI : MonoBehaviour
         previewLe.preferredHeight = 44;
         var preview = previewGo.GetComponent<RawImage>();
         preview.texture = ItemPreviewThumbnails.GetPrefab(GetPreviewPrefab(menu, item), item.itemName);
-        preview.color = Color.white;
+        preview.color = itemUnlocked ? Color.white : Color.clear;
         preview.raycastTarget = false;
+        RectTransform lockRect = CreateLockIcon(previewGo.transform, "LockedIndicator", GameUITheme.Accent);
+        lockRect.anchorMin = lockRect.anchorMax = new Vector2(0.5f, 0.5f);
+        lockRect.anchoredPosition = Vector2.zero;
+        CanvasGroup lockVisual = lockRect.GetComponent<CanvasGroup>();
+        lockVisual.alpha = itemUnlocked ? 0f : 1f;
 
         var nameGo = new GameObject("Name", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         nameGo.transform.SetParent(header.transform, false);
@@ -784,19 +954,18 @@ public class IngredientsOrderUI : MonoBehaviour
         nameLe.minHeight = 44f;
         nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
-        int unlockMilestone = menu.GetMenuItemUnlockMilestone(item);
-        bool itemUnlocked = menu.IsMenuItemUnlocked(item);
-        nameText.text = inventory.GetDisplayName(item)
-            + (!itemUnlocked && unlockMilestone > 0
-                ? $"  <color=#F1C66D>LOCKED · MILESTONE {unlockMilestone}</color>" : "");
-        nameText.fontSize = 16;
+        nameText.text = itemUnlocked ? inventory.GetDisplayName(item)
+            : inventory.GetDisplayName(item) + "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>";
+        nameText.fontSize = 14;
         nameText.fontStyle = FontStyles.Bold;
-        nameText.color = itemUnlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+        nameText.color = itemUnlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
         row.GetComponent<Image>().color = itemUnlocked
-            ? new Color(0.18f, 0.19f, 0.24f, 0.98f)
-            : new Color(0.11f, 0.12f, 0.16f, 0.98f);
-        preview.color = itemUnlocked ? Color.white : new Color(0.58f, 0.61f, 0.67f, 0.62f);
+            ? GameUITheme.Surface
+            : GameUITheme.Backdrop;
+        preview.color = itemUnlocked ? Color.white : Color.clear;
         nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        nameText.textWrappingMode = TextWrappingModes.Normal;
+        nameText.overflowMode = TextOverflowModes.Overflow;
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
@@ -808,19 +977,24 @@ public class IngredientsOrderUI : MonoBehaviour
         var targetGo = new GameObject("ProductionTarget", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         targetGo.transform.SetParent(header.transform, false);
         var targetLe = targetGo.GetComponent<LayoutElement>();
-        targetLe.minWidth = 66f;
-        targetLe.preferredWidth = 66f;
+        targetLe.minWidth = 72f;
+        targetLe.preferredWidth = 72f;
         var targetLabel = targetGo.GetComponent<TextMeshProUGUI>();
-        targetLabel.fontSize = 11f;
+        targetLabel.fontSize = 13f;
+        targetLabel.enableAutoSizing = true;
+        targetLabel.fontSizeMin = 10f;
+        targetLabel.fontSizeMax = 13f;
         targetLabel.fontStyle = FontStyles.Bold;
-        targetLabel.color = new Color(0.85f, 0.9f, 1f, 1f);
+        targetLabel.color = GameUITheme.TextSecondary;
         targetLabel.alignment = TextAlignmentOptions.Center;
+        targetLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        targetLabel.overflowMode = TextOverflowModes.Overflow;
         targetLabel.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) targetLabel.font = TMP_Settings.defaultFontAsset;
-        System.Action refreshTarget = () => targetLabel.text = "TARGET " +
+        System.Action refreshTarget = () => targetLabel.text = "Target " +
             (production != null ? production.GetProductionTarget(captured) : 0);
         Button targetPlus = CreateCartButton(header.transform, "TargetPlus", "+", 28f,
-            new Color(0.27f, 0.62f, 0.4f, 1f), out _);
+            GameUITheme.Positive, out _);
         targetMinus.interactable = itemUnlocked;
         targetPlus.interactable = itemUnlocked;
         targetMinus.onClick.AddListener(() =>
@@ -858,11 +1032,11 @@ public class IngredientsOrderUI : MonoBehaviour
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         workflowGo.transform.SetParent(row.transform, false);
-        workflowGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.17f, 0.96f);
+        workflowGo.GetComponent<Image>().color = GameUITheme.Charcoal;
         workflowGo.GetComponent<Image>().raycastTarget = false;
         var workflowLe = workflowGo.GetComponent<LayoutElement>();
-        workflowLe.minHeight = 83f;
-        workflowLe.preferredHeight = 83f;
+        workflowLe.minHeight = 116f;
+        workflowLe.preferredHeight = 116f;
 
         var workflowTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         workflowTextGo.transform.SetParent(workflowGo.transform, false);
@@ -872,9 +1046,11 @@ public class IngredientsOrderUI : MonoBehaviour
         workflowRt.offsetMin = new Vector2(10f, 6f);
         workflowRt.offsetMax = new Vector2(-10f, -6f);
         var workflowText = workflowTextGo.GetComponent<TextMeshProUGUI>();
-        workflowText.text = GetWorkflowDescription(menu, item);
-        workflowText.fontSize = 11.5f;
-        workflowText.color = new Color(0.78f, 0.84f, 0.94f, 1f);
+        workflowText.text = HasLockedIngredient() || !itemUnlocked
+            ? "Recipe details unlock when the required ingredients are available."
+            : GetWorkflowDescription(menu, item);
+        workflowText.fontSize = 14f;
+        workflowText.color = GameUITheme.TextSecondary;
         workflowText.alignment = TextAlignmentOptions.MidlineLeft;
         workflowText.textWrappingMode = TextWrappingModes.Normal;
         workflowText.overflowMode = TextOverflowModes.Ellipsis;
@@ -891,7 +1067,9 @@ public class IngredientsOrderUI : MonoBehaviour
         MilestoneLockedMenuRow rowState = row.AddComponent<MilestoneLockedMenuRow>();
         rowState.item = item;
         rowState.label = nameText;
+        rowState.workflowText = workflowText;
         rowState.preview = preview;
+        rowState.lockVisual = lockVisual;
         rowState.rowBackground = row.GetComponent<Image>();
         rowState.toggle = toggle;
         rowState.targetMinus = targetMinus;
@@ -1026,7 +1204,7 @@ public class IngredientsOrderUI : MonoBehaviour
         bgRect.anchorMax = new Vector2(0.5f, 0.5f);
         bgRect.sizeDelta = new Vector2(30f, 30f);
         var background = backgroundGo.GetComponent<Image>();
-        background.color = new Color(0.1f, 0.11f, 0.14f, 1f);
+        background.color = GameUITheme.Charcoal;
 
         var checkGo = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
         checkGo.transform.SetParent(backgroundGo.transform, false);
@@ -1036,7 +1214,7 @@ public class IngredientsOrderUI : MonoBehaviour
         checkRect.offsetMin = Vector2.zero;
         checkRect.offsetMax = Vector2.zero;
         var check = checkGo.GetComponent<Image>();
-        check.color = new Color(0.32f, 0.9f, 0.42f, 1f);
+        check.color = GameUITheme.PositiveAccent;
 
         var toggle = toggleGo.GetComponent<Toggle>();
         toggle.targetGraphic = background;
@@ -1052,8 +1230,88 @@ public class IngredientsOrderUI : MonoBehaviour
         var tmp = go.AddComponent<TextMeshProUGUI>();
         tmp.text = message;
         tmp.fontSize = 14;
-        tmp.color = new Color(1f, 0.7f, 0.5f, 1f);
+        tmp.color = GameUITheme.Peach;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+    }
+
+    void CreateMilestoneHeader(int milestone)
+    {
+        string label = milestone > 0 ? "Milestone " + milestone : "Available Now";
+        var go = new GameObject("IngredientGroup_Milestone" + milestone, typeof(RectTransform));
+        go.transform.SetParent(listContainer, false);
+        var layout = go.AddComponent<LayoutElement>();
+        layout.minHeight = 28f;
+        layout.preferredHeight = 28f;
+        var text = go.AddComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 15f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = GameUITheme.Accent;
+        text.alignment = TextAlignmentOptions.BottomLeft;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Overflow;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+    }
+
+    void CreateMenuMilestoneHeader(int milestone)
+    {
+        string label = milestone > 0 ? "Milestone " + milestone : "Available Now";
+        var go = new GameObject("MenuGroup_Milestone" + milestone, typeof(RectTransform));
+        go.transform.SetParent(listContainer, false);
+        var layout = go.AddComponent<LayoutElement>();
+        layout.minHeight = 28f;
+        layout.preferredHeight = 28f;
+        var text = go.AddComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 15f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = GameUITheme.Accent;
+        text.alignment = TextAlignmentOptions.BottomLeft;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Overflow;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+    }
+
+    static RectTransform CreateLockIcon(Transform parent, string objectName, Color color)
+    {
+        var root = new GameObject(objectName, typeof(RectTransform), typeof(LayoutElement), typeof(CanvasGroup));
+        root.transform.SetParent(parent, false);
+        var rootRect = (RectTransform)root.transform;
+        rootRect.sizeDelta = new Vector2(28f, 32f);
+        var layout = root.GetComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = 28f;
+        layout.minHeight = layout.preferredHeight = 32f;
+        root.GetComponent<CanvasGroup>().blocksRaycasts = false;
+        root.GetComponent<CanvasGroup>().interactable = false;
+
+        CreateLockPiece(root.transform, "ShackleTop", new Vector2(14f, 3f), new Vector2(0f, 9f), color);
+        CreateLockPiece(root.transform, "ShackleLeft", new Vector2(3f, 9f), new Vector2(-5.5f, 4f), color);
+        CreateLockPiece(root.transform, "ShackleRight", new Vector2(3f, 9f), new Vector2(5.5f, 4f), color);
+        CreateLockPiece(root.transform, "LockBody", new Vector2(22f, 15f), new Vector2(0f, -5f), color);
+        CreateLockPiece(root.transform, "Keyhole", new Vector2(3f, 7f), new Vector2(0f, -5f), GameUITheme.Charcoal);
+        return rootRect;
+    }
+
+    static void CreateLockPiece(Transform parent, string objectName, Vector2 size, Vector2 position, Color color)
+    {
+        var piece = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+        piece.transform.SetParent(parent, false);
+        RectTransform rect = (RectTransform)piece.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = position;
+        Image image = piece.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+    }
+
+    bool HasLockedIngredient()
+    {
+        if (inventory == null) return false;
+        foreach (ItemDefinition ingredient in inventory.GetIngredientCatalogItems())
+            if (ingredient != null && !inventory.IsOrderItemUnlocked(ingredient)) return true;
+        return false;
     }
 
     void CreateOrderRow(ItemDefinition item)
@@ -1061,10 +1319,10 @@ public class IngredientsOrderUI : MonoBehaviour
         var row = new GameObject("Order_" + item.name, typeof(RectTransform));
         row.transform.SetParent(listContainer, false);
         var le = row.AddComponent<LayoutElement>();
-        le.minHeight = 56;
-        le.preferredHeight = 56;
+        le.minHeight = 68;
+        le.preferredHeight = 68;
         var img = row.AddComponent<Image>();
-        img.color = new Color(0.22f, 0.22f, 0.28f, 0.95f);
+        img.color = GameUITheme.Surface;
 
         var hlg = row.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(10, 10, 6, 6);
@@ -1074,21 +1332,25 @@ public class IngredientsOrderUI : MonoBehaviour
         hlg.childForceExpandWidth = false;
         hlg.childControlHeight = true;
 
+        var lockIcon = CreateLockIcon(row.transform, "LockIndicator", GameUITheme.Accent);
+        var lockVisual = lockIcon.GetComponent<CanvasGroup>();
+        if (lockVisual != null) lockVisual.alpha = 0f;
+
         var infoGo = new GameObject("Info", typeof(RectTransform));
         infoGo.transform.SetParent(row.transform, false);
         infoGo.AddComponent<LayoutElement>().flexibleWidth = 1;
         var infoTmp = infoGo.AddComponent<TextMeshProUGUI>();
         infoTmp.fontSize = 14;
-        infoTmp.color = Color.white;
+        infoTmp.color = GameUITheme.TextPrimary;
         infoTmp.alignment = TextAlignmentOptions.Left;
         if (TMP_Settings.defaultFontAsset != null) infoTmp.font = TMP_Settings.defaultFontAsset;
 
         var stockGo = new GameObject("Stock", typeof(RectTransform));
         stockGo.transform.SetParent(row.transform, false);
-        stockGo.AddComponent<LayoutElement>().minWidth = 70;
+        stockGo.AddComponent<LayoutElement>().minWidth = 78;
         var stockTmp = stockGo.AddComponent<TextMeshProUGUI>();
         stockTmp.fontSize = 14;
-        stockTmp.color = new Color(0.85f, 0.9f, 1f, 1f);
+        stockTmp.color = GameUITheme.TextSecondary;
         stockTmp.alignment = TextAlignmentOptions.Center;
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
@@ -1108,7 +1370,7 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) countTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI addLabel;
-        Button addButton = CreateCartButton(row.transform, "Add", "+", 44f, new Color(0.27f, 0.62f, 0.4f, 1f), out addLabel);
+        Button addButton = CreateCartButton(row.transform, "Add", "+", 44f, GameUITheme.Positive, out addLabel);
 
         var captured = item;
         removeButton.onClick.AddListener(() =>
@@ -1129,6 +1391,7 @@ public class IngredientsOrderUI : MonoBehaviour
         binder.removeButton = removeButton;
         binder.addButton = addButton;
         binder.cartCountText = countTmp;
+        binder.lockVisual = lockVisual;
     }
 
     static Button CreateCartButton(Transform parent, string objectName, string label, float width, Color color, out TextMeshProUGUI text)
@@ -1138,7 +1401,7 @@ public class IngredientsOrderUI : MonoBehaviour
         var le = go.GetComponent<LayoutElement>();
         le.minWidth = width;
         le.preferredWidth = width;
-        le.minHeight = 38f;
+        le.minHeight = 42f;
         go.GetComponent<Image>().color = color;
 
         var textGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -1154,6 +1417,8 @@ public class IngredientsOrderUI : MonoBehaviour
         text.fontStyle = FontStyles.Bold;
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.white;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Ellipsis;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         return go.GetComponent<Button>();
     }
@@ -1166,7 +1431,7 @@ public class IngredientsOrderUI : MonoBehaviour
         var statusLe = statusGo.GetComponent<LayoutElement>();
         statusLe.minHeight = 38f;
         statusLe.preferredHeight = 38f;
-        statusGo.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
+        statusGo.GetComponent<Image>().color = GameUITheme.Panel;
         var statusTextGo = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         statusTextGo.transform.SetParent(statusGo.transform, false);
         var statusTextRt = (RectTransform)statusTextGo.transform;
@@ -1175,18 +1440,18 @@ public class IngredientsOrderUI : MonoBehaviour
         statusTextRt.offsetMin = new Vector2(6f, 0f);
         statusTextRt.offsetMax = new Vector2(-6f, 0f);
         deliveryStatusText = statusTextGo.GetComponent<TextMeshProUGUI>();
-        deliveryStatusText.fontSize = 13f;
+        deliveryStatusText.fontSize = 14f;
         deliveryStatusText.alignment = TextAlignmentOptions.Center;
-        deliveryStatusText.color = new Color(0.85f, 0.9f, 1f, 1f);
+        deliveryStatusText.color = GameUITheme.TextSecondary;
         if (TMP_Settings.defaultFontAsset != null) deliveryStatusText.font = TMP_Settings.defaultFontAsset;
 
         var footer = new GameObject("CartCheckout", typeof(RectTransform), typeof(LayoutElement), typeof(Image), typeof(HorizontalLayoutGroup));
         footer.transform.SetParent(transform, false);
-        PinFooter((RectTransform)footer.transform, 56f, 52f);
+        PinFooter((RectTransform)footer.transform, 56f, 58f);
         var footerLe = footer.GetComponent<LayoutElement>();
-        footerLe.minHeight = 52f;
-        footerLe.preferredHeight = 52f;
-        footer.GetComponent<Image>().color = new Color(0.18f, 0.19f, 0.24f, 0.98f);
+        footerLe.minHeight = 58f;
+        footerLe.preferredHeight = 58f;
+        footer.GetComponent<Image>().color = GameUITheme.Surface;
         var layout = footer.GetComponent<HorizontalLayoutGroup>();
         layout.padding = new RectOffset(10, 10, 7, 7);
         layout.spacing = 8f;
@@ -1199,14 +1464,14 @@ public class IngredientsOrderUI : MonoBehaviour
         summaryGo.transform.SetParent(footer.transform, false);
         summaryGo.GetComponent<LayoutElement>().flexibleWidth = 1f;
         cartSummaryText = summaryGo.GetComponent<TextMeshProUGUI>();
-        cartSummaryText.fontSize = 13f;
+        cartSummaryText.fontSize = 14f;
         cartSummaryText.alignment = TextAlignmentOptions.Left;
-        cartSummaryText.color = Color.white;
+        cartSummaryText.color = GameUITheme.TextPrimary;
         if (TMP_Settings.defaultFontAsset != null) cartSummaryText.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI addAllLabel;
-        addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All\n(+1 each)", 90, new Color(0.27f,0.48f,0.36f), out addAllLabel);
-        addAllLabel.fontSize = 12;
+        addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All\n(+1 each)", 96, GameUITheme.Positive, out addAllLabel);
+        addAllLabel.fontSize = 14;
         addAllButton.onClick.AddListener(() =>
         {
             if (inventory == null || (IngredientDeliveryService.Instance != null && IngredientDeliveryService.Instance.HasPending)) return;
@@ -1217,19 +1482,19 @@ public class IngredientsOrderUI : MonoBehaviour
         });
         TextMeshProUGUI clearLabel;
         clearCartButton = CreateCartButton(footer.transform, "ClearCart", "Clear", 62f, GameUITheme.Danger, out clearLabel);
-        clearLabel.fontSize = 12f;
+        clearLabel.fontSize = 14f;
         clearCartButton.onClick.AddListener(() =>
         {
             cartPacks.Clear();
             RefreshAll();
         });
 
-        placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, new Color(0.27f, 0.62f, 0.4f, 1f), out placeOrderLabel);
-        placeOrderLabel.fontSize = 12f;
+        placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, GameUITheme.Positive, out placeOrderLabel);
+        placeOrderLabel.fontSize = 14f;
         placeOrderButton.onClick.AddListener(SubmitCart);
 
-        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 112f, new Color(0.85f, 0.53f, 0.16f, 1f), out expressOrderLabel);
-        expressOrderLabel.fontSize = 12f;
+        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 112f, GameUITheme.Accent, out expressOrderLabel);
+        expressOrderLabel.fontSize = 14f;
         expressOrderButton.onClick.AddListener(SubmitExpressCart);
         clearCartButton.transform.SetAsLastSibling();
     }
@@ -1279,6 +1544,7 @@ public class IngredientsOrderUI : MonoBehaviour
             moneyHintText.text = money != null ? ("Money: $" + money.CurrentMoney) : "Money: —";
 
         if (listContainer == null || inventory == null) return;
+        bool lockedIngredients = HasLockedIngredient();
         foreach (GameObject child in menuRows)
         {
             if (child == null) continue;
@@ -1288,20 +1554,26 @@ public class IngredientsOrderUI : MonoBehaviour
             bool unlocked = inventory.orderConfig.IsMenuItemUnlocked(row.item);
             if (row.label != null)
             {
-                row.label.text = inventory.GetDisplayName(row.item)
-                    + (!unlocked && unlockMilestone > 0
-                        ? $"  <color=#F1C66D>LOCKED · MILESTONE {unlockMilestone}</color>" : "");
-                row.label.color = unlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+                row.label.text = unlocked ? inventory.GetDisplayName(row.item)
+                    : inventory.GetDisplayName(row.item) + "\n<color=#D8B365>Unlocks at Milestone "
+                        + unlockMilestone + "</color>";
+                row.label.color = unlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
             }
             if (row.rowBackground != null)
                 row.rowBackground.color = unlocked
-                    ? new Color(0.18f, 0.19f, 0.24f, 0.98f)
-                    : new Color(0.11f, 0.12f, 0.16f, 0.98f);
+                    ? GameUITheme.Surface : GameUITheme.Backdrop;
             if (row.preview != null)
-                row.preview.color = unlocked ? Color.white : new Color(0.58f, 0.61f, 0.67f, 0.62f);
+                row.preview.color = unlocked ? Color.white : Color.clear;
+            if (row.lockVisual != null) row.lockVisual.alpha = unlocked ? 0f : 1f;
+            if (row.workflowText != null)
+                row.workflowText.text = lockedIngredients || !unlocked
+                    ? "Recipe details unlock when the required ingredients are available."
+                    : GetWorkflowDescription(inventory.orderConfig, row.item);
             if (row.toggle != null) row.toggle.interactable = unlocked;
-            if (row.targetMinus != null) row.targetMinus.interactable = unlocked;
-            if (row.targetPlus != null) row.targetPlus.interactable = unlocked;
+            if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
+                toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
+            SetButtonState(row.targetMinus, unlocked, GameUITheme.Danger);
+            SetButtonState(row.targetPlus, unlocked, GameUITheme.Positive);
         }
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
@@ -1329,32 +1601,30 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.infoText != null)
             {
                 row.infoText.text = itemUnlocked
-                    ? name + "\n<size=85%>Pack of " + pack + "  |  $" + price + "</size>"
-                    : name + "\n<size=85%><color=#F1C66D>LOCKED · UNLOCKS IN MILESTONE "
-                        + unlockMilestone + "</color></size>";
-                row.infoText.color = itemUnlocked ? Color.white : new Color(0.68f, 0.7f, 0.74f, 1f);
+                    ? name + "\nPack of " + pack + "  |  $" + price
+                    : "Locked Ingredient\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>";
+                row.infoText.color = itemUnlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
             }
             Image rowImage = child.GetComponent<Image>();
             if (rowImage != null)
-                rowImage.color = itemUnlocked
-                    ? new Color(0.22f, 0.22f, 0.28f, 0.95f)
-                    : new Color(0.12f, 0.13f, 0.17f, 0.95f);
+                rowImage.color = itemUnlocked ? GameUITheme.Surface : GameUITheme.Backdrop;
+            if (row.lockVisual != null) row.lockVisual.alpha = itemUnlocked ? 0f : 1f;
             if (row.stockText != null)
             {
-                row.stockText.text = !itemUnlocked ? "LOCKED" : incoming > 0
-                    ? "Stock\n" + stock + "\n<size=80%>+" + incoming + " incoming</size>"
+                row.stockText.text = !itemUnlocked ? "Locked" : incoming > 0
+                    ? "Stock\n" + stock + "\n+" + incoming + " incoming"
                     : "Stock\n" + stock;
-                row.stockText.color = itemUnlocked
-                    ? new Color(0.85f, 0.9f, 1f, 1f) : new Color(0.68f, 0.7f, 0.74f, 1f);
+                row.stockText.color = itemUnlocked ? GameUITheme.TextSecondary : GameUITheme.Accent;
             }
-            int selected = GetCartPacks(row.item);
+            if (!itemUnlocked) SetCartPacks(row.item, 0);
+            int selected = itemUnlocked ? GetCartPacks(row.item) : 0;
             cartPackCount += selected;
             cartTotal += selected * price;
             if (!itemUnlocked && selected > 0 && cartLockMilestone == 0)
                 cartLockMilestone = unlockMilestone;
             if (row.cartCountText != null) row.cartCountText.text = "x" + selected;
-            if (row.removeButton != null) row.removeButton.interactable = !deliveryActive && selected > 0;
-            if (row.addButton != null) row.addButton.interactable = !deliveryActive && itemUnlocked;
+            SetButtonState(row.removeButton, !deliveryActive && itemUnlocked && selected > 0, GameUITheme.Danger);
+            SetButtonState(row.addButton, !deliveryActive && itemUnlocked, GameUITheme.Positive);
         }
 
 
@@ -1368,8 +1638,7 @@ public class IngredientsOrderUI : MonoBehaviour
                 ? "Delivery in progress  |  Arrives " + IngredientDeliveryService.FormatCountdown(Mathf.Max(0f, remaining)) + "  |  New orders locked"
                 : "Build your cart, then place one combined delivery order.";
             deliveryStatusText.color = deliveryActive
-                ? new Color(1f, 0.78f, 0.35f, 1f)
-                : new Color(0.75f, 0.84f, 0.96f, 1f);
+                ? GameUITheme.Accent : GameUITheme.TextSecondary;
         }
         if (cartSummaryText != null)
             cartSummaryText.text = cartPackCount == 0 ? "Cart is empty" : "Cart: " + cartPackCount + " pack" + (cartPackCount == 1 ? "" : "s") + "  |  $" + cartTotal;
@@ -1380,16 +1649,25 @@ public class IngredientsOrderUI : MonoBehaviour
                 && cartLockMilestone == 0;
         if (placeOrderLabel != null)
             placeOrderLabel.text = deliveryActive ? "Delivery Active"
-                : cartLockMilestone > 0 ? "Unlock Milestone " + cartLockMilestone
+                : cartLockMilestone > 0 ? "Milestone " + cartLockMilestone
                 : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal;
         if (expressOrderButton != null)
             expressOrderButton.interactable = !deliveryActive && cartPackCount > 0 && expressAffordable
                 && cartLockMilestone == 0;
         if (expressOrderLabel != null)
-            expressOrderLabel.text = deliveryActive ? "Delivery Active"
-                : cartLockMilestone > 0 ? "Unlock Milestone " + cartLockMilestone
+            expressOrderLabel.text = deliveryActive ? "Delivering"
+                : cartLockMilestone > 0 ? "Milestone " + cartLockMilestone
                 : !expressAffordable && cartPackCount > 0 ? "Need $" + expressTotal
-                : "EXPRESS $" + expressTotal + "\nDispatch now (+$" + KitchenInventory.ExpressDeliveryFee + ")";
+                : "Express $" + expressTotal;
+    }
+
+    static void SetButtonState(Button button, bool interactable, Color activeColor)
+    {
+        if (button == null) return;
+        button.interactable = interactable;
+        Image image = button.GetComponent<Image>();
+        if (image != null)
+            image.color = interactable ? activeColor : GameUITheme.PanelSlate;
     }
 }
 
@@ -1402,13 +1680,16 @@ public class IngredientOrderRow : MonoBehaviour
     public Button removeButton;
     public Button addButton;
     public TextMeshProUGUI cartCountText;
+    public CanvasGroup lockVisual;
 }
 
 public sealed class MilestoneLockedMenuRow : MonoBehaviour
 {
     public ItemDefinition item;
     public TextMeshProUGUI label;
+    public TextMeshProUGUI workflowText;
     public RawImage preview;
+    public CanvasGroup lockVisual;
     public Image rowBackground;
     public Toggle toggle;
     public Button targetMinus;

@@ -8,10 +8,6 @@ using TMPro;
 /// </summary>
 public class ManagementScreenController : MonoBehaviour
 {
-    static readonly Color StaffTabActive = new Color(0.52f, 0.34f, 0.78f, 1f);
-    static readonly Color StaffTabIdle = new Color(0.25f, 0.19f, 0.36f, 1f);
-    static readonly Color DemandTabActive = new Color(0.12f, 0.66f, 0.60f, 1f);
-    static readonly Color DemandTabIdle = new Color(0.10f, 0.32f, 0.31f, 1f);
     static readonly KeyCode[] NumberRowTabKeys =
     {
         KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3,
@@ -64,6 +60,8 @@ public class ManagementScreenController : MonoBehaviour
             tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
         SelectTab(0);
         EnsureManagementModeController();
+        if (managementPanel != null)
+            GameUITheme.ApplyTo(managementPanel.transform);
     }
 
     void WireTabButtons()
@@ -249,21 +247,9 @@ public class ManagementScreenController : MonoBehaviour
             tabInfoUI.SetTab(tabPanels[selectedIndex]);
     }
 
-    static void ApplyBusinessTabColor(Button button, bool staff, bool selected)
+    static void ApplyBusinessTabColor(Button button, bool selected)
     {
-        if (button == null) return;
-        Color tint = staff
-            ? (selected ? StaffTabActive : StaffTabIdle)
-            : (selected ? DemandTabActive : DemandTabIdle);
-        var image = button.targetGraphic as Image;
-        if (image != null) image.color = tint;
-        var colors = button.colors;
-        colors.normalColor = tint;
-        colors.selectedColor = tint;
-        colors.highlightedColor = Color.Lerp(tint, Color.white, 0.12f);
-        colors.pressedColor = Color.Lerp(tint, Color.black, 0.12f);
-        colors.disabledColor = tint;
-        button.colors = colors;
+        HudTabColors.Apply(button, selected);
     }
 
     void EnsureStaffDemandTabs()
@@ -359,8 +345,8 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (workersInnerTab == null || customersInnerTab == null || tabPanels == null) return;
         int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
-        ApplyBusinessTabColor(workersInnerTab, true, selectedBusinessPanel == staffIndex);
-        ApplyBusinessTabColor(customersInnerTab, false, selectedBusinessPanel >= 0 && selectedBusinessPanel != staffIndex);
+        ApplyBusinessTabColor(workersInnerTab, selectedBusinessPanel == staffIndex);
+        ApplyBusinessTabColor(customersInnerTab, selectedBusinessPanel >= 0 && selectedBusinessPanel != staffIndex);
     }
 
     void Update()
@@ -430,6 +416,8 @@ public class ManagementScreenController : MonoBehaviour
 
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);
+
+        GameUITheme.ApplyTo(managementPanel.transform);
 
         if (pauseWhileOpen)
         {

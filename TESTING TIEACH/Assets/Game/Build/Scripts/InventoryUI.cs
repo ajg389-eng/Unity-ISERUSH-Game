@@ -625,21 +625,22 @@ public class InventoryUI : MonoBehaviour
                 displayPrice: inventory.GetPurchasePrice(active));
             card.SetDisplayName(family);
             bool mk2Locked = mk2 != null && !mk2Unlocked;
-            card.SetUnlockRequirement(shakeStationLocked
-                ? "Station unlocks at Milestone " + MilestoneFeatures.Mk2Stations
-                : mk2Locked ? "MK2 unlocks at Milestone " + MilestoneFeatures.Mk2Stations
+            bool lockedMk2Selected = active.stationMark == 2 && mk2Locked;
+            card.SetUnlockRequirement(lockedMk2Selected
+                ? "Unlocks at Milestone " + MilestoneFeatures.Mk2Stations
                 : null);
             card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
                 inventory.GetStationCapacity(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
                 inventory.GetCount(active), inventory.GetAcquiredCount(active));
             card.SetTutorialLocked(IsMilestoneStationLocked(active));
-            card.ConfigureMarkSelector(mk1 != null && !shakeStationLocked,
+            card.ConfigureMarkSelector(mk1 != null,
                 mk2 != null, active.stationMark, mark =>
             {
                 selected = mark == 2 ? mk2 : mk1;
                 if (selected != null) refresh();
-            }, mark2Locked: mk2 != null && !mk2Unlocked,
+            }, mark1Locked: shakeStationLocked,
+                mark2Locked: mk2 != null && !mk2Unlocked,
                 mark2UnlockMilestone: MilestoneFeatures.Mk2Stations);
         };
         refresh();

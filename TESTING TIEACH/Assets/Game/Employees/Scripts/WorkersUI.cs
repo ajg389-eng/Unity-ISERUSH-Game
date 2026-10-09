@@ -25,6 +25,9 @@ public class WorkersUI : MonoBehaviour
     bool layoutApplied;
     RectTransform flowPanel;
     Transform flowListRow;
+    Transform flowTabsContent;
+    Button deleteFlowButton;
+    ScrollRect flowTabsScroll;
     Transform stepRow;
     Transform workerRow;
     TMP_InputField flowNameInput;
@@ -353,7 +356,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV6") == null)
+        if (existing != null && existing.Find("LayoutV7") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -362,6 +365,7 @@ public class WorkersUI : MonoBehaviour
 
         if (flowPanel != null)
         {
+            BindFlowTabScroller(flowListRow);
             LayoutFlowPanel();
             return;
         }
@@ -370,6 +374,7 @@ public class WorkersUI : MonoBehaviour
         {
             flowPanel = existing;
             flowListRow = existing.Find("FlowListRow");
+            BindFlowTabScroller(flowListRow);
             stepRow = existing.Find("StepRow");
             workerRow = null;
             flowNameInput = existing.Find("FlowHeader/FlowName")?.GetComponent<TMP_InputField>()
@@ -396,7 +401,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV6", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV7", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -419,6 +424,7 @@ public class WorkersUI : MonoBehaviour
         BuildFlowHeader();
 
         flowListRow = MakeRow(flowPanel, "FlowListRow", 28);
+        BuildFlowTabScroller(flowListRow);
         // The route already appears in-world when the flow is selected. Repeating
         // every station connection here consumes most of the card without adding
         // another decision, so keep the panel focused on flow selection and economics.
@@ -438,7 +444,7 @@ public class WorkersUI : MonoBehaviour
         flowExpandButton = MakeChip(header, ">", 28f);
         flowExpandButton.gameObject.name = "ExpandFlow";
         flowExpandArrowLabel = flowExpandButton.GetComponentInChildren<TextMeshProUGUI>(true);
-        flowHeaderLabel = MakeLabel(header, "FLOW", 10,
+        flowHeaderLabel = MakeLabel(header, "Flow", 12,
             new Color(0.72f, 0.8f, 0.95f, 1f), 24);
         var headerLayout = flowHeaderLabel.GetComponent<LayoutElement>();
         if (headerLayout != null)
@@ -455,6 +461,66 @@ public class WorkersUI : MonoBehaviour
         WireFlowActionButtons();
         WireFlowExpandButton();
         UpdateFlowHeader();
+    }
+
+    void BuildFlowTabScroller(Transform row)
+    {
+        if (row == null) return;
+        var scrollGo = new GameObject("FlowTabsScroll", typeof(RectTransform),
+            typeof(Image), typeof(Mask), typeof(ScrollRect), typeof(LayoutElement));
+        scrollGo.transform.SetParent(row, false);
+        scrollGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.12f);
+        scrollGo.GetComponent<Mask>().showMaskGraphic = false;
+        LayoutElement scrollLayout = scrollGo.GetComponent<LayoutElement>();
+        scrollLayout.minWidth = 72f;
+        scrollLayout.flexibleWidth = 1f;
+        scrollLayout.minHeight = 26f;
+        scrollLayout.preferredHeight = 26f;
+
+        RectTransform viewport = (RectTransform)scrollGo.transform;
+        var content = new GameObject("FlowTabsContent", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport, false);
+        RectTransform contentRect = (RectTransform)content.transform;
+        contentRect.anchorMin = new Vector2(0f, 0f);
+        contentRect.anchorMax = new Vector2(0f, 1f);
+        contentRect.pivot = new Vector2(0f, 0.5f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = Vector2.zero;
+        HorizontalLayoutGroup contentLayout = content.GetComponent<HorizontalLayoutGroup>();
+        contentLayout.spacing = 4f;
+        contentLayout.childAlignment = TextAnchor.MiddleLeft;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = false;
+        contentLayout.childForceExpandHeight = true;
+        ContentSizeFitter contentFitter = content.GetComponent<ContentSizeFitter>();
+        contentFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        contentFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+        flowTabsScroll = scrollGo.GetComponent<ScrollRect>();
+        flowTabsScroll.content = contentRect;
+        flowTabsScroll.viewport = viewport;
+        flowTabsScroll.horizontal = true;
+        flowTabsScroll.vertical = false;
+        flowTabsScroll.movementType = ScrollRect.MovementType.Clamped;
+        flowTabsScroll.inertia = true;
+        flowTabsScroll.decelerationRate = 0.135f;
+
+        flowTabsContent = content.transform;
+        deleteFlowButton = MakeChip(row, "Delete", 62f);
+        deleteFlowButton.gameObject.name = "DeleteFlow";
+        deleteFlowButton.GetComponent<Image>().color = new Color(0.65f, 0.19f, 0.19f, 1f);
+    }
+
+    void BindFlowTabScroller(Transform row)
+    {
+        if (row == null) return;
+        Transform scrollRoot = row.Find("FlowTabsScroll");
+        if (scrollRoot == null) return;
+        flowTabsScroll = scrollRoot.GetComponent<ScrollRect>();
+        flowTabsContent = scrollRoot.Find("FlowTabsContent");
+        deleteFlowButton = row.Find("DeleteFlow")?.GetComponent<Button>();
     }
 
     void BindFlowHeader(Transform root)
@@ -509,7 +575,7 @@ public class WorkersUI : MonoBehaviour
     void UpdateFlowHeader()
     {
         if (flowHeaderLabel == null) return;
-        flowHeaderLabel.text = "FLOW";
+        flowHeaderLabel.text = "Flow";
     }
 
     void BuildEconomicsPanel(Transform parent)
@@ -607,7 +673,7 @@ public class WorkersUI : MonoBehaviour
 
     void MakeRowPrefix(Transform row, string text, float width = 62f)
     {
-        var label = MakeLabel(row, text, 9f, new Color(0.62f, 0.68f, 0.78f, 1f), 24f);
+        var label = MakeLabel(row, text, 11f, new Color(0.62f, 0.68f, 0.78f, 1f), 24f);
         var layout = label.GetComponent<LayoutElement>();
         if (layout == null) return;
         layout.minWidth = width;
@@ -621,8 +687,8 @@ public class WorkersUI : MonoBehaviour
         go.transform.SetParent(parent, false);
         go.GetComponent<Image>().color = new Color(0.1f, 0.12f, 0.17f, 1f);
         var layout = go.AddComponent<LayoutElement>();
-        layout.minWidth = 160f;
-        layout.preferredWidth = 220f;
+        layout.minWidth = 110f;
+        layout.preferredWidth = 180f;
         layout.flexibleWidth = 1f;
         layout.minHeight = 24f;
 
@@ -638,6 +704,11 @@ public class WorkersUI : MonoBehaviour
         text.fontSize = 13f;
         text.color = Color.white;
         text.alignment = TextAlignmentOptions.Left;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = 10f;
+        text.fontSizeMax = 13f;
 
         var placeholderGo = new GameObject("Placeholder", typeof(RectTransform));
         placeholderGo.transform.SetParent(go.transform, false);
@@ -653,6 +724,8 @@ public class WorkersUI : MonoBehaviour
         placeholder.fontStyle = FontStyles.Italic;
         placeholder.color = new Color(1f, 1f, 1f, 0.35f);
         placeholder.alignment = TextAlignmentOptions.Left;
+        placeholder.textWrappingMode = TextWrappingModes.NoWrap;
+        placeholder.overflowMode = TextOverflowModes.Overflow;
 
         var input = go.GetComponent<TMP_InputField>();
         input.textComponent = text;
@@ -706,6 +779,11 @@ public class WorkersUI : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
+        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = 9f;
+        tmp.fontSizeMax = 12f;
         return go.GetComponent<Button>();
     }
 
@@ -779,10 +857,14 @@ public class WorkersUI : MonoBehaviour
 
     void RebuildFlowListRow()
     {
-        if (flowListRow == null || production == null) return;
+        if (flowListRow == null || flowTabsContent == null || production == null) return;
 
-        for (int i = flowListRow.childCount - 1; i >= 0; i--)
-            Destroy(flowListRow.GetChild(i).gameObject);
+        for (int i = flowTabsContent.childCount - 1; i >= 0; i--)
+        {
+            GameObject oldTab = flowTabsContent.GetChild(i).gameObject;
+            oldTab.SetActive(false);
+            Destroy(oldTab);
+        }
 
         production.EnsureProductionFlows();
         flowListRow.gameObject.SetActive(flowExpanded);
@@ -793,7 +875,7 @@ public class WorkersUI : MonoBehaviour
             int index = i;
             bool selected = index == production.selectedFlowIndex;
             string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
-            Button chip = MakeChip(flowListRow, label, Mathf.Clamp(18f + label.Length * 7f, 72f, 140f));
+            Button chip = MakeChip(flowTabsContent, label, Mathf.Clamp(18f + label.Length * 7f, 82f, 150f));
             chip.gameObject.name = "FlowTab_" + (i + 1);
             var img = chip.GetComponent<Image>();
             GameUITheme.ApplyCompactTabButton(chip, selected);
@@ -813,15 +895,16 @@ public class WorkersUI : MonoBehaviour
             dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
 
-        var spacer = new GameObject("DeleteFlowSpacer", typeof(RectTransform), typeof(LayoutElement));
-        spacer.transform.SetParent(flowListRow, false);
-        spacer.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        Button delete = MakeChip(flowListRow, "Delete", 62f);
-        delete.gameObject.name = "DeleteFlow";
-        delete.GetComponent<Image>().color = new Color(0.65f, 0.19f, 0.19f, 1f);
-        delete.interactable = ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow;
+        if (flowTabsContent is RectTransform tabsRect)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(tabsRect);
+        if (flowTabsScroll != null) LayoutRebuilder.MarkLayoutForRebuild(flowTabsScroll.transform as RectTransform);
+
+        if (deleteFlowButton == null) return;
+        deleteFlowButton.interactable = ManagementModeController.Instance == null
+            || !ManagementModeController.Instance.IsCapturingFlow;
+        deleteFlowButton.onClick.RemoveAllListeners();
         ProductionFlowPlan selectedFlow = production.SelectedFlow;
-        delete.onClick.AddListener(() =>
+        deleteFlowButton.onClick.AddListener(() =>
         {
             if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
             production.RemoveProductionFlow(selectedFlow);
@@ -840,7 +923,7 @@ public class WorkersUI : MonoBehaviour
         for (int i = stepRow.childCount - 1; i >= 0; i--)
             Destroy(stepRow.GetChild(i).gameObject);
 
-        MakeRowPrefix(stepRow, "STATIONS");
+        MakeRowPrefix(stepRow, "Stations");
 
         ProductionFlowPlan flow = production != null ? production.SelectedFlow : null;
         int count = flow != null && flow.stations.Count > 0 ? flow.stations.Count : flow != null ? flow.stepIds.Count : 0;
@@ -900,7 +983,7 @@ public class WorkersUI : MonoBehaviour
         for (int i = workerRow.childCount - 1; i >= 0; i--)
             Destroy(workerRow.GetChild(i).gameObject);
 
-        MakeRowPrefix(workerRow, "WORKERS");
+        MakeRowPrefix(workerRow, "Workers");
 
         if (flow == null) return;
 
@@ -922,9 +1005,9 @@ public class WorkersUI : MonoBehaviour
     void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
-        string dropLabel = "+  DROP WORKER";
+        string dropLabel = "+  Drop Worker";
         if (flow != null && flow.workers != null && flow.workers.Count >= 1 && !MilestoneFeatures.ExtraFlowStaffingUnlocked)
-            dropLabel = "UNLOCKS AT M2";
+            dropLabel = "Unlocks At M2";
         Button dropZone = MakeChip(parent, dropLabel, 126f);
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
@@ -932,7 +1015,7 @@ public class WorkersUI : MonoBehaviour
         var label = dropZone.GetComponentInChildren<TextMeshProUGUI>();
         if (label != null)
         {
-            label.fontSize = 10f;
+            label.fontSize = 11f;
             label.fontStyle = FontStyles.Bold;
             label.color = new Color(0.78f, 0.88f, 1f, 1f);
         }
@@ -970,8 +1053,9 @@ public class WorkersUI : MonoBehaviour
 
             if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
             {
-                flowStatus.text = "<size=10><b>ECONOMICS</b></size>  Add stations to analyze this flow.\n"
-                    + "<b>Resources required:</b> None";
+                flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n"
+                    + "Add stations to analyze this flow.\n"
+                    + "<b>Resources Required:</b> None";
                 LayoutFlowPanel();
                 return;
             }
@@ -991,7 +1075,7 @@ public class WorkersUI : MonoBehaviour
                 sb.Append(economics.lines[i]);
             }
             if (sb.Length > 0) sb.Append('\n');
-            sb.Append("<b>Resources required:</b> ");
+            sb.Append("<b>Resources Required:</b> ");
             if (economics.requiredResources.Count > 0)
             {
                 for (int i = 0; i < economics.requiredResources.Count; i++)
@@ -1006,7 +1090,7 @@ public class WorkersUI : MonoBehaviour
             {
                 sb.Append("None");
             }
-            flowStatus.text = "<size=10><b>ECONOMICS</b></size>  " + sb;
+            flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n" + sb;
             LayoutFlowPanel();
         }
         finally

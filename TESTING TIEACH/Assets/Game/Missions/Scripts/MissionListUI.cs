@@ -227,6 +227,7 @@ public class MissionListUI : MonoBehaviour
         if (progress == null)
         {
             CreateTaskRow("—", "No mission system", pendingMissionColor, false);
+            UpdatePanelHeight();
             return;
         }
 
@@ -239,6 +240,7 @@ public class MissionListUI : MonoBehaviour
                 ? "All tasks done — take the milestone quiz."
                 : "No tasks yet";
             CreateTaskRow("—", empty, pendingMissionColor, false);
+            UpdatePanelHeight();
             return;
         }
 
@@ -255,6 +257,7 @@ public class MissionListUI : MonoBehaviour
                 title += $" ({progress.GetProgress(mission)}/{needed})";
             CreateTaskRow(title, mission.description, color, isCurrent);
         }
+        UpdatePanelHeight();
     }
 
     void RefreshProgression()
@@ -274,6 +277,7 @@ public class MissionListUI : MonoBehaviour
                 progressionDetailText.text = "No MilestoneDatabase found.\nRun Game → Setup Milestone Database.";
             if (openQuizButton != null)
                 openQuizButton.gameObject.SetActive(false);
+            UpdatePanelHeight();
             return;
         }
 
@@ -297,6 +301,7 @@ public class MissionListUI : MonoBehaviour
             if (milestone == null) continue;
             CreateProgressionRow(milestone, milestones.GetState(milestone), i);
         }
+        UpdatePanelHeight();
     }
 
     void CreateTaskRow(string title, string description, Color color, bool emphasize)
@@ -316,10 +321,12 @@ public class MissionListUI : MonoBehaviour
         rowLayout.childForceExpandWidth = true;
         rowLayout.childForceExpandHeight = false;
 
-        AddText(rowGo.transform, "Title", title, emphasize ? 17 : 15, color, emphasize ? FontStyles.Bold : FontStyles.Normal);
+        // Keep task titles the same size when the active task changes. Emphasis is
+        // carried by weight and color so refreshing the list cannot resize text.
+        AddText(rowGo.transform, "Title", title, 16, color, emphasize ? FontStyles.Bold : FontStyles.Normal);
 
         if (!string.IsNullOrEmpty(description))
-            AddText(rowGo.transform, "Description", description, 12, new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+            AddText(rowGo.transform, "Description", description, 14, new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
     }
 
     void CreateProgressionRow(MilestoneDefinition milestone, MilestoneProgressManager.MilestoneState state, int index)
@@ -736,8 +743,8 @@ public class MissionListUI : MonoBehaviour
     static void SetTopTabVisual(Button button, bool active)
     {
         if (button == null) return;
-        // Use the same authoritative chrome, font, edge, shadow, and hover
-        // motion as the Inventory and Management tabs.
+        // Use the same authoritative chrome, font, edge, and shadow as the
+        // Inventory and Management tabs while keeping the label at a fixed size.
         HudTabColors.Apply(button, active);
     }
 
@@ -745,13 +752,12 @@ public class MissionListUI : MonoBehaviour
     {
         if (panelRoot == null) return;
 
-        // Mirror the Inventory / Management presentation on the right side.
+        // Keep the panel below its top tabs and let it grow only as far as its content.
         var rt = (RectTransform)panelRoot.transform;
-        rt.anchorMin = new Vector2(1f, 0f);
-        rt.anchorMax = new Vector2(1f, 1f);
-        rt.pivot = new Vector2(1f, 0.5f);
-        rt.offsetMin = new Vector2(-525f, 16f);
-        rt.offsetMax = new Vector2(-25f, -68f);
+        rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(1f, 1f);
+        rt.anchoredPosition = new Vector2(-25f, -68f);
+        rt.sizeDelta = new Vector2(500f, 320f);
 
         if (headerText != null)
             headerText.gameObject.SetActive(false);
@@ -762,6 +768,70 @@ public class MissionListUI : MonoBehaviour
         var bg = panelRoot.GetComponent<Image>();
         if (bg != null)
             bg.color = panelColor;
+
+        var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
+        if (panelLayout != null)
+            panelLayout.childForceExpandHeight = false;
+
+        SetPageMinimumHeight(tasksPage, 0f);
+        SetPageMinimumHeight(progressionPage, 0f);
+
+        UpdatePanelHeight();
+    }
+
+    static void SetPageMinimumHeight(GameObject page, float minHeight)
+    {
+        if (page == null) return;
+        var layout = page.GetComponent<LayoutElement>();
+        if (layout == null) return;
+        layout.minHeight = minHeight;
+        layout.flexibleHeight = 0f;
+    }
+
+    void UpdatePanelHeight()
+    {
+        if (panelRoot == null || targetCanvas == null) return;
+
+        float screenHeight = targetCanvas.pixelRect.height;
+        if (screenHeight <= 0f) screenHeight = Screen.height;
+        float maxHeight = Mathf.Max(180f, screenHeight - 150f);
+        ResizeListToContent(tasksListContent, maxHeight - 42f);
+        ResizeListToContent(progressionListContent, maxHeight - 160f);
+        Canvas.ForceUpdateCanvases();
+
+        GameObject activePage = activeTab == SideTab.Tasks ? tasksPage : progressionPage;
+        if (activePage == null) return;
+        float contentHeight = LayoutUtility.GetPreferredHeight(activePage.transform as RectTransform);
+        if (contentHeight <= 0f)
+            contentHeight = activeTab == SideTab.Tasks ? 220f : 360f;
+
+        var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
+        if (panelLayout != null)
+            contentHeight += panelLayout.padding.top + panelLayout.padding.bottom;
+        contentHeight = Mathf.Clamp(contentHeight, 120f, maxHeight);
+
+        var panelRect = panelRoot.transform as RectTransform;
+        if (panelRect != null)
+            panelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
+        Canvas.ForceUpdateCanvases();
+    }
+
+    void ResizeListToContent(Transform listContent, float maxHeight)
+    {
+        if (listContent == null) return;
+        var scroll = listContent.GetComponentInParent<ScrollRect>();
+        var contentRect = listContent as RectTransform;
+        if (contentRect == null || scroll == null) return;
+        var layout = scroll.GetComponent<LayoutElement>();
+        if (layout == null) layout = scroll.gameObject.AddComponent<LayoutElement>();
+
+        float contentHeight = LayoutUtility.GetPreferredHeight(contentRect);
+        if (contentHeight <= 0f)
+            contentHeight = contentRect.rect.height;
+        contentHeight = Mathf.Clamp(contentHeight, 44f, Mathf.Max(44f, maxHeight));
+        layout.minHeight = contentHeight;
+        layout.preferredHeight = contentHeight;
+        layout.flexibleHeight = 0f;
     }
 
     void SetTabVisual(Button button, bool active)
@@ -776,7 +846,11 @@ public class MissionListUI : MonoBehaviour
     {
         foreach (var row in pool)
         {
-            if (row != null) Destroy(row);
+            if (row != null)
+            {
+                row.SetActive(false);
+                Destroy(row);
+            }
         }
         pool.Clear();
     }
@@ -785,8 +859,8 @@ public class MissionListUI : MonoBehaviour
     {
         var page = new GameObject(name, typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
         page.transform.SetParent(parent, false);
-        page.GetComponent<LayoutElement>().flexibleHeight = 1f;
-        page.GetComponent<LayoutElement>().minHeight = 280f;
+        page.GetComponent<LayoutElement>().flexibleHeight = 0f;
+        page.GetComponent<LayoutElement>().minHeight = 0f;
         var vlg = page.GetComponent<VerticalLayoutGroup>();
         vlg.spacing = 8f;
         vlg.childControlWidth = true;
@@ -801,8 +875,8 @@ public class MissionListUI : MonoBehaviour
         var scrollGo = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(ScrollRect), typeof(LayoutElement));
         scrollGo.transform.SetParent(parent, false);
         var le = scrollGo.GetComponent<LayoutElement>();
-        le.flexibleHeight = 1f;
-        le.minHeight = 220f;
+        le.flexibleHeight = 0f;
+        le.minHeight = 0f;
         scrollGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.12f);
         scrollGo.GetComponent<Image>().raycastTarget = true;
 
@@ -935,5 +1009,6 @@ public class MissionListUI : MonoBehaviour
         tmp.textWrappingMode = TextWrappingModes.Normal;
         tmp.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        go.AddComponent<GameUIThemeStyled>();
     }
 }

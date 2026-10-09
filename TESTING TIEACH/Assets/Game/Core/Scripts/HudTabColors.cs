@@ -7,7 +7,7 @@ using UnityEngine.UI;
 /// </summary>
 public static class HudTabColors
 {
-    /// <summary>Selected tab — muted purple-gray (Management Store Stats style).</summary>
+    /// <summary>Selected tab — shared coral accent from the game UI palette.</summary>
     public static readonly Color Active = GameUITheme.Coral;
 
     /// <summary>Unselected tab.</summary>

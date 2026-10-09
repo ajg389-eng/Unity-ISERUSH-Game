@@ -47,8 +47,11 @@ public class GameUITheme : MonoBehaviour
     public static readonly Color TextSecondary = MutedText;
     public static readonly Color Edge = new Color(0.08f, 0.095f, 0.115f, 0.82f);
 
-    const int ButtonStyleVersion = 3;
+    const int ButtonStyleVersion = 4;
+    const float MinimumBodyTextSize = 16f;
+    const float MinimumCompactTextSize = 13f;
     static TMP_FontAsset titleScreenFont;
+    float nextCanvasScanTime;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -58,6 +61,15 @@ public class GameUITheme : MonoBehaviour
     }
 
     void OnEnable() => ApplyToAllCanvases();
+
+    void Update()
+    {
+        // Some management screens build their Canvas only when first opened.
+        // Reapply at a low rate so those late panels inherit the same theme.
+        if (Time.unscaledTime < nextCanvasScanTime) return;
+        nextCanvasScanTime = Time.unscaledTime + 1f;
+        ApplyToAllCanvases();
+    }
 
     public static void ApplyToAllCanvases()
     {
@@ -122,6 +134,7 @@ public class GameUITheme : MonoBehaviour
     static void StyleButton(Button button)
     {
         if (button == null) return;
+        DisableButtonMotion(button);
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled != null && styled.styleVersion >= ButtonStyleVersion) return;
         if (button.GetComponentInParent<TitleScreenController>() != null) return;
@@ -180,6 +193,7 @@ public class GameUITheme : MonoBehaviour
         if (tmp != null)
         {
             ApplyTitleScreenFont(tmp);
+            KeepTextReadable(tmp);
             tmp.color = TextPrimary;
             tmp.fontStyle |= FontStyles.Bold;
             if (substantial) tmp.characterSpacing = Mathf.Max(tmp.characterSpacing, 0.8f);
@@ -188,6 +202,7 @@ public class GameUITheme : MonoBehaviour
         if (legacy != null)
         {
             legacy.color = TextPrimary;
+            legacy.fontSize = Mathf.Max(legacy.fontSize, 14);
             legacy.fontStyle = FontStyle.Bold;
             legacy.raycastTarget = false;
         }
@@ -199,8 +214,7 @@ public class GameUITheme : MonoBehaviour
         {
             EnsureAccent(button.transform, accent);
         }
-        if (substantial && button.GetComponent<GameUIThemeButtonMotion>() == null)
-            button.gameObject.AddComponent<GameUIThemeButtonMotion>();
+        DisableButtonMotion(button);
 
         if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
         styled.styleVersion = ButtonStyleVersion;
@@ -213,6 +227,7 @@ public class GameUITheme : MonoBehaviour
     public static void ApplyTabButton(Button button, bool active)
     {
         if (button == null) return;
+        DisableButtonMotion(button);
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled == null || styled.styleVersion < ButtonStyleVersion)
             ApplyTabChrome(button);
@@ -239,6 +254,7 @@ public class GameUITheme : MonoBehaviour
         if (tmp != null)
         {
             ApplyTitleScreenFont(tmp);
+            KeepTextReadable(tmp);
             tmp.color = TextPrimary;
             tmp.fontStyle = FontStyles.Bold;
             tmp.raycastTarget = false;
@@ -247,9 +263,7 @@ public class GameUITheme : MonoBehaviour
         AddEdge(button.gameObject, new Vector2(1f, -1f));
         AddDropShadow(button.gameObject, new Vector2(0f, -1f));
 
-        var motion = button.GetComponent<GameUIThemeButtonMotion>();
-        if (motion == null) motion = button.gameObject.AddComponent<GameUIThemeButtonMotion>();
-        motion.EnableMotion(1.025f, 0.98f);
+        DisableButtonMotion(button);
 
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
@@ -257,8 +271,8 @@ public class GameUITheme : MonoBehaviour
     }
 
     /// <summary>
-    /// Adds the shared font, edge, shadow, hover lift, and pressed motion to a
-    /// compact control without replacing colors managed by its gameplay state.
+    /// Adds the shared font, edge, and shadow to a compact control without
+    /// replacing colors managed by its gameplay state or scaling its text.
     /// </summary>
     public static void ApplyCompactControlEffects(Button button)
     {
@@ -269,6 +283,7 @@ public class GameUITheme : MonoBehaviour
         if (tmp != null)
         {
             ApplyTitleScreenFont(tmp);
+            KeepTextReadable(tmp);
             tmp.color = TextPrimary;
             tmp.fontStyle |= FontStyles.Bold;
             tmp.alignment = TextAlignmentOptions.Center;
@@ -278,9 +293,7 @@ public class GameUITheme : MonoBehaviour
         AddEdge(button.gameObject, new Vector2(1f, -1f));
         AddDropShadow(button.gameObject, new Vector2(0f, -1f));
 
-        var motion = button.GetComponent<GameUIThemeButtonMotion>();
-        if (motion == null) motion = button.gameObject.AddComponent<GameUIThemeButtonMotion>();
-        motion.EnableMotion(1.025f, 0.98f);
+        DisableButtonMotion(button);
 
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
@@ -323,9 +336,13 @@ public class GameUITheme : MonoBehaviour
         var accent = button.transform.Find("ThemeAccent");
         if (accent != null) accent.gameObject.SetActive(false);
 
-        var motion = button.GetComponent<GameUIThemeButtonMotion>();
-        if (motion == null) motion = button.gameObject.AddComponent<GameUIThemeButtonMotion>();
-        motion.EnableMotion(1.025f, 0.98f);
+        DisableButtonMotion(button);
+    }
+
+    static void DisableButtonMotion(Button button)
+    {
+        var motion = button != null ? button.GetComponent<GameUIThemeButtonMotion>() : null;
+        if (motion != null) motion.DisableMotion();
     }
 
     static void StyleInput(TMP_InputField input)
@@ -336,13 +353,19 @@ public class GameUITheme : MonoBehaviour
         if (input.textComponent != null)
         {
             if (input.textComponent is TextMeshProUGUI inputTextUi)
+            {
                 ApplyTitleScreenFont(inputTextUi);
+                KeepTextReadable(inputTextUi);
+            }
             input.textComponent.color = TextPrimary;
         }
         if (input.placeholder is TMP_Text placeholder)
         {
             if (placeholder is TextMeshProUGUI placeholderUi)
+            {
                 ApplyTitleScreenFont(placeholderUi);
+                KeepTextReadable(placeholderUi);
+            }
             placeholder.color = TextSecondary;
         }
         AddEdge(input.gameObject, new Vector2(1f, -1f));
@@ -382,9 +405,9 @@ public class GameUITheme : MonoBehaviour
 
     static void StyleText(TextMeshProUGUI text)
     {
-        if (text == null) return;
+        if (text == null || text.GetComponent<GameUIThemeStyled>() != null) return;
         ApplyTitleScreenFont(text);
-        if (text.GetComponent<GameUIThemeStyled>() != null) return;
+        KeepTextReadable(text);
         if (IsNeutral(text.color))
             text.color = text.color.a < 0.8f ? TextSecondary : TextPrimary;
         else if (text.color.r > text.color.g * 1.25f)
@@ -394,6 +417,24 @@ public class GameUITheme : MonoBehaviour
         else
             text.color = Accent;
         text.gameObject.AddComponent<GameUIThemeStyled>();
+    }
+
+    static void KeepTextReadable(TMP_Text text)
+    {
+        if (text == null || text.GetComponent<GameUIThemeStyled>() != null) return;
+        string controlName = text.name.ToLowerInvariant();
+        Transform parent = text.transform.parent;
+        if (parent != null) controlName += " " + parent.name.ToLowerInvariant();
+        bool compact = ContainsAny(controlName, "badge", "count", "quantity", "hotkey",
+            "shortcut", "targetminus", "targetplus", "cartcount", "iconlabel")
+            || (text.text != null && text.text.Trim().Length <= 2
+                && text.GetComponentInParent<Button>() != null);
+        float minimum = compact ? MinimumCompactTextSize : MinimumBodyTextSize;
+
+        // Preserve authored auto-size ranges. Raising both bounds here made compact
+        // labels overflow and changed their size after a refresh.
+        if (!text.enableAutoSizing)
+            text.fontSize = Mathf.Max(text.fontSize, minimum);
     }
 
     /// <summary>

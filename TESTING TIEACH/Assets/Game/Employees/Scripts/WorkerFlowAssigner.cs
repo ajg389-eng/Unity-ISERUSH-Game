@@ -1079,9 +1079,9 @@ public static class WorkflowAnalysis
             float profit = sell - unitCost;
             result.lines.Add(
                 "Produces " + name
-                + "  |  ingredients $" + unitCost.ToString("0.##")
-                + "  |  value $" + sell
-                + "  |  profit $" + profit.ToString("0.##"));
+                + "  |  Ingredients $" + unitCost.ToString("0.##")
+                + "  |  Value $" + sell
+                + "  |  Profit $" + profit.ToString("0.##"));
         }
 
         if (hasRegister)
