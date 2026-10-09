@@ -70,6 +70,7 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition clBurgerItem;
     public ItemDefinition cltBurgerItem;
     public ItemDefinition cheeseBaconBurgerItem;
+    public ItemDefinition superBurgerItem;
     public ItemDefinition cheeseBaconLettuceBurgerItem;
     public ItemDefinition cheeseBaconLettuceOnionBurgerItem;
     public ItemDefinition cheeseBaconLettuceOnionTomatoBurgerItem;
@@ -143,7 +144,8 @@ public class CustomerOrderConfig : ScriptableObject
     [System.NonSerialized] readonly HashSet<ItemDefinition> disabledMenuItems = new HashSet<ItemDefinition>();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
-        || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem);
+        || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem
+        || item == superBurgerItem);
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
     public bool IsDrink(ItemDefinition item) => item != null && (item == drinkItem || item == whippedCreamShakeItem || item == whippedCreamSprinkleShakeItem);
@@ -157,6 +159,7 @@ public class CustomerOrderConfig : ScriptableObject
         if (item == cheeseBaconLettuceOnionBurgerItem
             || item == cheeseBaconLettuceOnionTomatoBurgerItem
             || item == cheeseBaconLettuceOnionTomatoEggBurgerItem
+            || item == superBurgerItem
             || item == cheeseBaconFriesItem || item == whippedCreamShakeItem
             || item == whippedCreamSprinkleShakeItem) return 4;
         return 0;
@@ -647,6 +650,7 @@ public class CustomerOrderConfig : ScriptableObject
         if (cheeseburgerItem != null) yield return cheeseburgerItem;
         if (clBurgerItem != null) yield return clBurgerItem;
         if (cheeseBaconBurgerItem != null) yield return cheeseBaconBurgerItem;
+        if (superBurgerItem != null) yield return superBurgerItem;
         if (friesItem != null) yield return friesItem;
         if (cheeseFriesItem != null) yield return cheeseFriesItem;
         if (cheeseBaconFriesItem != null) yield return cheeseBaconFriesItem;

@@ -46,6 +46,11 @@ public class IngredientsOrderUI : MonoBehaviour
     Transform recipeChartRoot;
     RectTransform recipeChartViewport;
     CustomerOrderConfig recipeChartMenu;
+    RecipeGraphDrag recipeGraphDrag;
+    TextMeshProUGUI recipeZoomLabel;
+    TextMeshProUGUI recipeDetailsText;
+    readonly List<RecipeGraphNodeView> recipeGraphNodes = new List<RecipeGraphNodeView>();
+    readonly List<RecipeGraphEdgeView> recipeGraphEdges = new List<RecipeGraphEdgeView>();
     readonly List<Button> recipeTabButtons = new List<Button>();
 
     void OnEnable()
@@ -362,13 +367,13 @@ public class IngredientsOrderUI : MonoBehaviour
             ? canvasRect.rect.width : 682f;
         float availableCanvasHeight = canvasRect != null && canvasRect.rect.height > 0f
             ? canvasRect.rect.height : 752f;
-        float panelWidth = Mathf.Clamp(availableCanvasWidth - 32f, 240f, 650f);
+        float panelWidth = Mathf.Clamp(availableCanvasWidth - 32f, 720f, 1040f);
         float panelHeight = Mathf.Clamp(availableCanvasHeight - 32f, 260f, 720f);
         panelRt.sizeDelta = new Vector2(panelWidth, panelHeight);
         panel.GetComponent<Image>().color = GameUITheme.Panel;
 
-        TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes · Drag & Zoom", 18f, FontStyles.Bold,
-            new Vector2(22f, -56f), new Vector2(-80f, -12f), TextAlignmentOptions.Center);
+        TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes  |  Drag to Pan  |  Scroll to Zoom", 18f, FontStyles.Bold,
+            new Vector2(22f, -56f), new Vector2(-300f, -12f), TextAlignmentOptions.Left);
         title.textWrappingMode = TextWrappingModes.NoWrap;
         title.enableAutoSizing = true;
         title.fontSizeMin = 12f;
@@ -378,6 +383,13 @@ public class IngredientsOrderUI : MonoBehaviour
         Button close = CreateAbsoluteButton(panel.transform, "Close", "X", new Vector2(-58f, -54f),
             new Vector2(-14f, -14f), GameUITheme.Danger, out closeLabel);
         close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
+
+        TextMeshProUGUI fitLabel;
+        Button fit = CreateAbsoluteButton(panel.transform, "FitGraph", "FIT", new Vector2(-270f, -54f),
+            new Vector2(-210f, -14f), GameUITheme.Surface, out fitLabel);
+        fit.onClick.AddListener(() => { FitRecipeChartToViewport((RectTransform)recipeChartRoot); Sfx.Play(SfxId.UiClick); });
+        recipeZoomLabel = CreateAbsoluteText(panel.transform, "Zoom", "100%", 13f, FontStyles.Bold,
+            new Vector2(-202f, -50f), new Vector2(-72f, -18f), TextAlignmentOptions.Center);
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         tabs.transform.SetParent(panel.transform, false);
@@ -414,9 +426,31 @@ public class IngredientsOrderUI : MonoBehaviour
         viewportRt.anchorMin = Vector2.zero;
         viewportRt.anchorMax = Vector2.one;
         viewportRt.offsetMin = new Vector2(20f, 20f);
-        viewportRt.offsetMax = new Vector2(-20f, -114f);
+        viewportRt.offsetMax = new Vector2(-286f, -114f);
         viewport.GetComponent<Image>().color = GameUITheme.Charcoal;
         viewport.GetComponent<Mask>().showMaskGraphic = true;
+
+        AddGraphGrid(viewport.transform);
+
+        var details = new GameObject("RecipeDetails", typeof(RectTransform), typeof(Image));
+        details.transform.SetParent(panel.transform, false);
+        RectTransform detailsRt = (RectTransform)details.transform;
+        detailsRt.anchorMin = new Vector2(1f, 0f);
+        detailsRt.anchorMax = new Vector2(1f, 1f);
+        detailsRt.pivot = new Vector2(1f, 0.5f);
+        detailsRt.offsetMin = new Vector2(-274f, 20f);
+        detailsRt.offsetMax = new Vector2(-20f, -114f);
+        details.GetComponent<Image>().color = GameUITheme.Surface;
+        recipeDetailsText = CreateAbsoluteText(details.transform, "DetailsText",
+            "SELECT A RECIPE\n\nClick a card to inspect its ingredients, station, unlock, and value.",
+            14f, FontStyles.Normal, new Vector2(16f, 16f), new Vector2(-16f, -16f),
+            TextAlignmentOptions.TopLeft);
+        RectTransform detailsTextRt = recipeDetailsText.rectTransform;
+        detailsTextRt.anchorMin = Vector2.zero;
+        detailsTextRt.anchorMax = Vector2.one;
+        detailsTextRt.offsetMin = new Vector2(16f, 16f);
+        detailsTextRt.offsetMax = new Vector2(-16f, -16f);
+        recipeDetailsText.textWrappingMode = TextWrappingModes.Normal;
 
         var chart = new GameObject("RecipeChart", typeof(RectTransform));
         chart.transform.SetParent(viewport.transform, false);
@@ -426,8 +460,9 @@ public class IngredientsOrderUI : MonoBehaviour
         chartRt.sizeDelta = new Vector2(2000f, 2400f);
         chartRt.anchoredPosition = new Vector2(0f, -240f);
         recipeChartRoot = chart.transform;
-        RecipeGraphDrag drag = viewport.AddComponent<RecipeGraphDrag>();
-        drag.content = chartRt;
+        recipeGraphDrag = viewport.AddComponent<RecipeGraphDrag>();
+        recipeGraphDrag.content = chartRt;
+        recipeGraphDrag.zoomLabel = recipeZoomLabel;
         GameUITheme.ApplyTo(recipesOverlay.transform);
     }
 
@@ -435,6 +470,10 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         if (recipeChartRoot == null) return;
         recipeChartMenu = menu;
+        recipeGraphNodes.Clear();
+        recipeGraphEdges.Clear();
+        if (recipeDetailsText != null)
+            recipeDetailsText.text = "SELECT A RECIPE\n\nClick a card to inspect its ingredients, station, unlock, and value.";
         RectTransform chart = (RectTransform)recipeChartRoot;
         chart.anchoredPosition = Vector2.zero;
         chart.localScale = Vector3.one;
@@ -493,61 +532,119 @@ public class IngredientsOrderUI : MonoBehaviour
             ? -graphCenter.y * zoom
             : recipeChartViewport.rect.height * 0.5f - 16f - maxY * zoom;
         chart.anchoredPosition = new Vector2(-graphCenter.x * zoom, chartY);
+        recipeGraphDrag?.RefreshZoomLabel();
+    }
+
+    void AddGraphGrid(Transform parent)
+    {
+        for (int x = 24; x < 900; x += 32)
+        {
+            var line = new GameObject("GridVertical", typeof(RectTransform), typeof(Image));
+            line.transform.SetParent(parent, false);
+            RectTransform rt = (RectTransform)line.transform;
+            rt.anchorMin = new Vector2(0f, 0f); rt.anchorMax = new Vector2(0f, 1f);
+            rt.offsetMin = new Vector2(x, 0f); rt.offsetMax = new Vector2(x + 1f, 0f);
+            line.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
+            line.GetComponent<Image>().raycastTarget = false;
+        }
+        for (int y = 24; y < 720; y += 32)
+        {
+            var line = new GameObject("GridHorizontal", typeof(RectTransform), typeof(Image));
+            line.transform.SetParent(parent, false);
+            RectTransform rt = (RectTransform)line.transform;
+            rt.anchorMin = new Vector2(0f, 0f); rt.anchorMax = new Vector2(1f, 0f);
+            rt.offsetMin = new Vector2(0f, y); rt.offsetMax = new Vector2(0f, y + 1f);
+            line.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
+            line.GetComponent<Image>().raycastTarget = false;
+        }
+    }
+
+    void AddStageGuide(float y, string title)
+    {
+        var band = new GameObject("StageBand_" + title, typeof(RectTransform), typeof(Image));
+        band.transform.SetParent(recipeChartRoot, false);
+        RectTransform rt = (RectTransform)band.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(1040f, 132f);
+        rt.anchoredPosition = new Vector2(0f, y);
+        band.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.022f);
+        band.GetComponent<Image>().raycastTarget = false;
+        TextMeshProUGUI label = CreateAbsoluteText(band.transform, "StageLabel", title, 11f,
+            FontStyles.Bold, new Vector2(10f, -24f), new Vector2(-10f, -5f), TextAlignmentOptions.TopLeft);
+        label.color = GameUITheme.TextSecondary;
+        rt.SetAsFirstSibling();
     }
 
     void BuildBurgerTree(CustomerOrderConfig menu)
     {
-        var rawPatty = AddGraphNode(menu.rawPattyIngredient, "RAW PATTY", "FREEZER", new Vector2(-250f, 500f));
-        var cookedPatty = AddGraphNode(menu.cookedPattyIngredient, "COOKED PATTY", "GRILL", new Vector2(-250f, 310f));
+        AddStageGuide(560f, "RAW INGREDIENTS");
+        AddStageGuide(390f, "PROCESSED INGREDIENTS");
+        AddStageGuide(-500f, "INTERMEDIATE ASSEMBLY");
+        AddStageGuide(-900f, "FINAL PRODUCT");
+        var rawPatty = AddGraphNode(menu.rawPattyIngredient, "RAW PATTY", "FREEZER", new Vector2(-330f, 560f));
+        var cookedPatty = AddGraphNode(menu.cookedPattyIngredient, "COOKED PATTY", "GRILL", new Vector2(-330f, 390f));
         ConnectGraphNodes(rawPatty, cookedPatty, "COOK");
 
-        var bun = AddGraphNode(FindRecipeInput(menu, menu.burgerBase, false), "BUN", "PANTRY", new Vector2(-20f, 310f));
-        var burger = AddGraphNode(menu.burgerBase, "HAMBURGER", "ASSEMBLY", new Vector2(-150f, 100f), true);
-        ConnectGraphNodes(cookedPatty, burger);
-        ConnectGraphNodes(bun, burger, "ASSEMBLE");
+        var bun = AddGraphNode(FindRecipeInput(menu, menu.burgerBase, false), "BUN", "PANTRY", new Vector2(-120f, 390f));
+        var burger = AddGraphNode(menu.burgerBase, "HAMBURGER", "ASSEMBLY", new Vector2(-330f, 190f), true);
+        ConnectGraphNodes(cookedPatty, burger, null, -28f);
+        ConnectGraphNodes(bun, burger, "ASSEMBLE", 28f);
 
         AssemblyRecipeDefinition cheeseRecipe = FindRecipeFeeding(menu, menu.cheeseburgerItem);
         ItemDefinition rawCheese = cheeseRecipe != null ? cheeseRecipe.rawPantryInput : menu.cheeseIngredient;
         ItemDefinition slicedCheese = cheeseRecipe != null ? cheeseRecipe.pantryInput : menu.slicedCheeseIngredient;
-        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "FREEZER", new Vector2(250f, 500f));
-        var slicedCheeseNode = AddGraphNode(slicedCheese, "SLICED CHEESE", "CUTTING", new Vector2(250f, 310f));
+        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "FREEZER", new Vector2(60f, 560f));
+        var slicedCheeseNode = AddGraphNode(slicedCheese, "SLICED CHEESE", "CUTTING", new Vector2(60f, 390f));
         ConnectGraphNodes(rawCheeseNode, slicedCheeseNode, "SLICE");
         var cheesePatty = AddGraphNode(cheeseRecipe != null ? cheeseRecipe.output : null,
-            "CHEESE PATTY", "ASSEMBLY", new Vector2(100f, 100f), true);
-        ConnectGraphNodes(cookedPatty, cheesePatty);
-        ConnectGraphNodes(slicedCheeseNode, cheesePatty, "ASSEMBLE");
+            "CHEESE PATTY", "ASSEMBLY", new Vector2(-60f, 190f), true);
+        ConnectGraphNodes(cookedPatty, cheesePatty, null, -28f);
+        ConnectGraphNodes(slicedCheeseNode, cheesePatty, "ASSEMBLE", 28f);
 
         var cheeseburger = AddGraphNode(menu.cheeseburgerItem, "CHEESEBURGER", "ASSEMBLY",
-            new Vector2(-25f, -120f), true);
-        ConnectGraphNodes(cheesePatty, cheeseburger);
-        ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE");
+            new Vector2(-60f, -20f), true);
+        ConnectGraphNodes(cheesePatty, cheeseburger, null, -28f);
+        ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE", 28f);
 
-        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(250f, -280f));
-        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(250f, -460f));
-        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(250f, -640f));
-        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(250f, -820f), true);
+        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 190f));
+        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING", new Vector2(330f, 20f));
+        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -150f));
+        var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(190f, -690f), true);
         ConnectGraphNodes(baconSlab, cutBacon, "CUT"); ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
-        ConnectGraphNodes(cheesePatty, cb);
-        ConnectGraphNodes(cookedBacon, cb);
-        ConnectGraphNodes(bun, cb, "ASSEMBLE");
+        ConnectGraphNodes(cheesePatty, cb, null, -46f);
+        ConnectGraphNodes(cookedBacon, cb, null, 0f);
+        ConnectGraphNodes(bun, cb, "ASSEMBLE", 46f);
 
-        var lettuce = AddGraphNode(menu.lettuceIngredient, "LETTUCE", "FREEZER", new Vector2(-250f, -410f));
-        var slicedLettuce = AddGraphNode(menu.slicedLettuceIngredient, "LETTUCE SLICE", "CUTTING", new Vector2(-250f, -600f));
-        var tomato = AddGraphNode(menu.tomatoIngredient, "TOMATO", "FREEZER", new Vector2(0f, -410f));
-        var slicedTomato = AddGraphNode(menu.slicedTomatoIngredient, "TOMATO SLICE", "CUTTING", new Vector2(0f, -600f));
-        var veggieMix = AddGraphNode(menu.veggieMixIngredient, "VEGGIE MIX", "ASSEMBLY", new Vector2(-125f, -800f), true);
-        var classic = AddGraphNode(menu.clBurgerItem, "CLASSIC BURGER", "ASSEMBLY", new Vector2(-125f, -1030f), true);
+        var lettuce = AddGraphNode(menu.lettuceIngredient, "LETTUCE", "FREEZER", new Vector2(-430f, -150f));
+        var slicedLettuce = AddGraphNode(menu.slicedLettuceIngredient, "LETTUCE SLICE", "CUTTING", new Vector2(-430f, -320f));
+        var tomato = AddGraphNode(menu.tomatoIngredient, "TOMATO", "FREEZER", new Vector2(-210f, -150f));
+        var slicedTomato = AddGraphNode(menu.slicedTomatoIngredient, "TOMATO SLICE", "CUTTING", new Vector2(-210f, -320f));
+        var veggieMix = AddGraphNode(menu.veggieMixIngredient, "VEGGIE MIX", "ASSEMBLY", new Vector2(-320f, -500f), true);
+        var classic = AddGraphNode(menu.clBurgerItem, "CLASSIC BURGER", "ASSEMBLY", new Vector2(-190f, -690f), true);
         ConnectGraphNodes(lettuce, slicedLettuce, "SLICE");
         ConnectGraphNodes(tomato, slicedTomato, "SLICE");
-        ConnectGraphNodes(slicedLettuce, veggieMix);
-        ConnectGraphNodes(slicedTomato, veggieMix, "ASSEMBLE");
-        ConnectGraphNodes(cookedPatty, classic);
-        ConnectGraphNodes(veggieMix, classic);
-        ConnectGraphNodes(bun, classic, "ASSEMBLE");
+        ConnectGraphNodes(slicedLettuce, veggieMix, null, -28f);
+        ConnectGraphNodes(slicedTomato, veggieMix, "ASSEMBLE", 28f);
+        ConnectGraphNodes(cookedPatty, classic, null, -46f);
+        ConnectGraphNodes(veggieMix, classic, null, 0f);
+        ConnectGraphNodes(bun, classic, "ASSEMBLE", 46f);
+
+        // Repeat this shared ingredient near the final tier. A local reference is
+        // clearer than a connector crossing the entire graph from the first grill.
+        var extraPatty = AddGraphNode(menu.cookedPattyIngredient, "EXTRA COOKED PATTY", "GRILL",
+            new Vector2(0f, -690f));
+        var superBurger = AddGraphNode(menu.superBurgerItem, "SUPER BURGER", "MK2 ASSEMBLY",
+            new Vector2(0f, -900f), true);
+        ConnectGraphNodes(classic, superBurger, null, -46f);
+        ConnectGraphNodes(extraPatty, superBurger, "ASSEMBLE", 0f);
+        ConnectGraphNodes(cb, superBurger, null, 46f);
     }
 
     void BuildFriesTree(CustomerOrderConfig menu)
     {
+        AddStageGuide(420f, "RAW INGREDIENTS");
+        AddStageGuide(105f, "PROCESSING");
+        AddStageGuide(-240f, "FINAL PRODUCT");
         var potatoes = AddGraphNode(menu.friesIngredient, "POTATOES", "PANTRY", new Vector2(-260f, 420f));
         var slices = AddGraphNode(menu.slicedPotatoIngredient, "POTATO SLICES", "CUTTING", new Vector2(-260f, 210f));
         var cooked = AddGraphNode(menu.cookedPotatoIngredient, "COOKED POTATO SLICES", "FRYER", new Vector2(-260f, 0f));
@@ -561,6 +658,8 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void BuildShakeTree(CustomerOrderConfig menu)
     {
+        AddStageGuide(260f, "INGREDIENTS");
+        AddStageGuide(-20f, "FINAL PRODUCT");
         AssemblyRecipeDefinition recipe = menu.GetAssemblyRecipe(menu.drinkItem);
         var milk = AddGraphNode(recipe != null ? recipe.processedInput : null, "MILK", "FREEZER", new Vector2(-230f, 260f));
         var cup = AddGraphNode(recipe != null ? recipe.pantryInput : null, "EMPTY CUP", "PANTRY", new Vector2(230f, 260f));
@@ -607,18 +706,25 @@ public class IngredientsOrderUI : MonoBehaviour
         RectTransform rt = (RectTransform)node.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(220f, 124f);
+        rt.sizeDelta = new Vector2(180f, 92f);
         rt.anchoredPosition = position;
-        node.GetComponent<Image>().color = locked ? GameUITheme.Backdrop
-            : final ? GameUITheme.Positive : GameUITheme.Panel;
+        Image nodeImage = node.GetComponent<Image>();
+        bool assemblyOutput = item != null && recipeChartMenu != null
+            && recipeChartMenu.GetAssemblyRecipe(item) != null;
+        Color nodeColor = station == "FREEZER" || station == "PANTRY"
+            ? new Color(0.16f, 0.19f, 0.23f, 1f)
+            : assemblyOutput ? new Color(0.20f, 0.38f, 0.34f, 1f)
+            : new Color(0.18f, 0.27f, 0.33f, 1f);
+        nodeImage.color = locked ? GameUITheme.Backdrop
+            : final ? GameUITheme.Positive : nodeColor;
 
         var previewGo = new GameObject("Preview", typeof(RectTransform), typeof(RawImage));
         previewGo.transform.SetParent(node.transform, false);
         RectTransform previewRt = (RectTransform)previewGo.transform;
-        previewRt.anchorMin = new Vector2(0f, 0f);
-        previewRt.anchorMax = new Vector2(0f, 1f);
-        previewRt.offsetMin = new Vector2(8f, 10f);
-        previewRt.offsetMax = new Vector2(80f, -10f);
+        previewRt.anchorMin = previewRt.anchorMax = new Vector2(0f, 0.5f);
+        previewRt.pivot = new Vector2(0f, 0.5f);
+        previewRt.anchoredPosition = new Vector2(8f, 0f);
+        previewRt.sizeDelta = new Vector2(64f, 64f);
         RawImage preview = previewGo.GetComponent<RawImage>();
         if (item != null && !locked)
             preview.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
@@ -638,23 +744,30 @@ public class IngredientsOrderUI : MonoBehaviour
         RectTransform labelRt = (RectTransform)labelGo.transform;
         labelRt.anchorMin = Vector2.zero;
         labelRt.anchorMax = Vector2.one;
-        labelRt.offsetMin = new Vector2(84f, 8f);
-        labelRt.offsetMax = new Vector2(-8f, -8f);
+        labelRt.offsetMin = new Vector2(76f, 6f);
+        labelRt.offsetMax = new Vector2(-6f, -6f);
         TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
         string display = locked ? "Locked Item"
             : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : FormatGraphLabel(fallback);
         label.text = "<b>" + display + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(station) + "</color>"
             + (locked ? "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>" : "");
-        label.fontSize = 14f;
+        label.fontSize = 12f;
         label.enableAutoSizing = true;
-        label.fontSizeMin = 10.5f;
-        label.fontSizeMax = 14f;
+        label.fontSizeMin = 8.5f;
+        label.fontSizeMax = 12f;
         label.textWrappingMode = TextWrappingModes.Normal;
         label.overflowMode = TextOverflowModes.Overflow;
         label.color = GameUITheme.TextPrimary;
         label.alignment = TextAlignmentOptions.Center;
         label.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
+        RecipeGraphNodeView view = node.AddComponent<RecipeGraphNodeView>();
+        view.owner = this;
+        view.item = item;
+        view.cardImage = nodeImage;
+        view.baseColor = nodeImage.color;
+        view.group = node.AddComponent<CanvasGroup>();
+        recipeGraphNodes.Add(view);
         return rt;
     }
 
@@ -670,15 +783,17 @@ public class IngredientsOrderUI : MonoBehaviour
         return string.Join(" ", words);
     }
 
-    void ConnectGraphNodes(RectTransform from, RectTransform to, string action = null)
+    void ConnectGraphNodes(RectTransform from, RectTransform to, string action = null,
+        float targetPortOffset = 0f)
     {
         if (from == null || to == null) return;
         Vector2 start = from.anchoredPosition + new Vector2(0f, -from.sizeDelta.y * 0.5f);
-        Vector2 end = to.anchoredPosition + new Vector2(0f, to.sizeDelta.y * 0.5f);
+        Vector2 end = to.anchoredPosition + new Vector2(targetPortOffset, to.sizeDelta.y * 0.5f);
         float middleY = (start.y + end.y) * 0.5f;
-        CreateGraphLine(new Vector2(start.x, start.y), new Vector2(start.x, middleY));
-        CreateGraphLine(new Vector2(start.x, middleY), new Vector2(end.x, middleY));
-        CreateGraphLine(new Vector2(end.x, middleY), new Vector2(end.x, end.y));
+        CreateGraphLine(new Vector2(start.x, start.y), new Vector2(start.x, middleY), from, to);
+        CreateGraphLine(new Vector2(start.x, middleY), new Vector2(end.x, middleY), from, to);
+        CreateGraphLine(new Vector2(end.x, middleY), new Vector2(end.x, end.y), from, to);
+        CreateGraphArrow(end, from, to);
         if (!string.IsNullOrWhiteSpace(action))
         {
             var labelGo = new GameObject("Edge_" + action, typeof(RectTransform), typeof(Image));
@@ -686,7 +801,7 @@ public class IngredientsOrderUI : MonoBehaviour
             RectTransform rt = (RectTransform)labelGo.transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(96f, 24f);
+            rt.sizeDelta = new Vector2(72f, 18f);
             rt.anchoredPosition = new Vector2((start.x + end.x) * 0.5f, middleY);
             Image backing = labelGo.GetComponent<Image>();
             backing.color = GameUITheme.Charcoal;
@@ -701,18 +816,23 @@ public class IngredientsOrderUI : MonoBehaviour
             textRect.offsetMax = new Vector2(-2f, 0f);
             TextMeshProUGUI text = textGo.GetComponent<TextMeshProUGUI>();
             text.text = FormatGraphLabel(action);
-            text.fontSize = 14f;
+            text.fontSize = 10f;
             text.fontStyle = FontStyles.Bold;
             text.color = GameUITheme.PositiveAccent;
             text.alignment = TextAlignmentOptions.Center;
             text.textWrappingMode = TextWrappingModes.NoWrap;
             text.overflowMode = TextOverflowModes.Overflow;
             text.raycastTarget = false;
+            RecipeGraphEdgeView edge = labelGo.AddComponent<RecipeGraphEdgeView>();
+            edge.from = from;
+            edge.to = to;
+            edge.visual = labelGo.AddComponent<CanvasGroup>();
+            recipeGraphEdges.Add(edge);
             rt.SetAsLastSibling();
         }
     }
 
-    void CreateGraphLine(Vector2 a, Vector2 b)
+    void CreateGraphLine(Vector2 a, Vector2 b, RectTransform from, RectTransform to)
     {
         Vector2 delta = b - a;
         var line = new GameObject("Connector", typeof(RectTransform), typeof(Image));
@@ -720,11 +840,38 @@ public class IngredientsOrderUI : MonoBehaviour
         RectTransform rt = (RectTransform)line.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(Mathf.Max(3f, delta.magnitude), 3f);
+        rt.sizeDelta = new Vector2(Mathf.Max(2f, delta.magnitude), 2f);
         rt.anchoredPosition = (a + b) * 0.5f;
         rt.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
         line.GetComponent<Image>().color = GameUITheme.PositiveAccent;
         line.GetComponent<Image>().raycastTarget = false;
+        RecipeGraphEdgeView edge = line.AddComponent<RecipeGraphEdgeView>();
+        edge.from = from;
+        edge.to = to;
+        edge.visual = line.AddComponent<CanvasGroup>();
+        recipeGraphEdges.Add(edge);
+        rt.SetAsFirstSibling();
+    }
+
+    void CreateGraphArrow(Vector2 end, RectTransform from, RectTransform to)
+    {
+        var arrow = new GameObject("ConnectorArrow", typeof(RectTransform), typeof(TextMeshProUGUI));
+        arrow.transform.SetParent(recipeChartRoot, false);
+        RectTransform rt = (RectTransform)arrow.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(18f, 18f);
+        rt.anchoredPosition = end + new Vector2(0f, 7f);
+        TextMeshProUGUI text = arrow.GetComponent<TextMeshProUGUI>();
+        text.text = "▼";
+        text.fontSize = 13f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = GameUITheme.PositiveAccent;
+        text.raycastTarget = false;
+        RecipeGraphEdgeView edge = arrow.AddComponent<RecipeGraphEdgeView>();
+        edge.from = from;
+        edge.to = to;
+        edge.visual = arrow.AddComponent<CanvasGroup>();
+        recipeGraphEdges.Add(edge);
         rt.SetAsFirstSibling();
     }
 
@@ -1661,6 +1808,59 @@ public class IngredientsOrderUI : MonoBehaviour
                 : "Express $" + expressTotal;
     }
 
+    public void FocusRecipeNode(RecipeGraphNodeView selected)
+    {
+        if (selected == null) return;
+        var related = new HashSet<RectTransform>();
+        RectTransform selectedRect = selected.transform as RectTransform;
+        related.Add(selectedRect);
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (RecipeGraphEdgeView edge in recipeGraphEdges)
+                if (edge != null && edge.to != null && related.Contains(edge.to)
+                    && edge.from != null && related.Add(edge.from))
+                    changed = true;
+        } while (changed);
+
+        foreach (RecipeGraphNodeView node in recipeGraphNodes)
+            if (node != null) node.SetFocus(related.Contains(node.transform as RectTransform));
+        foreach (RecipeGraphEdgeView edge in recipeGraphEdges)
+            if (edge != null) edge.SetFocus(edge.from != null && edge.to != null
+                && related.Contains(edge.from) && related.Contains(edge.to));
+    }
+
+    public void ClearRecipeFocus()
+    {
+        foreach (RecipeGraphNodeView node in recipeGraphNodes)
+            if (node != null) node.SetFocus(true);
+        foreach (RecipeGraphEdgeView edge in recipeGraphEdges)
+            if (edge != null) edge.SetFocus(true);
+    }
+
+    public void ShowRecipeDetails(ItemDefinition item)
+    {
+        if (recipeDetailsText == null || item == null || recipeChartMenu == null) return;
+        AssemblyRecipeDefinition recipe = recipeChartMenu.GetAssemblyRecipe(item);
+        string title = !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName.ToUpperInvariant() : item.name.ToUpperInvariant();
+        if (recipe == null)
+        {
+            recipeDetailsText.text = "<b>" + title + "</b>\n\nIngredient or processed component.\n\nValue: $" + item.price;
+            return;
+        }
+
+        string inputs = "";
+        if (recipe.processedInput != null) inputs += "• " + recipe.processedInput.itemName + " ×" + Mathf.Max(1, recipe.processedInputAmount) + "\n";
+        if (recipe.pantryInput != null) inputs += "• " + recipe.pantryInput.itemName + " ×" + Mathf.Max(1, recipe.pantryInputAmount) + "\n";
+        if (recipe.thirdInput != null) inputs += "• " + recipe.thirdInput.itemName + " ×" + Mathf.Max(1, recipe.thirdInputAmount) + "\n";
+        int milestone = recipeChartMenu.GetMenuItemUnlockMilestone(item);
+        recipeDetailsText.text = "<b>" + title + "</b>\n\n<b>INPUTS</b>\n" + inputs
+            + "\n<b>STATION</b>\n" + (recipe.RequiresMk2 ? "Assembly Station MK2" : "Assembly Station MK1 or MK2")
+            + "\n\n<b>VALUE</b>  $" + item.price
+            + (milestone > 0 ? "\n<b>UNLOCK</b>  Milestone " + milestone : "");
+    }
+
     static void SetButtonState(Button button, bool interactable, Color activeColor)
     {
         if (button == null) return;
@@ -1668,6 +1868,49 @@ public class IngredientsOrderUI : MonoBehaviour
         Image image = button.GetComponent<Image>();
         if (image != null)
             image.color = interactable ? activeColor : GameUITheme.PanelSlate;
+    }
+}
+
+public sealed class RecipeGraphNodeView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+{
+    public IngredientsOrderUI owner;
+    public ItemDefinition item;
+    public Image cardImage;
+    public CanvasGroup group;
+    public Color baseColor;
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        owner?.FocusRecipeNode(this);
+        if (cardImage != null) cardImage.color = Color.Lerp(baseColor, Color.white, 0.12f);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        owner?.ClearRecipeFocus();
+        if (cardImage != null) cardImage.color = baseColor;
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        owner?.ShowRecipeDetails(item);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    public void SetFocus(bool focused)
+    {
+        if (group != null) group.alpha = focused ? 1f : 0.18f;
+    }
+}
+
+public sealed class RecipeGraphEdgeView : MonoBehaviour
+{
+    public RectTransform from;
+    public RectTransform to;
+    public CanvasGroup visual;
+    public void SetFocus(bool focused)
+    {
+        if (visual != null) visual.alpha = focused ? 1f : 0.08f;
     }
 }
 
@@ -1703,6 +1946,7 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
     public static bool IsAnyGraphOpen => ActiveGraphs.Count > 0;
 
     public RectTransform content;
+    public TextMeshProUGUI zoomLabel;
     public float minimumZoom = 0.45f;
     public float maximumZoom = 1.8f;
     public float zoomStep = 0.12f;
@@ -1752,5 +1996,12 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
         Vector2 position = content.anchoredPosition;
         content.localScale = Vector3.one * newZoom;
         content.anchoredPosition = pointer + (position - pointer) * ratio;
+        RefreshZoomLabel();
+    }
+
+    public void RefreshZoomLabel()
+    {
+        if (zoomLabel != null && content != null)
+            zoomLabel.text = Mathf.RoundToInt(content.localScale.x * 100f) + "%";
     }
 }

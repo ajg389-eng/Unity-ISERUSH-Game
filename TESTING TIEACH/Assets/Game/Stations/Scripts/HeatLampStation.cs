@@ -1027,12 +1027,18 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         return missing;
     }
 
-    public void ClearAllMeals()
+    public int ClearAllMeals()
     {
         int n = meals.Count;
+        if (n <= 0) return 0;
         meals.Clear();
         totalWasted += n;
+        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+        if (statistics != null)
+            for (int i = 0; i < n; i++) statistics.RecordMealWasted();
+        Sfx.Play(SfxId.FoodWasted);
         RefreshStatusLabel();
+        return n;
     }
 
     public void ResetRuntimeState()

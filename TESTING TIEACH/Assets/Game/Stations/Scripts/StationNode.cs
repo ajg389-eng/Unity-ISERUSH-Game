@@ -525,6 +525,13 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
             }
         }
 
+        // An empty station with no unfinished route demand is intentionally idle.
+        // Evaluate this before station-specific starvation checks so the scheduler
+        // only receives urgency signals for work that is actually needed.
+        ProductionManager manager = ProductionManager.Instance;
+        if (!HasBufferedWork() && (manager == null || !manager.HasActiveDemandForStation(gameObject)))
+            return StationRuntimeState.Idle;
+
         AssemblyStation assembly = GetComponent<AssemblyStation>();
         if (assembly != null)
         {
@@ -550,12 +557,6 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
                 return StationRuntimeState.Blocked;
             if (!grill.HasPattyOnGrill) return StationRuntimeState.Starved;
         }
-
-        // No queued demand and no physical work-in-progress is intentional idle
-        // time. It must not be reported as starvation or reduce efficiency.
-        ProductionManager manager = ProductionManager.Instance;
-        if (!HasBufferedWork() && (manager == null || !manager.HasActiveDemandForStation(gameObject)))
-            return StationRuntimeState.Idle;
 
         CuttingStation cutting = GetComponent<CuttingStation>();
         if (cutting != null)

@@ -19,6 +19,15 @@ public class EndOfDaySummaryUI : MonoBehaviour
     public TextMeshProUGUI summaryText;
     public Button continueButton;
 
+    TextMeshProUGUI revenueValue;
+    TextMeshProUGUI cashChangeValue;
+    TextMeshProUGUI ordersValue;
+    TextMeshProUGUI efficiencyValue;
+    TextMeshProUGUI balanceValue;
+    TextMeshProUGUI averageWaitValue;
+    TextMeshProUGUI walkedOutValue;
+    TextMeshProUGUI wasteValue;
+
     GameTimeManager timeManager;
     bool visible;
 
@@ -141,6 +150,29 @@ public class EndOfDaySummaryUI : MonoBehaviour
         string cashColor = cashChange >= 0 ? "#7DDB8A" : "#E07A7A";
         string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste);
 
+        if (revenueValue != null && cashChangeValue != null && ordersValue != null &&
+            efficiencyValue != null && balanceValue != null && averageWaitValue != null &&
+            walkedOutValue != null && wasteValue != null)
+        {
+            revenueValue.text = "$" + revenue;
+            cashChangeValue.text = cashSign + "$" + cashChange;
+            cashChangeValue.color = cashChange >= 0
+                ? new Color(0.49f, 0.86f, 0.54f) : new Color(0.88f, 0.48f, 0.48f);
+            ordersValue.text = orders.ToString();
+            efficiencyValue.text = efficiency.ToString("F0") + "%";
+            bool hadCustomers = orders + lost > 0;
+            efficiencyValue.color = !hadCustomers ? new Color(0.72f, 0.76f, 0.82f)
+                : efficiency >= 80f ? new Color(0.49f, 0.86f, 0.54f)
+                : efficiency >= 50f ? new Color(0.95f, 0.78f, 0.43f)
+                : new Color(0.88f, 0.48f, 0.48f);
+            balanceValue.text = "$" + balance;
+            averageWaitValue.text = avgWait.ToString("F1") + "s";
+            walkedOutValue.text = lost.ToString();
+            wasteValue.text = waste.ToString();
+            summaryText.text = diagnosis;
+            return;
+        }
+
         summaryText.text =
             "<color=#AAB7D1><b>FINANCIAL</b></color>\n" +
             $"Revenue<pos=38%><b>${revenue}</b><pos=57%>Cash change<pos=84%><color={cashColor}><b>{cashSign}${cashChange}</b></color>\n" +
@@ -223,7 +255,18 @@ public class EndOfDaySummaryUI : MonoBehaviour
         if (continueButton == null)
             continueButton = panelRoot.transform.Find("ContinueButton")?.GetComponent<Button>()
                 ?? panelRoot.transform.Find("Card/ContinueButton")?.GetComponent<Button>();
+        revenueValue = FindText("Card/HeadlineMetrics/Revenue/Value");
+        cashChangeValue = FindText("Card/HeadlineMetrics/CashChange/Value");
+        ordersValue = FindText("Card/HeadlineMetrics/Orders/Value");
+        efficiencyValue = FindText("Card/HeadlineMetrics/Efficiency/Value");
+        balanceValue = FindText("Card/OperationsMetrics/Balance/Value");
+        averageWaitValue = FindText("Card/OperationsMetrics/AverageWait/Value");
+        walkedOutValue = FindText("Card/OperationsMetrics/WalkedOut/Value");
+        wasteValue = FindText("Card/OperationsMetrics/Waste/Value");
     }
+
+    TextMeshProUGUI FindText(string path) => panelRoot != null
+        ? panelRoot.transform.Find(path)?.GetComponent<TextMeshProUGUI>() : null;
 
     void BuildPanel(Transform canvasTransform)
     {
@@ -247,51 +290,137 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(680f, 610f);
+        cardRt.sizeDelta = new Vector2(820f, 660f);
 
         var cardImg = card.AddComponent<Image>();
         cardImg.color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
         cardImg.raycastTarget = true;
 
         var vlg = card.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(30, 30, 24, 24);
-        vlg.spacing = 10;
+        vlg.padding = new RectOffset(28, 28, 24, 24);
+        vlg.spacing = 12;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
-        titleText = CreateLabel(card.transform, "Title", "Day Complete", 28, TextAlignmentOptions.Center);
+        titleText = CreateLabel(card.transform, "Title", "Day Complete", 30, TextAlignmentOptions.Center);
         titleText.fontStyle = FontStyles.Bold;
-        titleText.GetComponent<LayoutElement>().minHeight = 40;
+        titleText.GetComponent<LayoutElement>().minHeight = 42;
 
-        var subtitle = CreateLabel(card.transform, "Subtitle", "SHIFT PERFORMANCE", 13, TextAlignmentOptions.Center);
+        var subtitle = CreateLabel(card.transform, "Subtitle", "SHIFT PERFORMANCE SUMMARY", 13, TextAlignmentOptions.Center);
         subtitle.color = new Color(0.7f, 0.74f, 0.82f, 1f);
-        subtitle.GetComponent<LayoutElement>().minHeight = 22;
+        subtitle.GetComponent<LayoutElement>().minHeight = 24;
 
-        var summaryPanel = new GameObject("SummaryPanel", typeof(RectTransform));
+        var headline = CreateMetricRow(card.transform, "HeadlineMetrics", 142f);
+        revenueValue = CreateMetricCard(headline.transform, "Revenue", "REVENUE", "$0",
+            new Color(0.18f, 0.30f, 0.28f, 1f), new Color(0.49f, 0.86f, 0.54f));
+        cashChangeValue = CreateMetricCard(headline.transform, "CashChange", "CASH CHANGE", "$0",
+            new Color(0.18f, 0.30f, 0.28f, 1f), new Color(0.49f, 0.86f, 0.54f));
+        ordersValue = CreateMetricCard(headline.transform, "Orders", "ORDERS SERVED", "0",
+            new Color(0.16f, 0.24f, 0.31f, 1f), new Color(0.51f, 0.85f, 0.93f));
+        efficiencyValue = CreateMetricCard(headline.transform, "Efficiency", "SERVICE RATE", "0%",
+            new Color(0.16f, 0.24f, 0.31f, 1f), new Color(0.51f, 0.85f, 0.93f));
+
+        var operations = CreateMetricRow(card.transform, "OperationsMetrics", 104f);
+        balanceValue = CreateMetricCard(operations.transform, "Balance", "ENDING CASH", "$0",
+            new Color(0.11f, 0.13f, 0.18f, 1f), Color.white, 24f);
+        averageWaitValue = CreateMetricCard(operations.transform, "AverageWait", "AVERAGE WAIT", "0.0s",
+            new Color(0.11f, 0.13f, 0.18f, 1f), Color.white, 24f);
+        walkedOutValue = CreateMetricCard(operations.transform, "WalkedOut", "WALKED OUT", "0",
+            new Color(0.11f, 0.13f, 0.18f, 1f), Color.white, 24f);
+        wasteValue = CreateMetricCard(operations.transform, "Waste", "FOOD WASTED", "0",
+            new Color(0.11f, 0.13f, 0.18f, 1f), Color.white, 24f);
+
+        var summaryPanel = new GameObject("SummaryPanel", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         summaryPanel.transform.SetParent(card.transform, false);
-        var summaryPanelImage = summaryPanel.AddComponent<Image>();
-        summaryPanelImage.color = new Color(0.075f, 0.085f, 0.12f, 0.82f);
-        summaryPanelImage.raycastTarget = false;
-        var summaryPanelLayout = summaryPanel.AddComponent<LayoutElement>();
-        summaryPanelLayout.minHeight = 410f;
+        summaryPanel.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.12f, 0.92f);
+        summaryPanel.GetComponent<Image>().raycastTarget = false;
+        var summaryPanelLayout = summaryPanel.GetComponent<LayoutElement>();
+        summaryPanelLayout.minHeight = 175f;
         summaryPanelLayout.flexibleHeight = 1f;
+
+        TextMeshProUGUI reviewTitle = CreateLabel(summaryPanel.transform, "ReviewTitle", "PROCESS REVIEW", 13,
+            TextAlignmentOptions.TopLeft);
+        reviewTitle.fontStyle = FontStyles.Bold;
+        reviewTitle.color = new Color(0.65f, 0.72f, 0.84f, 1f);
+        RectTransform reviewTitleRt = (RectTransform)reviewTitle.transform;
+        reviewTitleRt.anchorMin = new Vector2(0f, 1f);
+        reviewTitleRt.anchorMax = new Vector2(1f, 1f);
+        reviewTitleRt.offsetMin = new Vector2(18f, -42f);
+        reviewTitleRt.offsetMax = new Vector2(-18f, -14f);
 
         summaryText = CreateLabel(summaryPanel.transform, "Summary", "", 15, TextAlignmentOptions.TopLeft);
         summaryText.richText = true;
         summaryText.textWrappingMode = TextWrappingModes.Normal;
-        summaryText.lineSpacing = 4f;
+        summaryText.lineSpacing = 7f;
         var summaryRt = (RectTransform)summaryText.transform;
         summaryRt.anchorMin = Vector2.zero;
         summaryRt.anchorMax = Vector2.one;
-        summaryRt.offsetMin = new Vector2(18f, 16f);
-        summaryRt.offsetMax = new Vector2(-18f, -16f);
+        summaryRt.offsetMin = new Vector2(18f, 14f);
+        summaryRt.offsetMax = new Vector2(-18f, -48f);
 
         continueButton = CreateButton(card.transform, "ContinueButton", "Continue to Next Day");
         panelRoot.transform.SetAsLastSibling();
         panelRoot.SetActive(false);
+    }
+
+    static GameObject CreateMetricRow(Transform parent, string name, float height)
+    {
+        var row = new GameObject(name, typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 10f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = true;
+
+        var element = row.GetComponent<LayoutElement>();
+        element.minHeight = height;
+        element.preferredHeight = height;
+        return row;
+    }
+
+    static TextMeshProUGUI CreateMetricCard(Transform parent, string name, string label, string initialValue,
+        Color background, Color valueColor, float valueSize = 30f)
+    {
+        var card = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        card.transform.SetParent(parent, false);
+
+        var image = card.GetComponent<Image>();
+        image.color = background;
+        image.raycastTarget = false;
+
+        var layout = card.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(12, 12, 12, 10);
+        layout.spacing = 3f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        var labelText = CreateLabel(card.transform, "Label", label, 11f, TextAlignmentOptions.Center);
+        labelText.fontStyle = FontStyles.Bold;
+        labelText.color = new Color(0.68f, 0.73f, 0.82f, 1f);
+        labelText.enableAutoSizing = true;
+        labelText.fontSizeMin = 9f;
+        labelText.fontSizeMax = 11f;
+        labelText.GetComponent<LayoutElement>().minHeight = 22f;
+
+        var value = CreateLabel(card.transform, "Value", initialValue, valueSize, TextAlignmentOptions.Center);
+        value.fontStyle = FontStyles.Bold;
+        value.color = valueColor;
+        value.enableAutoSizing = true;
+        value.fontSizeMin = 18f;
+        value.fontSizeMax = valueSize;
+        var valueLayout = value.GetComponent<LayoutElement>();
+        valueLayout.minHeight = valueSize + 10f;
+        valueLayout.flexibleHeight = 1f;
+        return value;
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string name, string text, float size, TextAlignmentOptions align)
@@ -314,8 +443,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var le = go.AddComponent<LayoutElement>();
-        le.minHeight = 44;
-        le.preferredHeight = 44;
+        le.minHeight = 50;
+        le.preferredHeight = 50;
 
         var img = go.AddComponent<Image>();
         img.color = new Color(0.28f, 0.48f, 0.36f, 1f);
@@ -330,7 +459,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
         tr.offsetMax = Vector2.zero;
         var tmp = textGo.AddComponent<TextMeshProUGUI>();
         tmp.text = label;
-        tmp.fontSize = 17;
+        tmp.fontSize = 18;
+        tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;

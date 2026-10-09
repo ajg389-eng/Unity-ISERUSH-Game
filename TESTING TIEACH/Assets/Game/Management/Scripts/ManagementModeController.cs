@@ -80,6 +80,8 @@ public class ManagementModeController : MonoBehaviour
     GameObject stationDiagnosticsRoot;
     TextMeshProUGUI stationDiagnosticsText;
     GameObject pickupInventoryRoot;
+    Button pickupDiscardAllButton;
+    TextMeshProUGUI pickupDiscardAllLabel;
     TextMeshProUGUI pickupStockText;
     readonly RawImage[] pickupSlotPreviews = new RawImage[4];
     readonly TextMeshProUGUI[] pickupSlotLabels = new TextMeshProUGUI[4];
@@ -1668,6 +1670,16 @@ public class ManagementModeController : MonoBehaviour
             if (statusText != null) statusText.transform.SetSiblingIndex(5);
         }
 
+        // Resolve child layout groups from the inside out before measuring the
+        // popup. Otherwise the first rendered frame uses stale preferred sizes
+        // and visibly snaps into its final arrangement one frame later.
+        if (productionDiagramRoot != null && productionDiagramRoot.activeSelf)
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productionDiagramRoot.transform);
+        if (productListContainer != null && productListContainer.gameObject.activeSelf)
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productListContainer);
+        if (pickupInventoryRoot != null && pickupInventoryRoot.activeSelf)
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)pickupInventoryRoot.transform);
+        Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
 
         float minimumHeight = heatLampCompact ? 246f : 286f;
@@ -1690,6 +1702,7 @@ public class ManagementModeController : MonoBehaviour
             rt.sizeDelta = new Vector2(resolvedWidth, height);
         }
 
+        Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
@@ -1717,12 +1730,19 @@ public class ManagementModeController : MonoBehaviour
         var inventorySize = pickupInventoryRoot.GetComponent<LayoutElement>();
         if (inventorySize != null)
         {
-            inventorySize.minHeight = 128f;
-            inventorySize.preferredHeight = 128f;
+            inventorySize.minHeight = 170f;
+            inventorySize.preferredHeight = 170f;
             inventorySize.flexibleHeight = 0f;
         }
 
         pickupStockText.text = "STOCK  " + lamp.Count + " / 4";
+        if (pickupDiscardAllButton != null)
+        {
+            pickupDiscardAllButton.interactable = lamp.Count > 0;
+            if (pickupDiscardAllLabel != null)
+                pickupDiscardAllLabel.text = lamp.Count > 0
+                    ? "THROW OUT ALL (" + lamp.Count + ")" : "NOTHING TO THROW OUT";
+        }
         for (int i = 0; i < pickupSlotPreviews.Length; i++)
         {
             HeldMeal meal = i < lamp.Meals.Count ? lamp.Meals[i] : null;
@@ -1783,8 +1803,8 @@ public class ManagementModeController : MonoBehaviour
         rootLayout.childForceExpandWidth = true;
         rootLayout.childForceExpandHeight = false;
         var rootSize = pickupInventoryRoot.GetComponent<LayoutElement>();
-        rootSize.minHeight = 128f;
-        rootSize.preferredHeight = 128f;
+        rootSize.minHeight = 170f;
+        rootSize.preferredHeight = 170f;
         rootSize.flexibleHeight = 0f;
 
         pickupStockText = CreateDiagramText(pickupInventoryRoot.transform, "Stock", "STOCK  0 / 4", 14f, 22f);
@@ -1809,7 +1829,26 @@ public class ManagementModeController : MonoBehaviour
         for (int i = 0; i < pickupSlotPreviews.Length; i++)
             CreatePickupInventorySlot(row.transform, i);
 
+        pickupDiscardAllButton = CreateButton(pickupInventoryRoot.transform, "THROW OUT ALL", ThrowOutPickupStock);
+        pickupDiscardAllButton.gameObject.name = "ThrowOutAllButton";
+        pickupDiscardAllButton.GetComponent<Image>().color = new Color(0.62f, 0.23f, 0.23f, 1f);
+        LayoutElement discardSize = pickupDiscardAllButton.GetComponent<LayoutElement>();
+        discardSize.minHeight = 34f;
+        discardSize.preferredHeight = 34f;
+        pickupDiscardAllLabel = pickupDiscardAllButton.transform.Find("Text")?.GetComponent<TextMeshProUGUI>();
+
         pickupInventoryRoot.SetActive(false);
+    }
+
+    void ThrowOutPickupStock()
+    {
+        HeatLampStation lamp = selectedStation != null
+            ? selectedStation.GetComponent<HeatLampStation>() : null;
+        if (lamp == null || lamp.Count <= 0) return;
+
+        lamp.ClearAllMeals();
+        RefreshHeatLampInventory();
+        ApplyPanelLayout(true);
     }
 
     void CreatePickupInventorySlot(Transform parent, int index)
@@ -1912,8 +1951,14 @@ public class ManagementModeController : MonoBehaviour
             : cutting != null ? cutting.selectedProduct
             : fryer != null ? fryer.GetSelectedOutput() : null;
 
+        // Destroy is deferred until the end of the frame. Disable outgoing cards
+        // first so the layout system never measures old and new recipe rows together.
         for (int i = productListContainer.childCount - 1; i >= 0; i--)
-            Destroy(productListContainer.GetChild(i).gameObject);
+        {
+            GameObject oldRow = productListContainer.GetChild(i).gameObject;
+            oldRow.SetActive(false);
+            Destroy(oldRow);
+        }
 
         var pm = ProductionManager.Instance;
         var config = pm != null ? pm.orderConfig : null;

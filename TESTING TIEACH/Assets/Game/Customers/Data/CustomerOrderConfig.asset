@@ -17,6 +17,7 @@ MonoBehaviour:
   clBurgerItem: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
   cltBurgerItem: {fileID: 11400000, guid: c1110000000000000000000000000004, type: 2}
   cheeseBaconBurgerItem: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
+  superBurgerItem: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
   cheeseBaconLettuceBurgerItem: {fileID: 11400000, guid: 2aea384aa33ab1644b43a3d5921ec855, type: 2}
   cheeseBaconLettuceOnionBurgerItem: {fileID: 11400000, guid: addf57dfe1d46fe4aa471b11721db9af, type: 2}
   cheeseBaconLettuceOnionTomatoBurgerItem: {fileID: 11400000, guid: 630a7c589ed298343bfefbf9d64da898, type: 2}
@@ -141,6 +142,25 @@ MonoBehaviour:
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
+  - recipeName: Super Burger
+    output: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
+    processedInput: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
+    processedInputName: Classic Burger
+    processedInputAmount: 1
+    processedInputFromPantry: 0
+    processedInputFromFreezer: 0
+    pantryInput: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
+    pantryInputAmount: 1
+    rawPantryInput: {fileID: 0}
+    supplyPipeline:
+    supplyStageOutputs: []
+    thirdInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
+    thirdInputAmount: 1
+    rawThirdInput: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
+    thirdSupplyPipeline: 0000000001000000
+    thirdSupplyStageOutputs:
+    - {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
+    - {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   - recipeName: Fries
     output: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
     processedInput: {fileID: 11400000, guid: 0751b0a0296e2194d87f5a36ac2663a0, type: 2}

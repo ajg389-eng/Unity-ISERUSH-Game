@@ -21,9 +21,18 @@ public static class MilestoneFeatures
         return numberedStage <= 0 || HighestReachedNumberedStage() >= numberedStage;
     }
 
-    public static bool ExtraEquipmentUnlocked => HasReached(CapacityAndOptimization);
-    public static bool ExtraStaffingUnlocked => HasReached(CapacityAndOptimization);
+    static bool Researched(string id) => ResearchProgressManager.Instance != null
+        && ResearchProgressManager.Instance.IsCompleted(id);
+
+    public static bool ExtraEquipmentUnlocked => HasReached(CapacityAndOptimization)
+        && Researched("additional_stations");
+    public static bool ExtraStaffingUnlocked => HasReached(CapacityAndOptimization)
+        && Researched("fourth_worker");
     public static bool RushHourUnlocked => HasReached(CapacityAndOptimization);
-    public static bool BottleneckInsightsUnlocked => HasReached(CapacityAndOptimization);
-    public static bool ExtraFlowStaffingUnlocked => HasReached(CapacityAndOptimization);
+    public static bool BottleneckInsightsUnlocked => HasReached(CapacityAndOptimization)
+        && Researched("bottleneck_insights");
+    public static bool ExtraFlowStaffingUnlocked => HasReached(CapacityAndOptimization)
+        && Researched("multi_worker_flows");
+    public static bool Mk2StationsUnlocked => HasReached(Mk2Stations)
+        && Researched("mk2_stations");
 }

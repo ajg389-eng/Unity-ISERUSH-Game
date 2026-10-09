@@ -332,6 +332,20 @@ public class DebugMenu : MonoBehaviour
             }
         });
 
+        Transform researchRow = CreateButtonRow(actionContent, "ResearchDebugRow");
+        CreateButton(researchRow, "Reset Research", () =>
+        {
+            ResearchProgressManager.Ensure().DebugResetAll();
+            Toast("All research reset");
+            RefreshStatus();
+        });
+        CreateButton(researchRow, "Complete All Research", () =>
+        {
+            ResearchProgressManager.Ensure().DebugCompleteAll();
+            Toast("All research completed");
+            RefreshStatus();
+        });
+
         CreateLabel(actionContent, "Jump to milestone", 12, FontStyles.Bold);
         CreateLabel(actionContent, "Sets the selected milestone active and marks earlier milestones complete.", 10, FontStyles.Normal);
         var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));

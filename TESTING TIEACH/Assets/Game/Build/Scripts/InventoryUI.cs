@@ -606,8 +606,8 @@ public class InventoryUI : MonoBehaviour
         {
             ItemDefinition active = selected;
             bool shakeStationLocked = family == "Shake Station"
-                && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
-            bool mk2Unlocked = MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
+                && !MilestoneFeatures.Mk2StationsUnlocked;
+            bool mk2Unlocked = MilestoneFeatures.Mk2StationsUnlocked;
             card.SetTutorialLocked(false);
             card.Bind(active, inventory.GetAcquiredCount(active),
                 onSelect: () => BeginItemPlacement(active),
@@ -653,7 +653,7 @@ public class InventoryUI : MonoBehaviour
     {
         return item != null && (OnboardingTutorial.IsStationLocked(item)
             || (item.IsTieredStation && (item.stationMark >= 2 || item.stationFamily == "Shake Station")
-                && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations)));
+                && !MilestoneFeatures.Mk2StationsUnlocked));
     }
 
     void CreateLegacyRow(ItemDefinition item)

@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 12, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int version = 13, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
@@ -18,6 +18,9 @@ public class KitchenSaveSnapshot
     public List<Flow> flows = new List<Flow>();
     public List<WallPhoto> wallPhotos = new List<WallPhoto>();
     public List<string> completedMilestoneIds = new List<string>();
+    public List<string> completedResearchIds = new List<string>();
+    public string activeResearchId;
+    public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
@@ -45,6 +48,12 @@ public class KitchenSaveSnapshot
         }
         if (MissionProgressManager.Instance != null)
             s.missionProgress = MissionProgressManager.Instance.CaptureProgress();
+        if (ResearchProgressManager.Instance != null)
+        {
+            s.completedResearchIds = ResearchProgressManager.Instance.CaptureCompleted();
+            s.activeResearchId = ResearchProgressManager.Instance.ActiveId;
+            s.activeResearchMinutesRemaining = ResearchProgressManager.Instance.RemainingMinutes;
+        }
         var appearance = StoreAppearanceController.Instance;
         if (appearance != null)
         {
@@ -81,12 +90,20 @@ public class KitchenSaveSnapshot
                     var pantry = go.GetComponent<PantryStation>();
                     var cutting = go.GetComponent<CuttingStation>();
                     var fryer = go.GetComponent<FryerStation>();
-                    ItemDefinition product = assembly != null ? assembly.selectedProduct
-                        : grill != null ? grill.selectedProduct
-                        : fryer != null ? fryer.selectedProduct
+                    // Persist the station's resolved assignment, not just its backing
+                    // field. Several station types normalize or derive their active
+                    // recipe, so the raw field can be null or stale while the UI and
+                    // production system are using a valid selection.
+                    AssemblyRecipeDefinition assemblyRecipe = assembly != null ? assembly.GetSelectedRecipe() : null;
+                    CuttingRecipeDefinition cuttingRecipe = cutting != null ? cutting.GetSelectedRecipe() : null;
+                    ItemDefinition product = assembly != null
+                        ? (assemblyRecipe != null ? assemblyRecipe.output : assembly.selectedProduct)
+                        : grill != null ? grill.GetSelectedOutput()
+                        : fryer != null ? fryer.GetSelectedOutput()
                         : freezer != null ? freezer.selectedItem
                         : pantry != null ? pantry.selectedItem
-                        : cutting != null ? cutting.selectedProduct : null;
+                        : cutting != null ? (cuttingRecipe != null ? cuttingRecipe.output : cutting.selectedProduct)
+                        : null;
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
                         pantrySecondProduct=pantry != null && pantry.secondItem != null ? pantry.secondItem.name : "",
                         slot=mounted != null ? mounted.slotIndex : groundPickup != null ? groundPickup.slotIndex : -1,
@@ -133,7 +150,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>12 || inv==null || pm==null) return false;
+        if(version<1 || version>13 || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -185,12 +202,28 @@ public class KitchenSaveSnapshot
             var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
             objects.Add(go);
         }
+        // Recipe lookup is milestone-filtered. Restore progression before applying
+        // station selections, otherwise valid MK1/MK2 assembly recipes temporarily
+        // resolve as locked and flow balancing replaces them with Hamburger.
+        MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
+        if (milestoneProgress != null)
+        {
+            if (version >= 10 && (completedMilestoneIds != null && completedMilestoneIds.Count > 0
+                || !string.IsNullOrEmpty(activeMilestoneId)))
+                milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds);
+            else if (milestone > 0)
+                milestoneProgress.DebugJumpToNumberedMilestone(
+                    Mathf.Clamp(milestone, 1, Mathf.Max(1, milestoneProgress.GetNumberedMilestoneCount())), out _);
+        }
         for(int i=0;i<equipment.Count;i++) {
             var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
             ItemDefinition product = !string.IsNullOrEmpty(e.product) && definitions.TryGetValue(e.product,out var savedProduct) ? savedProduct : null;
-            var grill=go.GetComponent<GrillStation>(); if(grill!=null && product!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
-            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null && product!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
-            var fryer=go.GetComponent<FryerStation>(); if(fryer!=null && product!=null) fryer.SetRecipeOutput(product);
+            // Always restore configurable stations, including an intentionally empty
+            // assignment. Skipping null previously left whatever default happened to
+            // be serialized on the prefab, which made load results station-dependent.
+            var grill=go.GetComponent<GrillStation>(); if(grill!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
+            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
+            var fryer=go.GetComponent<FryerStation>(); if(fryer!=null) fryer.SetRecipeOutput(product);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
             var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) {
                 ItemDefinition second=null;
@@ -270,21 +303,17 @@ public class KitchenSaveSnapshot
             ? tutorialStep - 1
             : tutorialStep;
         if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
-        MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
-        if (milestoneProgress != null)
-        {
-            if (version >= 10 && (completedMilestoneIds != null && completedMilestoneIds.Count > 0
-                || !string.IsNullOrEmpty(activeMilestoneId)))
-                milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds);
-            else if (milestone > 0)
-                milestoneProgress.DebugJumpToNumberedMilestone(
-                    Mathf.Clamp(milestone, 1, Mathf.Max(1, milestoneProgress.GetNumberedMilestoneCount())), out _);
-        }
         // Version 11 replaces the active milestone task definitions. Preserve the
         // saved milestone checkpoint from v10, but don't carry old task progress
         // into tasks whose objectives have changed.
         if (version >= 11 && MissionProgressManager.Instance != null)
             MissionProgressManager.Instance.RestoreProgress(missionProgress);
+        ResearchProgressManager research = ResearchProgressManager.Ensure();
+        if (research != null)
+            research.Restore(
+                version >= 13 ? completedResearchIds : null,
+                version >= 13 ? activeResearchId : null,
+                version >= 13 ? activeResearchMinutesRemaining : 0f);
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var appearance = StoreAppearanceController.Ensure();
         if (version >= 4)

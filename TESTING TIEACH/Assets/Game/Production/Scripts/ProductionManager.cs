@@ -2128,12 +2128,16 @@ public class ProductionManager : MonoBehaviour
         float completionSeconds = EstimateTaskCompletionSeconds(employee, job, station, serviceStation);
         float deadlineSeconds = GetStationServiceDeadlineSeconds(job, serviceStation);
         float slackSeconds = deadlineSeconds - completionSeconds;
+        score += GetStationContinuityBonus(job, serviceStation);
         if (deadlineSeconds < 999f)
         {
+            // Missing a service deadline makes the task more urgent, not less.
+            // The completion-time penalty below still selects the worker who can
+            // reach the same urgent task soonest.
             if (slackSeconds >= 0f)
-                score += 260f + Mathf.Min(140f, slackSeconds * 18f);
+                score += 260f + Mathf.Clamp(120f - slackSeconds * 18f, 0f, 120f);
             else
-                score += 260f - Mathf.Min(700f, -slackSeconds * 110f);
+                score += 520f;
         }
         score -= completionSeconds * 8f;
 
@@ -2144,6 +2148,34 @@ public class ProductionManager : MonoBehaviour
                 nearbyWorkers++;
         score -= nearbyWorkers * 18f;
         return score;
+    }
+
+    /// <summary>
+    /// Prioritizes the atomic task that keeps a demanded flow station cycling.
+    /// This remains a score rather than a hard lock, so blocked outputs and final
+    /// product delivery can still outrank unnecessary input filling.
+    /// </summary>
+    float GetStationContinuityBonus(ProductionJob job, GameObject serviceStation)
+    {
+        if (job == null || serviceStation == null || !HasActiveDemandForStation(serviceStation))
+            return 0f;
+
+        StationRuntimeMetrics metrics = serviceStation.GetComponent<StationRuntimeMetrics>();
+        if (metrics == null) return 0f;
+
+        switch (metrics.CurrentState)
+        {
+            case StationRuntimeState.Starved:
+                return job.taskPhase == ProductionTaskPhase.Work ? 480f : 0f;
+            case StationRuntimeState.Blocked:
+                return job.taskPhase == ProductionTaskPhase.CollectOutput ? 480f : 0f;
+            case StationRuntimeState.Working:
+                return 180f;
+            case StationRuntimeState.Idle:
+                return job.taskPhase == ProductionTaskPhase.Work ? 300f : 0f;
+            default:
+                return 0f;
+        }
     }
 
     GameObject ResolveTaskServiceStation(KitchenEmployee employee, ProductionJob job,

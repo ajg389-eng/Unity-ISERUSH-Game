@@ -104,7 +104,7 @@ public class InventoryManager : MonoBehaviour
     {
         if (item == null || !item.IsTieredStation) return false;
         return (item.stationMark >= 2 || item.stationFamily == "Shake Station")
-            && !MilestoneFeatures.HasReached(MilestoneFeatures.Mk2Stations);
+            && !MilestoneFeatures.Mk2StationsUnlocked;
     }
 
     public bool PurchaseOne(ItemDefinition item)
