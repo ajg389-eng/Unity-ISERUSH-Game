@@ -67,7 +67,7 @@ public class CustomerPatienceMeter : MonoBehaviour
     {
         if (!active) return;
 
-        remaining -= Time.deltaTime * 0.5f;
+        remaining -= Time.deltaTime;
         if (remaining <= 0f)
         {
             remaining = 0f;

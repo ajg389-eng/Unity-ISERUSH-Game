@@ -30,8 +30,6 @@ public static class MilestoneDatabaseSetup
         public string name;
         public string description;
         public string topics;
-        public string unlockId;
-        public string unlockName;
         public QuizQuestion[] questions;
         public MissionSpec[] missions;
     }
@@ -57,8 +55,6 @@ public static class MilestoneDatabaseSetup
             isTutorial: true,
             missionDatabase: tutorialMissions,
             inlineMissions: null,
-            unlockId: "tutorial_complete",
-            unlockName: "Tutorial Complete",
             questions: null));
 
         foreach (var m in content)
@@ -72,8 +68,6 @@ public static class MilestoneDatabaseSetup
                 isTutorial: false,
                 missionDatabase: null,
                 inlineMissions: m.missions,
-                unlockId: m.unlockId,
-                unlockName: m.unlockName,
                 questions: m.questions));
         }
 
@@ -108,8 +102,6 @@ public static class MilestoneDatabaseSetup
         bool isTutorial,
         MissionDatabase missionDatabase,
         MissionSpec[] inlineMissions,
-        string unlockId,
-        string unlockName,
         QuizQuestion[] questions)
     {
         var asset = AssetDatabase.LoadAssetAtPath<MilestoneDefinition>(path);
@@ -128,15 +120,7 @@ public static class MilestoneDatabaseSetup
         asset.missionDatabase = missionDatabase;
         asset.missions = BuildMissionList(id, inlineMissions);
 
-        asset.unlocks = new List<MilestoneUnlock>
-        {
-            new MilestoneUnlock
-            {
-                kind = MilestoneUnlockKind.Feature,
-                unlockId = unlockId,
-                displayName = unlockName
-            }
-        };
+        asset.unlocks = new List<MilestoneUnlock>();
 
         if (!isTutorial)
         {
@@ -150,7 +134,7 @@ public static class MilestoneDatabaseSetup
 
             quiz.quizId = id + "_quiz";
             quiz.title = "Milestone " + displayName + " Quiz";
-            quiz.introText = "Answer every question correctly to unlock the next milestone.";
+            quiz.introText = "Answer every question correctly to advance to the next milestone and reveal new research.";
             quiz.questions = questions != null
                 ? new List<QuizQuestion>(questions)
                 : new List<QuizQuestion>();
@@ -240,8 +224,6 @@ public static class MilestoneDatabaseSetup
                 name = "1",
                 description = "Build a small menu and learn to shape a kitchen workflow.",
                 topics = "Burgers, fries, recipes, and station layout",
-                unlockId = "milestone_01_complete",
-                unlockName = "Lettuce, tomato, and cheese fries",
                 missions = new[]
                 {
                     M("observe_queue", "Set up the cheeseburger recipe",
@@ -291,8 +273,6 @@ public static class MilestoneDatabaseSetup
                 name = "2",
                 description = "Expand the burger and fries recipes with fresh ingredients.",
                 topics = "Classic burgers and cheese fries",
-                unlockId = "milestone_02_complete",
-                unlockName = "Bacon, shakes, and MK2 stations",
                 missions = new[]
                 {
                     M("hire_capacity", "Configure a Classic Burger",
@@ -342,8 +322,6 @@ public static class MilestoneDatabaseSetup
                 name = "3",
                 description = "Add bacon and shakes, then invest in faster MK2 workstations.",
                 topics = "Bacon recipes, shakes, MK2 stations",
-                unlockId = "milestone_03_complete",
-                unlockName = "Advanced burger, fries, and shake recipes",
                 missions = new[]
                 {
                     M("buy_inputs", "Configure a bacon burger",
@@ -393,8 +371,6 @@ public static class MilestoneDatabaseSetup
                 name = "4",
                 description = "Complete the menu with the most involved fries and shake production chains.",
                 topics = "Premium fries, finished shakes, and production balance",
-                unlockId = "milestone_04_complete",
-                unlockName = "Full menu complete",
                 missions = new[]
                 {
                     M("restock", "Configure a Bacon Cheeseburger",

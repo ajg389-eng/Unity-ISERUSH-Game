@@ -671,6 +671,7 @@ public static class WorkflowAnalysis
         public float layoutEfficiencyPercent;
         public float runtimeWorkingPercent;
         public float runtimeWaitPercent;
+        /// <summary>Output observed at pickup stations during the trailing minute.</summary>
         public float actualOutputPerMinute;
         public float throughputEfficiencyPercent;
     }
@@ -1007,10 +1008,10 @@ public static class WorkflowAnalysis
                     && assemblyCount >= config.GetAssemblyChain(menuItem).Count)
                     products.Add(menuItem);
 
-        // Report actual configured outputs, not every recipe this collection of
-        // station types could theoretically make. The producer must be selected
-        // for the exact product and its output must terminate at Pickup.
-        products.RemoveAll(product => !IsProductDeliveredToPickup(flow, product, config));
+        // Report the outputs this route is configured to make. A flow can be
+        // evaluated before its final handoff, so do not require delivery to a
+        // pickup station before showing the product or its modeled capacity.
+        products.RemoveAll(product => !IsProductProducedByFlow(flow, product, config));
 
         if (products.Count == 0)
         {
@@ -1049,8 +1050,8 @@ public static class WorkflowAnalysis
             + "  |  travel " + layout.travelSeconds.ToString("0.0") + "s"
             + "  |  layout " + layout.layoutEfficiencyPercent.ToString("0") + "%"
             + "  |  wait " + layout.runtimeWaitPercent.ToString("0") + "%"
-            + "\nThroughput: " + layout.actualOutputPerMinute.ToString("0.0") + "/min actual"
-            + "  |  " + layout.effectiveOutputPerMinute.ToString("0.0") + "/min modeled"
+            + "\nOutput capacity: " + layout.effectiveOutputPerMinute.ToString("0.0") + "/min"
+            + "  |  " + layout.actualOutputPerMinute.ToString("0.0") + "/min delivered"
             + "  |  score " + layout.throughputEfficiencyPercent.ToString("0") + "%";
         foreach (ItemDefinition item in products)
         {
@@ -1105,7 +1106,7 @@ public static class WorkflowAnalysis
         return false;
     }
 
-    static bool IsProductDeliveredToPickup(ProductionFlowPlan flow, ItemDefinition product,
+    static bool IsProductProducedByFlow(ProductionFlowPlan flow, ItemDefinition product,
         CustomerOrderConfig config)
     {
         if (flow?.stations == null || product == null) return false;
@@ -1126,12 +1127,25 @@ public static class WorkflowAnalysis
             if (!produces) continue;
 
             // Only the product made at the terminal production station counts.
-            // If it feeds another processing station, it is an ingredient rather
-            // than a product delivered by this flow.
+            // A pickup station is one possible terminal, but it is not required
+            // for capacity analysis. This lets the flow report what it can make
+            // while output is still buffered at the producer.
+            bool hasDownstreamProduction = false;
             foreach (GameObject next in flow.GetOutgoing(station))
-                if (next != null && flow.stations.Contains(next)
-                    && next.GetComponent<HeatLampStation>() != null)
-                    return true;
+            {
+                if (next == null || !flow.stations.Contains(next)) continue;
+                if (next.GetComponent<HeatLampStation>() != null
+                    || next.GetComponent<Register>() != null)
+                    continue;
+                StationNode nextNode = StationNode.EnsureOn(next);
+                if (nextNode != null && nextNode.IsWorkStation)
+                {
+                    hasDownstreamProduction = true;
+                    break;
+                }
+            }
+            if (!hasDownstreamProduction)
+                return true;
         }
         return false;
     }

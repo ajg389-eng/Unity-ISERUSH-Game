@@ -399,11 +399,16 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (managementPanel == null) return;
 
+        // Prepare hidden so Unity never presents the previous tab or a partially
+        // rebuilt list for a frame while the screen opens.
+        bool wasActive = managementPanel.activeSelf;
+        if (!wasActive)
+            managementPanel.SetActive(false);
+
         var inv = FindObjectOfType<InventoryUI>();
         if (inv != null && inv.panel != null && inv.panel.activeSelf)
             inv.panel.SetActive(false);
 
-        managementPanel.SetActive(true);
         Sfx.Play(SfxId.UiOpen);
         EnsurePanelClickBlocker(managementPanel);
         ApplyManagementBackdrop();
@@ -418,6 +423,8 @@ public class ManagementScreenController : MonoBehaviour
             modeManager.SetMode(GameModeManager.Mode.Manage);
 
         GameUITheme.ApplyTo(managementPanel.transform);
+        Canvas.ForceUpdateCanvases();
+        managementPanel.SetActive(true);
 
         if (pauseWhileOpen)
         {

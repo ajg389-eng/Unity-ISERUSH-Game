@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_04_quiz
   title: Milestone 4 Quiz
-  introText: Answer every question correctly to unlock the next milestone.
+  introText: Answer every question correctly to advance to the next milestone and reveal new research.
   questions:
   - prompt: Supplier A is cheaper but frequently delivers late. Supplier B costs
       more but is highly reliable. What type of decision is this?

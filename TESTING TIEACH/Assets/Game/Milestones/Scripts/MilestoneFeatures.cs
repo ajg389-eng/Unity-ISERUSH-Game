@@ -1,6 +1,5 @@
 /// <summary>
-/// Gameplay gates that open when the player reaches a numbered milestone
-/// (that stage is active, completed, or already passed).
+/// Milestones reveal research projects. Completed research grants gameplay unlocks.
 /// Tutorial is stage 0; Milestone 1 is the first numbered stage.
 /// </summary>
 public static class MilestoneFeatures
@@ -24,15 +23,44 @@ public static class MilestoneFeatures
     static bool Researched(string id) => ResearchProgressManager.Instance != null
         && ResearchProgressManager.Instance.IsCompleted(id);
 
-    public static bool ExtraEquipmentUnlocked => HasReached(CapacityAndOptimization)
-        && Researched("additional_stations");
-    public static bool ExtraStaffingUnlocked => HasReached(CapacityAndOptimization)
-        && Researched("fourth_worker");
-    public static bool RushHourUnlocked => HasReached(CapacityAndOptimization);
-    public static bool BottleneckInsightsUnlocked => HasReached(CapacityAndOptimization)
-        && Researched("bottleneck_insights");
-    public static bool ExtraFlowStaffingUnlocked => HasReached(CapacityAndOptimization)
-        && Researched("multi_worker_flows");
-    public static bool Mk2StationsUnlocked => HasReached(Mk2Stations)
-        && Researched("mk2_stations");
+    public static bool IsResearchComplete(string id) => Researched(id);
+
+    public static bool IsResearchProjectComplete(int numberedStage) =>
+        numberedStage <= 0 || Researched(ResearchIdForStage(numberedStage));
+
+    public static bool ResearchUnlockedForStage(int numberedStage)
+    {
+        if (numberedStage <= 0) return true;
+        ResearchProgressManager research = ResearchProgressManager.Instance;
+        if (research == null) return MilestoneProgressManager.Instance == null;
+        return IsResearchProjectComplete(numberedStage);
+    }
+
+    public static string ResearchIdForStage(int numberedStage) => numberedStage switch
+    {
+        <= RestaurantBasics => "production_basics",
+        CapacityAndOptimization => "station_capacity_1",
+        Mk2Stations => "mk2_stations",
+        _ => "recipe_upgrades_3",
+    };
+
+    public static string ResearchTitleForStage(int numberedStage) =>
+        ResearchProgressManager.Get(ResearchIdForStage(numberedStage))?.title ?? "Research";
+
+    public static bool ExtraEquipmentUnlocked => Researched("additional_stations") || Researched("station_capacity_1");
+    public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
+    public static bool ExpertStaffingUnlocked => Researched("expert_workforce");
+    public static bool RushHourUnlocked => Researched("queue_analytics");
+    public static bool QueueAnalyticsUnlocked => Researched("queue_analytics");
+    public static bool ExtraFlowStaffingUnlocked => Researched("multi_worker_flows");
+    public static int MaxWorkersPerFlow
+    {
+        get
+        {
+            if (Researched("multi_worker_flows_3")) return 4;
+            if (Researched("multi_worker_flows_2")) return 3;
+            return ExtraFlowStaffingUnlocked ? 2 : 1;
+        }
+    }
+    public static bool Mk2StationsUnlocked => Researched("mk2_stations");
 }

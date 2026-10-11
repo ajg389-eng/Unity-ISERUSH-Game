@@ -295,7 +295,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             title = "Stations tab help";
             body =
                 "<b>Station cards</b>\nEach card shows a station you can buy and place. The first number is how many you own and the second is your current cap. The price is removed when the station is purchased.\n\n" +
-                "<b>Capacity limit</b>\nYou start with one of each station. Extra copies unlock at <b>Milestone 2</b> (cap becomes 2), then later milestones can raise the cap further. MAX or MILESTONE 2 on the card means you cannot buy another copy yet.\n\n" +
+                "<b>Capacity limit</b>\nYou start with one of each station. Complete <b>Expanded Menu & Stations</b> research to buy a second copy, then complete capacity research to raise the limit further. MAX on the card means you reached the current limit.\n\n" +
                 "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used. Double-click a placed object to pick it up and move it.\n\n" +
                 "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, shake stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
                 "<b>Counter equipment</b>\nRegisters sit on top of counter slots. Pickup Stations use counter-grid placement and hold finished products for collection.\n\n" +
@@ -343,7 +343,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>Milestones</b>\nMilestones group related tasks into larger learning stages. Completed stages remain visible so you can track what has been mastered.\n\n" +
                 "<b>Locked progression</b>\nFinish the onboarding tutorial before later milestones become available. Then complete the required tasks in the current stage.\n\n" +
-                "<b>Quiz</b>\nWhen a milestone is ready, Open Quiz tests the ideas used during that stage. Passing unlocks the next part of the game.\n\n" +
+                "<b>Quiz</b>\nWhen a milestone is ready, Open Quiz tests the ideas used during that stage. Passing advances the chapter and makes its research projects available. Completing research grants the gameplay unlocks.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Progression connects game decisions to concepts such as flow, capacity, inventory, bottlenecks, and continuous improvement.";
             return;
         }
@@ -365,11 +365,11 @@ public class ManagementTabInfoUI : MonoBehaviour
         {
             title = "Workers tab help";
             body =
-                "<b>Hire</b>\nYou can hire up to <b>3 workers</b> from the start (the first hire is free). A fourth hire unlocks at <b>Milestone 2</b>. More labor can increase capacity, but every hire must be used effectively.\n\n" +
+                "<b>Hire</b>\nYou can hire up to <b>3 workers</b> from the start (the first hire is free). Complete <b>Fourth Worker</b> research to raise the hiring limit. More labor can increase capacity, but every hire must be used effectively.\n\n" +
                 "<b>Flow chips</b>\nSelect a saved flow to inspect or modify it. Click the name field to rename the selected flow.\n\n" +
                 "<b>Create Flow</b>\nReturns you to the kitchen. Click stations in the exact order work should travel, then finish the route.\n\n" +
                 "<b>Edit Flow</b>\nReopens the selected route so its station order can be changed. The station chips show the current sequence.\n\n" +
-                "<b>Workers on a flow</b>\nAssign one worker from their card. Putting a second person on the same flow unlocks at <b>Milestone 2</b> so you can staff the bottleneck. Click a worker name in the flow to remove that assignment.\n\n" +
+                "<b>Workers on a flow</b>\nAssign one worker from their card. Complete <b>Multi-Worker Flows</b> research to put a second person on the same flow and staff the bottleneck. Click a worker name in the flow to remove that assignment.\n\n" +
                 "<b>Economics</b>\nThe analysis highlights route length, cycle behavior, and likely imbalance. A long route or one slow station can limit the entire system.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Balance labor and station capacity around the bottleneck instead of maximizing every station independently.";
             return;
@@ -381,7 +381,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
                 "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. Customers arrive as a Poisson process, so the count jumps around the average. That average is lowest on <b>Milestone 1</b> and rises with each later milestone. From <b>Milestone 2</b>, lunch (12–2) and dinner (5–7) become rush hours with a higher rate — prepare inventory and labor before the peak.\n\n" +
+                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. Customers arrive as a Poisson process, so the count jumps around the average. That average is lowest on <b>Milestone 1</b> and rises with each later milestone. Complete <b>Queue Analytics</b> research to enable lunch and dinner rush hours. Prepare inventory and labor before the peak.\n\n" +
                 "<b>Live demand and throughput</b>\nOutstanding is the exact number of items customers still need. Ready and in production are live counts. Ordered and completed are measured totals from the trailing 60 simulation seconds, not forecasts.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Demand changes over time. Capacity that works during a quiet hour may fail during the peak.";
             return;
@@ -390,7 +390,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         title = "Store Stats tab help";
         body =
             "<b>Customers in system (WIP)</b>\nEveryone currently waiting or being served. Rising WIP often signals congestion.\n\n" +
-            "<b>Queues and utilization</b>\nThese open at <b>Milestone 2</b>. They show how long lines are and how busy stations and workers are. Use the numbers to decide where extra labor or equipment belongs.\n\n" +
+            "<b>Queues and utilization</b>\nComplete <b>Queue Analytics</b> research to open these metrics. They show how long lines are and how busy stations and workers are. Use the numbers to decide where extra labor or equipment belongs.\n\n" +
             "<b>Average wait time</b>\nHow long customers wait before service. <b>Throughput</b> is completed orders per minute.\n\n" +
             "<b>Pickup Station stock</b>\nFinished products waiting for customers. Too little creates shortages; too much risks waste.\n\n" +
             "<b>Waste and revenue</b>\nWaste counts expired products. Revenue counts money earned from completed sales.\n\n" +

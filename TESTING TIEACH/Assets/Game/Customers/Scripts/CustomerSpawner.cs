@@ -26,9 +26,15 @@ public class CustomerSpawner : MonoBehaviour
     [Min(0f)]
     public float extraCustomersPerMinutePerMilestone = 0.85f;
 
-    [Tooltip("Rush hours (Milestone 2+, lunch and dinner) multiply the mean arrival rate.")]
+    [Tooltip("After Queue Analytics research, lunch and dinner rush hours multiply the mean arrival rate.")]
     [Min(1f)]
     public float rushArrivalMultiplier = 2.2f;
+
+    [Header("Demand-aware pacing")]
+    [Tooltip("Soft cap for customers already in the store. New arrivals are slowed above this number, but never stopped.")]
+    [Min(1)] public int comfortableActiveCustomerCount = 8;
+    [Tooltip("Minimum arrival-rate multiplier when the store is congested.")]
+    [Range(0.1f, 1f)] public float congestedArrivalFloor = 0.35f;
 
     [Tooltip("Assign to give customers random burger / fries / drink combos")]
     public CustomerOrderConfig orderConfig;
@@ -72,6 +78,22 @@ public class CustomerSpawner : MonoBehaviour
         if (clock != null && clock.IsRushHour)
             rate *= rushArrivalMultiplier;
         return Mathf.Max(0.05f, rate);
+    }
+
+    float DemandAdjustedCustomersPerMinute()
+    {
+        float rate = MeanCustomersPerMinute();
+        int active = 0;
+        var customers = CustomerAI.OrderBoardCustomers;
+        if (customers != null)
+            for (int i = 0; i < customers.Count; i++)
+            {
+                CustomerAI customer = customers[i];
+                if (customer != null && !customer.IsLeaving) active++;
+            }
+        int overCapacity = Mathf.Max(0, active - Mathf.Max(1, comfortableActiveCustomerCount));
+        float congestion = Mathf.Clamp01(overCapacity / (float)Mathf.Max(1, comfortableActiveCustomerCount));
+        return rate * Mathf.Lerp(1f, Mathf.Clamp(congestedArrivalFloor, 0.1f, 1f), congestion);
     }
 
     void ScheduleNextArrival(float customersPerSecond)
@@ -167,7 +189,7 @@ public class CustomerSpawner : MonoBehaviour
             return;
         }
 
-        float rate = MeanCustomersPerMinute() / 60f;
+        float rate = DemandAdjustedCustomersPerMinute() / 60f;
         if (!arrivalScheduled || scheduledRatePerSecond <= 0f)
             ScheduleNextArrival(rate);
         else if (!waitingForOpening && Mathf.Abs(rate - scheduledRatePerSecond) > 0.0001f)
@@ -191,7 +213,7 @@ public class CustomerSpawner : MonoBehaviour
         }
 
         waitingForOpening = false;
-        ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
+        ScheduleNextArrival(DemandAdjustedCustomersPerMinute() / 60f);
     }
 
     public string LastSpawnError { get; private set; }
@@ -199,7 +221,7 @@ public class CustomerSpawner : MonoBehaviour
     public bool SpawnNow(bool force = false)
     {
         if (!TrySpawn(force)) return false;
-        ScheduleNextArrival(MeanCustomersPerMinute() / 60f);
+        ScheduleNextArrival(DemandAdjustedCustomersPerMinute() / 60f);
         return true;
     }
 
@@ -209,7 +231,7 @@ public class CustomerSpawner : MonoBehaviour
     public void ResumeAfterTutorial()
     {
         waitingForOpening = false;
-        scheduledRatePerSecond = MeanCustomersPerMinute() / 60f;
+        scheduledRatePerSecond = DemandAdjustedCustomersPerMinute() / 60f;
         waitRemaining = 3f;
         arrivalScheduled = true;
     }

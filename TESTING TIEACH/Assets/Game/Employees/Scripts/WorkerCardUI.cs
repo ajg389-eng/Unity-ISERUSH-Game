@@ -802,7 +802,11 @@ public class WorkerCardUI : MonoBehaviour
     {
         if (employee == null) return "Upgrade";
         if (employee.IsMaxUpgraded)
+        {
+            if (employee.UpgradeLevel < KitchenEmployee.MaxUpgradeLevel)
+                return employee.UpgradeLevel < 2 ? "Carry 3: Research" : "Carry 4: Research";
             return "Carry Max " + FormatUpgradeStars(employee.UpgradeLevel);
+        }
         int cost = employee.GetNextUpgradeCost();
         return "Upgrade Carry  $" + cost + "  → " + FormatUpgradeStars(employee.UpgradeLevel + 1)
             + " (" + (employee.UpgradeLevel + 2) + " items)";

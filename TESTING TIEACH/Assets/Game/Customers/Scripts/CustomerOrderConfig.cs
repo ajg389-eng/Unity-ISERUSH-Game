@@ -146,6 +146,20 @@ public class CustomerOrderConfig : ScriptableObject
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
         || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem
         || item == superBurgerItem);
+    bool IsRemovedIngredient(ItemDefinition item) => item != null
+        && (item == onionIngredient || item == onionRingIngredient || item == friedOnionRingIngredient
+            || item == eggIngredient || item == cookedEggIngredient
+            || item == cheeseBaconLettuceOnionBurgerItem
+            || item == cheeseBaconLettuceOnionTomatoBurgerItem
+            || item == cheeseBaconLettuceOnionTomatoEggBurgerItem);
+
+    static string RecipeResearchId(int stage)
+    {
+        if (stage <= 1) return "production_basics";
+        if (stage == 2) return "recipe_upgrades_1";
+        if (stage == 3) return "recipe_upgrades_2";
+        return "recipe_upgrades_3";
+    }
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
     public bool IsDrink(ItemDefinition item) => item != null && (item == drinkItem || item == whippedCreamShakeItem || item == whippedCreamSprinkleShakeItem);
@@ -167,19 +181,21 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsMenuItemUnlocked(ItemDefinition item)
     {
-        if (OnboardingTutorial.BlocksProgression && item == burgerBase)
-            return true;
+        if (IsRemovedIngredient(item)) return false;
+        if (OnboardingTutorial.BlocksProgression && IsTutorialMenuItem(item)) return true;
         int milestone = GetMenuItemUnlockMilestone(item);
-        return milestone <= 0 || MilestoneProgressManager.Instance == null
-            || MilestoneFeatures.HasReached(milestone);
+        return milestone <= 0 || MilestoneFeatures.IsResearchComplete(RecipeResearchId(milestone));
     }
 
     public bool IsIngredientUnlocked(ItemDefinition item)
     {
+        if (IsRemovedIngredient(item)) return false;
         if (IsTutorialBurgerItem(item))
             return true;
-        return item != null && HasReachedMilestone(GetIngredientMilestone(item));
+        return item != null && MilestoneFeatures.IsResearchComplete(RecipeResearchId(GetIngredientMilestone(item)));
     }
+
+    bool IsTutorialMenuItem(ItemDefinition item) => item != null && item == burgerBase;
 
     bool IsTutorialBurgerItem(ItemDefinition item)
     {
@@ -194,11 +210,6 @@ public class CustomerOrderConfig : ScriptableObject
     }
 
     public int GetIngredientUnlockMilestone(ItemDefinition item) => GetIngredientMilestone(item);
-
-    static bool HasReachedMilestone(int milestone)
-    {
-        return MilestoneProgressManager.Instance == null || MilestoneFeatures.HasReached(milestone);
-    }
 
     int GetRecipeUnlockMilestone(AssemblyRecipeDefinition recipe)
     {
@@ -268,6 +279,12 @@ public class CustomerOrderConfig : ScriptableObject
 
     bool IsRecipeUnlocked(AssemblyRecipeDefinition recipe)
     {
+        if (recipe != null && (IsRemovedIngredient(recipe.output)
+            || IsRemovedIngredient(recipe.processedInput)
+            || IsRemovedIngredient(recipe.pantryInput)
+            || IsRemovedIngredient(recipe.rawPantryInput)
+            || IsRemovedIngredient(recipe.thirdInput)
+            || IsRemovedIngredient(recipe.rawThirdInput))) return false;
         if (recipe != null && (recipe.output == cheeseBaconLettuceBurgerItem
             || recipe.output == cheeseBaconLettuceOnionBurgerItem
             || recipe.output == cheeseBaconLettuceOnionTomatoBurgerItem
@@ -276,15 +293,40 @@ public class CustomerOrderConfig : ScriptableObject
             return false;
         if (OnboardingTutorial.BlocksProgression && recipe != null && recipe.Produces(burgerBase))
             return true;
-        return MilestoneProgressManager.Instance == null
-            || MilestoneFeatures.HasReached(GetRecipeUnlockMilestone(recipe));
+        if (recipe == null) return false;
+        if (recipe.RequiresMk2)
+            return MilestoneFeatures.IsResearchComplete("mk2_stations")
+                && MilestoneFeatures.IsResearchComplete("recipe_upgrades_3");
+        return MilestoneFeatures.IsResearchComplete(RecipeResearchId(GetRecipeUnlockMilestone(recipe)));
     }
+
+    public bool IsAssemblyRecipeAvailable(AssemblyRecipeDefinition recipe) => IsRecipeUnlocked(recipe);
+
+    public bool IsProcessingRecipeAvailable(StationProcessingRecipeDefinition recipe) =>
+        IsProcessingRecipeUnlocked(recipe);
 
     public bool IsItemEnabled(ItemDefinition item)
     {
-        if (item == null || !IsMenuItemUnlocked(item)) return false;
+        if (item == null || !IsCustomerRecipeUnlocked(item)) return false;
         return (IsBurger(item) || IsFries(item) || IsDrink(item))
             && !disabledMenuItems.Contains(item);
+    }
+
+    /// <summary>
+    /// Customer orders are driven by the recipes the player can currently use.
+    /// Menu milestone unlocks still gate the product family, while the assembly
+    /// recipe gate prevents a customer from ordering a product whose recipe is
+    /// still locked in Research.
+    /// </summary>
+    public bool IsCustomerRecipeUnlocked(ItemDefinition item)
+    {
+        if (item == null || !IsMenuItemUnlocked(item)) return false;
+        if (!IsBurger(item) && !IsFries(item) && !IsDrink(item)) return false;
+
+        // Keep simple/custom configs that do not define assembly recipes usable.
+        // The shipped config has recipes for every customer-facing product.
+        if (assemblyRecipes == null || assemblyRecipes.Count == 0) return true;
+        return GetAssemblyRecipe(item) != null;
     }
 
     public void SetItemEnabled(ItemDefinition item, bool enabled)
@@ -405,8 +447,9 @@ public class CustomerOrderConfig : ScriptableObject
     bool IsProcessingRecipeUnlocked(StationProcessingRecipeDefinition recipe)
     {
         if (recipe == null) return false;
-        return MilestoneProgressManager.Instance == null
-            || MilestoneFeatures.HasReached(Mathf.Max(GetIngredientMilestone(recipe.input), GetIngredientMilestone(recipe.output)));
+        if (IsRemovedIngredient(recipe.input) || IsRemovedIngredient(recipe.output)) return false;
+        int requiredStage = Mathf.Max(GetIngredientMilestone(recipe.input), GetIngredientMilestone(recipe.output));
+        return MilestoneFeatures.IsResearchComplete(RecipeResearchId(requiredStage));
     }
 
     public IEnumerable<ItemDefinition> GetFryerProducts()
@@ -428,8 +471,10 @@ public class CustomerOrderConfig : ScriptableObject
         if (lettuceIngredient != null && (includeLocked || IsIngredientUnlocked(lettuceIngredient)) && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
         if (tomatoIngredient != null && (includeLocked || IsIngredientUnlocked(tomatoIngredient)) && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
         if (baconSlabIngredient != null && (includeLocked || IsIngredientUnlocked(baconSlabIngredient)) && yielded.Add(baconSlabIngredient)) yield return baconSlabIngredient;
-        if (onionIngredient != null && (includeLocked || IsIngredientUnlocked(onionIngredient)) && yielded.Add(onionIngredient)) yield return onionIngredient;
-        if (eggIngredient != null && (includeLocked || IsIngredientUnlocked(eggIngredient)) && yielded.Add(eggIngredient)) yield return eggIngredient;
+        if (onionIngredient != null && !IsRemovedIngredient(onionIngredient)
+            && (includeLocked || IsIngredientUnlocked(onionIngredient)) && yielded.Add(onionIngredient)) yield return onionIngredient;
+        if (eggIngredient != null && !IsRemovedIngredient(eggIngredient)
+            && (includeLocked || IsIngredientUnlocked(eggIngredient)) && yielded.Add(eggIngredient)) yield return eggIngredient;
         if (whippedCreamIngredient != null && (includeLocked || IsIngredientUnlocked(whippedCreamIngredient))
             && yielded.Add(whippedCreamIngredient)) yield return whippedCreamIngredient;
         if (assemblyRecipes != null)
@@ -467,7 +512,7 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null || IsDrink(item)) return false;
         if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
-            || item == baconSlabIngredient || item == onionIngredient || item == eggIngredient || item == whippedCreamIngredient)
+            || item == baconSlabIngredient || item == whippedCreamIngredient)
             return includeLocked || IsIngredientUnlocked(item);
         if (assemblyRecipes == null) return false;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)

@@ -23,7 +23,4 @@ MonoBehaviour:
   missions: []
   missionDatabase: {fileID: 11400000, guid: 52859d47b8862bc4ca163b279226ec17, type: 2}
   quiz: {fileID: 0}
-  unlocks:
-  - kind: 3
-    unlockId: tutorial_complete
-    displayName: Tutorial Complete
+  unlocks: []

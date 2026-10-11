@@ -142,13 +142,16 @@ public class EndOfDaySummaryUI : MonoBehaviour
         int balance = money != null ? money.CurrentMoney : 0;
         int orders = stats != null ? stats.OrdersCompletedToday : 0;
         int lost = stats != null ? stats.CustomersLostToday : 0;
+        int visited = stats != null ? stats.CustomersVisitedToday : 0;
+        int unserved = stats != null ? stats.UnservedCustomersToday : 0;
         int waste = stats != null ? stats.MealsWastedToday : 0;
         float avgWait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
         float efficiency = stats != null ? stats.ServiceEfficiencyPercent : 0f;
 
         string cashSign = cashChange > 0 ? "+" : "";
         string cashColor = cashChange >= 0 ? "#7DDB8A" : "#E07A7A";
-        string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste);
+        string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste, visited, unserved, orders);
+        string shiftGoals = BuildShiftGoals(stats, tm);
 
         if (revenueValue != null && cashChangeValue != null && ordersValue != null &&
             efficiencyValue != null && balanceValue != null && averageWaitValue != null &&
@@ -169,7 +172,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
             averageWaitValue.text = avgWait.ToString("F1") + "s";
             walkedOutValue.text = lost.ToString();
             wasteValue.text = waste.ToString();
-            summaryText.text = diagnosis;
+            summaryText.text = shiftGoals + "\n\n" + diagnosis;
             return;
         }
 
@@ -182,22 +185,53 @@ public class EndOfDaySummaryUI : MonoBehaviour
             $"Service efficiency<pos=38%><b>{efficiency:F0}%</b>\n\n" +
             "<color=#AAB7D1><b>OPERATIONS</b></color>\n" +
             $"Average wait<pos=38%><b>{avgWait:F1}s</b><pos=57%>Food wasted<pos=84%><b>{waste}</b>\n\n" +
+            "<color=#AAB7D1><b>SHIFT GOALS</b></color>\n" + shiftGoals + "\n\n" +
             "<color=#AAB7D1><b>PROCESS REVIEW</b></color>\n" + diagnosis;
     }
 
-    static string BuildOperationsDiagnosis(StoreStatisticsManager stats, int cashChange, float avgWait, int lost, int waste)
+    static string BuildShiftGoals(StoreStatisticsManager stats, GameTimeManager timeManager)
+    {
+        int day = timeManager != null ? timeManager.CurrentDay : 1;
+        int orderTarget = Mathf.Clamp(4 + day * 2, 6, 20);
+        int revenueTarget = 100 + day * 50;
+        int orders = stats != null ? stats.OrdersCompletedToday : 0;
+        int revenue = stats != null ? stats.RevenueToday : 0;
+        float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
+        float waitTarget = Mathf.Max(25f, 50f - day * 2f);
+        string orderMark = orders >= orderTarget ? "<color=#7DDB8A>✓</color>" : "<color=#F2C66D>○</color>";
+        string revenueMark = revenue >= revenueTarget ? "<color=#7DDB8A>✓</color>" : "<color=#F2C66D>○</color>";
+        string waitMark = orders > 0 && wait <= waitTarget ? "<color=#7DDB8A>✓</color>" : "<color=#F2C66D>○</color>";
+        return orderMark + " Serve " + orderTarget + " orders  (" + orders + ")\n"
+            + revenueMark + " Earn $" + revenueTarget + "  ($" + revenue + ")\n"
+            + waitMark + " Keep average wait under " + waitTarget.ToString("0") + "s"
+            + (orders > 0 ? "  (" + wait.ToString("0") + "s)" : "");
+    }
+
+    static string BuildOperationsDiagnosis(StoreStatisticsManager stats, int cashChange, float avgWait, int lost, int waste,
+        int visited, int unserved, int orders)
     {
         var notes = new System.Collections.Generic.List<string>();
 
-        if (lost > 0 || avgWait >= 35f)
-            notes.Add("<color=#F2C66D><b>Queue:</b></color> Demand exceeded capacity. Inspect the register and bottleneck station.");
-        else if (stats != null && stats.OrdersCompletedToday > 0)
-            notes.Add("<color=#7DDB8A><b>Flow:</b></color> Customer waiting remained controlled.");
+        float serviceRate = visited > 0 ? orders / (float)visited : 0f;
+        if (lost > 0 || avgWait >= 35f || unserved > 0)
+            notes.Add("<color=#F2C66D><b>Service:</b></color> " + lost + " walked out, " + unserved +
+                " were still in service at close. Check the register queue and the station with the longest backlog.");
+        else if (orders > 0)
+            notes.Add("<color=#7DDB8A><b>Service:</b></color> All " + visited + " visits were served. Average wait was " + avgWait.ToString("F0") + "s.");
 
         if (waste > 0)
             notes.Add("<color=#F2C66D><b>Waste:</b></color> Lower pickup stock or match output to demand.");
         if (cashChange < 0)
-            notes.Add("<color=#F2C66D><b>Cost:</b></color> Spending exceeded revenue. Check capacity utilization.");
+            notes.Add("<color=#F2C66D><b>Cash:</b></color> Balance changed by -$" + Mathf.Abs(cashChange) +
+                ". Delay optional purchases until sales cover the next upgrade.");
+        else if (cashChange > 0)
+            notes.Add("<color=#7DDB8A><b>Cash:</b></color> Balance grew by $" + cashChange +
+                ". Compare another worker or station upgrade against the busiest queue before investing.");
+
+        if (visited > 0 && serviceRate < 0.7f && notes.Count < 3)
+            notes.Add("<color=#83D9ED><b>Next shift:</b></color> Prioritize service capacity before expanding the menu.");
+        else if (visited == 0 && notes.Count < 3)
+            notes.Add("<color=#83D9ED><b>Next shift:</b></color> Open the doors and make sure a register is available to receive orders.");
 
         var workflowNotes = WorkflowAnalysis.GetSystemDiagnostics();
         if (workflowNotes.Count > 0 && notes.Count < 3)
@@ -290,7 +324,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(820f, 660f);
+        cardRt.sizeDelta = new Vector2(820f, 720f);
 
         var cardImg = card.AddComponent<Image>();
         cardImg.color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
@@ -338,7 +372,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         summaryPanel.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.12f, 0.92f);
         summaryPanel.GetComponent<Image>().raycastTarget = false;
         var summaryPanelLayout = summaryPanel.GetComponent<LayoutElement>();
-        summaryPanelLayout.minHeight = 175f;
+        summaryPanelLayout.minHeight = 235f;
         summaryPanelLayout.flexibleHeight = 1f;
 
         TextMeshProUGUI reviewTitle = CreateLabel(summaryPanel.transform, "ReviewTitle", "PROCESS REVIEW", 13,

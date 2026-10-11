@@ -1870,7 +1870,7 @@ public class BuildPlacer : MonoBehaviour
         return true;
     }
 
-    static void RefreshPerimeterWalls()
+    void RefreshPerimeterWalls()
     {
         KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
         if (walls != null) walls.FitToGrid();

@@ -80,7 +80,7 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         mealsWasted++;
         dayMealsWasted++;
-        NotificationCenter.Post("Prepared food expired at a pickup station. Review target stock and demand.",
+        NotificationCenter.Post("Prepared food expired at a pickup station. Review customer demand and flow throughput.",
             GameNotificationKind.Warning, "food-wasted", 30f);
     }
 
@@ -123,6 +123,7 @@ public class StoreStatisticsManager : MonoBehaviour
     public int MealsWastedToday => dayMealsWasted;
     public int CustomersLostToday => dayCustomersLost;
     public int CustomersVisitedToday => dayCustomersVisited;
+    public int UnservedCustomersToday => Mathf.Max(0, dayCustomersVisited - dayOrdersCompleted - dayCustomersLost);
     public int MoneyAtDayStart => dayMoneyStart;
     public bool DayTrackingStarted => dayTrackingStarted;
 

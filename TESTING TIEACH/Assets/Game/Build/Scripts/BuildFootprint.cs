@@ -67,6 +67,11 @@ public class CustomerWallDoor : MonoBehaviour
         {
             if (colliders[i] == null) continue;
             if (colliders[i].GetComponentInParent<Canvas>() != null) continue;
+            MeshCollider mesh = colliders[i] as MeshCollider;
+            // Unity does not support triggers on concave mesh colliders. Keep
+            // imported door collision solid and let the primitive colliders
+            // handle trigger interactions.
+            if (mesh != null && !mesh.convex) continue;
             colliders[i].isTrigger = true;
         }
 

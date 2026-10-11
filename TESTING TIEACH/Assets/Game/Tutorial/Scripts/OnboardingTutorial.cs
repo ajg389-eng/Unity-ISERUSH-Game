@@ -54,6 +54,12 @@ public class OnboardingTutorial : MonoBehaviour
     int autoAdvanceStep = -1;
     float autoAdvanceAt;
     bool flowEditCompleted;
+    bool tutorialReviewShown;
+    bool cleanedOldWorldCallout;
+    int recipeTutorialStationIndex;
+    int ingredientTutorialStep;
+    float ingredientExplanationUntil;
+    string tutorialFocusText;
     readonly Dictionary<Graphic, GameObject> tutorialBorders = new Dictionary<Graphic, GameObject>();
     float nextControlHighlightRefresh;
     readonly List<GameObject> starterKitchen = new List<GameObject>();
@@ -70,6 +76,8 @@ public class OnboardingTutorial : MonoBehaviour
     RectTransform calloutArrow;
     GameObject highlight;
     Transform highlightTarget;
+    Transform secondaryHighlightTarget;
+    GameObject secondaryHighlight;
     Highlight currentHighlight;
 
     enum Highlight
@@ -106,6 +114,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireEditedFlow;
         public bool requireRecipes;
         public bool requireIngredients;
+        public bool requireStationSequence;
 
         public Step(
             string title,
@@ -123,7 +132,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireWorkerOnFlow = false,
             bool requireHiredWorker = false,
             bool requireEditedFlow = false, bool requireRecipes = false,
-            bool requireIngredients = false)
+            bool requireIngredients = false,
+            bool requireStationSequence = false)
         {
             this.title = title;
             this.body = body;
@@ -142,6 +152,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireEditedFlow = requireEditedFlow;
             this.requireRecipes = requireRecipes;
             this.requireIngredients = requireIngredients;
+            this.requireStationSequence = requireStationSequence;
         }
     }
 
@@ -155,12 +166,12 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Buy stations",
             "Open <b>Build</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
-            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow.\n\n" +
+            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow. Shorter routes reduce worker travel and help the line keep up.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory, openInventory: true),
         new Step(
             "Register",
-            "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here.\n\n" +
+            "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here. The queue grows when arrivals outpace your service capacity.\n\n" +
             "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
             "Next", Highlight.Register, openInventory: true, requirePlaced: true),
         new Step(
@@ -195,38 +206,35 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Configure ingredients and recipes",
-            "Select stations under <b>Business > Staff</b> to configure them. Set the <b>Freezer to Raw Patty</b>, the <b>Pantry to Bun</b>, and the Assembly recipe to <b>Hamburger</b>.\n\n" +
-            "Set the <b>Grill to Cooked Patty</b> too. Assembly combines one cooked patty and one bun. Next unlocks when all four selections are ready.",
-            "Next", Highlight.Management, openWorkers: true, requireRecipes: true),
+            "Click the highlighted station in the kitchen. Gus will point out the exact choice to make in its station panel. We will configure each station one at a time.",
+            "Next", Highlight.Management, openWorkers: true, requireRecipes: true, requireStationSequence: true),
         new Step(
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then <b>Menu & Supply</b>.\n\n" +
-            "Buy Raw Patties, Buns, and Potatoes. Packs spend cash. A delivery person brings them in through the front door after a short wait.",
-            "Next", Highlight.Management, openIngredients: true, requireIngredients: true),
+            "Buy Raw Patties and Buns for the burger line. Packs spend cash. A delivery person brings them in through the front door after a short wait. Potatoes are used later for fries.",
+            "Next", Highlight.Management, openIngredients: true, requireIngredients: true, requireStationSequence: true),
         new Step(
             "Hire workers",
             "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
             "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. Workers use their priorities to choose jobs within their assigned flow; unassigned workers remain idle.\n\n" +
             "Hire at least one worker to continue.",
-            "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true),
+            "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true, requireStationSequence: true),
         new Step(
             "Create a flow",
-            "Still on Workers, click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n\n" +
-            "Hold the left mouse button on a station, drag to its destination, and release to add a connection.\n\n" +
-            "In one flow, drag these connections: <b>Freezer > Grill</b>, <b>Grill > Assembly</b>, <b>Pantry > Assembly</b>, <b>Assembly > Pickup Station</b>. Click Finish.",
-            "Next", Highlight.Management, openWorkers: true, requireFlow: true),
+            "Start by clicking <b>Create Flow</b>. Gus will guide you through each connection in the kitchen. Drag from the source station to the destination station, then release.",
+            "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
             "Drag to add a connection. Click selects a station; Ctrl-click removes it and its connections. Press Esc to cancel edits.\n\n" +
             "Edit an existing flow and click Finish to save it before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
-            "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true),
+            "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true, requireStationSequence: true),
         new Step(
             "Assign workers to a flow",
             "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
             "That worker's name appears on the flow. Click the name chip to unassign. The kitchen will not cook until at least one worker is on a flow.\n\n" +
             "Next stays locked until a flow has a worker assigned.",
-            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true),
+            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true, requireStationSequence: true),
         new Step(
             "One customer loop",
             "Here is the basic service loop:\n\n" +
@@ -277,7 +285,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
 
         "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Menu & Supply</b>.\n\n" +
-        "Order at least one pack of <b>Raw Patties</b>, <b>Buns</b>, and <b>Potatoes</b>. A delivery person will bring the combined order through the front door.",
+        "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
 
         "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
         "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
@@ -316,7 +324,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station.",
         "Use <b>Edit Flow</b> to adjust connections, then click Finish.",
         "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
-        "Customers request a burger and pay for whichever burger reaches the Pickup Station. Food targets control how many to keep ready.",
+        "Customers request a burger and pay when the ordered burger reaches the Pickup Station. Workers keep the line moving, but only stage food that a waiting customer ordered.",
         "Watch one order move through the line. Use <b>Food > Recipes</b> for recipe trees and <b>Progression > Research</b> for upgrades."
     };
 
@@ -462,6 +470,10 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        recipeTutorialStationIndex = 0;
+        ingredientTutorialStep = 0;
+        ingredientExplanationUntil = 0f;
+        tutorialFocusText = null;
         furthestStepIndex = Mathf.Max(furthestStepIndex, stepIndex);
 
         if (canvasRoot != null)
@@ -471,7 +483,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (titleText != null)
             titleText.text = step.title;
         if (bodyText != null)
-            bodyText.text = stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
+            bodyText.text = !string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
+                : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
         if (stepLabel != null)
             stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
         if (nextLabel != null)
@@ -544,6 +557,12 @@ public class OnboardingTutorial : MonoBehaviour
     void UpdateContextualCallout()
     {
         if (canvasRoot == null || panel == null) return;
+        if (running)
+        {
+            Step activeStep = Steps[stepIndex];
+            if (activeStep.requireStationSequence)
+                UpdateStationSequenceStep(activeStep);
+        }
 
         RectTransform rootRect = (RectTransform)canvasRoot.transform;
         RectTransform panelRect = (RectTransform)panel.transform;
@@ -551,8 +570,8 @@ public class OnboardingTutorial : MonoBehaviour
         bool hasTarget = TryGetCalloutTarget(rootRect, out targetPosition);
 
         panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
-        float panelWidth = panelRect.rect.width > 1f ? panelRect.rect.width : 720f;
-        float panelHeight = panelRect.rect.height > 1f ? panelRect.rect.height : 220f;
+        float panelWidth = panelRect.rect.width > 1f ? panelRect.rect.width : 560f;
+        float panelHeight = panelRect.rect.height > 1f ? panelRect.rect.height : 180f;
         float rootWidth = rootRect.rect.width > 1f ? rootRect.rect.width : 1920f;
         float rootHeight = rootRect.rect.height > 1f ? rootRect.rect.height : 1080f;
 
@@ -953,6 +972,11 @@ public class OnboardingTutorial : MonoBehaviour
 
     void Complete(bool skipped)
     {
+        if (!skipped && !tutorialReviewShown)
+        {
+            tutorialReviewShown = true;
+            ShowTutorialReview();
+        }
         running = false;
         pendingStart = false;
         currentHighlight = Highlight.None;
@@ -987,6 +1011,24 @@ public class OnboardingTutorial : MonoBehaviour
         for (int i = 0; i < spawners.Length; i++)
             if (spawners[i] != null)
                 spawners[i].ResumeAfterTutorial();
+    }
+
+    void ShowTutorialReview()
+    {
+        StoreStatisticsManager stats = StoreStatisticsManager.Instance;
+        int served = stats != null ? stats.OrdersCompletedToday : 0;
+        float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
+        int waste = stats != null ? stats.MealsWastedToday : 0;
+        string next = served == 0
+            ? "Next: check that your flow has a worker and that ingredients are in stock."
+            : wait > 35f
+                ? "Next: shorten the route or add capacity at the busiest station."
+                : waste > 0
+                    ? "Next: connect the final station to Pickup and watch delivery follow waiting orders."
+                    : "Next: add capacity and watch your kitchen keep pace as more customers arrive.";
+        NotificationCenter.Post("Tutorial complete. You served " + served + " order" + (served == 1 ? "" : "s") +
+            "; average wait " + wait.ToString("F0") + "s; wasted food " + waste + ". " + next,
+            GameNotificationKind.Message, "tutorial-review", 14f);
     }
 
     void PrepareEmptyKitchen()
@@ -1134,6 +1176,22 @@ public class OnboardingTutorial : MonoBehaviour
             highlight.SetActive(false);
     }
 
+    void EnsureSecondaryHighlight()
+    {
+        if (secondaryHighlight != null) return;
+        secondaryHighlight = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        secondaryHighlight.name = "OnboardingSecondaryHighlight";
+        Collider collider = secondaryHighlight.GetComponent<Collider>();
+        if (collider != null) collider.enabled = false;
+        Renderer renderer = secondaryHighlight.GetComponent<Renderer>();
+        if (renderer != null && highlight != null)
+        {
+            renderer.sharedMaterial = highlight.GetComponent<Renderer>().sharedMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        secondaryHighlight.transform.localScale = Vector3.one * 0.65f;
+    }
+
     void ClearControlHighlights()
     {
         foreach (var border in tutorialBorders.Values)
@@ -1201,6 +1259,23 @@ public class OnboardingTutorial : MonoBehaviour
             && targetRect.gameObject.activeInHierarchy)
             calloutTarget = targetRect;
 
+        if (step.requireIngredients)
+        {
+            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>();
+            CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+            ItemDefinition item = config != null && ingredientTutorialStep < 2
+                ? GetTutorialIngredient(ingredientTutorialStep, config) : null;
+            Button target = null;
+            if (ingredients != null)
+            {
+                if (ingredientTutorialStep < 2 && item != null)
+                    target = ingredients.TutorialAddButton(item);
+                else if (ingredientTutorialStep >= 3)
+                    target = ingredients.TutorialPlaceOrderButton;
+            }
+            if (target != null) HighlightControl(target);
+        }
+
         if (!step.openWorkers) return;
         var workers = FindFirstObjectByType<WorkersUI>();
         if (workers != null)
@@ -1222,6 +1297,32 @@ public class OnboardingTutorial : MonoBehaviour
                 foreach (var card in workers.GetComponentsInChildren<WorkerCardUI>())
                     if (card.employee != null) HighlightControl(card);
         }
+        if (step.requireRecipes && recipeTutorialStationIndex < 4)
+        {
+            Component station = GetRecipeTutorialStation(recipeTutorialStationIndex);
+            ManagementModeController manager = ManagementModeController.Instance;
+            if (station != null && manager != null && manager.TutorialSelectedStation == station.gameObject
+                && manager.stationPopup != null && manager.stationPopup.activeInHierarchy)
+            {
+                string target = recipeTutorialStationIndex switch
+                {
+                    0 => "Raw Patty",
+                    1 => "Cooked Patty",
+                    2 => "Bun",
+                    _ => "Hamburger",
+                };
+                foreach (Button button in manager.stationPopup.GetComponentsInChildren<Button>(true))
+                {
+                    if (button == null || !button.gameObject.activeInHierarchy) continue;
+                    TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+                    if (label != null && label.text.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        HighlightControl(button);
+                        break;
+                    }
+                }
+            }
+        }
         var management = ManagementModeController.Instance;
         if (management != null && management.IsCapturingFlow)
         {
@@ -1232,6 +1333,17 @@ public class OnboardingTutorial : MonoBehaviour
 
     void Update()
     {
+        if (!cleanedOldWorldCallout)
+        {
+            cleanedOldWorldCallout = true;
+            foreach (Canvas oldCallout in FindObjectsByType<Canvas>(FindObjectsInactive.Include,
+                         FindObjectsSortMode.None))
+                if (oldCallout != null && oldCallout.name == "TutorialGusWorldCallout")
+                {
+                    oldCallout.gameObject.SetActive(false);
+                    Destroy(oldCallout.gameObject);
+                }
+        }
         if (!running)
         {
             ClearControlHighlights();
@@ -1242,6 +1354,7 @@ public class OnboardingTutorial : MonoBehaviour
         RefreshAdvanceGate();
         RefreshControlHighlights();
         UpdateContextualCallout();
+        UpdateTutorialWorldHighlights();
         if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
             SpawnPracticeCustomer();
         RefreshAutomaticAdvance();
@@ -1251,6 +1364,337 @@ public class OnboardingTutorial : MonoBehaviour
         float pulse = 0.5f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.25f);
         highlight.transform.position = highlightTarget.position + Vector3.up * 2.2f;
         highlight.transform.localScale = Vector3.one * pulse;
+    }
+
+    void UpdateTutorialWorldHighlights()
+    {
+        if (!running || stepIndex < 0 || stepIndex >= Steps.Length || highlightTarget == null)
+        {
+            if (secondaryHighlight != null) secondaryHighlight.SetActive(false);
+            return;
+        }
+        if (highlight != null)
+        {
+            highlight.SetActive(true);
+            float markerPulse = 0.48f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.22f);
+            highlight.transform.position = highlightTarget.position + Vector3.up * 2.2f;
+            highlight.transform.localScale = Vector3.one * markerPulse;
+        }
+        if (secondaryHighlightTarget != null)
+        {
+            EnsureSecondaryHighlight();
+            secondaryHighlight.SetActive(true);
+            float pulse = 0.62f + Mathf.PingPong(Time.unscaledTime * 1.5f, 0.2f);
+            secondaryHighlight.transform.position = secondaryHighlightTarget.position + Vector3.up * 2.2f;
+            secondaryHighlight.transform.localScale = Vector3.one * pulse;
+        }
+        else if (secondaryHighlight != null)
+            secondaryHighlight.SetActive(false);
+    }
+
+    void UpdateStationSequenceStep(Step step)
+    {
+        if (step.requireRecipes)
+        {
+            if (recipeTutorialStationIndex >= 4) return;
+            Component station = GetRecipeTutorialStation(recipeTutorialStationIndex);
+            if (station == null) return;
+            bool selected = ManagementModeController.Instance != null
+                && ManagementModeController.Instance.TutorialSelectedStation == station.gameObject;
+            if (!selected)
+            {
+                highlightTarget = station.transform;
+                secondaryHighlightTarget = null;
+                tutorialFocusText = "Click the highlighted <b>" + station.name + "</b> in the kitchen. Gus will show you its recipe choice.";
+                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                return;
+            }
+
+            tutorialFocusText = GetRecipeTutorialPrompt(recipeTutorialStationIndex, station.name);
+            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            if (IsRecipeTutorialStationConfigured(recipeTutorialStationIndex, station))
+            {
+                recipeTutorialStationIndex++;
+                if (recipeTutorialStationIndex >= 4)
+                {
+                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger.";
+                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    secondaryHighlightTarget = null;
+                    return;
+                }
+                station = GetRecipeTutorialStation(recipeTutorialStationIndex);
+                if (station == null) return;
+                tutorialFocusText = "Good. Now click the highlighted <b>" + station.name + "</b> and choose its burger-line item or recipe.";
+                if (bodyText != null) bodyText.text = tutorialFocusText;
+            }
+            highlightTarget = station.transform;
+            calloutTarget = null;
+            return;
+        }
+
+        if (step.requireIngredients)
+        {
+            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>();
+            CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+            if (ingredients == null || config == null) return;
+            ItemDefinition item = ingredientTutorialStep < 2
+                ? GetTutorialIngredient(ingredientTutorialStep, config) : null;
+            while (item == null && ingredientTutorialStep < 2)
+            {
+                ingredientTutorialStep++;
+                item = GetTutorialIngredient(ingredientTutorialStep, config);
+            }
+
+            if (ingredientTutorialStep < 2 && item != null)
+            {
+                string name = string.IsNullOrEmpty(item.itemName) ? item.name : item.itemName;
+                if (ingredients.TutorialCartPacks(item) > 0)
+                {
+                    ingredientTutorialStep++;
+                    if (ingredientTutorialStep == 2)
+                    {
+                        ingredientExplanationUntil = Time.unscaledTime + 3f;
+                        tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
+                        calloutTarget = null;
+                        if (bodyText != null) bodyText.text = tutorialFocusText;
+                    }
+                    return;
+                }
+
+                Button add = ingredients.TutorialAddButton(item);
+                tutorialFocusText = "In <b>Supplies</b>, click the green <b>+</b> beside <b>" + name +
+                    "</b> to add one pack. The gray <b>−</b> beside it removes one pack.";
+                FocusTutorialControl(add);
+                return;
+            }
+
+            if (ingredientTutorialStep == 2)
+            {
+                if (string.IsNullOrEmpty(tutorialFocusText))
+                {
+                    tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
+                    ingredientExplanationUntil = Time.unscaledTime + 3f;
+                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                }
+                calloutTarget = null;
+                if (Time.unscaledTime < ingredientExplanationUntil) return;
+                ingredientTutorialStep = 3;
+                tutorialFocusText = null;
+            }
+
+            Button placeOrder = ingredients.TutorialPlaceOrderButton;
+            tutorialFocusText = "Click <b>Place Order</b> to send the cart by regular delivery. <b>Express</b> costs $200 and arrives immediately.";
+            FocusTutorialControl(placeOrder);
+            return;
+        }
+
+        if (step.requireHiredWorker && !HasHiredWorker())
+        {
+            WorkersUI workers = FindFirstObjectByType<WorkersUI>();
+            tutorialFocusText = "The Workers count shows your staff. The <b>FREE</b> value shows available capacity. Click <b>Hire</b> to recruit one worker; the hire cost is shown beside it.";
+            FocusTutorialControl(workers != null ? workers.hireButton : null);
+            return;
+        }
+
+        if (step.requireFlow)
+        {
+            var manager = ManagementModeController.Instance;
+            if (manager == null) return;
+            if (!manager.IsCapturingFlow)
+            {
+                var workers = FindFirstObjectByType<WorkersUI>();
+                tutorialFocusText = "Flow tabs select a saved workflow. <b>Edit</b> changes the selected route, <b>+ Flow</b> creates a new one, and <b>Delete</b> removes the selected flow. Click <b>+ Flow</b> to continue.";
+                if (workers != null)
+                    foreach (Button button in workers.GetComponentsInChildren<Button>(true))
+                        if (button != null && button.name == "CreateFlow") { FocusTutorialControl(button); break; }
+                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                return;
+            }
+
+            calloutTarget = null;
+            var flow = manager.CapturedFlow;
+            var expected = GetExpectedFlowLink(flow);
+            if (expected.source != null && expected.destination != null)
+            {
+                highlightTarget = expected.source.transform;
+                secondaryHighlightTarget = expected.destination.transform;
+                tutorialFocusText = "<b>Next link:</b> click and drag from the highlighted <b>" + expected.source.name +
+                    "</b> to the highlighted <b>" + expected.destination.name + "</b>, then release.";
+                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            }
+            else if (HasTutorialFlow())
+            {
+                secondaryHighlightTarget = null;
+                tutorialFocusText = "Flow connected. Click <b>Finish</b> to save it.";
+                if (manager.flowCaptureFinishButton != null)
+                    FocusTutorialControl(manager.flowCaptureFinishButton);
+                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            }
+        }
+
+        if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+        {
+            tutorialFocusText = "Choose a worker card, then drag it onto <b>Drop Worker</b> on the selected flow. The worker's name chip removes them from that flow.";
+            var workers = FindFirstObjectByType<WorkersUI>();
+            if (workers != null)
+                foreach (WorkerCardUI card in workers.GetComponentsInChildren<WorkerCardUI>(true))
+                    if (card != null && card.employee != null)
+                    {
+                        calloutTarget = card.transform as RectTransform;
+                        break;
+                    }
+            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+        }
+
+        if (step.requireEditedFlow && !flowEditCompleted)
+        {
+            var manager = ManagementModeController.Instance;
+            if (manager == null || !manager.IsCapturingFlow)
+            {
+                var workers = FindFirstObjectByType<WorkersUI>();
+                tutorialFocusText = "Select the burger flow tab, then click <b>Edit</b>. Drag between stations to change the route. <b>Finish</b> saves; <b>Esc</b> cancels.";
+                if (workers != null)
+                    foreach (Button button in workers.GetComponentsInChildren<Button>(true))
+                        if (button != null && button.name == "EditFlow") { FocusTutorialControl(button); break; }
+            }
+            else
+            {
+                calloutTarget = null;
+                tutorialFocusText = "Edit the burger route in the kitchen. Gus points to each station; click <b>Finish</b> to save your edit.";
+            }
+            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+        }
+    }
+
+    void FocusTutorialControl(Component control)
+    {
+        if (control == null || !control.gameObject.activeInHierarchy) return;
+        calloutTarget = control.transform as RectTransform;
+        HighlightControl(control);
+    }
+
+    static ItemDefinition GetTutorialIngredient(int index, CustomerOrderConfig config)
+    {
+        if (config == null) return null;
+        if (index == 0) return config.rawPattyIngredient;
+        if (index == 1)
+        {
+            AssemblyRecipeDefinition recipe = config.GetAssemblyRecipe(config.burgerBase);
+            return config.GetAssemblySupplySource(recipe);
+        }
+        return index == 2 ? config.friesIngredient : null;
+    }
+
+    Component GetRecipeTutorialStation(int index)
+    {
+        switch (index)
+        {
+            case 0: return FindFirstObjectByType<FreezerStation>();
+            case 1: return FindFirstObjectByType<GrillStation>();
+            case 2: return FindFirstObjectByType<PantryStation>();
+            default: return FindFirstObjectByType<AssemblyStation>();
+        }
+    }
+
+    static bool IsRecipeTutorialStationConfigured(int index, Component station)
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+        switch (index)
+        {
+            case 0:
+            {
+                ItemDefinition selected = station.GetComponent<FreezerStation>()?.selectedItem;
+                return config != null ? selected == config.rawPattyIngredient : ItemNameContains(selected, "Raw Patty");
+            }
+            case 1:
+            {
+                ItemDefinition selected = station.GetComponent<GrillStation>()?.selectedProduct;
+                return config != null ? selected == config.cookedPattyIngredient : ItemNameContains(selected, "Cooked Patty");
+            }
+            case 2:
+            {
+                PantryStation pantry = station.GetComponent<PantryStation>();
+                AssemblyRecipeDefinition burgerRecipe = config != null ? config.GetAssemblyRecipe(config.burgerBase) : null;
+                ItemDefinition expected = config != null ? config.GetAssemblySupplySource(burgerRecipe) : null;
+                return pantry != null && (expected != null
+                    ? pantry.selectedItem == expected || pantry.secondItem == expected
+                    : ItemNameContains(pantry.selectedItem, "Bun") || ItemNameContains(pantry.secondItem, "Bun"));
+            }
+            default:
+            {
+                AssemblyRecipeDefinition selected = station.GetComponent<AssemblyStation>()?.GetSelectedRecipe();
+                return selected != null && (config != null && config.burgerBase != null
+                    ? selected.output == config.burgerBase
+                    : (selected.recipeName ?? "").IndexOf("Hamburger", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        || ItemNameContains(selected.output, "Hamburger"));
+            }
+        }
+    }
+
+    static bool ItemNameContains(ItemDefinition item, string expected) => item != null
+        && ((item.itemName ?? item.name ?? "").IndexOf(expected, System.StringComparison.OrdinalIgnoreCase) >= 0);
+
+    static string GetRecipeTutorialPrompt(int index, string stationName)
+    {
+        string task = index switch
+        {
+            0 => "choose <b>Raw Patty</b> as its stored ingredient",
+            1 => "choose <b>Cooked Patty</b> as its output",
+            2 => "choose <b>Bun</b> as its stored ingredient",
+            _ => "choose the <b>Hamburger</b> recipe",
+        };
+        return "Click the highlighted <b>" + stationName + "</b> in the kitchen. In the station panel, " + task + ".";
+    }
+
+    static (StationNode source, StationNode destination) GetExpectedFlowLink(ProductionFlowPlan flow)
+    {
+        if (flow == null) return (null, null);
+        var links = new (StationType? from, StationType? to)[]
+        {
+            (StationType.Freezer, StationType.Grill),
+            (StationType.Grill, StationType.Assembly),
+            (StationType.Pantry, StationType.Assembly),
+            (StationType.Assembly, (StationType?)null),
+        };
+        int next = 0;
+        for (; next < links.Length; next++)
+        {
+            bool found = false;
+            if (flow.connections != null)
+                foreach (ProductionFlowConnection connection in flow.connections)
+                    if (connection != null && connection.from != null && connection.to != null
+                        && MatchesExpectedStation(connection.from, links[next].from)
+                        && MatchesExpectedStation(connection.to, links[next].to))
+                    { found = true; break; }
+            if (!found) break;
+        }
+        if (next >= links.Length) return (null, null);
+        StationNode source = null, destination = null;
+        foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
+        {
+            if (node == null) continue;
+            if (MatchesExpectedStation(node.gameObject, links[next].from) && source == null) source = node;
+            if (MatchesExpectedStation(node.gameObject, links[next].to) && destination == null) destination = node;
+        }
+        // A burger flow is complete only after its last link reaches the Pickup Station.
+        // Until then keep Finish out of focus and point Gus at that final destination.
+        if (next == links.Length - 1 && source != null && destination == null)
+        {
+            foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
+                if (node != null && node.GetComponent<HeatLampStation>() != null)
+                {
+                    destination = node;
+                    break;
+                }
+        }
+        return (source, destination);
+    }
+
+    static bool MatchesExpectedStation(GameObject station, StationType? expected)
+    {
+        if (station == null) return false;
+        if (!expected.HasValue) return station.GetComponent<HeatLampStation>() != null;
+        return KitchenEmployee.GetStationTypeFrom(station) == expected;
     }
 
     public static bool ShouldHighlightInventoryItem(ItemDefinition item)
@@ -1379,15 +1823,15 @@ public class OnboardingTutorial : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
         rt.anchoredPosition = new Vector2(0f, 24f);
-        rt.sizeDelta = new Vector2(720f, 0f);
+        rt.sizeDelta = new Vector2(560f, 0f);
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
         bg.raycastTarget = true;
 
         var layout = panel.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(24, 24, 18, 18);
-        layout.spacing = 10f;
+        layout.padding = new RectOffset(16, 16, 12, 12);
+        layout.spacing = 6f;
         layout.childAlignment = TextAnchor.UpperCenter;
         layout.childControlHeight = true;
         layout.childControlWidth = true;
@@ -1402,23 +1846,23 @@ public class OnboardingTutorial : MonoBehaviour
             typeof(LayoutElement));
         header.transform.SetParent(panel.transform, false);
         var headerLayout = header.GetComponent<HorizontalLayoutGroup>();
-        headerLayout.spacing = 14f;
+        headerLayout.spacing = 10f;
         headerLayout.childAlignment = TextAnchor.MiddleLeft;
         headerLayout.childControlWidth = true;
         headerLayout.childControlHeight = true;
         headerLayout.childForceExpandWidth = false;
         headerLayout.childForceExpandHeight = false;
-        header.GetComponent<LayoutElement>().preferredHeight = 76f;
+        header.GetComponent<LayoutElement>().preferredHeight = 60f;
 
         var iconFrame = new GameObject("GusIconFrame", typeof(RectTransform), typeof(Image),
             typeof(LayoutElement));
         iconFrame.transform.SetParent(header.transform, false);
         iconFrame.GetComponent<Image>().color = GameUITheme.Surface;
         var iconLayout = iconFrame.GetComponent<LayoutElement>();
-        iconLayout.minWidth = 72f;
-        iconLayout.preferredWidth = 72f;
-        iconLayout.minHeight = 72f;
-        iconLayout.preferredHeight = 72f;
+        iconLayout.minWidth = 58f;
+        iconLayout.preferredWidth = 58f;
+        iconLayout.minHeight = 58f;
+        iconLayout.preferredHeight = 58f;
         var iconOutline = iconFrame.AddComponent<Outline>();
         iconOutline.effectColor = GameUITheme.Accent;
         iconOutline.effectDistance = new Vector2(2f, -2f);
@@ -1453,11 +1897,11 @@ public class OnboardingTutorial : MonoBehaviour
         textLayout.childForceExpandHeight = false;
         headerText.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
-        stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
+        stepLabel = CreateLabel(headerText.transform, "", 12, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
-        titleText = CreateLabel(headerText.transform, "", 24, FontStyles.Bold, Color.white);
+        titleText = CreateLabel(headerText.transform, "", 20, FontStyles.Bold, Color.white);
         titleText.alignment = TextAlignmentOptions.Left;
-        bodyText = CreateLabel(panel.transform, "", 17, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
+        bodyText = CreateLabel(panel.transform, "", 15, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;

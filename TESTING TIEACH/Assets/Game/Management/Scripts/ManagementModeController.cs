@@ -129,6 +129,7 @@ public class ManagementModeController : MonoBehaviour
     public bool IsCapturingFlow => capturedFlow != null;
     public ProductionFlowPlan CapturedFlow => capturedFlow;
     public KitchenEmployee SelectedEmployee => selectedEmployee;
+    public GameObject TutorialSelectedStation => selectedStation != null ? selectedStation.gameObject : null;
 
     void Awake()
     {

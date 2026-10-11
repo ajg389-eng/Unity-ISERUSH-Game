@@ -258,15 +258,13 @@ public class InventoryItemCardUI : MonoBehaviour
     }
 
     public void ConfigureMarkSelector(bool hasMk1, bool hasMk2, int selectedMark,
-        System.Action<int> onSelected, bool mark1Locked = false, bool mark2Locked = false,
-        int mark2UnlockMilestone = 0)
+        System.Action<int> onSelected, bool mark1Locked = false, bool mark2Locked = false)
     {
         EnsureMarkSelector();
         Transform row = mark1Button != null ? mark1Button.transform.parent : null;
         if (row != null) row.gameObject.SetActive(true);
-        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, mark1Locked, 0);
-        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected,
-            mark2Locked, mark2UnlockMilestone);
+        ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, mark1Locked);
+        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected, mark2Locked);
         OrderCardRows();
     }
 
@@ -319,7 +317,7 @@ public class InventoryItemCardUI : MonoBehaviour
     }
 
     static void ConfigureMarkButton(UnityEngine.UI.Button button, int mark, bool exists,
-        int selectedMark, System.Action<int> onSelected, bool locked, int unlockMilestone)
+        int selectedMark, System.Action<int> onSelected, bool locked)
     {
         if (button == null) return;
         button.onClick.RemoveAllListeners();

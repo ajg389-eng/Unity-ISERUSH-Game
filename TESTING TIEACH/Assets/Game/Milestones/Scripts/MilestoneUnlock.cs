@@ -2,8 +2,8 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// Feature unlocked when a milestone quiz is passed.
-/// Frame only — gameplay systems can later check MilestoneProgressManager.IsFeatureUnlocked.
+/// Legacy serialized milestone reward data. Runtime progression ignores this type;
+/// gameplay unlocks are granted by completed research projects.
 /// </summary>
 public enum MilestoneUnlockKind
 {
@@ -20,6 +20,6 @@ public class MilestoneUnlock
     public MilestoneUnlockKind kind = MilestoneUnlockKind.Feature;
     [Tooltip("Stable id used by gameplay gates (e.g. fryer_station, drink_recipe).")]
     public string unlockId;
-    [Tooltip("Player-facing label shown on the milestone / unlock toast.")]
+    [Tooltip("Legacy label retained for serialized data; runtime progression ignores it.")]
     public string displayName;
 }

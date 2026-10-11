@@ -23,7 +23,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: 001cbbddee7e95143bce8d46fabcf385, type: 2}
-  unlocks:
-  - kind: 3
-    unlockId: milestone_04_complete
-    displayName: Full menu complete
+  unlocks: []

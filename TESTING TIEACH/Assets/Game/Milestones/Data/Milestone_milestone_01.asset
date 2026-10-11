@@ -23,7 +23,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: 6f785e371c9c82f409c695c26e381abc, type: 2}
-  unlocks:
-  - kind: 3
-    unlockId: milestone_01_complete
-    displayName: Lettuce, tomato, and cheese fries
+  unlocks: []

@@ -57,6 +57,8 @@ public class WorkersUI : MonoBehaviour
         PurchaseUndoFooter.EnsureOnPanel(transform);
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
+        if (ResearchProgressManager.Instance != null)
+            ResearchProgressManager.Instance.Changed += Refresh;
         Refresh();
     }
 
@@ -64,6 +66,8 @@ public class WorkersUI : MonoBehaviour
     {
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
+        if (ResearchProgressManager.Instance != null)
+            ResearchProgressManager.Instance.Changed -= Refresh;
         // Leaving the Workers/Flows UI is an explicit flow deselection. Ordinary
         // world clicks are handled separately and keep the selected route pinned.
         WorkerAssignmentLinkVisuals.ClearFocusedFlow();
@@ -1006,8 +1010,8 @@ public class WorkersUI : MonoBehaviour
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
         string dropLabel = "+  Drop Worker";
-        if (flow != null && flow.workers != null && flow.workers.Count >= 1 && !MilestoneFeatures.ExtraFlowStaffingUnlocked)
-            dropLabel = "Unlocks At M2";
+        if (flow != null && flow.workers != null && flow.workers.Count >= MilestoneFeatures.MaxWorkersPerFlow)
+            dropLabel = "Flow Full";
         Button dropZone = MakeChip(parent, dropLabel, 126f);
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
@@ -1068,6 +1072,15 @@ public class WorkersUI : MonoBehaviour
                 sb.Append(detailStart >= 0
                     ? economics.summary.Substring(0, detailStart)
                     : economics.summary);
+                int bottleneckStart = economics.summary.IndexOf("Bottleneck:", System.StringComparison.OrdinalIgnoreCase);
+                if (bottleneckStart >= 0)
+                {
+                    int lineEnd = economics.summary.IndexOf('\n', bottleneckStart);
+                    string bottleneck = economics.summary.Substring(bottleneckStart,
+                        lineEnd >= 0 ? lineEnd - bottleneckStart : economics.summary.Length - bottleneckStart);
+                    if (!bottleneck.EndsWith("None", System.StringComparison.OrdinalIgnoreCase))
+                        sb.Append("\n<color=#F2C66D><b>⚠ ").Append(bottleneck).Append("</b></color>");
+                }
             }
             for (int i = 0; i < economics.lines.Count; i++)
             {
@@ -1075,6 +1088,13 @@ public class WorkersUI : MonoBehaviour
                 sb.Append(economics.lines[i]);
             }
             if (sb.Length > 0) sb.Append('\n');
+            int stationCount = flow.stations != null ? flow.stations.Count : 0;
+            int workerCount = flow.workers != null ? flow.workers.Count : 0;
+            sb.Append("<b>Process metrics:</b> ")
+                .Append(stationCount).Append(" stations | ")
+                .Append(workerCount).Append(" workers | Load ")
+                .Append(stationCount + workerCount);
+            sb.Append('\n');
             sb.Append("<b>Resources Required:</b> ");
             if (economics.requiredResources.Count > 0)
             {
@@ -1173,7 +1193,7 @@ public class WorkersUI : MonoBehaviour
             else if (production.ExtraHireLocked)
             {
                 canHire = false;
-                costLabel = "Milestone 2";
+                costLabel = "Research";
             }
             else if (!production.CanHireWorker())
             {

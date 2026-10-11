@@ -189,7 +189,7 @@ public class GameTimeManager : MonoBehaviour
 
     public int CurrentHour24 => Mathf.FloorToInt(CurrentMinutes / 60f) % 24;
 
-    /// <summary>Lunch 12–2 and dinner 5–7, once Milestone 2 is reached.</summary>
+    /// <summary>Lunch 12–2 and dinner 5–7, once Queue Analytics research is complete.</summary>
     public bool IsRushHour
     {
         get

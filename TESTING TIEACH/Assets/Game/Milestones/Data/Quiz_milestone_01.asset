@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_01_quiz
   title: Milestone 1 Quiz
-  introText: Answer every question correctly to unlock the next milestone.
+  introText: Answer every question correctly to advance to the next milestone and reveal new research.
   questions:
   - prompt: Customers are waiting for burgers while the assembly station is frequently
       idle. What is the most likely problem?

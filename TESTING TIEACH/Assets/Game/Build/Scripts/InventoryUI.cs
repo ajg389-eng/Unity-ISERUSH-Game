@@ -59,6 +59,7 @@ public class InventoryUI : MonoBehaviour
     Transform floorContentParent;
     int activeTab;
     int displayedCapacityMilestoneCount = -1;
+    int displayedResearchCompletedCount = -1;
     ManagementTabInfoUI tabInfoUI;
     MainHudTabs cachedHudTabs;
     ManagementScreenController cachedManagementScreen;
@@ -110,7 +111,9 @@ public class InventoryUI : MonoBehaviour
             RefreshExpandButton();
 
         int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+        int researched = ResearchProgressManager.Instance != null ? ResearchProgressManager.Instance.CompletedCount : 0;
         if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
+            || researched != displayedResearchCompletedCount
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
     }
@@ -188,10 +191,12 @@ public class InventoryUI : MonoBehaviour
         bool opening = !panel.activeSelf;
         if (!opening && tabInfoUI != null)
             tabInfoUI.Close();
-        panel.SetActive(opening);
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
         if (opening)
         {
+            // Build and bind the page while hidden to prevent a blank/old-content
+            // frame from appearing before RefreshAll completes.
+            panel.SetActive(false);
             RefreshNavigationReferences();
             EnsurePanelClickBlocker();
             ApplyConnectedHudBackdrop();
@@ -207,7 +212,10 @@ public class InventoryUI : MonoBehaviour
             RefreshAll();
             SelectTab(activeTab);
             RefreshExpandButton();
+            Canvas.ForceUpdateCanvases();
+            panel.SetActive(true);
         }
+        else panel.SetActive(false);
     }
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
@@ -359,6 +367,9 @@ public class InventoryUI : MonoBehaviour
             sr.normalizedPosition = new Vector2(0f, 1f);
 
         displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
+
+        displayedResearchCompletedCount = ResearchProgressManager.Instance != null
+            ? ResearchProgressManager.Instance.CompletedCount : 0;
 
         // Inventory cards are rebuilt at runtime. Apply their one final appearance now,
         // after layout has its real dimensions, so there is no unstyled frame or delayed
@@ -627,7 +638,7 @@ public class InventoryUI : MonoBehaviour
             bool mk2Locked = mk2 != null && !mk2Unlocked;
             bool lockedMk2Selected = active.stationMark == 2 && mk2Locked;
             card.SetUnlockRequirement(lockedMk2Selected
-                ? "Unlocks at Milestone " + MilestoneFeatures.Mk2Stations
+                ? "Unlock with MK2 Stations research"
                 : null);
             card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
                 inventory.GetStationCapacity(active));
@@ -640,8 +651,7 @@ public class InventoryUI : MonoBehaviour
                 selected = mark == 2 ? mk2 : mk1;
                 if (selected != null) refresh();
             }, mark1Locked: shakeStationLocked,
-                mark2Locked: mk2 != null && !mk2Unlocked,
-                mark2UnlockMilestone: MilestoneFeatures.Mk2Stations);
+                mark2Locked: mk2 != null && !mk2Unlocked);
         };
         refresh();
 

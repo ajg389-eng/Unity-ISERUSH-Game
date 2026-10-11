@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// Progression frame: Tutorial + the numbered milestones in the active database.
-/// Flow: complete all milestone missions → pass quiz (all answers correct) → unlock rewards → next milestone.
+/// Flow: complete all milestone missions → pass quiz (all answers correct) → next milestone and its research projects.
 /// </summary>
 public class MilestoneProgressManager : MonoBehaviour
 {
@@ -24,7 +24,6 @@ public class MilestoneProgressManager : MonoBehaviour
     public bool driveMissionList = true;
 
     readonly HashSet<string> completedMilestoneIds = new HashSet<string>();
-    readonly HashSet<string> unlockedFeatureIds = new HashSet<string>();
 
     string activeMilestoneId;
     bool quizReady;
@@ -32,7 +31,6 @@ public class MilestoneProgressManager : MonoBehaviour
     public event Action OnMilestonesChanged;
     public event Action OnQuizReady;
     public event Action<MilestoneDefinition> OnMilestoneCompleted;
-    public event Action<MilestoneUnlock> OnFeatureUnlocked;
 
     public string ActiveMilestoneId => activeMilestoneId;
     public bool IsQuizReady => quizReady;
@@ -152,13 +150,6 @@ public class MilestoneProgressManager : MonoBehaviour
         return GetState(database != null ? database.GetById(milestoneId) : null);
     }
 
-    public bool IsFeatureUnlocked(string unlockId)
-    {
-        return !string.IsNullOrEmpty(unlockId) && unlockedFeatureIds.Contains(unlockId);
-    }
-
-    public IReadOnlyCollection<string> GetUnlockedFeatureIds() => unlockedFeatureIds;
-
     public bool AreActiveMissionsComplete()
     {
         var milestone = GetActiveMilestone();
@@ -195,24 +186,12 @@ public class MilestoneProgressManager : MonoBehaviour
         if (completedMilestoneIds.Contains(current.milestoneId)) return false;
 
         completedMilestoneIds.Add(current.milestoneId);
-        GrantUnlocks(current);
         quizReady = false;
 
         OnMilestoneCompleted?.Invoke(current);
 
-        string completionMessage = GetMilestoneDisplayLabel(current) + " completed.";
-        var unlockedNames = new List<string>();
-        if (current.unlocks != null)
-        {
-            foreach (MilestoneUnlock unlock in current.unlocks)
-            {
-                if (unlock != null && !string.IsNullOrWhiteSpace(unlock.displayName))
-                    unlockedNames.Add(unlock.displayName);
-            }
-        }
-        if (unlockedNames.Count > 0)
-            completionMessage += " Unlocked: " + string.Join(", ", unlockedNames) + ".";
-        NotificationCenter.Post(completionMessage, GameNotificationKind.Message,
+        NotificationCenter.Post(GetMilestoneDisplayLabel(current) + " completed. Check Research for newly available projects.",
+            GameNotificationKind.Message,
             "milestone-" + current.milestoneId);
 
         int index = database != null ? database.IndexOf(current.milestoneId) : -1;
@@ -224,11 +203,15 @@ public class MilestoneProgressManager : MonoBehaviour
         {
             activeMilestoneId = next.milestoneId;
             ApplyActiveMissions(reset: true);
+            NotificationCenter.Post("Next: " + GetMilestoneDisplayLabel(next) + ". " + next.description,
+                GameNotificationKind.Message, "milestone-next-" + next.milestoneId, 12f);
         }
         else
         {
             activeMilestoneId = null;
             ApplyActiveMissions(reset: true);
+            NotificationCenter.Post("All milestones complete. Review Research and Menu & Supply to keep improving the restaurant.",
+                GameNotificationKind.Message, "milestones-complete", 12f);
         }
 
         OnMilestonesChanged?.Invoke();
@@ -258,7 +241,6 @@ public class MilestoneProgressManager : MonoBehaviour
         label = GetMilestoneDisplayLabel(target);
 
         completedMilestoneIds.Clear();
-        unlockedFeatureIds.Clear();
         quizReady = false;
 
         foreach (var milestone in database.milestones)
@@ -267,7 +249,6 @@ public class MilestoneProgressManager : MonoBehaviour
             if (milestone.milestoneId == target.milestoneId)
                 break;
             completedMilestoneIds.Add(milestone.milestoneId);
-            GrantUnlocks(milestone);
         }
 
         activeMilestoneId = target.milestoneId;
@@ -290,7 +271,6 @@ public class MilestoneProgressManager : MonoBehaviour
     public void ResetAllProgress()
     {
         completedMilestoneIds.Clear();
-        unlockedFeatureIds.Clear();
         quizReady = false;
         activeMilestoneId = null;
         EnsureActiveMilestone();
@@ -323,7 +303,6 @@ public class MilestoneProgressManager : MonoBehaviour
     public void RestoreCheckpoint(string savedActiveMilestoneId, IReadOnlyList<string> savedCompletedMilestoneIds)
     {
         completedMilestoneIds.Clear();
-        unlockedFeatureIds.Clear();
         quizReady = false;
 
         if (database?.milestones != null && savedCompletedMilestoneIds != null)
@@ -333,7 +312,6 @@ public class MilestoneProgressManager : MonoBehaviour
                 MilestoneDefinition milestone = database.GetById(id);
                 if (milestone == null || string.IsNullOrEmpty(id)) continue;
                 completedMilestoneIds.Add(id);
-                GrantUnlocks(milestone);
             }
         }
 
@@ -419,14 +397,4 @@ public class MilestoneProgressManager : MonoBehaviour
         OnMilestonesChanged?.Invoke();
     }
 
-    void GrantUnlocks(MilestoneDefinition milestone)
-    {
-        if (milestone?.unlocks == null) return;
-        foreach (var unlock in milestone.unlocks)
-        {
-            if (unlock == null || string.IsNullOrEmpty(unlock.unlockId)) continue;
-            if (unlockedFeatureIds.Add(unlock.unlockId))
-                OnFeatureUnlocked?.Invoke(unlock);
-        }
-    }
 }

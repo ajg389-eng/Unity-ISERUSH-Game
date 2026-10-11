@@ -6,10 +6,10 @@ public class InventoryManager : MonoBehaviour
     public List<ItemDefinition> allItems = new List<ItemDefinition>();
 
     [Header("Station capacity")]
-    [Min(1), Tooltip("Owned copies of each station type once Milestone 2 is reached.")]
+    [Min(1), Tooltip("Owned copies of each station type after Additional Stations research.")]
     public int baseStationCapacity = 2;
-    [Min(0), Tooltip("Additional copies of every station type for each numbered milestone after 2.")]
-    public int capacityPerCompletedMilestone = 1;
+    [Min(0), Tooltip("Additional copies granted by Expanded Capacity and Industrial Kitchen research.")]
+    public int capacityPerResearchProject = 1;
 
     private Dictionary<ItemDefinition, int> counts = new Dictionary<ItemDefinition, int>();
     /// <summary>Total units ever acquired (starting stock + purchases). First of each item is free.</summary>
@@ -59,7 +59,7 @@ public class InventoryManager : MonoBehaviour
 
     public const int DoorPurchaseCap = 1;
 
-    /// <summary>Total owned capacity for one station type, including milestone rewards.</summary>
+    /// <summary>Total owned capacity for one station type, including completed research bonuses.</summary>
     public int GetStationCapacity(ItemDefinition item)
     {
         if (item == null) return 0;
@@ -68,11 +68,17 @@ public class InventoryManager : MonoBehaviour
             return DoorPurchaseCap;
         if (OnboardingTutorial.BlocksProgression)
             return 1;
-        int completed = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
-        int advancedRecipeCapacityBonus = MilestoneFeatures.HasReached(MilestoneFeatures.AdvancedMenuRecipes) ? 1 : 0;
-        return Mathf.Max(1, baseStationCapacity + completed * capacityPerCompletedMilestone
-            + advancedRecipeCapacityBonus);
+        int capacity = MilestoneFeatures.ExtraEquipmentUnlocked ? Mathf.Max(1, baseStationCapacity) : 1;
+        if (MilestoneFeatures.IsResearchComplete("station_capacity_2"))
+            capacity += capacityPerResearchProject;
+        if (MilestoneFeatures.IsResearchComplete("station_capacity_3"))
+            capacity += capacityPerResearchProject;
+        // Preserve saves made before the station capacity branch was split.
+        if (MilestoneFeatures.IsResearchComplete("expanded_capacity"))
+            capacity += capacityPerResearchProject;
+        if (MilestoneFeatures.IsResearchComplete("industrial_kitchen"))
+            capacity += capacityPerResearchProject;
+        return Mathf.Max(1, capacity);
     }
 
     public bool IsAtStationCapacity(ItemDefinition item)
@@ -97,10 +103,10 @@ public class InventoryManager : MonoBehaviour
     public bool CanPurchase(ItemDefinition item)
     {
         return item != null && !OnboardingTutorial.IsStationLocked(item)
-            && !IsMilestoneLocked(item) && !IsAtStationCapacity(item);
+            && !IsResearchLocked(item) && !IsAtStationCapacity(item);
     }
 
-    static bool IsMilestoneLocked(ItemDefinition item)
+    static bool IsResearchLocked(ItemDefinition item)
     {
         if (item == null || !item.IsTieredStation) return false;
         return (item.stationMark >= 2 || item.stationFamily == "Shake Station")
@@ -144,7 +150,7 @@ public class InventoryManager : MonoBehaviour
     public bool TryConsumeOne(ItemDefinition item)
     {
         if (item == null) return false;
-        if (OnboardingTutorial.IsStationLocked(item) || IsMilestoneLocked(item)) return false;
+        if (OnboardingTutorial.IsStationLocked(item) || IsResearchLocked(item)) return false;
         if (!counts.TryGetValue(item, out int c)) return false;
         if (c <= 0) return false;
         counts[item] = c - 1;

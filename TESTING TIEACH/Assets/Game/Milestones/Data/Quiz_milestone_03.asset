@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_03_quiz
   title: Milestone 3 Quiz
-  introText: Answer every question correctly to unlock the next milestone.
+  introText: Answer every question correctly to advance to the next milestone and reveal new research.
   questions:
   - prompt: A $1,000 equipment upgrade is expected to increase profit by $250 per
       day. What is its simple payback period?

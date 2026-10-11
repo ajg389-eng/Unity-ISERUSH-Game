@@ -53,6 +53,22 @@ public class IngredientsOrderUI : MonoBehaviour
     readonly List<RecipeGraphEdgeView> recipeGraphEdges = new List<RecipeGraphEdgeView>();
     readonly List<Button> recipeTabButtons = new List<Button>();
 
+    public Button TutorialSuppliesTab => suppliesTab;
+    public Button TutorialPlaceOrderButton => placeOrderButton;
+    public int TutorialCartPacks(ItemDefinition item) => GetCartPacks(item);
+
+    public Button TutorialAddButton(ItemDefinition item)
+    {
+        if (item == null || supplyRows == null) return null;
+        foreach (GameObject rowObject in supplyRows)
+        {
+            if (rowObject == null) continue;
+            IngredientOrderRow row = rowObject.GetComponent<IngredientOrderRow>();
+            if (row != null && row.item == item) return row.addButton;
+        }
+        return null;
+    }
+
     void OnEnable()
     {
         EnsureRefs();
@@ -373,7 +389,7 @@ public class IngredientsOrderUI : MonoBehaviour
         panel.GetComponent<Image>().color = GameUITheme.Panel;
 
         TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes  |  Drag to Pan  |  Scroll to Zoom", 18f, FontStyles.Bold,
-            new Vector2(22f, -56f), new Vector2(-300f, -12f), TextAlignmentOptions.Left);
+            new Vector2(22f, -56f), new Vector2(-220f, -12f), TextAlignmentOptions.Left);
         title.textWrappingMode = TextWrappingModes.NoWrap;
         title.enableAutoSizing = true;
         title.fontSizeMin = 12f;
@@ -384,12 +400,8 @@ public class IngredientsOrderUI : MonoBehaviour
             new Vector2(-14f, -14f), GameUITheme.Danger, out closeLabel);
         close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
 
-        TextMeshProUGUI fitLabel;
-        Button fit = CreateAbsoluteButton(panel.transform, "FitGraph", "FIT", new Vector2(-270f, -54f),
-            new Vector2(-210f, -14f), GameUITheme.Surface, out fitLabel);
-        fit.onClick.AddListener(() => { FitRecipeChartToViewport((RectTransform)recipeChartRoot); Sfx.Play(SfxId.UiClick); });
         recipeZoomLabel = CreateAbsoluteText(panel.transform, "Zoom", "100%", 13f, FontStyles.Bold,
-            new Vector2(-202f, -50f), new Vector2(-72f, -18f), TextAlignmentOptions.Center);
+            new Vector2(-210f, -50f), new Vector2(-78f, -18f), TextAlignmentOptions.Center);
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         tabs.transform.SetParent(panel.transform, false);
@@ -577,10 +589,6 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void BuildBurgerTree(CustomerOrderConfig menu)
     {
-        AddStageGuide(560f, "RAW INGREDIENTS");
-        AddStageGuide(390f, "PROCESSED INGREDIENTS");
-        AddStageGuide(-500f, "INTERMEDIATE ASSEMBLY");
-        AddStageGuide(-900f, "FINAL PRODUCT");
         var rawPatty = AddGraphNode(menu.rawPattyIngredient, "RAW PATTY", "FREEZER", new Vector2(-330f, 560f));
         var cookedPatty = AddGraphNode(menu.cookedPattyIngredient, "COOKED PATTY", "GRILL", new Vector2(-330f, 390f));
         ConnectGraphNodes(rawPatty, cookedPatty, "COOK");
@@ -642,9 +650,6 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void BuildFriesTree(CustomerOrderConfig menu)
     {
-        AddStageGuide(420f, "RAW INGREDIENTS");
-        AddStageGuide(105f, "PROCESSING");
-        AddStageGuide(-240f, "FINAL PRODUCT");
         var potatoes = AddGraphNode(menu.friesIngredient, "POTATOES", "PANTRY", new Vector2(-260f, 420f));
         var slices = AddGraphNode(menu.slicedPotatoIngredient, "POTATO SLICES", "CUTTING", new Vector2(-260f, 210f));
         var cooked = AddGraphNode(menu.cookedPotatoIngredient, "COOKED POTATO SLICES", "FRYER", new Vector2(-260f, 0f));
@@ -658,8 +663,6 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void BuildShakeTree(CustomerOrderConfig menu)
     {
-        AddStageGuide(260f, "INGREDIENTS");
-        AddStageGuide(-20f, "FINAL PRODUCT");
         AssemblyRecipeDefinition recipe = menu.GetAssemblyRecipe(menu.drinkItem);
         var milk = AddGraphNode(recipe != null ? recipe.processedInput : null, "MILK", "FREEZER", new Vector2(-230f, 260f));
         var cup = AddGraphNode(recipe != null ? recipe.pantryInput : null, "EMPTY CUP", "PANTRY", new Vector2(230f, 260f));
@@ -750,7 +753,7 @@ public class IngredientsOrderUI : MonoBehaviour
         string display = locked ? "Locked Item"
             : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : FormatGraphLabel(fallback);
         label.text = "<b>" + display + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(station) + "</color>"
-            + (locked ? "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Research: " + MilestoneFeatures.ResearchTitleForStage(unlockMilestone) + "</color>" : "");
         label.fontSize = 12f;
         label.enableAutoSizing = true;
         label.fontSizeMin = 8.5f;
@@ -952,7 +955,7 @@ public class IngredientsOrderUI : MonoBehaviour
         text.text = "<b>" + (locked ? "Locked Item"
                 : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback)
             + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(subtitle) + "</color>"
-            + (locked ? "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Research: " + MilestoneFeatures.ResearchTitleForStage(unlockMilestone) + "</color>" : "");
         text.fontSize = 14f;
         text.enableAutoSizing = true;
         text.fontSizeMin = 10.5f;
@@ -1102,7 +1105,7 @@ public class IngredientsOrderUI : MonoBehaviour
         nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
         nameText.text = itemUnlocked ? inventory.GetDisplayName(item)
-            : inventory.GetDisplayName(item) + "\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>";
+            : inventory.GetDisplayName(item) + "\n<color=#D8B365>Research: " + MilestoneFeatures.ResearchTitleForStage(unlockMilestone) + "</color>";
         nameText.fontSize = 14;
         nameText.fontStyle = FontStyles.Bold;
         nameText.color = itemUnlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
@@ -1116,47 +1119,7 @@ public class IngredientsOrderUI : MonoBehaviour
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
-        ProductionManager production = ProductionManager.Instance != null
-            ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
         ItemDefinition captured = item;
-        Button targetMinus = CreateCartButton(header.transform, "TargetMinus", "-", 28f,
-            GameUITheme.Danger, out _);
-        var targetGo = new GameObject("ProductionTarget", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
-        targetGo.transform.SetParent(header.transform, false);
-        var targetLe = targetGo.GetComponent<LayoutElement>();
-        targetLe.minWidth = 72f;
-        targetLe.preferredWidth = 72f;
-        var targetLabel = targetGo.GetComponent<TextMeshProUGUI>();
-        targetLabel.fontSize = 13f;
-        targetLabel.enableAutoSizing = true;
-        targetLabel.fontSizeMin = 10f;
-        targetLabel.fontSizeMax = 13f;
-        targetLabel.fontStyle = FontStyles.Bold;
-        targetLabel.color = GameUITheme.TextSecondary;
-        targetLabel.alignment = TextAlignmentOptions.Center;
-        targetLabel.textWrappingMode = TextWrappingModes.NoWrap;
-        targetLabel.overflowMode = TextOverflowModes.Overflow;
-        targetLabel.raycastTarget = false;
-        if (TMP_Settings.defaultFontAsset != null) targetLabel.font = TMP_Settings.defaultFontAsset;
-        System.Action refreshTarget = () => targetLabel.text = "Target " +
-            (production != null ? production.GetProductionTarget(captured) : 0);
-        Button targetPlus = CreateCartButton(header.transform, "TargetPlus", "+", 28f,
-            GameUITheme.Positive, out _);
-        targetMinus.interactable = itemUnlocked;
-        targetPlus.interactable = itemUnlocked;
-        targetMinus.onClick.AddListener(() =>
-        {
-            if (production != null) production.SetProductionTarget(captured,
-                production.GetProductionTarget(captured) - 1);
-            refreshTarget();
-        });
-        targetPlus.onClick.AddListener(() =>
-        {
-            if (production != null) production.SetProductionTarget(captured,
-                production.GetProductionTarget(captured) + 1);
-            refreshTarget();
-        });
-        refreshTarget();
 
         var chevronGo = new GameObject("Chevron", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         chevronGo.transform.SetParent(header.transform, false);
@@ -1219,8 +1182,6 @@ public class IngredientsOrderUI : MonoBehaviour
         rowState.lockVisual = lockVisual;
         rowState.rowBackground = row.GetComponent<Image>();
         rowState.toggle = toggle;
-        rowState.targetMinus = targetMinus;
-        rowState.targetPlus = targetPlus;
     }
 
     void ToggleMenuWorkflow(GameObject row, GameObject workflow, LayoutElement rowLayout,
@@ -1383,7 +1344,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void CreateMilestoneHeader(int milestone)
     {
-        string label = milestone > 0 ? "Milestone " + milestone : "Available Now";
+        string label = milestone > 0 ? MilestoneFeatures.ResearchTitleForStage(milestone) : "Available Now";
         var go = new GameObject("IngredientGroup_Milestone" + milestone, typeof(RectTransform));
         go.transform.SetParent(listContainer, false);
         var layout = go.AddComponent<LayoutElement>();
@@ -1402,7 +1363,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void CreateMenuMilestoneHeader(int milestone)
     {
-        string label = milestone > 0 ? "Milestone " + milestone : "Available Now";
+        string label = milestone > 0 ? MilestoneFeatures.ResearchTitleForStage(milestone) : "Available Now";
         var go = new GameObject("MenuGroup_Milestone" + milestone, typeof(RectTransform));
         go.transform.SetParent(listContainer, false);
         var layout = go.AddComponent<LayoutElement>();
@@ -1702,8 +1663,8 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.label != null)
             {
                 row.label.text = unlocked ? inventory.GetDisplayName(row.item)
-                    : inventory.GetDisplayName(row.item) + "\n<color=#D8B365>Unlocks at Milestone "
-                        + unlockMilestone + "</color>";
+                    : inventory.GetDisplayName(row.item) + "\n<color=#D8B365>Research: "
+                        + MilestoneFeatures.ResearchTitleForStage(unlockMilestone) + "</color>";
                 row.label.color = unlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
             }
             if (row.rowBackground != null)
@@ -1719,8 +1680,6 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.toggle != null) row.toggle.interactable = unlocked;
             if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
                 toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
-            SetButtonState(row.targetMinus, unlocked, GameUITheme.Danger);
-            SetButtonState(row.targetPlus, unlocked, GameUITheme.Positive);
         }
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
@@ -1749,7 +1708,8 @@ public class IngredientsOrderUI : MonoBehaviour
             {
                 row.infoText.text = itemUnlocked
                     ? name + "\nPack of " + pack + "  |  $" + price
-                    : "Locked Ingredient\n<color=#D8B365>Unlocks at Milestone " + unlockMilestone + "</color>";
+                    : "Locked Ingredient\n<color=#D8B365>Research: "
+                        + MilestoneFeatures.ResearchTitleForStage(unlockMilestone) + "</color>";
                 row.infoText.color = itemUnlocked ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
             }
             Image rowImage = child.GetComponent<Image>();
@@ -1796,14 +1756,16 @@ public class IngredientsOrderUI : MonoBehaviour
                 && cartLockMilestone == 0;
         if (placeOrderLabel != null)
             placeOrderLabel.text = deliveryActive ? "Delivery Active"
-                : cartLockMilestone > 0 ? "Milestone " + cartLockMilestone
+                : cartLockMilestone > 0 ? "Research " + MilestoneFeatures.ResearchTitleForStage(cartLockMilestone)
                 : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal;
+        bool expressUnlocked = MilestoneFeatures.IsResearchComplete("express_ordering");
         if (expressOrderButton != null)
-            expressOrderButton.interactable = !deliveryActive && cartPackCount > 0 && expressAffordable
+            expressOrderButton.interactable = expressUnlocked && !deliveryActive && cartPackCount > 0 && expressAffordable
                 && cartLockMilestone == 0;
         if (expressOrderLabel != null)
-            expressOrderLabel.text = deliveryActive ? "Delivering"
-                : cartLockMilestone > 0 ? "Milestone " + cartLockMilestone
+            expressOrderLabel.text = !expressUnlocked ? "Research Express Ordering"
+                : deliveryActive ? "Delivering"
+                : cartLockMilestone > 0 ? "Research " + MilestoneFeatures.ResearchTitleForStage(cartLockMilestone)
                 : !expressAffordable && cartPackCount > 0 ? "Need $" + expressTotal
                 : "Express $" + expressTotal;
     }
@@ -1844,9 +1806,13 @@ public class IngredientsOrderUI : MonoBehaviour
         if (recipeDetailsText == null || item == null || recipeChartMenu == null) return;
         AssemblyRecipeDefinition recipe = recipeChartMenu.GetAssemblyRecipe(item);
         string title = !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName.ToUpperInvariant() : item.name.ToUpperInvariant();
+        float cost = CalculateRecipeCost(recipeChartMenu, item, new HashSet<ItemDefinition>());
+        float value = Mathf.Max(0f, item.price);
+        float profit = value - cost;
         if (recipe == null)
         {
-            recipeDetailsText.text = "<b>" + title + "</b>\n\nIngredient or processed component.\n\nValue: $" + item.price;
+            recipeDetailsText.text = "<b>" + title + "</b>\n\nIngredient or processed component.\n\n"
+                + FormatEconomics(cost, value, profit);
             return;
         }
 
@@ -1854,11 +1820,53 @@ public class IngredientsOrderUI : MonoBehaviour
         if (recipe.processedInput != null) inputs += "• " + recipe.processedInput.itemName + " ×" + Mathf.Max(1, recipe.processedInputAmount) + "\n";
         if (recipe.pantryInput != null) inputs += "• " + recipe.pantryInput.itemName + " ×" + Mathf.Max(1, recipe.pantryInputAmount) + "\n";
         if (recipe.thirdInput != null) inputs += "• " + recipe.thirdInput.itemName + " ×" + Mathf.Max(1, recipe.thirdInputAmount) + "\n";
-        int milestone = recipeChartMenu.GetMenuItemUnlockMilestone(item);
+        int researchStage = recipeChartMenu.GetMenuItemUnlockMilestone(item);
         recipeDetailsText.text = "<b>" + title + "</b>\n\n<b>INPUTS</b>\n" + inputs
             + "\n<b>STATION</b>\n" + (recipe.RequiresMk2 ? "Assembly Station MK2" : "Assembly Station MK1 or MK2")
-            + "\n\n<b>VALUE</b>  $" + item.price
-            + (milestone > 0 ? "\n<b>UNLOCK</b>  Milestone " + milestone : "");
+            + "\n\n" + FormatEconomics(cost, value, profit)
+            + (researchStage > 0 ? "\n<b>RESEARCH</b>  " + MilestoneFeatures.ResearchTitleForStage(researchStage) : "");
+    }
+
+    static string FormatEconomics(float cost, float value, float profit)
+    {
+        string profitColor = profit >= 0f ? "#7DDB8A" : "#E07A7A";
+        return "<b>COST</b>  $" + cost.ToString("0.00")
+            + "\n<b>VALUE</b>  $" + value.ToString("0.00")
+            + "\n<b>PROFIT</b>  <color=" + profitColor + ">$" + profit.ToString("0.00") + "</color>";
+    }
+
+    static float CalculateRecipeCost(CustomerOrderConfig menu, ItemDefinition item, HashSet<ItemDefinition> visited)
+    {
+        if (menu == null || item == null || visited == null || !visited.Add(item)) return 0f;
+        AssemblyRecipeDefinition recipe = menu.GetAssemblyRecipe(item);
+        if (recipe == null)
+        {
+            CuttingRecipeDefinition cutting = menu.GetCuttingRecipe(item);
+            if (cutting != null && cutting.input != null)
+                return CalculateRecipeCost(menu, cutting.input, visited);
+            StationProcessingRecipeDefinition grill = menu.GetGrillRecipe(item);
+            if (grill != null && grill.input != null)
+                return CalculateRecipeCost(menu, grill.input, visited);
+            StationProcessingRecipeDefinition fryer = menu.GetFryerRecipe(item);
+            if (fryer != null && fryer.input != null)
+                return CalculateRecipeCost(menu, fryer.input, visited);
+            return WorkflowAnalysis.GetIngredientUnitCost(item);
+        }
+
+        float cost = 0f;
+        cost += CalculateComponentCost(menu, recipe.processedInput, recipe.processedInputAmount, visited);
+        cost += CalculateComponentCost(menu, recipe.rawPantryInput != null ? recipe.rawPantryInput : recipe.pantryInput,
+            recipe.pantryInputAmount, visited);
+        cost += CalculateComponentCost(menu, recipe.rawThirdInput != null ? recipe.rawThirdInput : recipe.thirdInput,
+            recipe.thirdInputAmount, visited);
+        return cost;
+    }
+
+    static float CalculateComponentCost(CustomerOrderConfig menu, ItemDefinition item, int amount,
+        HashSet<ItemDefinition> visited)
+    {
+        if (item == null) return 0f;
+        return Mathf.Max(1, amount) * CalculateRecipeCost(menu, item, visited);
     }
 
     static void SetButtonState(Button button, bool interactable, Color activeColor)
@@ -1935,8 +1943,6 @@ public sealed class MilestoneLockedMenuRow : MonoBehaviour
     public CanvasGroup lockVisual;
     public Image rowBackground;
     public Toggle toggle;
-    public Button targetMinus;
-    public Button targetPlus;
 }
 
 /// <summary>Click-and-drag panning for the recipe dependency graph.</summary>
@@ -1950,6 +1956,7 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
     public float minimumZoom = 0.45f;
     public float maximumZoom = 1.8f;
     public float zoomStep = 0.12f;
+    public bool allowPan = true;
     Vector2 startPointer;
     Vector2 startContent;
 
@@ -1959,14 +1966,14 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (content == null) return;
+        if (content == null || !allowPan) return;
         startPointer = eventData.position;
         startContent = content.anchoredPosition;
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (content == null) return;
+        if (content == null || !allowPan) return;
         Canvas canvas = GetComponentInParent<Canvas>();
         float scale = canvas != null ? Mathf.Max(0.01f, canvas.scaleFactor) : 1f;
         Vector2 next = startContent + (eventData.position - startPointer) / scale;

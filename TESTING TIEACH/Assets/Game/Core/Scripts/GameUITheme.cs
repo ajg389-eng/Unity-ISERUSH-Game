@@ -102,6 +102,14 @@ public class GameUITheme : MonoBehaviour
         foreach (var text in root.GetComponentsInChildren<TextMeshProUGUI>(true)) StyleText(text);
     }
 
+    public static void ApplyButton(Button button)
+    {
+        if (button == null) return;
+        GameUIThemeStyled styled = button.GetComponent<GameUIThemeStyled>();
+        if (styled != null) styled.styleVersion = 0;
+        StyleButton(button);
+    }
+
     static void ApplyCanvas(Canvas canvas)
     {
         foreach (var scroll in canvas.GetComponentsInChildren<ScrollRect>(true)) ConfigureScroll(scroll);
@@ -534,14 +542,14 @@ public class GameUITheme : MonoBehaviour
     static bool IsPositive(string key, Color current)
     {
         if (key.Contains("expandflow")) return false;
-        return ContainsAny(key, "play", "resume", "continue", "apply", "confirm", "finish",
+        return ContainsAny(key, "play", "resume", "continue", "apply", "confirm", "finish", "enable",
             "hire", "buy", "purchase", "order", "add", "create", "assign", "upgrade", "expand")
             || (current.g > current.r * 1.2f && current.g > current.b * 1.08f);
     }
 
     static bool IsDanger(string key, Color current)
     {
-        return ContainsAny(key, "exit", "quit", "fire", "delete", "remove", "clear", "cancel", "targetminus");
+        return ContainsAny(key, "exit", "quit", "fire", "delete", "remove", "clear", "cancel", "disable", "targetminus");
     }
 
     static bool ContainsAny(string value, params string[] terms)

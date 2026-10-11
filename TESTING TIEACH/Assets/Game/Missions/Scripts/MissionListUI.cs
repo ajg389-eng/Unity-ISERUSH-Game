@@ -223,6 +223,7 @@ public class MissionListUI : MonoBehaviour
         if (tasksListContent == null) return;
 
         ClearPool(taskRowPool);
+        CreateDailyGoalRows();
 
         if (progress == null)
         {
@@ -258,6 +259,30 @@ public class MissionListUI : MonoBehaviour
             CreateTaskRow(title, mission.description, color, isCurrent);
         }
         UpdatePanelHeight();
+    }
+
+    void CreateDailyGoalRows()
+    {
+        var stats = StoreStatisticsManager.Instance;
+        var clock = GameTimeManager.Instance != null
+            ? GameTimeManager.Instance : FindFirstObjectByType<GameTimeManager>();
+        int day = clock != null ? clock.CurrentDay : 1;
+        int orderTarget = Mathf.Clamp(4 + day * 2, 6, 20);
+        int revenueTarget = 100 + day * 50;
+        float waitTarget = Mathf.Max(25f, 50f - day * 2f);
+        int orders = stats != null ? stats.OrdersCompletedToday : 0;
+        int revenue = stats != null ? stats.RevenueToday : 0;
+        float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
+
+        CreateTaskRow("DAILY GOALS", "Shift targets", currentMissionColor, true);
+        CreateTaskRow((orders >= orderTarget ? "✓ " : "○ ") + "Serve " + orderTarget + " orders",
+            orders + "/" + orderTarget + " orders served", orders >= orderTarget ? completeMissionColor : pendingMissionColor, false);
+        CreateTaskRow((revenue >= revenueTarget ? "✓ " : "○ ") + "Earn $" + revenueTarget,
+            "$" + revenue + "/$" + revenueTarget + " revenue", revenue >= revenueTarget ? completeMissionColor : pendingMissionColor, false);
+        bool waitComplete = orders > 0 && wait <= waitTarget;
+        CreateTaskRow((waitComplete ? "✓ " : "○ ") + "Keep wait under " + waitTarget.ToString("0") + "s",
+            orders > 0 ? wait.ToString("0") + "s average wait" : "No completed orders yet",
+            waitComplete ? completeMissionColor : pendingMissionColor, false);
     }
 
     void RefreshProgression()

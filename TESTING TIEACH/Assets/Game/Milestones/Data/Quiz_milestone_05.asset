@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_05_quiz
   title: Quality & Reliability Quiz
-  introText: Answer every question correctly to unlock the next milestone.
+  introText: Answer every question correctly to advance to the next milestone and reveal new research.
   questions:
   - prompt: Increasing service speed causes the order-error rate to rise significantly.
       What does this demonstrate?

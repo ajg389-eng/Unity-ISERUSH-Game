@@ -30,7 +30,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 109707ca1821467a86081718a699152d, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: 05b2b754f2efa444b97aef876ed80267, type: 2}
-  unlocks:
-  - kind: 3
-    unlockId: milestone_06_complete
-    displayName: Systems Integration Complete
+  unlocks: []

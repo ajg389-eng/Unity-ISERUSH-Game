@@ -143,7 +143,18 @@ public class KitchenEmployee : MonoBehaviour
     }
     public int UpgradeLevel => Mathf.Clamp(upgradeLevel, 0, MaxUpgradeLevel);
     public void RestoreUpgradeLevel(int level) { upgradeLevel = Mathf.Clamp(level, 0, MaxUpgradeLevel); }
-    public bool IsMaxUpgraded => UpgradeLevel >= MaxUpgradeLevel;
+    public int MaxUnlockedUpgradeLevel
+    {
+        get
+        {
+            int researchedLimit = 1;
+            if (MilestoneFeatures.IsResearchComplete("carry_training")) researchedLimit = 2;
+            if (MilestoneFeatures.IsResearchComplete("carry_training_2")) researchedLimit = 3;
+            if (MilestoneFeatures.IsResearchComplete("carry_training_3")) researchedLimit = MaxUpgradeLevel;
+            return Mathf.Max(UpgradeLevel, researchedLimit);
+        }
+    }
+    public bool IsMaxUpgraded => UpgradeLevel >= MaxUnlockedUpgradeLevel;
 
     /// <summary>How many items this worker can carry per trip (1–4 by stars).</summary>
     public int CarryCapacity => UpgradeLevel + 1;
@@ -155,14 +166,14 @@ public class KitchenEmployee : MonoBehaviour
     public int GetNextUpgradeCost()
     {
         int level = UpgradeLevel;
-        if (level >= MaxUpgradeLevel) return -1;
+        if (level >= MaxUnlockedUpgradeLevel) return -1;
         return UpgradeCosts[level];
     }
 
     public bool TryUpgrade(MoneyManager money = null)
     {
         int cost = GetNextUpgradeCost();
-        if (cost < 0) return false;
+        if (cost < 0 || UpgradeLevel >= MaxUnlockedUpgradeLevel) return false;
         if (money == null)
             money = FindObjectOfType<MoneyManager>();
         if (cost > 0)
@@ -1043,6 +1054,26 @@ public class KitchenEmployee : MonoBehaviour
     [Min(0.02f)] public float idleTaskPlanningInterval = 0.1f;
     float nextIdleTaskPlanningTime;
 
+    [Header("Item handling")]
+    [Tooltip("Seconds a worker spends picking an item up from a station or pickup point.")]
+    [Min(0f)] public float pickupTimeSeconds = 0.35f;
+    [Tooltip("Seconds a worker spends placing carried items into a station, pickup point, or register.")]
+    [Min(0f)] public float placementTimeSeconds = 0.35f;
+
+    enum ItemHandlingAction
+    {
+        None,
+        Pickup,
+        Place
+    }
+
+    ItemHandlingAction itemHandlingAction;
+    Step itemHandlingStep;
+    GameObject itemHandlingTarget;
+    float itemHandlingTimer;
+    bool outputPlacementReady;
+    GameObject outputPlacementTarget;
+
     public bool IsWaitingToReevaluateTasks =>
         currentJob == null && Time.time < nextTaskEvaluationTime;
 
@@ -1161,6 +1192,46 @@ public class KitchenEmployee : MonoBehaviour
         heldDeliveryItem = null;
         ingredientsHeld.Clear();
         awaitingOutputDelivery = false;
+        ResetItemHandlingState();
+    }
+
+    void ResetItemHandlingState()
+    {
+        itemHandlingAction = ItemHandlingAction.None;
+        itemHandlingStep = Step.None;
+        itemHandlingTarget = null;
+        itemHandlingTimer = 0f;
+        outputPlacementReady = false;
+        outputPlacementTarget = null;
+    }
+
+    bool WaitForItemHandling(ItemHandlingAction action, GameObject target)
+    {
+        float duration = action == ItemHandlingAction.Pickup
+            ? pickupTimeSeconds : placementTimeSeconds;
+        if (duration <= 0f)
+            return true;
+
+        if (itemHandlingAction != action || itemHandlingStep != step
+            || itemHandlingTarget != target)
+        {
+            itemHandlingAction = action;
+            itemHandlingStep = step;
+            itemHandlingTarget = target;
+            itemHandlingTimer = 0f;
+        }
+
+        itemHandlingTimer += Time.deltaTime;
+        ShowTaskBar = true;
+        TaskProgress = Mathf.Clamp01(itemHandlingTimer / duration);
+        if (itemHandlingTimer < duration)
+            return false;
+
+        itemHandlingAction = ItemHandlingAction.None;
+        itemHandlingStep = Step.None;
+        itemHandlingTarget = null;
+        itemHandlingTimer = 0f;
+        return true;
     }
 
     void ReturnExcessToKitchenStock(ItemDefinition item, int amount)
@@ -1357,6 +1428,7 @@ public class KitchenEmployee : MonoBehaviour
     public void AssignJob(ProductionJob job)
     {
         if (currentJob != null) return;
+        ResetItemHandlingState();
         currentJob = job;
         heldUnits = 0;
         // heldUnits on the job also records the batch size that should be worked
@@ -1550,6 +1622,7 @@ public class KitchenEmployee : MonoBehaviour
 
     void BeginTaskReevaluationDelay()
     {
+        ResetItemHandlingState();
         nextTaskEvaluationTime = Time.time + TaskReevaluationDelay;
         returningToFlowStart = false;
         returnFlowTarget = null;
@@ -1779,6 +1852,8 @@ public class KitchenEmployee : MonoBehaviour
                 return false;
             requested = manager.GetReservedTransferUnits(currentJob);
         }
+        if (!WaitForItemHandling(ItemHandlingAction.Pickup, station.gameObject))
+            return true;
         int taken = buffer.TakeOutput(product, requested);
         if (taken <= 0) return false;
         manager.ConsumeOutputReservation(currentJob, taken);
@@ -1954,6 +2029,18 @@ public class KitchenEmployee : MonoBehaviour
             awaitingOutputDelivery = true;
             step = Step.None;
             return;
+        }
+
+        if (outputPlacementTarget != deliverTarget)
+        {
+            outputPlacementTarget = deliverTarget;
+            outputPlacementReady = false;
+        }
+        if (!outputPlacementReady)
+        {
+            if (!WaitForItemHandling(ItemHandlingAction.Place, deliverTarget))
+                return;
+            outputPlacementReady = true;
         }
 
         var lamp = deliverTarget.GetComponent<HeatLampStation>();
@@ -2906,7 +2993,15 @@ public class KitchenEmployee : MonoBehaviour
                 TaskProgress = Mathf.Clamp01(stateTimer / drinkTime);
                 if (stateTimer >= drinkTime)
                 {
-                    if (!manager.HasDrinkInStock() || !manager.TryDispenseDrink(this))
+                    if (!manager.HasDrinkInStock())
+                    {
+                        TaskProgress = 1f;
+                        break;
+                    }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            GetDrinkStation()?.gameObject))
+                        break;
+                    if (!manager.TryDispenseDrink(this))
                     {
                         step = Step.None;
                         cashierFetchItem = null;
@@ -2945,6 +3040,8 @@ public class KitchenEmployee : MonoBehaviour
                     cashierFetchItem = null;
                     break;
                 }
+                if (!WaitForItemHandling(ItemHandlingAction.Pickup, lamp.gameObject))
+                    break;
                 var taken = lamp.TryTakeSingleItem(cashierFetchItem, out int adjustedSaleValue);
                 if (taken != null)
                 {
@@ -2986,6 +3083,18 @@ public class KitchenEmployee : MonoBehaviour
                 ShowTaskBar = true;
                 TaskProgress = 1f;
 
+                if (outputPlacementTarget != reg.gameObject)
+                {
+                    outputPlacementTarget = reg.gameObject;
+                    outputPlacementReady = false;
+                }
+                if (!outputPlacementReady)
+                {
+                    if (!WaitForItemHandling(ItemHandlingAction.Place, reg.gameObject))
+                        break;
+                    outputPlacementReady = true;
+                }
+
                 // Hand over the entire tray in one serve action.
                 while (cashierTray.Count > 0)
                 {
@@ -3000,6 +3109,7 @@ public class KitchenEmployee : MonoBehaviour
                     cashierFetchItem = null;
                     cashierCustomer = null;
                     step = Step.None;
+                    ResetItemHandlingState();
                 }
                 break;
             }
@@ -3059,6 +3169,15 @@ public class KitchenEmployee : MonoBehaviour
                         stateTimer = freezerTime;
                         break;
                     }
+                    if (!manager.HasPattyInStock(this))
+                    {
+                        TaskProgress = 1f;
+                        stateTimer = freezerTime;
+                        break;
+                    }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            GetFreezerStation()?.gameObject))
+                        break;
                     int taken = manager.TryTakePattiesFromFreezer(this,
                         GetCurrentTransferItem(), Mathf.Min(ProductionBatchCapacity, reservedCapacity));
                     if (taken <= 0)
@@ -3102,11 +3221,14 @@ public class KitchenEmployee : MonoBehaviour
                                 YieldBlockedOutputStep();
                                 break;
                             }
-                    int cooked = manager.TakePattiesFromGrill(this,
-                        currentJob != null && currentJob.isAssemblySupply
-                            ? manager.GetAssemblySupplyStepOutput(currentJob)
-                            : (currentJob != null ? currentJob.product : manager.PattyItem),
-                        transferCapacity);
+                            if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                                    grill != null ? grill.gameObject : null))
+                                break;
+                            int cooked = manager.TakePattiesFromGrill(this,
+                                currentJob != null && currentJob.isAssemblySupply
+                                    ? manager.GetAssemblySupplyStepOutput(currentJob)
+                                    : (currentJob != null ? currentJob.product : manager.PattyItem),
+                                transferCapacity);
                             if (cooked > 0)
                             {
                                 heldUnits = cooked;
@@ -3119,6 +3241,9 @@ public class KitchenEmployee : MonoBehaviour
                         int grillLoad = grill != null
                             ? Mathf.Min(heldUnits, Mathf.Max(0,
                                 grill.SlotCapacity - grill.BufferedPattyCount)) : heldUnits;
+                        if (heldUnits > 0 && !WaitForItemHandling(ItemHandlingAction.Place,
+                                grill != null ? grill.gameObject : null))
+                            break;
                         int placed = heldUnits > 0
                             ? manager.PlacePattiesOnGrill(this,
                                 grillOutput,
@@ -3194,6 +3319,9 @@ public class KitchenEmployee : MonoBehaviour
                         YieldBlockedOutputStep();
                         break;
                     }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            grillNow != null ? grillNow.gameObject : null))
+                        break;
                     int cooked = manager.TakePattiesFromGrill(this,
                         currentJob != null && currentJob.isAssemblySupply
                             ? manager.GetAssemblySupplyStepOutput(currentJob)
@@ -3230,6 +3358,9 @@ public class KitchenEmployee : MonoBehaviour
                             int storeAmount = Mathf.Min(carriedAmount, openSlots);
                             int reserved = manager.GetReservedInputUnits(currentJob);
                             if (reserved > 0) storeAmount = Mathf.Min(storeAmount, reserved);
+                            if (storeAmount > 0 && !WaitForItemHandling(ItemHandlingAction.Place,
+                                    cutting.gameObject))
+                                break;
                             int stored = cutting.StoreInput(recipe.input, storeAmount,
                                 currentJob != null ? currentJob.order : null);
                             if (stored > 0)
@@ -3326,6 +3457,8 @@ public class KitchenEmployee : MonoBehaviour
                             break;
                         }
 
+                        if (!WaitForItemHandling(ItemHandlingAction.Pickup, cutting.gameObject))
+                            break;
                         int taken = cutting.TakeOutput(recipe.output, transferCapacity);
                         if (taken <= 0) break;
                         manager.ConsumeOutputReservation(currentJob, taken);
@@ -3407,6 +3540,9 @@ public class KitchenEmployee : MonoBehaviour
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, assemblyTime));
                 if (stateTimer >= assemblyTime)
                 {
+                    if (!WaitForItemHandling(ItemHandlingAction.Place,
+                            activeAssembly != null ? activeAssembly.gameObject : null))
+                        break;
                     if (!activeAssembly.TryAssemble(activeAssemblyProduct, ingredientsHeld,
                             activeAssemblyUnits))
                     {
@@ -3470,6 +3606,13 @@ public class KitchenEmployee : MonoBehaviour
                     TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, pantry.processTimeSeconds));
                     if (stateTimer >= pantry.processTimeSeconds)
                     {
+                        if (!pantry.HasItem(pantryItem))
+                        {
+                            TaskProgress = 1f;
+                            break;
+                        }
+                        if (!WaitForItemHandling(ItemHandlingAction.Pickup, pantry.gameObject))
+                            break;
                         if (currentJob != null && currentJob.isAssemblySupply)
                         {
                             int wanted = Mathf.Clamp(currentJob.requestedSupplyUnits, 1, CarryCapacity);
@@ -3540,6 +3683,9 @@ public class KitchenEmployee : MonoBehaviour
                         {
                             int fryerLoad = fryer != null
                                 ? Mathf.Min(heldUnits, fryer.InputSlotCapacity) : heldUnits;
+                            if (heldUnits > 0 && !WaitForItemHandling(ItemHandlingAction.Place,
+                                    fryer != null ? fryer.gameObject : null))
+                                break;
                             int placed = heldUnits > 0
                                 ? manager.TryLoadFryer(this,
                                     currentJob != null && currentJob.isAssemblySupply
@@ -3590,6 +3736,9 @@ public class KitchenEmployee : MonoBehaviour
                         YieldBlockedOutputStep();
                         break;
                     }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            fryerAtTask != null ? fryerAtTask.gameObject : null))
+                        break;
                     int taken = manager.TakeFromFryer(this, fryerOutput, transferCapacity);
                     if (taken > 0)
                     {
@@ -3616,6 +3765,11 @@ public class KitchenEmployee : MonoBehaviour
                     int available = activeFryer != null
                         ? activeFryer.GetOutputCount(currentJob != null && currentJob.isAssemblySupply
                             ? manager.GetAssemblySupplyStepOutput(currentJob) : manager.CookedPotatoItem) : 0;
+                    if (available <= 0)
+                    {
+                        TaskProgress = 1f;
+                        break;
+                    }
                     int transferCapacity = EnsureNextDestinationReservation(
                         Mathf.Min(CarryCapacity, available));
                     if (activeFryer != null && activeFryer.IsCooked()
@@ -3624,6 +3778,9 @@ public class KitchenEmployee : MonoBehaviour
                         YieldBlockedOutputStep();
                         break;
                     }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            activeFryer != null ? activeFryer.gameObject : null))
+                        break;
                     int taken = manager.TakeFromFryer(this,
                         currentJob != null && currentJob.isAssemblySupply
                             ? manager.GetAssemblySupplyStepOutput(currentJob) : manager.CookedPotatoItem,
@@ -3676,6 +3833,14 @@ public class KitchenEmployee : MonoBehaviour
                 TaskProgress = Mathf.Clamp01(stateTimer / Mathf.Max(0.01f, drinkProductionTime));
                 if (stateTimer >= drinkProductionTime)
                 {
+                    if (!manager.HasDrinkInStock())
+                    {
+                        TaskProgress = 1f;
+                        break;
+                    }
+                    if (!WaitForItemHandling(ItemHandlingAction.Pickup,
+                            GetDrinkStation()?.gameObject))
+                        break;
                     int poured = 0;
                     while (poured < CarryCapacity && manager.HasDrinkInStock())
                     {

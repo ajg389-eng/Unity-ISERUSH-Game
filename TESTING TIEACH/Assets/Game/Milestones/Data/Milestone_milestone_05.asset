@@ -26,7 +26,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 11400000, guid: a2558a7b983aa0a488984e02f87f88f9, type: 2}
-  unlocks:
-  - kind: 3
-    unlockId: milestone_05_complete
-    displayName: Quality & Reliability Complete
+  unlocks: []

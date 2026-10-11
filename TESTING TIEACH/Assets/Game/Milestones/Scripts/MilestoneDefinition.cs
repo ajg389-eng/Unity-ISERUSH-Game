@@ -28,7 +28,8 @@ public class MilestoneDefinition : ScriptableObject
     [Tooltip("Quiz required after missions. Leave empty for a stub pass-through.")]
     public QuizDefinition quiz;
 
-    [Tooltip("Features unlocked when this milestone's quiz is passed.")]
+    // Retained for old serialized assets. Runtime progression ignores milestone rewards.
+    [HideInInspector]
     public List<MilestoneUnlock> unlocks = new List<MilestoneUnlock>();
 
     public IReadOnlyList<MissionDefinition> GetMissions()

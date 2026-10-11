@@ -254,6 +254,13 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     bool TryGetCautionDetails(out string details)
     {
+        Register register = GetComponent<Register>();
+        if (register != null && !register.isEnabled)
+        {
+            details = "REGISTER DISABLED\nClick the register and choose Enable.";
+            return true;
+        }
+
         if (!HasConfiguration())
         {
             details = "NOT CONFIGURED\nSelect a recipe or ingredient.";

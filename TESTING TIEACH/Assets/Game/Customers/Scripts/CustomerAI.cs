@@ -75,6 +75,8 @@ public class CustomerAI : MonoBehaviour
 
     public bool IsEntering => phase == Phase.Entering;
     public bool IsLeaving => phase == Phase.Leaving;
+    /// <summary>True after the customer has ordered and is waiting at pickup.</summary>
+    public bool IsWaitingForPickup => waitingForPickup && !leaving;
 
     /// <summary>
     /// Distance along <paramref name="forward"/> to the nearest customer

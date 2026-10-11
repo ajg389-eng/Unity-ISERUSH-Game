@@ -97,7 +97,7 @@ public class MilestoneQuizUI : MonoBehaviour
 
         if (statusText != null)
         {
-            statusText.text = "Perfect! Milestone unlocked.";
+            statusText.text = "Milestone passed! New research projects are available.";
             statusText.color = new Color(0.55f, 0.9f, 0.6f, 1f);
         }
 

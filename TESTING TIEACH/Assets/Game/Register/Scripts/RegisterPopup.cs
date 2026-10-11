@@ -17,6 +17,7 @@ public class RegisterPopup : MonoBehaviour
         target = reg;
         bound = true;
         UpdateText();
+        GameUITheme.ApplyButton(toggleButton);
     }
 
     void Start()
@@ -26,6 +27,7 @@ public class RegisterPopup : MonoBehaviour
             if (!target) return;
             target.Toggle();
             UpdateText();
+            GameUITheme.ApplyButton(toggleButton);
         });
     }
 

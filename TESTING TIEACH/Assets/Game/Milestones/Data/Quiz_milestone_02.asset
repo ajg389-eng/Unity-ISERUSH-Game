@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::QuizDefinition
   quizId: milestone_02_quiz
   title: Milestone 2 Quiz
-  introText: Answer every question correctly to unlock the next milestone.
+  introText: Answer every question correctly to advance to the next milestone and reveal new research.
   questions:
   - prompt: The grill is 98% utilized while assembly is 55% utilized, and orders
       are piling up before the grill. Where should additional capacity most likely

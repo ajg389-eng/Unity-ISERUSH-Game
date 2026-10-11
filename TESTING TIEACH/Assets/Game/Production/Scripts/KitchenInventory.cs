@@ -103,8 +103,18 @@ public class KitchenInventory : MonoBehaviour
 
     public bool IsOrderItemUnlocked(ItemDefinition item)
     {
+        if (OnboardingTutorial.BlocksProgression && orderConfig != null
+            && (item == orderConfig.rawPattyIngredient || IsTutorialBun(item)))
+            return true;
         return item != null && (orderConfig == null
             || (orderConfig.IsIngredientUnlocked(item) && orderConfig.IsMenuItemUnlocked(item)));
+    }
+
+    bool IsTutorialBun(ItemDefinition item)
+    {
+        if (item == null || orderConfig == null) return false;
+        AssemblyRecipeDefinition recipe = orderConfig.GetAssemblyRecipe(orderConfig.burgerBase);
+        return recipe != null && orderConfig.GetAssemblySupplySource(recipe) == item;
     }
 
     public int GetOrderItemUnlockMilestone(ItemDefinition item)

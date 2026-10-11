@@ -60,6 +60,7 @@ public class Register : MonoBehaviour
             if (exit != null) storeExit = exit.transform;
         }
         StationNode.EnsureOn(gameObject);
+        StationConfigurationCaution.Ensure(gameObject);
         EnsureInteractionTiles();
     }
 

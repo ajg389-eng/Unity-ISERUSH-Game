@@ -13,7 +13,7 @@ public class KitchenSaveSnapshot
     public float minutes;
     public bool tutorialComplete;
     public List<Equipment> equipment = new List<Equipment>();
-    public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>(), productionTargets = new List<Stock>();
+    public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     public List<WallPhoto> wallPhotos = new List<WallPhoto>();
@@ -125,8 +125,6 @@ public class KitchenSaveSnapshot
         if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity});
         var pm=ProductionManager.Instance;
         if(pm!=null) {
-            foreach(var target in pm.productionTargets) if(target!=null && target.item!=null)
-                s.productionTargets.Add(new Stock {item=target.item.name,count=Mathf.Max(0,target.quantity)});
             var staff=new List<KitchenEmployee>();
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
@@ -173,10 +171,6 @@ public class KitchenSaveSnapshot
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
         pm.ResetTransientProductionState();
         pm.employees.Clear(); pm.productionFlows.Clear();
-        pm.productionTargets.Clear();
-        if(productionTargets!=null) foreach(var entry in productionTargets)
-            if(entry!=null && definitions.TryGetValue(entry.item,out var targetItem))
-                pm.productionTargets.Add(new ProductionManager.ProductionTarget {item=targetItem,quantity=Mathf.Clamp(entry.count,0,20)});
         foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
             if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
                 continue;

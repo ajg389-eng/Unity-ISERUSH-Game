@@ -44,9 +44,9 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Queue length per station</b>");
-        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
+        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
         {
-            sb.AppendLine("  Unlocks at Milestone 2.");
+            sb.AppendLine("  Complete Queue Analytics research to unlock.");
         }
         else
         {
@@ -69,9 +69,9 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Station utilization (%)</b>");
-        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
+        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
         {
-            sb.AppendLine("  Unlocks at Milestone 2.");
+            sb.AppendLine("  Complete Queue Analytics research to unlock.");
         }
         else
         {
@@ -86,8 +86,8 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Worker utilization</b>");
-        if (!MilestoneFeatures.BottleneckInsightsUnlocked)
-            sb.AppendLine("  Unlocks at Milestone 2.");
+        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
+            sb.AppendLine("  Complete Queue Analytics research to unlock.");
         else
             sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
         sb.AppendLine();
