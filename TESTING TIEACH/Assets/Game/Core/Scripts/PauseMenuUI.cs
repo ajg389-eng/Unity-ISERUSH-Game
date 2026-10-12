@@ -1781,17 +1781,11 @@ public class PauseMenuUI : MonoBehaviour
         outline.effectDistance = new Vector2(2f, -2f);
         outline.useGraphicAlpha = true;
 
-        var shadow = panel.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
-        shadow.effectDistance = new Vector2(0f, -6f);
-        shadow.useGraphicAlpha = true;
     }
 
     static void SetPanelChromeEnabled(GameObject panel, bool enabled)
     {
         if (panel == null) return;
-        foreach (var effect in panel.GetComponents<Shadow>())
-            if (effect != null) effect.enabled = enabled;
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string name, string text, float size, TextAlignmentOptions align)
@@ -1845,6 +1839,20 @@ public class PauseMenuUI : MonoBehaviour
         tmp.raycastTarget = false;
         tmp.enableAutoSizing = false;
         GameUITheme.ApplyTitleScreenFont(tmp);
+        if (name == "ResumeButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Play, 22f, 12f);
+        else if (name == "OptionsButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Gear, 22f, 12f);
+        else if (name == "GuidebookButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Information, 22f, 12f);
+        else if (name == "QuitToMenuButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Home, 22f, 12f);
+        else if (name == "BackButton" || name == "CreditsBackButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Cross, 20f, 12f);
+        else if (name == "ApplyResolution" || name == "ConfirmButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Checkmark, 20f, 12f);
+        else if (name == "CancelButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Cross, 20f, 12f);
         return btn;
     }
 
@@ -1888,6 +1896,10 @@ public class PauseMenuUI : MonoBehaviour
         tmp.raycastTarget = false;
         tmp.enableAutoSizing = false;
         GameUITheme.ApplyTitleScreenFont(tmp);
+        if (name.Contains("Prev") || name.Contains("Previous"))
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Previous, 19f, 0f, true);
+        else if (name.Contains("Next"))
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Next, 19f, 0f, true);
         return btn;
     }
 

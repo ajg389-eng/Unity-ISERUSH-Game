@@ -12,6 +12,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         public Image background;
         public Image progress;
         public TextMeshProUGUI title, description, meta;
+        public Image statusIcon;
     }
 
     static ResearchTreeUI instance;
@@ -340,6 +341,18 @@ public sealed class ResearchTreeUI : MonoBehaviour
         Image stripeImage = stripe.GetComponent<Image>();
         stripeImage.color = branchColor;
         stripeImage.raycastTarget = false;
+
+        var statusIconObject = new GameObject("StatusIcon", typeof(RectTransform), typeof(Image));
+        statusIconObject.transform.SetParent(node.transform, false);
+        RectTransform statusIconRect = (RectTransform)statusIconObject.transform;
+        statusIconRect.anchorMin = new Vector2(1f, 1f);
+        statusIconRect.anchorMax = new Vector2(1f, 1f);
+        statusIconRect.pivot = new Vector2(1f, 1f);
+        statusIconRect.anchoredPosition = new Vector2(-10f, -9f);
+        statusIconRect.sizeDelta = new Vector2(22f, 22f);
+        Image statusIcon = statusIconObject.GetComponent<Image>();
+        statusIcon.preserveAspect = true;
+        statusIcon.raycastTarget = false;
         TextMeshProUGUI title = CreateText(node.transform, "Title", definition.title, 14f, FontStyles.Bold,
             new Vector2(16f, 35f), new Vector2(-12f, 57f), TextAlignmentOptions.Left);
         RectTransform titleRect = title.rectTransform;
@@ -380,7 +393,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         Image progress = fill.GetComponent<Image>(); progress.color = GetBranchColor(definition.category);
 
         NodeView view = new NodeView { definition = definition, button = button, background = background,
-            progress = progress, title = title, description = description, meta = meta };
+            progress = progress, title = title, description = description, meta = meta, statusIcon = statusIcon };
         button.onClick.AddListener(() => StartResearch(view));
         nodeViews.Add(view); nodeRects[definition.id] = rt;
     }
@@ -440,6 +453,12 @@ public sealed class ResearchTreeUI : MonoBehaviour
             : available ? Color.Lerp(new Color(0.12f, 0.15f, 0.20f, 1f), GetBranchColor(d.category), 0.23f)
                 : new Color(0.095f, 0.11f, 0.15f, 1f);
             view.title.color = complete || active || available ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
+            if (view.statusIcon != null)
+            {
+                view.statusIcon.sprite = GameIconLibrary.GetSprite(
+                    complete ? GameIconId.Checkmark : active ? GameIconId.Wrench : available ? GameIconId.Unlocked : GameIconId.Locked);
+                view.statusIcon.color = complete ? GameUITheme.PositiveAccent : branch;
+            }
             if (complete) view.meta.text = "<color=#73D9A0>COMPLETED</color>";
             else if (active) view.meta.text = "<color=#73D9C5>" + FormatTime(manager.RemainingMinutes) + " REMAINING</color>";
             else if (!milestone) view.meta.text = "REQUIRES MILESTONE " + d.milestone;
@@ -507,7 +526,10 @@ public sealed class ResearchTreeUI : MonoBehaviour
         rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f); rt.offsetMin = min; rt.offsetMax = max;
         go.GetComponent<Image>().color = color;
         CreateText(go.transform, "Label", label, 18f, FontStyles.Bold, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        if (name == "Close")
+            GameIconLibrary.ApplyToButton(button, GameIconId.Cross, 20f, 0f, true);
+        return button;
     }
 
     static TextMeshProUGUI CreateText(Transform parent, string name, string value, float size,

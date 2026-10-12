@@ -194,6 +194,7 @@ public class TopHudUtilityControls : MonoBehaviour
             playPauseText = pause.GetComponentInChildren<TextMeshProUGUI>(true);
         SetSquareButtonLayout(pause, 34f);
         GameUITheme.ApplyCompactControlEffects(pause);
+        GameIconLibrary.ApplyToButton(pause, GameIconId.Pause, 20f, 0f, true);
         pause.onClick.RemoveAllListeners();
         pause.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.TogglePause(); });
 
@@ -202,6 +203,7 @@ public class TopHudUtilityControls : MonoBehaviour
             next = CreateButton(section.transform, "MusicNextButton", ">>", 34f, out _);
         SetSquareButtonLayout(next, 34f);
         GameUITheme.ApplyCompactControlEffects(next);
+        GameIconLibrary.ApplyToButton(next, GameIconId.Next, 20f, 0f, true);
         next.onClick.RemoveAllListeners();
         next.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.Next(); });
     }
@@ -214,7 +216,7 @@ public class TopHudUtilityControls : MonoBehaviour
 
         notificationButton = FindButton(section.transform, "NotificationButton");
         if (notificationButton == null)
-            notificationButton = CreateButton(section.transform, "NotificationButton", "!  NOTICES", 88f, out notificationButtonText);
+            notificationButton = CreateButton(section.transform, "NotificationButton", "!", 34f, out notificationButtonText);
         else
             notificationButtonText = notificationButton.GetComponentInChildren<TextMeshProUGUI>(true);
 
@@ -223,9 +225,10 @@ public class TopHudUtilityControls : MonoBehaviour
         buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
         buttonRect.pivot = new Vector2(0.5f, 0.5f);
         buttonRect.anchoredPosition = Vector2.zero;
-        buttonRect.sizeDelta = new Vector2(88f, 34f);
+        buttonRect.sizeDelta = new Vector2(34f, 34f);
         notificationButton.onClick.RemoveAllListeners();
         notificationButton.onClick.AddListener(ToggleHistory);
+        GameIconLibrary.ApplyToButton(notificationButton, GameIconId.Exclamation, 20f, 0f, true);
     }
 
     void EnsureGusHelpSection()
@@ -327,18 +330,19 @@ public class TopHudUtilityControls : MonoBehaviour
         SetRect(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f),
             new Vector2(16f, -72f), new Vector2(-78f, -52f));
 
-        Button clear = CreateButton(root, "ClearButton", "Clear", 66f, out _);
+        Button clear = CreateButton(root, "ClearButton", "", 36f, out _);
         var clearRt = (RectTransform)clear.transform;
         clearRt.anchorMin = clearRt.anchorMax = new Vector2(1f, 1f);
         clearRt.pivot = new Vector2(1f, 1f);
         clearRt.anchoredPosition = new Vector2(-12f, -10f);
-        clearRt.sizeDelta = new Vector2(66f, 32f);
+        clearRt.sizeDelta = new Vector2(36f, 32f);
         clear.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
             expandedNotifications.Clear();
             NotificationCenter.Clear();
         });
+        GameIconLibrary.ApplyToButton(clear, GameIconId.Trash, 19f, 0f, true);
 
         var scrollGo = new GameObject("Scroll View", typeof(RectTransform), typeof(ScrollRect));
         scrollGo.transform.SetParent(root, false);
@@ -415,6 +419,11 @@ public class TopHudUtilityControls : MonoBehaviour
             trackText.text = music != null ? music.CurrentTrackName : "No music";
         if (playPauseText != null)
             playPauseText.text = music != null && music.IsPaused ? ">" : "||";
+        Transform musicSection = transform.Find(MusicSectionName);
+        Button pauseButton = musicSection != null ? FindButton(musicSection, "MusicPauseButton") : null;
+        Image pauseIcon = pauseButton != null ? pauseButton.transform.Find("KenneyIcon")?.GetComponent<Image>() : null;
+        if (pauseIcon != null)
+            pauseIcon.sprite = GameIconLibrary.GetSprite(music != null && music.IsPaused ? GameIconId.Play : GameIconId.Pause);
         if (musicPanel != null && musicPanel.activeSelf) RebuildMusicList();
     }
 
@@ -525,7 +534,7 @@ public class TopHudUtilityControls : MonoBehaviour
         if (notificationButtonText != null)
         {
             int unread = NotificationCenter.UnreadCount;
-            notificationButtonText.text = unread > 0 ? "!  " + Mathf.Min(99, unread) : "!  NOTICES";
+            notificationButtonText.text = "!";
             notificationButtonText.color = unread > 0 ? Warning : Color.white;
         }
         if (historyPanel != null && historyPanel.activeSelf)
@@ -665,20 +674,6 @@ public class TopHudUtilityControls : MonoBehaviour
         outline.effectColor = GameUITheme.Edge;
         outline.effectDistance = new Vector2(1f, -1f);
         outline.useGraphicAlpha = true;
-
-        Shadow shadow = null;
-        foreach (var effect in box.GetComponents<Shadow>())
-        {
-            if (effect != null && effect.GetType() == typeof(Shadow))
-            {
-                shadow = effect;
-                break;
-            }
-        }
-        if (shadow == null) shadow = box.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.48f);
-        shadow.effectDistance = new Vector2(0f, -1f);
-        shadow.useGraphicAlpha = true;
 
         // Prevent the global container pass from changing this control to a
         // panel shade after it has been matched to the adjacent buttons.

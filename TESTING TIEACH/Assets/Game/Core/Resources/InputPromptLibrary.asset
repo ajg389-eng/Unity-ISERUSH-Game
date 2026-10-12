@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1d6d9e6b6c9d40b6ab5fc3ed665cd3b9, type: 3}
+  m_Name: InputPromptLibrary
+  m_EditorClassIdentifier:
+  keyboardW: {fileID: 2800000, guid: c6699e98d468525428e4f01086f87bd8, type: 3}
+  keyboardA: {fileID: 2800000, guid: 94c8150a00adad54bb0adf6fecbd2c75, type: 3}
+  keyboardS: {fileID: 2800000, guid: 6a4b1228504d73345a8e26f8af358d90, type: 3}
+  keyboardD: {fileID: 2800000, guid: 63c66f036dc37a047af0293486d0062e, type: 3}
+  keyboardR: {fileID: 2800000, guid: 466efb3962014b243b4199ff3a96ec2d, type: 3}
+  keyboardE: {fileID: 2800000, guid: 1dd6121b43aa5ab47b3167b4d1bbf438, type: 3}
+  escape: {fileID: 2800000, guid: ba8f59342d7356b45862cc53b097ace8, type: 3}
+  ctrl: {fileID: 2800000, guid: cf1fdb271bad7e946ba98f71e38eeb89, type: 3}
+  enter: {fileID: 2800000, guid: a724b4040e5fa0d43b679d728f1548a2, type: 3}
+  space: {fileID: 2800000, guid: 55363f2d62cb6c74b866d1e8e86213ca, type: 3}
+  shift: {fileID: 2800000, guid: 7ca4bdab54b7e6e4582d47f1299af7bd, type: 3}
+  arrows: {fileID: 2800000, guid: 47d10a72388efd14992b81484763e048, type: 3}
+  mouseLeft: {fileID: 2800000, guid: 5f608ccfb5a40ca4b9728cc3d41d00e9, type: 3}
+  mouseRight: {fileID: 2800000, guid: 507fd64b2b97af744a6bdfee632d5b4c, type: 3}
+  mouseMove: {fileID: 2800000, guid: c7d0365b29b2fb1478cf0e6a6fbe3cd8, type: 3}
+  mouseScroll: {fileID: 2800000, guid: 3488531acd3269c489e708603a0d1b24, type: 3}

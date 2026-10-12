@@ -334,10 +334,6 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         outline.effectColor = GameUITheme.Edge;
         outline.effectDistance = edgeDistance;
         outline.useGraphicAlpha = true;
-        var shadow = target.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.55f);
-        shadow.effectDistance = shadowDistance;
-        shadow.useGraphicAlpha = true;
     }
 
     static void Stretch(RectTransform rect, float inset = 0f)

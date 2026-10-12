@@ -12,7 +12,7 @@ public class MissionListUI : MonoBehaviour
 {
     public const string PanelObjectName = "SideMenuPanel";
     const string TopTabsObjectName = "TasksProgressionTabs";
-    const float TopTabsWidth = 550f;
+    const float TopTabsWidth = 650f;
     const float TopTabsHeight = 60f;
 
     public enum SideTab
@@ -60,6 +60,7 @@ public class MissionListUI : MonoBehaviour
     GameObject topTabsRoot;
     Button topTasksButton;
     Button topProgressionButton;
+    Button topResearchButton;
     bool panelOpen;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
@@ -571,7 +572,7 @@ public class MissionListUI : MonoBehaviour
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
+        layout.childForceExpandWidth = false;
         layout.childForceExpandHeight = false;
 
         headerText = CreateLabel(panelRoot.transform, "Header", "Tasks", 20, FontStyles.Bold);
@@ -600,6 +601,7 @@ public class MissionListUI : MonoBehaviour
         researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
             new Color(0.22f, 0.48f, 0.58f, 1f));
         researchButton.onClick.AddListener(OpenResearch);
+        researchButton.gameObject.SetActive(false);
 
         progressionListContent = CreateScrollList(progressionPage.transform, "ProgressionList");
 
@@ -642,6 +644,8 @@ public class MissionListUI : MonoBehaviour
             if (progressionList != null)
                 researchButton.transform.SetSiblingIndex(progressionList.GetSiblingIndex());
         }
+        if (researchButton != null)
+            researchButton.gameObject.SetActive(false);
         if (openQuizButton == null)
             openQuizButton = panelRoot.transform.Find("ProgressionPage/OpenQuizButton")?.GetComponent<Button>();
     }
@@ -711,11 +715,14 @@ public class MissionListUI : MonoBehaviour
 
         topTasksButton = FindOrCreateTopTab("TasksTopTab", "Tasks");
         topProgressionButton = FindOrCreateTopTab("ProgressionTopTab", "Progression");
+        topResearchButton = FindOrCreateTopResearchButton();
 
         topTasksButton.onClick.RemoveAllListeners();
         topTasksButton.onClick.AddListener(() => ToggleTopTab(SideTab.Tasks));
         topProgressionButton.onClick.RemoveAllListeners();
         topProgressionButton.onClick.AddListener(() => ToggleTopTab(SideTab.Progression));
+        topResearchButton.onClick.RemoveAllListeners();
+        topResearchButton.onClick.AddListener(OpenResearch);
         RefreshTopTabs();
     }
 
@@ -759,10 +766,37 @@ public class MissionListUI : MonoBehaviour
         return button;
     }
 
+    Button FindOrCreateTopResearchButton()
+    {
+        Transform existing = topTabsRoot.transform.Find("ResearchTopButton");
+        Button button = existing != null ? existing.GetComponent<Button>() : null;
+        if (button == null)
+        {
+            var go = new GameObject("ResearchTopButton", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            go.transform.SetParent(topTabsRoot.transform, false);
+            button = go.GetComponent<Button>();
+            button.targetGraphic = go.GetComponent<Image>();
+        }
+
+        var layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        layout.minWidth = 44f;
+        layout.preferredWidth = 44f;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = 40f;
+        layout.preferredHeight = 40f;
+        button.GetComponent<Image>().color = GameUITheme.Surface;
+        button.transition = Selectable.Transition.ColorTint;
+        GameIconLibrary.ApplyToButton(button, GameIconId.Gear, 24f, 0f, true);
+        GameUITheme.ApplyCompactControlEffects(button);
+        return button;
+    }
+
     void RefreshTopTabs()
     {
         SetTopTabVisual(topTasksButton, IsOpen && activeTab == SideTab.Tasks);
         SetTopTabVisual(topProgressionButton, IsOpen && activeTab == SideTab.Progression);
+        if (topResearchButton != null)
+            topResearchButton.gameObject.SetActive(false);
     }
 
     static void SetTopTabVisual(Button button, bool active)
@@ -969,6 +1003,9 @@ public class MissionListUI : MonoBehaviour
         tmp.color = Color.white;
         tmp.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        GameIconLibrary.ApplyToButton(btn,
+            name.Contains("Tasks") ? GameIconId.Checkmark : GameIconId.Gear,
+            17f, 7f);
         return btn;
     }
 
@@ -994,6 +1031,10 @@ public class MissionListUI : MonoBehaviour
         tmp.color = Color.white;
         tmp.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
+        if (name == "ResearchButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Gear, 18f, 8f);
+        else if (name == "OpenQuizButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Information, 18f, 8f);
         return btn;
     }
 

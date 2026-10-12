@@ -28,7 +28,7 @@ public class IngredientsOrderUI : MonoBehaviour
     GameObject navigation;
     readonly List<GameObject> menuRows = new List<GameObject>();
     readonly List<GameObject> supplyRows = new List<GameObject>();
-    Button suppliesTab, menuTab, recipesTab;
+    Button suppliesTab, menuTab;
     readonly Dictionary<ItemDefinition, int> cartPacks = new Dictionary<ItemDefinition, int>();
     TextMeshProUGUI deliveryStatusText;
     TextMeshProUGUI cartSummaryText;
@@ -56,6 +56,15 @@ public class IngredientsOrderUI : MonoBehaviour
     public Button TutorialSuppliesTab => suppliesTab;
     public Button TutorialPlaceOrderButton => placeOrderButton;
     public int TutorialCartPacks(ItemDefinition item) => GetCartPacks(item);
+
+    public void OpenRecipesFromHud()
+    {
+        EnsureRefs();
+        CustomerOrderConfig menu = inventory != null ? inventory.orderConfig : null;
+        if (menu == null) return;
+        if (!built) RebuildRows();
+        OpenRecipes(menu);
+    }
 
     public Button TutorialAddButton(ItemDefinition item)
     {
@@ -291,13 +300,23 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childControlWidth = layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         TextMeshProUGUI label;
-        suppliesTab = CreateCartButton(navigation.transform, "SuppliesTab", "Supplies", 90, GameUITheme.Surface, out label);
+        suppliesTab = CreateCartButton(navigation.transform, "SuppliesTab", "Supplies", 112, GameUITheme.Surface, out label);
+        MakeNavigationTabFill(suppliesTab);
         suppliesTab.onClick.AddListener(() => SelectSection(false));
-        menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 80, GameUITheme.Surface, out label);
+        DelayedTooltip.Attach(suppliesTab, "Supplies: order ingredient stock");
+        menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 96, GameUITheme.Surface, out label);
+        MakeNavigationTabFill(menuTab);
         menuTab.onClick.AddListener(() => SelectSection(true));
-        recipesTab = CreateCartButton(navigation.transform, "RecipesTab", "Recipes", 90, GameUITheme.Surface, out label);
-        recipesTab.interactable = menu != null;
-        recipesTab.onClick.AddListener(() => OpenRecipes(menu));
+        DelayedTooltip.Attach(menuTab, "Menu: choose which unlocked recipes to sell");
+    }
+
+    static void MakeNavigationTabFill(Button button)
+    {
+        if (button == null) return;
+        LayoutElement layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        layout.minWidth = 0f;
+        layout.preferredWidth = 0f;
+        layout.flexibleWidth = 1f;
     }
 
     void SelectSection(bool menu)
@@ -316,10 +335,8 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void UpdateNavigationTabs()
     {
-        bool recipesOpen = recipesOverlay != null && recipesOverlay.activeSelf;
-        GameUITheme.ApplyTabButton(suppliesTab, !showMenu && !recipesOpen);
-        GameUITheme.ApplyTabButton(menuTab, showMenu && !recipesOpen);
-        GameUITheme.ApplyTabButton(recipesTab, recipesOpen);
+        GameUITheme.ApplyTabButton(suppliesTab, !showMenu);
+        GameUITheme.ApplyTabButton(menuTab, showMenu);
     }
 
     void CreateRecipesButton(CustomerOrderConfig menu)
@@ -335,10 +352,11 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.childForceExpandWidth = false;
 
         TextMeshProUGUI label;
-        Button button = CreateCartButton(row.transform, "OpenRecipes", "RECIPES", 132f,
+        Button button = CreateCartButton(row.transform, "OpenRecipes", "RECIPES", 52f,
             GameUITheme.Coral, out label);
         label.fontSize = 14f;
         button.onClick.AddListener(() => OpenRecipes(menu));
+        DelayedTooltip.Attach(button, "Open recipes");
     }
 
     void OpenRecipes(CustomerOrderConfig menu)
@@ -1020,7 +1038,10 @@ public class IngredientsOrderUI : MonoBehaviour
         labelRt.anchorMax = Vector2.one;
         labelRt.offsetMin = Vector2.zero;
         labelRt.offsetMax = Vector2.zero;
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        if (name == "Close")
+            GameIconLibrary.ApplyToButton(button, GameIconId.Cross, 18f, 0f, true);
+        return button;
     }
 
     void CreateSectionHeader(string label)
@@ -1392,11 +1413,18 @@ public class IngredientsOrderUI : MonoBehaviour
         root.GetComponent<CanvasGroup>().blocksRaycasts = false;
         root.GetComponent<CanvasGroup>().interactable = false;
 
-        CreateLockPiece(root.transform, "ShackleTop", new Vector2(14f, 3f), new Vector2(0f, 9f), color);
-        CreateLockPiece(root.transform, "ShackleLeft", new Vector2(3f, 9f), new Vector2(-5.5f, 4f), color);
-        CreateLockPiece(root.transform, "ShackleRight", new Vector2(3f, 9f), new Vector2(5.5f, 4f), color);
-        CreateLockPiece(root.transform, "LockBody", new Vector2(22f, 15f), new Vector2(0f, -5f), color);
-        CreateLockPiece(root.transform, "Keyhole", new Vector2(3f, 7f), new Vector2(0f, -5f), GameUITheme.Charcoal);
+        var iconObject = new GameObject("KenneyLock", typeof(RectTransform), typeof(Image));
+        iconObject.transform.SetParent(root.transform, false);
+        RectTransform iconRect = (RectTransform)iconObject.transform;
+        iconRect.anchorMin = Vector2.zero;
+        iconRect.anchorMax = Vector2.one;
+        iconRect.offsetMin = new Vector2(2f, 2f);
+        iconRect.offsetMax = new Vector2(-2f, -2f);
+        Image icon = iconObject.GetComponent<Image>();
+        icon.sprite = GameIconLibrary.GetSprite(GameIconId.Locked);
+        icon.color = color;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
         return rootRect;
     }
 
@@ -1528,7 +1556,36 @@ public class IngredientsOrderUI : MonoBehaviour
         text.textWrappingMode = TextWrappingModes.NoWrap;
         text.overflowMode = TextOverflowModes.Ellipsis;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        switch (objectName)
+        {
+            case "Remove":
+                GameIconLibrary.ApplyToButton(button, GameIconId.Minus, 18f, 0f, true);
+                break;
+            case "Add":
+            case "AddAll":
+                GameIconLibrary.ApplyToButton(button, GameIconId.Plus, 18f, 7f, objectName == "Add");
+                break;
+            case "ClearCart":
+                GameIconLibrary.ApplyToButton(button, GameIconId.Trash, 17f, 7f);
+                break;
+            case "PlaceOrder":
+                GameIconLibrary.ApplyToButton(button, GameIconId.Cart, 18f, 8f);
+                break;
+            case "ExpressOrder":
+                GameIconLibrary.ApplyToButton(button, GameIconId.FastForward, 18f, 8f);
+                break;
+            case "SuppliesTab":
+                GameIconLibrary.ApplyToButton(button, GameIconId.Cart, 22f, 8f);
+                break;
+            case "MenuTab":
+                GameIconLibrary.ApplyToButton(button, GameIconId.MenuGrid, 22f, 8f);
+                break;
+            case "OpenRecipes":
+                GameIconLibrary.ApplyToButton(button, GameIconId.MenuList, 22f, 0f, true);
+                break;
+        }
+        return button;
     }
 
     void CreateCartFooter()

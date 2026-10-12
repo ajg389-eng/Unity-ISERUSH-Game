@@ -156,12 +156,6 @@ public class TutorialVoiceUI : MonoBehaviour
         if (bubbleRoot == null) return;
         if (bubbleBackground == null) bubbleBackground = bubbleRoot.GetComponent<Image>();
 
-        var shadow = bubbleRoot.GetComponent<Shadow>();
-        if (shadow == null) shadow = bubbleRoot.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0.04f, 0.05f, 0.07f, 0.72f);
-        shadow.effectDistance = new Vector2(3f, -3f);
-        shadow.useGraphicAlpha = true;
-
         Transform accent = bubbleRoot.transform.Find("AccentStrip");
         if (accent == null)
         {

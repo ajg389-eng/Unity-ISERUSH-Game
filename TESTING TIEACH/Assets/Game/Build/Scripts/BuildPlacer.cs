@@ -451,6 +451,8 @@ public class BuildPlacer : MonoBehaviour
         StyleAndPositionPlacementHint(hintRoot);
         hintRoot.SetActive(show);
         if (show) placementHintText.text = instruction;
+        InputPromptLibrary.ApplyToInstruction(hintParent != null ? hintParent : hintRoot.transform,
+            placementHintText, show ? instruction : null);
     }
 
     void StyleAndPositionPlacementHint(GameObject hintRoot)
@@ -2636,6 +2638,10 @@ public sealed class BuildStationActionBar : MonoBehaviour
         label.color = GameUITheme.TextPrimary;
         label.alignment = TextAlignmentOptions.Center;
         label.raycastTarget = false;
+        if (objectName == "Move")
+            GameIconLibrary.ApplyToButton(button, GameIconId.Wrench, 19f, 10f);
+        else if (objectName == "Clear")
+            GameIconLibrary.ApplyToButton(button, GameIconId.Trash, 19f, 10f);
         return button;
     }
 
@@ -2662,6 +2668,8 @@ public sealed class BuildStationActionBar : MonoBehaviour
         {
             selectionLabel.gameObject.SetActive(true);
             if (placementInstructionActive) selectionLabel.text = instruction;
+            InputPromptLibrary.ApplyToInstruction(instructionPanel != null ? instructionPanel.transform : selectionLabel.transform.parent,
+                selectionLabel, placementInstructionActive ? instruction : null);
         }
         if (messageLabel != null && placementInstructionActive)
             messageLabel.gameObject.SetActive(false);

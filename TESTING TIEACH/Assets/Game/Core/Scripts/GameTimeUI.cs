@@ -239,6 +239,9 @@ public class GameTimeUI : MonoBehaviour
         GameUITheme.ApplyCompactControlEffects(pauseButton);
         GameUITheme.ApplyCompactControlEffects(playButton);
         GameUITheme.ApplyCompactControlEffects(fastForwardButton);
+        GameIconLibrary.ApplyToButton(pauseButton, GameIconId.Pause, 21f, 0f, true);
+        GameIconLibrary.ApplyToButton(playButton, GameIconId.Play, 21f, 0f, true);
+        GameIconLibrary.ApplyToButton(fastForwardButton, GameIconId.FastForward, 21f, 0f, true);
 
         pauseButton.transform.SetSiblingIndex(0);
         playButton.transform.SetSiblingIndex(1);
@@ -450,10 +453,11 @@ public class GameTimeUI : MonoBehaviour
         {
             var le = dayText.GetComponent<LayoutElement>() ?? dayText.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 76f;
-            le.preferredWidth = 76f;
+            le.minWidth = 68f;
+            le.preferredWidth = 68f;
             le.flexibleWidth = 0f;
-            PositionTimeLabel(dayText.rectTransform, -205f, 76f);
+            dayText.fontSize = 14f;
+            PositionStackedTimeLabel(dayText.rectTransform, 0f, 9f, 76f, 16f);
         }
         if (clockText != null)
         {
@@ -462,7 +466,7 @@ public class GameTimeUI : MonoBehaviour
             le.minWidth = 110f;
             le.preferredWidth = 118f;
             le.flexibleWidth = 0f;
-            PositionTimeLabel(clockText.rectTransform, 0f, 118f);
+            PositionStackedTimeLabel(clockText.rectTransform, 0f, -9f, 118f, 22f);
             clockText.enableAutoSizing = true;
             clockText.fontSizeMin = 16;
             clockText.fontSizeMax = 20;
@@ -486,7 +490,7 @@ public class GameTimeUI : MonoBehaviour
             le.preferredWidth = 56f;
             le.flexibleWidth = 0f;
             rushText.gameObject.SetActive(true);
-            PositionTimeLabel(rushText.rectTransform, -113f, 56f);
+            PositionTimeLabel(rushText.rectTransform, 135f, 56f);
         }
     }
 
@@ -498,6 +502,17 @@ public class GameTimeUI : MonoBehaviour
         label.pivot = new Vector2(0.5f, 0.5f);
         label.anchoredPosition = new Vector2(centerX, 0f);
         label.sizeDelta = new Vector2(width, 0f);
+    }
+
+    static void PositionStackedTimeLabel(RectTransform label, float centerX, float centerY,
+        float width, float height)
+    {
+        if (label == null) return;
+        label.anchorMin = new Vector2(0.5f, 0.5f);
+        label.anchorMax = new Vector2(0.5f, 0.5f);
+        label.pivot = new Vector2(0.5f, 0.5f);
+        label.anchoredPosition = new Vector2(centerX, centerY);
+        label.sizeDelta = new Vector2(width, height);
     }
 
     void EnsureSpeedMultiplierLabel()

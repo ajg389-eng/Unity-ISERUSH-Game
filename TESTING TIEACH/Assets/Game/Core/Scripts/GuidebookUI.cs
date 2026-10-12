@@ -372,6 +372,9 @@ public class GuidebookUI : MonoBehaviour
         Stretch(tmp.rectTransform);
         tmp.fontStyle = FontStyles.Bold;
         tmp.raycastTarget = false;
+        GameIconLibrary.ApplyToButton(btn,
+            name == "PrevButton" ? GameIconId.Previous : GameIconId.Next,
+            24f, 0f, true);
         return btn;
     }
 
@@ -393,6 +396,8 @@ public class GuidebookUI : MonoBehaviour
         Stretch(tmp.rectTransform);
         tmp.fontStyle = FontStyles.Bold;
         tmp.raycastTarget = false;
+        if (name == "CloseButton")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Cross, 20f, 0f, true);
         return btn;
     }
 

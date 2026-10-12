@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f1a4b8ee3d44a1f9f2a8c0a6f9e2d31, type: 3}
+  m_Name: GameIconLibrary
+  m_EditorClassIdentifier:
+  plus: {fileID: 2800000, guid: bc2d2c80c9ae4da4dbbd5899bcc4c97f, type: 3}
+  minus: {fileID: 2800000, guid: eb2a8ac443740324fba409a3d7189959, type: 3}
+  trash: {fileID: 2800000, guid: 1ebc42c20f2274a49955615eb0041c28, type: 3}
+  checkmark: {fileID: 2800000, guid: 60ce78e1efe878f47835880afce46c4e, type: 3}
+  warning: {fileID: 2800000, guid: 0de37e327da1d2445b83d6a43cd47e18, type: 3}
+  exclamation: {fileID: 2800000, guid: 4e05839fc7f57fd4c8dc9b0bd6c2ebad, type: 3}
+  locked: {fileID: 2800000, guid: 6fe30f68c3f86314883e85d24891c07f, type: 3}
+  unlocked: {fileID: 2800000, guid: 574a7351bc91feb449bbbdc49244d4b2, type: 3}
+  wrench: {fileID: 2800000, guid: 322142dd95cf686408f2ceca7d75ec47, type: 3}
+  save: {fileID: 2800000, guid: dfa78032450d34c4f90cc1bdc52f1fb1, type: 3}
+  zoomIn: {fileID: 2800000, guid: db8d3537550ad43418814279ed29888a, type: 3}
+  zoomOut: {fileID: 2800000, guid: a6830498dc60a4d4198950d5763f8c3f, type: 3}
+  zoomDefault: {fileID: 2800000, guid: 6266a96188e76d84aa28bbcf0e76c46d, type: 3}
+  musicOn: {fileID: 2800000, guid: e43c04a34e4858947b7d2de00d3ee2c5, type: 3}
+  musicOff: {fileID: 2800000, guid: f1b4dfff723c78849a6f80223203c8bb, type: 3}
+  pause: {fileID: 2800000, guid: d84e8338407b0c846ade8e504729f939, type: 3}
+  play: {fileID: 2800000, guid: 0362cce0a25a2de42a7861590f30b18a, type: 3}
+  next: {fileID: 2800000, guid: 4f8d108ccf08ec2459fd3ece62aec66f, type: 3}
+  previous: {fileID: 2800000, guid: e3c5029c4675cc14182d8169bd71cc90, type: 3}
+  gear: {fileID: 2800000, guid: ff7db33090ed7eb44a60d242dd729c1c, type: 3}
+  cart: {fileID: 2800000, guid: 3b1a7c0effecb7140a3e8eb6aeaa2d13, type: 3}
+  menuGrid: {fileID: 2800000, guid: 4f9ba4a4b1637c04e9292f41daf7bf64, type: 3}
+  menuList: {fileID: 2800000, guid: 695e32bce4ddeaa47a2345c5f6d40792, type: 3}
+  open: {fileID: 2800000, guid: 8a2aed84b34de7b45a8ef3f921d3a27a, type: 3}
+  cross: {fileID: 2800000, guid: 3bb474ce79cc31a42bcf9f3199b92e9a, type: 3}
+  home: {fileID: 2800000, guid: 7308f43b6b3a87044aff6111585ba521, type: 3}
+  information: {fileID: 2800000, guid: 28dd1ccdc17d6054490a992b36b10109, type: 3}
+  fastForward: {fileID: 2800000, guid: 09161b68770649d478a91666f3bbd3cf, type: 3}

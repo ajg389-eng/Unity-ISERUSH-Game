@@ -105,7 +105,9 @@ public class ManagementTabInfoUI : MonoBehaviour
         label.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
 
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        GameIconLibrary.ApplyToButton(button, GameIconId.Information, 20f, 0f, true);
+        return button;
     }
 
     void CreateOverlay()
@@ -204,7 +206,9 @@ public class ManagementTabInfoUI : MonoBehaviour
         label.text = "×";
         label.alignment = TextAlignmentOptions.Center;
         label.raycastTarget = false;
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        GameIconLibrary.ApplyToButton(button, GameIconId.Cross, 20f, 0f, true);
+        return button;
     }
 
     static TextMeshProUGUI CreateText(Transform parent, string name, float size, FontStyles style)

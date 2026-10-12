@@ -100,6 +100,7 @@ public class GameUITheme : MonoBehaviour
         foreach (var toggle in root.GetComponentsInChildren<Toggle>(true)) StyleToggle(toggle);
         foreach (var scrollbar in root.GetComponentsInChildren<Scrollbar>(true)) StyleScrollbar(scrollbar);
         foreach (var text in root.GetComponentsInChildren<TextMeshProUGUI>(true)) StyleText(text);
+        DisableDropShadows(root);
     }
 
     public static void ApplyButton(Button button)
@@ -108,6 +109,13 @@ public class GameUITheme : MonoBehaviour
         GameUIThemeStyled styled = button.GetComponent<GameUIThemeStyled>();
         if (styled != null) styled.styleVersion = 0;
         StyleButton(button);
+    }
+
+    static void EnsureHoverFeedback(Button button)
+    {
+        if (button == null) return;
+        if (button.GetComponent<GameUIThemeHoverFeedback>() == null)
+            button.gameObject.AddComponent<GameUIThemeHoverFeedback>();
     }
 
     static void ApplyCanvas(Canvas canvas)
@@ -120,6 +128,17 @@ public class GameUITheme : MonoBehaviour
         foreach (var toggle in canvas.GetComponentsInChildren<Toggle>(true)) StyleToggle(toggle);
         foreach (var scrollbar in canvas.GetComponentsInChildren<Scrollbar>(true)) StyleScrollbar(scrollbar);
         foreach (var text in canvas.GetComponentsInChildren<TextMeshProUGUI>(true)) StyleText(text);
+        DisableDropShadows(canvas.transform);
+    }
+
+    static void DisableDropShadows(Transform root)
+    {
+        if (root == null) return;
+        foreach (var effect in root.GetComponentsInChildren<Shadow>(true))
+        {
+            if (effect != null && effect.GetType() == typeof(Shadow))
+                effect.enabled = false;
+        }
     }
 
     static void StyleContainer(Image image)
@@ -142,6 +161,7 @@ public class GameUITheme : MonoBehaviour
     static void StyleButton(Button button)
     {
         if (button == null) return;
+        EnsureHoverFeedback(button);
         DisableButtonMotion(button);
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled != null && styled.styleVersion >= ButtonStyleVersion) return;
@@ -216,8 +236,6 @@ public class GameUITheme : MonoBehaviour
         }
 
         AddEdge(button.gameObject, substantial ? new Vector2(2f, -2f) : new Vector2(1f, -1f));
-        if (substantial)
-            AddDropShadow(button.gameObject, major ? new Vector2(0f, -4f) : new Vector2(0f, -2f));
         if (major)
         {
             EnsureAccent(button.transform, accent);
@@ -252,6 +270,7 @@ public class GameUITheme : MonoBehaviour
     public static void ApplyCompactTabButton(Button button, bool active)
     {
         if (button == null) return;
+        EnsureHoverFeedback(button);
         button.transition = Selectable.Transition.None;
 
         var image = button.targetGraphic as Image ?? button.GetComponent<Image>();
@@ -269,7 +288,6 @@ public class GameUITheme : MonoBehaviour
         }
 
         AddEdge(button.gameObject, new Vector2(1f, -1f));
-        AddDropShadow(button.gameObject, new Vector2(0f, -1f));
 
         DisableButtonMotion(button);
 
@@ -285,6 +303,7 @@ public class GameUITheme : MonoBehaviour
     public static void ApplyCompactControlEffects(Button button)
     {
         if (button == null) return;
+        EnsureHoverFeedback(button);
         button.transition = Selectable.Transition.None;
 
         var tmp = button.GetComponentInChildren<TextMeshProUGUI>(true);
@@ -299,7 +318,6 @@ public class GameUITheme : MonoBehaviour
         }
 
         AddEdge(button.gameObject, new Vector2(1f, -1f));
-        AddDropShadow(button.gameObject, new Vector2(0f, -1f));
 
         DisableButtonMotion(button);
 
@@ -311,6 +329,7 @@ public class GameUITheme : MonoBehaviour
     static void ApplyTabChrome(Button button)
     {
         if (button == null) return;
+        EnsureHoverFeedback(button);
         button.transition = Selectable.Transition.None;
 
         var tmp = button.GetComponentInChildren<TextMeshProUGUI>(true);
@@ -339,7 +358,6 @@ public class GameUITheme : MonoBehaviour
         }
 
         AddEdge(button.gameObject, new Vector2(2f, -2f));
-        AddDropShadow(button.gameObject, new Vector2(0f, -2f));
 
         var accent = button.transform.Find("ThemeAccent");
         if (accent != null) accent.gameObject.SetActive(false);
@@ -498,26 +516,6 @@ public class GameUITheme : MonoBehaviour
         outline.useGraphicAlpha = true;
     }
 
-    static void AddDropShadow(GameObject target, Vector2 distance)
-    {
-        if (target == null || target.GetComponent<Graphic>() == null) return;
-
-        Shadow shadow = null;
-        foreach (var effect in target.GetComponents<Shadow>())
-        {
-            if (effect != null && effect.GetType() == typeof(Shadow))
-            {
-                shadow = effect;
-                break;
-            }
-        }
-
-        if (shadow == null) shadow = target.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.48f);
-        shadow.effectDistance = distance;
-        shadow.useGraphicAlpha = true;
-    }
-
     static void EnsureAccent(Transform button, Color color)
     {
         Transform existing = button.Find("ThemeAccent");
@@ -580,6 +578,61 @@ public class GameUITheme : MonoBehaviour
 public sealed class GameUIThemeStyled : MonoBehaviour
 {
     public int styleVersion;
+}
+
+/// <summary>
+/// Adds an immediate hover state even when a button intentionally uses
+/// Selectable.Transition.None to avoid the delayed tint flash in this UI.
+/// </summary>
+public sealed class GameUIThemeHoverFeedback : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    Graphic targetGraphic;
+    Outline outline;
+    Color baseColor;
+    Color baseOutlineColor;
+    Vector2 baseOutlineDistance;
+    bool baseOutlineEnabled;
+    bool pointerInside;
+
+    void Awake()
+    {
+        Button button = GetComponent<Button>();
+        targetGraphic = button != null && button.targetGraphic != null
+            ? button.targetGraphic
+            : GetComponent<Graphic>();
+        outline = GetComponent<Outline>();
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (targetGraphic == null) return;
+        pointerInside = true;
+        baseColor = targetGraphic.color;
+        targetGraphic.color = Color.Lerp(baseColor, Color.white, 0.16f);
+
+        if (outline == null)
+            outline = gameObject.AddComponent<Outline>();
+        baseOutlineColor = outline.effectColor;
+        baseOutlineDistance = outline.effectDistance;
+        baseOutlineEnabled = outline.enabled;
+        outline.effectColor = new Color(1f, 0.86f, 0.48f, 0.9f);
+        outline.effectDistance = new Vector2(1.2f, -1.2f);
+        outline.enabled = true;
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (!pointerInside) return;
+        pointerInside = false;
+        if (targetGraphic != null)
+            targetGraphic.color = baseColor;
+        if (outline != null)
+        {
+            outline.effectColor = baseOutlineColor;
+            outline.effectDistance = baseOutlineDistance;
+            outline.enabled = baseOutlineEnabled;
+        }
+    }
 }
 
 public sealed class GameUIThemeButtonMotion : MonoBehaviour,

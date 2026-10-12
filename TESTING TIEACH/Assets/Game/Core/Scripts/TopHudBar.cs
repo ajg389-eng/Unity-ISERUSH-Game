@@ -11,6 +11,7 @@ public class TopHudBar : MonoBehaviour
     public const string BackdropObjectName = "TopHudConnectedBackdrop";
     public const string TimeSectionName = "TimeSection";
     public const string MoneyTextName = "MoneyText";
+    public const string HudActionsName = "HudActions";
     const float BarWidth = 760f;
 
     [Header("References")]
@@ -32,6 +33,7 @@ public class TopHudBar : MonoBehaviour
         if (money == null)
             money = FindFirstObjectByType<MoneyManager>();
         BindReferences();
+        EnsureHudActions();
         ApplyFitLayout();
         RemoveUndoFromBar();
         EnsureUtilityControls();
@@ -148,11 +150,11 @@ public class TopHudBar : MonoBehaviour
             var le = moneySection.GetComponent<LayoutElement>();
             if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 90f;
-            le.preferredWidth = 110f;
+            le.minWidth = 76f;
+            le.preferredWidth = 76f;
             le.flexibleWidth = 0f;
             PositionSection(moneySection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(66f, 0f), new Vector2(110f, barHeight - 16f));
+                new Vector2(168f, 0f), new Vector2(76f, barHeight - 16f));
         }
 
         var gusHelpSection = transform.Find(TopHudUtilityControls.GusHelpSectionName) as RectTransform;
@@ -175,6 +177,18 @@ public class TopHudBar : MonoBehaviour
             le.flexibleWidth = 0f;
             PositionSection(timeSection, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 Vector2.zero, new Vector2(170f, barHeight - 16f));
+        }
+
+        var hudActions = transform.Find(HudActionsName) as RectTransform;
+        if (hudActions != null)
+        {
+            var le = hudActions.GetComponent<LayoutElement>() ?? hudActions.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            le.minWidth = 96f;
+            le.preferredWidth = 96f;
+            le.flexibleWidth = 0f;
+            PositionSection(hudActions, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(66f, 0f), new Vector2(96f, barHeight - 16f));
         }
 
         if (moneyText != null)
@@ -257,6 +271,91 @@ public class TopHudBar : MonoBehaviour
         controls.EnsureLayout();
     }
 
+    void EnsureHudActions()
+    {
+        Transform existing = transform.Find(HudActionsName);
+        GameObject section = existing != null ? existing.gameObject
+            : new GameObject(HudActionsName, typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        if (section.transform.parent != transform)
+            section.transform.SetParent(transform, false);
+
+        var layout = section.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 6f;
+        layout.padding = new RectOffset(3, 3, 0, 0);
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        Button recipes = FindOrCreateHudAction(section.transform, "RecipesButton", "Recipes", GameIconId.MenuList);
+        Button research = FindOrCreateHudAction(section.transform, "ResearchButton", "Research", GameIconId.Gear);
+
+        recipes.onClick.RemoveAllListeners();
+        recipes.onClick.AddListener(OpenRecipesFromHud);
+        research.onClick.RemoveAllListeners();
+        research.onClick.AddListener(OpenResearchFromHud);
+    }
+
+    static Button FindOrCreateHudAction(Transform parent, string objectName, string label, GameIconId icon)
+    {
+        Transform existing = parent.Find(objectName);
+        Button button = existing != null ? existing.GetComponent<Button>() : null;
+        if (button == null)
+        {
+            var go = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            go.transform.SetParent(parent, false);
+            button = go.GetComponent<Button>();
+            button.targetGraphic = go.GetComponent<Image>();
+
+            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelGo.transform.SetParent(go.transform, false);
+            RectTransform labelRect = (RectTransform)labelGo.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+            TextMeshProUGUI text = labelGo.GetComponent<TextMeshProUGUI>();
+            text.text = label;
+            text.fontSize = 12f;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = Color.white;
+            text.raycastTarget = false;
+            if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        }
+
+        var layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        layout.minWidth = 42f;
+        layout.preferredWidth = 42f;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = 40f;
+        layout.preferredHeight = 40f;
+        button.GetComponent<Image>().color = GameUITheme.Surface;
+        GameIconLibrary.ApplyToButton(button, icon, 23f, 0f, true);
+        GameUITheme.ApplyCompactControlEffects(button);
+        DelayedTooltip.Attach(button, label + ": open");
+        return button;
+    }
+
+    void OpenRecipesFromHud()
+    {
+        Sfx.Play(SfxId.UiClick);
+        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>();
+        if (management != null)
+            management.OpenIngredientsTab();
+
+        IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+        if (ingredients != null)
+            ingredients.OpenRecipesFromHud();
+    }
+
+    void OpenResearchFromHud()
+    {
+        Sfx.Play(SfxId.UiClick);
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas != null)
+            ResearchTreeUI.Open(canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform);
+    }
+
     public void RemoveUndoFromBar()
     {
         DestroyIfPresent("UndoSection");
@@ -274,8 +373,8 @@ public class TopHudBar : MonoBehaviour
         var section = new GameObject("MoneySection", typeof(RectTransform));
         section.transform.SetParent(parent, false);
         var le = section.AddComponent<LayoutElement>();
-        le.minWidth = 90f;
-        le.preferredWidth = 110f;
+        le.minWidth = 76f;
+        le.preferredWidth = 76f;
         le.flexibleWidth = 0f;
 
         var moneyTextGo = new GameObject(MoneyTextName, typeof(RectTransform));

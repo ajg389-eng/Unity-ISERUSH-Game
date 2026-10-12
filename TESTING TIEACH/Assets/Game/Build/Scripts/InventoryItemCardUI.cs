@@ -35,6 +35,7 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         ApplyCompactLayout();
         ApplyPalette();
+        GameIconLibrary.ApplyToButton(buyButton, GameIconId.Cart, 16f, 0f, true);
     }
 
     void ApplyCompactLayout()

@@ -3075,6 +3075,7 @@ public class ManagementModeController : MonoBehaviour
         instructions.overflowMode = TextOverflowModes.Ellipsis;
         instructions.GetComponent<LayoutElement>().minHeight = 32f;
         instructions.GetComponent<LayoutElement>().preferredHeight = 32f;
+        InputPromptLibrary.ApplyToInstruction(flowCaptureHud.transform, instructions, instructions.text);
         foreach (TextMeshProUGUI label in new[] { flowCaptureTitle, flowCapturePath })
         {
             if (label == null) continue;
@@ -3185,7 +3186,11 @@ public class ManagementModeController : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
-        return go.GetComponent<Button>();
+        Button button = go.GetComponent<Button>();
+        GameIconLibrary.ApplyToButton(button,
+            label == "Finish" ? GameIconId.Checkmark : GameIconId.Cross,
+            18f, 8f);
+        return button;
     }
 
     void RefreshFlowCaptureHud()
@@ -3382,6 +3387,7 @@ public class ManagementModeController : MonoBehaviour
                     stationPopup.transform.SetParent(parentCanvas.transform, false);
 
                 TryImportScenePopup(stationPopup);
+                stationPopup.GetComponent<StationManagePopup>()?.RemoveBackgroundFill();
                 BindPopupReferences();
                 EnsureProductionDiagramUI();
                 WirePopupButtons();
@@ -3587,6 +3593,10 @@ public class ManagementModeController : MonoBehaviour
         tr.anchorMax = Vector2.one;
         tr.offsetMin = Vector2.zero;
         tr.offsetMax = Vector2.zero;
+        if (label == "Clear Flow")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Trash, 18f, 8f);
+        else if (label == "Cancel")
+            GameIconLibrary.ApplyToButton(btn, GameIconId.Cross, 18f, 8f);
         return btn;
     }
 

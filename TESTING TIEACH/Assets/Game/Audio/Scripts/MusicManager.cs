@@ -14,7 +14,7 @@ public class MusicManager : MonoBehaviour
     const string ResourcesFolder = "Audio/Music";
 
     [Header("Soundtrack")]
-    [Tooltip("Optional playlist. If empty, loads every AudioClip from Resources/Audio/Music.")]
+    [Tooltip("Optional playlist order. Any clips in Resources/Audio/Music not listed here are appended automatically.")]
     public AudioClip[] playlist;
     [Tooltip("Legacy single-track field; added to the playlist if set.")]
     public AudioClip soundtrack;
@@ -104,13 +104,13 @@ public class MusicManager : MonoBehaviour
         if (soundtrack != null && !tracks.Contains(soundtrack))
             tracks.Add(soundtrack);
 
-        if (tracks.Count == 0)
+        // Always merge the Resources folder into the configured playlist. This
+        // keeps newly added songs available without requiring a scene or prefab
+        // edit, while preserving the explicit playlist order at the front.
+        foreach (var clip in LoadAllFromResources())
         {
-            foreach (var clip in LoadAllFromResources())
-            {
-                if (clip != null && !tracks.Contains(clip))
-                    tracks.Add(clip);
-            }
+            if (clip != null && !tracks.Contains(clip))
+                tracks.Add(clip);
         }
 
         if (shuffle && tracks.Count > 1)

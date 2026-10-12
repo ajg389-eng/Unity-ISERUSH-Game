@@ -164,21 +164,9 @@ public class TitleScreenController : MonoBehaviour
 
     static void AddTitleShadow(GameObject title)
     {
-        if (title == null || title.GetComponent<Graphic>() == null) return;
-        Shadow shadow = null;
+        if (title == null) return;
         foreach (var effect in title.GetComponents<Shadow>())
-        {
-            if (effect != null && effect.GetType() == typeof(Shadow))
-            {
-                shadow = effect;
-                break;
-            }
-        }
-        if (shadow == null)
-            shadow = title.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0.02f, 0.04f, 0.08f, 0.72f);
-        shadow.effectDistance = new Vector2(0f, -7f);
-        shadow.useGraphicAlpha = true;
+            if (effect != null && effect.GetType() == typeof(Shadow)) effect.enabled = false;
     }
 
     static void StyleButton(Button button, Color normal, Color hover, Color accent)
@@ -208,21 +196,6 @@ public class TitleScreenController : MonoBehaviour
         outline.effectColor = new Color(0.02f, 0.04f, 0.08f, 0.95f);
         outline.effectDistance = new Vector2(2f, -2f);
         outline.useGraphicAlpha = true;
-
-        Shadow shadow = null;
-        foreach (var effect in button.GetComponents<Shadow>())
-        {
-            if (effect != null && effect.GetType() == typeof(Shadow))
-            {
-                shadow = effect;
-                break;
-            }
-        }
-        if (shadow == null)
-            shadow = button.gameObject.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.48f);
-        shadow.effectDistance = new Vector2(0f, -5f);
-        shadow.useGraphicAlpha = true;
 
         EnsureAccent(button.transform, accent);
 
@@ -401,10 +374,6 @@ public class TitleScreenController : MonoBehaviour
         outline.effectColor = GameUITheme.Edge;
         outline.effectDistance = new Vector2(1f, -1f);
         outline.useGraphicAlpha = true;
-        var shadow = go.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
-        shadow.effectDistance = new Vector2(0f, -2f);
-        shadow.useGraphicAlpha = true;
 
         var labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
         labelObject.transform.SetParent(go.transform, false);
