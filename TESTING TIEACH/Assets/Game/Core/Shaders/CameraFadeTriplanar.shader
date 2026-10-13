@@ -7,6 +7,7 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
         _Tile("World Tile", Float) = 0.2
         _BlendSharpness("Blend Sharpness", Range(1, 8)) = 1
         _CutHeight("Cut Height", Float) = 10000
+        _Opacity("Opacity", Range(0, 1)) = 1
     }
 
     SubShader
@@ -14,15 +15,16 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
         Tags
         {
             "RenderPipeline" = "UniversalPipeline"
-            "Queue" = "Geometry"
-            "RenderType" = "Opaque"
+            "Queue" = "Transparent"
+            "RenderType" = "Transparent"
         }
 
         Pass
         {
             Name "CameraCutaway"
             Tags { "LightMode" = "UniversalForward" }
-            ZWrite On
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off
             Cull Back
 
             HLSLPROGRAM
@@ -42,6 +44,7 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
                 float _Tile;
                 float _BlendSharpness;
                 float _CutHeight;
+                float _Opacity;
             CBUFFER_END
 
             struct Attributes
@@ -89,7 +92,7 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
                     + mainLight.color * diffuse * mainLight.distanceAttenuation;
                 surface.rgb *= max(illumination, half3(0.22, 0.22, 0.22));
                 surface.rgb = MixFog(surface.rgb, input.fogFactor);
-                return half4(surface.rgb, 1.0);
+                return half4(surface.rgb, saturate(_Opacity));
             }
             ENDHLSL
         }
@@ -115,6 +118,7 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
                 float _Tile;
                 float _BlendSharpness;
                 float _CutHeight;
+                float _Opacity;
             CBUFFER_END
 
             struct ShadowAttributes
@@ -139,6 +143,7 @@ Shader "ISE Rush/Camera Cutaway Triplanar"
             half4 ShadowFrag(ShadowVaryings input) : SV_Target
             {
                 clip(_CutHeight - input.positionWS.y);
+                clip(_Opacity - 0.001);
                 return 0;
             }
             ENDHLSL

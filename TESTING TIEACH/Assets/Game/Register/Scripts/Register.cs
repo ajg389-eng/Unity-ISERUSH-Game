@@ -391,6 +391,10 @@ public class Register : MonoBehaviour
             removed |= queue.Remove(front);
         if (!removed)
         {
+            // A customer can finish through the self-service path after its
+            // pickup station has already changed queues. Keep the completion
+            // event reliable even if the register list was updated first.
+            RaiseOrderCompletionEvents(front, servedOrder);
             if (front != null)
                 front.OnServed(storeExit);
             return;
@@ -409,6 +413,15 @@ public class Register : MonoBehaviour
         if (front != null) front.OnServed(storeExit);
         UpdateQueueTargets();
 
+        RaiseOrderCompletionEvents(front, servedOrder);
+
+        Sfx.Play(SfxId.CustomerServed);
+    }
+
+    static void RaiseOrderCompletionEvents(CustomerAI customer, CustomerOrder servedOrder)
+    {
+        if (customer == null || !customer.TryMarkOrderCompletionReported()) return;
+
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.OrderServed);
         if (servedOrder != null && servedOrder.lines != null)
         {
@@ -424,8 +437,6 @@ public class Register : MonoBehaviour
             raisedFirstOrderServedEvent = true;
             TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstOrderServed);
         }
-
-        Sfx.Play(SfxId.CustomerServed);
     }
 
     void ShowSalePopup(int sale)

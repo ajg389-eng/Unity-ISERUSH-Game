@@ -1037,6 +1037,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 36395d1946c92bc4081a31359b899f77, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HeatLampStation
+  stationMark: 2
   maxCapacity: 4
   targetStock: 3
   freshBonusSeconds: 8

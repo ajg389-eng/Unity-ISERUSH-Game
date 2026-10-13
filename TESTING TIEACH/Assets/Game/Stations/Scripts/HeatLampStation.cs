@@ -33,6 +33,10 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public const int FixedCapacity = 4;
     public static HeatLampStation Instance { get; private set; }
 
+    [Header("Station tier")]
+    [SerializeField, Range(1, 2)] int stationMark = 1;
+    public int StationMark => Mathf.Clamp(stationMark, 1, 2);
+
     [Header("Capacity")]
     [Tooltip("Maximum meals that can sit under the lamp at once")]
     public int maxCapacity = FixedCapacity;
@@ -62,9 +66,9 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     [Header("Optional UI")]
     [Tooltip("Optional TMP label if you want a custom HUD readout.")]
     public TextMeshProUGUI statusLabel;
-    [Tooltip("World-space position of the supply-shortfall warning above the lamp.")]
+    [Tooltip("World position of the supply-shortfall warning above the lamp before it is projected to the UI overlay.")]
     public Vector3 cautionIndicatorOffset = new Vector3(0f, 2.5f, 0f);
-    [Tooltip("World-space width and height of the caution indicator.")]
+    [Tooltip("World-space width and height used to size the caution indicator on screen.")]
     public float cautionIndicatorSize = 0.85f;
 
     [Header("Food display")]
@@ -306,18 +310,30 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     {
         if (cautionIndicator == null) return;
 
-        Transform indicator = cautionIndicator.transform;
-        indicator.position = transform.position + cautionIndicatorOffset;
-        indicator.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
-
         if (mainCamera == null)
             mainCamera = Camera.main;
         Camera cam = mainCamera;
         if (cam == null) return;
 
-        Vector3 cameraToIndicator = indicator.position - cam.transform.position;
-        if (cameraToIndicator.sqrMagnitude > 0.0001f)
-            indicator.rotation = Quaternion.LookRotation(cameraToIndicator.normalized, cam.transform.up);
+        // Render the warning in a screen-space overlay so world geometry cannot
+        // depth-occlude the icon or its message. Keep it anchored to the same
+        // world point and preserve its projected world size.
+        RectTransform indicator = cautionIndicatorRect;
+        Vector3 worldPosition = transform.position + cautionIndicatorOffset;
+        Vector3 screenPosition = cam.WorldToScreenPoint(worldPosition);
+        Vector3 screenEdge = cam.WorldToScreenPoint(
+            worldPosition + cam.transform.right * Mathf.Max(0.1f, cautionIndicatorSize));
+        float screenSize = Vector2.Distance(
+            new Vector2(screenPosition.x, screenPosition.y),
+            new Vector2(screenEdge.x, screenEdge.y));
+        RectTransform canvasRect = cautionIndicator.GetComponent<RectTransform>();
+        if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                canvasRect, new Vector2(screenPosition.x, screenPosition.y), null, out Vector2 localPosition))
+            indicator.anchoredPosition = localPosition;
+        else
+            indicator.position = screenPosition;
+        indicator.localScale = Vector3.one * (Mathf.Max(1f, screenSize) / 100f);
+        indicator.rotation = Quaternion.identity;
     }
 
     public Vector3 GetInteractionPosition()
@@ -834,7 +850,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         if (!Input.GetMouseButtonDown(0)) return;
 
         Camera cam = Camera.main;
-        if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(cautionIndicatorRect, Input.mousePosition, cam))
+        if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(cautionIndicatorRect, Input.mousePosition, null))
             return;
         if (!TryGetProductionShortfallDetails(out string details))
             return;
@@ -868,19 +884,24 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         }
 
         var root = new GameObject("ProductionShortfallCaution", typeof(RectTransform), typeof(Canvas));
-        root.transform.position = transform.position + cautionIndicatorOffset;
 
         var canvas = root.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 100;
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        // Keep the world warning above scene geometry, but below HUDs, menus,
+        // popups, and other screen-space UI.
+        canvas.sortingOrder = -100;
 
-        var rect = root.GetComponent<RectTransform>();
+        var contentObject = new GameObject("Indicator", typeof(RectTransform));
+        contentObject.transform.SetParent(root.transform, false);
+        var rect = contentObject.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = Vector2.one * 100f;
         rect.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
         cautionIndicatorRect = rect;
 
         var imageObject = new GameObject("Icon", typeof(RectTransform), typeof(RawImage));
-        imageObject.transform.SetParent(root.transform, false);
+        imageObject.transform.SetParent(contentObject.transform, false);
         var imageRect = imageObject.GetComponent<RectTransform>();
         imageRect.anchorMin = Vector2.zero;
         imageRect.anchorMax = Vector2.one;
@@ -892,7 +913,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         image.raycastTarget = false;
 
         var messageObject = new GameObject("ShortfallMessage", typeof(RectTransform), typeof(CanvasGroup), typeof(TextMeshProUGUI));
-        messageObject.transform.SetParent(root.transform, false);
+        messageObject.transform.SetParent(contentObject.transform, false);
         var messageRect = messageObject.GetComponent<RectTransform>();
         messageRect.anchorMin = new Vector2(0.5f, 1f);
         messageRect.anchorMax = new Vector2(0.5f, 1f);

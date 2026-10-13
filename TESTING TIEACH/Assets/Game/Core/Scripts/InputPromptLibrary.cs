@@ -29,6 +29,9 @@ public enum InputPromptId
 /// </summary>
 public sealed class InputPromptLibrary : ScriptableObject
 {
+    const float InlineIconSize = 28f;
+    const float InlineRowHeight = 32f;
+
     [SerializeField] Texture2D keyboardW;
     [SerializeField] Texture2D keyboardA;
     [SerializeField] Texture2D keyboardS;
@@ -147,6 +150,181 @@ public sealed class InputPromptLibrary : ScriptableObject
         }
 
         strip.SetActive(prompts.Count > 0);
+    }
+
+    /// <summary>
+    /// Builds an inline instruction row where each input icon sits immediately
+    /// before the action it controls. This is used by the compact placement bar;
+    /// the older icon strip remains available for instructional cards.
+    /// </summary>
+    public static void ApplyInlineInstruction(Transform host, string instruction)
+    {
+        if (host == null) return;
+
+        Transform oldStrip = host.Find("InputPromptIcons");
+        if (oldStrip != null)
+            oldStrip.gameObject.SetActive(false);
+
+        Transform existing = host.Find("InlineInputInstruction");
+        GameObject row = existing != null
+            ? existing.gameObject
+            : new GameObject("InlineInputInstruction", typeof(RectTransform),
+                typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        if (row.transform.parent != host)
+            row.transform.SetParent(host, false);
+
+        RectTransform rowRect = (RectTransform)row.transform;
+        bool verticalHost = host.GetComponent<VerticalLayoutGroup>() != null;
+        if (verticalHost)
+        {
+            rowRect.anchorMin = new Vector2(0f, 0f);
+            rowRect.anchorMax = new Vector2(1f, 0f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.offsetMin = Vector2.zero;
+            rowRect.offsetMax = new Vector2(0f, InlineRowHeight);
+            LayoutElement rowElement = row.GetComponent<LayoutElement>();
+            rowElement.minHeight = rowElement.preferredHeight = InlineRowHeight;
+            rowElement.flexibleHeight = 0f;
+        }
+        else
+        {
+            rowRect.anchorMin = Vector2.zero;
+            rowRect.anchorMax = Vector2.one;
+            rowRect.offsetMin = new Vector2(14f, 2f);
+            rowRect.offsetMax = new Vector2(-14f, -2f);
+        }
+
+        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 10f;
+        layout.padding = new RectOffset(0, 0, 0, 0);
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        for (int i = row.transform.childCount - 1; i >= 0; i--)
+            Object.Destroy(row.transform.GetChild(i).gameObject);
+
+        if (string.IsNullOrWhiteSpace(instruction))
+        {
+            row.SetActive(false);
+            return;
+        }
+
+        row.SetActive(true);
+        rowRect.localScale = Vector3.one;
+        string upper = instruction.ToUpperInvariant();
+        int cursor = 0;
+        while (cursor < instruction.Length)
+        {
+            int markerIndex = FindNextMarker(upper, cursor, out string marker, out InputPromptId prompt);
+            if (markerIndex < 0)
+            {
+                AddInlineText(row.transform, instruction.Substring(cursor).Trim());
+                break;
+            }
+
+            if (markerIndex > cursor)
+                AddInlineText(row.transform, instruction.Substring(cursor, markerIndex - cursor).Trim());
+
+            int actionStart = markerIndex + marker.Length;
+            int nextMarker = FindNextMarker(upper, actionStart, out _, out _);
+            int actionLength = nextMarker >= 0 ? nextMarker - actionStart : instruction.Length - actionStart;
+            string action = instruction.Substring(actionStart, actionLength).Trim();
+            AddInlinePrompt(row.transform, prompt, action);
+            cursor = nextMarker >= 0 ? nextMarker : instruction.Length;
+        }
+
+        // Prompt hosts have a fixed width. Fit the complete row as one unit so
+        // long instructions stay readable instead of being clipped at the edge.
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rowRect);
+        float availableWidth = rowRect.rect.width;
+        float preferredWidth = LayoutUtility.GetPreferredWidth(rowRect);
+        rowRect.localScale = preferredWidth > availableWidth && availableWidth > 0.01f
+            ? Vector3.one * Mathf.Clamp(availableWidth / preferredWidth, 0.72f, 1f)
+            : Vector3.one;
+    }
+
+    static int FindNextMarker(string upper, int start, out string marker, out InputPromptId prompt)
+    {
+        marker = null;
+        prompt = InputPromptId.MouseLeft;
+        string[] markers = { "LMB:", "RMB:", "DRAG:", "CLICK:", "ESC:", "CTRL:", "R:" };
+        InputPromptId[] prompts =
+        {
+            InputPromptId.MouseLeft, InputPromptId.MouseRight, InputPromptId.MouseMove,
+            InputPromptId.MouseLeft, InputPromptId.Escape, InputPromptId.Ctrl,
+            InputPromptId.KeyboardR
+        };
+
+        int best = -1;
+        for (int i = 0; i < markers.Length; i++)
+        {
+            int index = upper.IndexOf(markers[i], start, System.StringComparison.Ordinal);
+            if (index < 0 || (best >= 0 && index >= best)) continue;
+            best = index;
+            marker = markers[i];
+            prompt = prompts[i];
+        }
+        return best;
+    }
+
+    static void AddInlineText(Transform parent, string value)
+    {
+        if (parent == null || string.IsNullOrWhiteSpace(value)) return;
+        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = value;
+        text.fontSize = 15f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = GameUITheme.TextPrimary;
+        text.alignment = TextAlignmentOptions.Center;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        text.ForceMeshUpdate(true, true);
+        LayoutElement element = textObject.GetComponent<LayoutElement>();
+        float preferredWidth = Mathf.Ceil(text.GetPreferredValues(value).x);
+        element.minWidth = element.preferredWidth = preferredWidth;
+        element.flexibleWidth = 0f;
+        element.minHeight = 22f;
+    }
+
+    static void AddInlinePrompt(Transform parent, InputPromptId prompt, string action)
+    {
+        GameObject group = new GameObject("PromptAction", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+        group.transform.SetParent(parent, false);
+        HorizontalLayoutGroup layout = group.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        ContentSizeFitter fitter = group.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        Sprite sprite = GetSprite(prompt);
+        if (sprite != null)
+        {
+            GameObject iconObject = new GameObject("Input", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            iconObject.transform.SetParent(group.transform, false);
+            LayoutElement iconLayout = iconObject.GetComponent<LayoutElement>();
+            iconLayout.minWidth = iconLayout.preferredWidth = InlineIconSize;
+            iconLayout.minHeight = iconLayout.preferredHeight = InlineIconSize;
+            Image image = iconObject.GetComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+        }
+
+        AddInlineText(group.transform, action);
     }
 
     static List<InputPromptId> GetPrompts(string instruction)

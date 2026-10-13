@@ -143,13 +143,13 @@ public class StationManagePopup : MonoBehaviour
 
         var bg = gameObject.GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
-        bg.color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
+        bg.color = GameUITheme.Panel;
         bg.raycastTarget = true;
 
         var vlg = gameObject.GetComponent<VerticalLayoutGroup>();
         if (vlg == null) vlg = gameObject.AddComponent<VerticalLayoutGroup>();
         vlg.padding = new RectOffset(12, 12, 10, 10);
-        vlg.spacing = 4;
+        vlg.spacing = 6;
         vlg.childControlHeight = true;
         vlg.childControlWidth = true;
         vlg.childForceExpandWidth = true;
@@ -157,9 +157,11 @@ public class StationManagePopup : MonoBehaviour
         vlg.childAlignment = TextAnchor.UpperCenter;
 
         stationTitleText = CreateLabel(transform, StationTitleName, "Station", 22);
+        stationTitleText.fontStyle = FontStyles.Bold;
+        stationTitleText.color = GameUITheme.TextPrimary;
         inventoryInfoText = CreateLabel(transform, InventoryInfoName, "Inventory\n—", 18);
         inventoryInfoText.alignment = TextAlignmentOptions.Center;
-        inventoryInfoText.color = new Color(1f, 0.88f, 0.55f, 1f);
+        inventoryInfoText.color = GameUITheme.Accent;
         inventoryInfoText.gameObject.SetActive(false);
         var inventoryLe = inventoryInfoText.GetComponent<LayoutElement>();
         inventoryLe.minHeight = 90;
@@ -174,7 +176,7 @@ public class StationManagePopup : MonoBehaviour
         productListContainer.gameObject.SetActive(false);
 
         statusText = CreateLabel(transform, StatusName, "", 13);
-        statusText.color = new Color(0.85f, 0.85f, 0.9f, 1f);
+        statusText.color = GameUITheme.TextSecondary;
         statusText.alignment = TextAlignmentOptions.Left;
 
         assignWorkerButton = CreateButton(transform, "Assign Worker");
@@ -241,7 +243,7 @@ public class StationManagePopup : MonoBehaviour
         var go = new GameObject(label, typeof(RectTransform));
         go.transform.SetParent(parent, false);
         var img = go.AddComponent<Image>();
-        img.color = new Color(0.3f, 0.35f, 0.45f, 1f);
+        img.color = GameUITheme.Surface;
         var btn = go.AddComponent<Button>();
         go.AddComponent<LayoutElement>().minHeight = 36;
 

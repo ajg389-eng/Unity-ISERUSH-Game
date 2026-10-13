@@ -58,6 +58,7 @@ public class FryerStation : MonoBehaviour, IStationBuffer
         RefreshItemDisplay(true);
     }
 
+    public int StationMark => Mathf.Clamp(stationMark, 1, 2);
     public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int BufferedUnitCount => waitingInputUnits + basketUnits + cookedOutputUnits;

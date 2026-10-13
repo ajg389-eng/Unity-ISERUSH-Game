@@ -191,7 +191,7 @@ public class PantryStation : MonoBehaviour
 }
 
 /// <summary>
-/// Displays the same world-space caution icon used by pickup stations whenever a
+/// Displays the same overlay caution icon used by pickup stations whenever a
 /// configurable station has no selection, or a pantry's assigned stock is low.
 /// </summary>
 internal sealed class StationConfigurationCaution : MonoBehaviour
@@ -369,16 +369,22 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
         var root = new GameObject("MissingRecipeCaution", typeof(RectTransform), typeof(Canvas));
         var canvas = root.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 100;
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        // Keep the world warning above scene geometry, but below HUDs, menus,
+        // popups, and other screen-space UI.
+        canvas.sortingOrder = -100;
 
-        var rect = root.GetComponent<RectTransform>();
+        var contentObject = new GameObject("Indicator", typeof(RectTransform));
+        contentObject.transform.SetParent(root.transform, false);
+        var rect = contentObject.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = Vector2.one * 100f;
         rect.localScale = Vector3.one * (IconWorldSize / 100f);
         indicatorRect = rect;
 
         var icon = new GameObject("Icon", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
-        icon.transform.SetParent(root.transform, false);
+        icon.transform.SetParent(contentObject.transform, false);
         var iconRect = icon.GetComponent<RectTransform>();
         iconRect.anchorMin = Vector2.zero;
         iconRect.anchorMax = Vector2.one;
@@ -391,7 +397,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
         var panel = new GameObject("CautionExplanation", typeof(RectTransform),
             typeof(CanvasRenderer), typeof(UnityEngine.UI.Image), typeof(CanvasGroup));
-        panel.transform.SetParent(root.transform, false);
+        panel.transform.SetParent(contentObject.transform, false);
         var panelRect = panel.GetComponent<RectTransform>();
         panelRect.anchorMin = new Vector2(0.5f, 1f);
         panelRect.anchorMax = new Vector2(0.5f, 1f);
@@ -436,7 +442,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
             || !Input.GetMouseButtonDown(0)) return;
         Camera cam = Camera.main;
         if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(
-                indicatorRect, Input.mousePosition, cam)) return;
+                indicatorRect, Input.mousePosition, null)) return;
         if (explanation == null || explanationGroup == null || string.IsNullOrEmpty(currentDetails)) return;
         explanation.text = currentDetails;
         explanationGroup.gameObject.SetActive(true);
@@ -469,15 +475,26 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
                 top = Mathf.Max(top, renderers[i].bounds.max.y);
         }
 
-        Transform iconTransform = indicator.transform;
-        iconTransform.position = new Vector3(transform.position.x, top + HeightPadding, transform.position.z);
-        iconTransform.localScale = Vector3.one * (IconWorldSize / 100f);
-
         Camera cam = Camera.main;
         if (cam == null) return;
-        Vector3 cameraToIcon = iconTransform.position - cam.transform.position;
-        if (cameraToIcon.sqrMagnitude > 0.0001f)
-            iconTransform.rotation = Quaternion.LookRotation(cameraToIcon.normalized, cam.transform.up);
+
+        // Keep the warning tied to the station while rendering it in an overlay
+        // canvas, so walls and other meshes cannot cover the icon or its text.
+        Vector3 worldPosition = new Vector3(transform.position.x, top + HeightPadding, transform.position.z);
+        Vector3 screenPosition = cam.WorldToScreenPoint(worldPosition);
+        Vector3 screenEdge = cam.WorldToScreenPoint(worldPosition + cam.transform.right * IconWorldSize);
+        float screenSize = Vector2.Distance(
+            new Vector2(screenPosition.x, screenPosition.y),
+            new Vector2(screenEdge.x, screenEdge.y));
+        RectTransform iconTransform = indicatorRect;
+        RectTransform canvasRect = indicator.GetComponent<RectTransform>();
+        if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                canvasRect, new Vector2(screenPosition.x, screenPosition.y), null, out Vector2 localPosition))
+            iconTransform.anchoredPosition = localPosition;
+        else
+            iconTransform.position = screenPosition;
+        iconTransform.localScale = Vector3.one * (Mathf.Max(1f, screenSize) / 100f);
+        iconTransform.rotation = Quaternion.identity;
     }
 }
 

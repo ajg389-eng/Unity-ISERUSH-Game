@@ -54,10 +54,13 @@ public sealed class ResearchProgressManager : MonoBehaviour
     string activeId;
     float remainingMinutes;
     float lastAbsoluteMinute;
+    bool activeResearchUsesTutorialTimer;
     public event Action Changed;
 
     public string ActiveId => activeId;
     public float RemainingMinutes => Mathf.Max(0f, remainingMinutes);
+    public float RemainingSeconds => Mathf.Max(0f, remainingMinutes * 60f);
+    public bool IsTutorialTimedResearch => activeResearchUsesTutorialTimer;
     public bool HasActiveResearch => !string.IsNullOrEmpty(activeId);
     public int CompletedCount => completed.Count;
 
@@ -102,15 +105,22 @@ public sealed class ResearchProgressManager : MonoBehaviour
     void Update()
     {
         float now = AbsoluteMinute;
-        float elapsed = Mathf.Max(0f, now - lastAbsoluteMinute);
+        if (!HasActiveResearch) return;
+
+        if (activeResearchUsesTutorialTimer)
+            remainingMinutes -= Time.unscaledDeltaTime / 60f;
+        else
+        {
+            float elapsed = Mathf.Max(0f, now - lastAbsoluteMinute);
+            remainingMinutes -= elapsed;
+        }
         lastAbsoluteMinute = now;
-        if (!HasActiveResearch || elapsed <= 0f) return;
-        remainingMinutes -= elapsed;
         if (remainingMinutes > 0f) return;
         completed.Add(activeId);
         string finished = Get(activeId)?.title ?? "Research";
         activeId = null;
         remainingMinutes = 0f;
+        activeResearchUsesTutorialTimer = false;
         NotificationCenter.Post(finished + " completed.", GameNotificationKind.Message, "research-complete-" + finished);
         Changed?.Invoke();
     }
@@ -120,20 +130,30 @@ public sealed class ResearchProgressManager : MonoBehaviour
     public bool HasPrerequisite(Definition definition) => definition != null
         && (string.IsNullOrEmpty(definition.parentId) || IsCompleted(definition.parentId));
     public bool IsMilestoneAvailable(Definition definition) => definition != null
-        && MilestoneFeatures.HasReached(definition.milestone);
+        && (MilestoneFeatures.HasReached(definition.milestone)
+            || (OnboardingTutorial.IsResearchTutorialActive
+                && OnboardingTutorial.IsTutorialResearchRoot(definition.id)));
 
     public bool TryStart(string id, out string reason)
     {
         Definition definition = Get(id);
         if (definition == null) { reason = "Research project not found."; return false; }
         if (IsCompleted(id)) { reason = "Already researched."; return false; }
+        if (OnboardingTutorial.IsResearchTutorialActive
+            && !OnboardingTutorial.IsTutorialResearchRoot(id))
+        {
+            reason = "Gus wants the first card in each branch researched first.";
+            return false;
+        }
         if (HasActiveResearch) { reason = "Finish the current research first."; return false; }
         if (!IsMilestoneAvailable(definition)) { reason = "Requires Milestone " + definition.milestone + "."; return false; }
         if (!HasPrerequisite(definition)) { reason = "Research the previous project first."; return false; }
         MoneyManager money = FindFirstObjectByType<MoneyManager>();
         if (money == null || !money.TrySpend(definition.cost)) { reason = "Not enough money."; return false; }
         activeId = id;
-        remainingMinutes = definition.durationMinutes;
+        activeResearchUsesTutorialTimer = OnboardingTutorial.IsResearchTutorialActive
+            && OnboardingTutorial.IsTutorialResearchRoot(id);
+        remainingMinutes = activeResearchUsesTutorialTimer ? 1f / 60f : definition.durationMinutes;
         lastAbsoluteMinute = AbsoluteMinute;
         Sfx.Play(SfxId.SpendMoney);
         Changed?.Invoke();
@@ -148,6 +168,7 @@ public sealed class ResearchProgressManager : MonoBehaviour
         completed.Clear();
         activeId = null;
         remainingMinutes = 0f;
+        activeResearchUsesTutorialTimer = false;
         lastAbsoluteMinute = AbsoluteMinute;
         Changed?.Invoke();
     }
@@ -159,6 +180,7 @@ public sealed class ResearchProgressManager : MonoBehaviour
             if (definition != null && !string.IsNullOrEmpty(definition.id)) completed.Add(definition.id);
         activeId = null;
         remainingMinutes = 0f;
+        activeResearchUsesTutorialTimer = false;
         lastAbsoluteMinute = AbsoluteMinute;
         Changed?.Invoke();
     }
@@ -170,6 +192,7 @@ public sealed class ResearchProgressManager : MonoBehaviour
             foreach (string id in savedCompleted) if (Get(id) != null) completed.Add(id);
         activeId = Get(savedActiveId) != null && !completed.Contains(savedActiveId) ? savedActiveId : null;
         remainingMinutes = activeId != null ? Mathf.Max(0.01f, savedRemaining) : 0f;
+        activeResearchUsesTutorialTimer = false;
         lastAbsoluteMinute = AbsoluteMinute;
         Changed?.Invoke();
     }

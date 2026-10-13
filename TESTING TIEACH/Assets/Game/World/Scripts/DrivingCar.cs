@@ -15,6 +15,8 @@ public class DrivingCar : MonoBehaviour
     Transform[] wheels;
 
     public float Direction => direction;
+    [System.NonSerialized]
+    public System.Action<DrivingCar> Recycle;
 
     public void SetPaused(bool paused)
     {
@@ -99,6 +101,11 @@ public class DrivingCar : MonoBehaviour
 
         bool finished = direction > 0f ? pos.x >= endX : pos.x <= endX;
         if (finished)
-            Destroy(gameObject);
+        {
+            if (Recycle != null)
+                Recycle(this);
+            else
+                Destroy(gameObject);
+        }
     }
 }

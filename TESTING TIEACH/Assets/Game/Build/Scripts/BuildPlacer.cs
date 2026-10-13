@@ -560,10 +560,18 @@ public class BuildPlacer : MonoBehaviour
     {
         sizeX = 1;
         sizeY = 1;
-        if (placingItem?.prefab == null) return;
-        var fp = placingItem.prefab.GetComponent<BuildFootprint>();
-        sizeX = Mathf.Max(1, fp != null ? fp.sizeX : placingItem.footprintX);
-        sizeY = Mathf.Max(1, fp != null ? fp.sizeY : placingItem.footprintY);
+        if (placingItem == null) return;
+        var fp = placingItem.prefab != null
+            ? placingItem.prefab.GetComponent<BuildFootprint>()
+            : null;
+        int itemSizeX = Mathf.Max(1, placingItem.footprintX);
+        int itemSizeY = Mathf.Max(1, placingItem.footprintY);
+        int prefabSizeX = fp != null ? Mathf.Max(1, fp.sizeX) : 1;
+        int prefabSizeY = fp != null ? Mathf.Max(1, fp.sizeY) : 1;
+        // Keep the item definition and prefab in agreement. This also prevents
+        // an older MK2 prefab footprint from collapsing a two-tile station to 1x1.
+        sizeX = Mathf.Max(itemSizeX, prefabSizeX);
+        sizeY = Mathf.Max(itemSizeY, prefabSizeY);
         if (placementRotation == 1 || placementRotation == 3)
         {
             int t = sizeX;
@@ -2196,9 +2204,15 @@ public class BuildPlacer : MonoBehaviour
 
     bool DebugPlaceFloorStation(ItemDefinition item)
     {
-        BuildFootprint prefabFootprint = item.prefab.GetComponent<BuildFootprint>();
-        int sizeX = Mathf.Max(1, prefabFootprint != null ? prefabFootprint.sizeX : item.footprintX);
-        int sizeY = Mathf.Max(1, prefabFootprint != null ? prefabFootprint.sizeY : item.footprintY);
+        BuildFootprint prefabFootprint = item.prefab != null
+            ? item.prefab.GetComponent<BuildFootprint>()
+            : null;
+        int itemSizeX = Mathf.Max(1, item.footprintX);
+        int itemSizeY = Mathf.Max(1, item.footprintY);
+        int prefabSizeX = prefabFootprint != null ? Mathf.Max(1, prefabFootprint.sizeX) : 1;
+        int prefabSizeY = prefabFootprint != null ? Mathf.Max(1, prefabFootprint.sizeY) : 1;
+        int sizeX = Mathf.Max(itemSizeX, prefabSizeX);
+        int sizeY = Mathf.Max(itemSizeY, prefabSizeY);
         // Debug layouts start against the north wall and fill toward the south.
         // Rotate the authored placement so each station faces into the kitchen.
         for (int y = grid.Height - sizeY; y >= 0; y--)
@@ -2359,14 +2373,14 @@ public class BuildPlacer : MonoBehaviour
         if (item.placementSurface == ItemDefinition.PlacementSurface.Floor)
         {
             BuildFootprint footprint = placed.GetComponent<BuildFootprint>();
-            // Authored station prefabs own their footprint. ItemDefinition is only
-            // a fallback for older prefabs that do not contain BuildFootprint.
+            // Keep authored prefab and item definition footprints consistent. The
+            // larger value wins so stale metadata cannot collapse a multi-tile station.
             if (footprint == null)
             {
                 footprint = placed.AddComponent<BuildFootprint>();
-                footprint.sizeX = Mathf.Max(1, item.footprintX);
-                footprint.sizeY = Mathf.Max(1, item.footprintY);
             }
+            footprint.sizeX = Mathf.Max(Mathf.Max(1, footprint.sizeX), Mathf.Max(1, item.footprintX));
+            footprint.sizeY = Mathf.Max(Mathf.Max(1, footprint.sizeY), Mathf.Max(1, item.footprintY));
             if (item.prefab != null && item.prefab.GetComponentInChildren<CuttingStation>(true) != null)
             {
                 if (placed.GetComponent<CuttingStation>() == null)
@@ -2401,7 +2415,11 @@ public class BuildPlacer : MonoBehaviour
                 placed.AddComponent<BoxCollider>();
             Register register = placed.GetComponent<Register>();
             if (register == null) register = placed.AddComponent<Register>();
-            register.isEnabled = OnboardingTutorial.IsActive;
+            // Placement only puts the register on the counter. During the
+            // tutorial the player must explicitly open it and click Enable.
+            // Outside onboarding, a newly placed register keeps the normal
+            // enabled behavior.
+            register.isEnabled = !OnboardingTutorial.IsActive;
             RegisterHover hover = placed.GetComponent<RegisterHover>();
             if (hover == null) hover = placed.AddComponent<RegisterHover>();
             if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();
@@ -2458,6 +2476,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     Button clearButton;
     float messageUntil;
     bool placementInstructionActive;
+    float lastCanvasWidth = -1f;
 
     public bool IsPointerOver
     {
@@ -2496,6 +2515,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
 
     void Update()
     {
+        FitToCanvasWidth();
         bool buildMode = placer != null && placer.modeManager != null
             && placer.modeManager.CurrentMode == GameModeManager.Mode.Build;
         CanvasGroup group = GetComponent<CanvasGroup>();
@@ -2586,6 +2606,38 @@ public sealed class BuildStationActionBar : MonoBehaviour
             clearButton = CreateButton("Clear", "Clear", 202f, () => placer?.ClearStationSelection());
 
         GameUITheme.ApplyTo(transform);
+        FitToCanvasWidth();
+    }
+
+    void FitToCanvasWidth()
+    {
+        RectTransform canvasRect = transform.parent as RectTransform;
+        if (canvasRect == null) return;
+
+        float canvasWidth = canvasRect.rect.width;
+        if (canvasWidth <= 0.01f || Mathf.Abs(canvasWidth - lastCanvasWidth) < 0.5f) return;
+        lastCanvasWidth = canvasWidth;
+
+        float width = Mathf.Min(440f, Mathf.Max(280f, canvasWidth - 16f));
+        RectTransform barRect = (RectTransform)transform;
+        barRect.sizeDelta = new Vector2(width, 54f);
+
+        float buttonWidth = Mathf.Max(120f, (width - 32f) * 0.5f);
+        SetButtonWidth(moveButton, buttonWidth);
+        SetButtonWidth(clearButton, buttonWidth);
+
+        if (instructionPanel == null) return;
+        RectTransform instructionRect = (RectTransform)instructionPanel.transform;
+        instructionRect.sizeDelta = new Vector2(width, 36f);
+    }
+
+    static void SetButtonWidth(Button button, float width)
+    {
+        if (button == null) return;
+        LayoutElement element = button.GetComponent<LayoutElement>();
+        if (element == null) element = button.gameObject.AddComponent<LayoutElement>();
+        element.minWidth = element.preferredWidth = width;
+        element.flexibleWidth = 0f;
     }
 
     static void StretchLabel(RectTransform rect, float horizontalPadding)
@@ -2668,8 +2720,10 @@ public sealed class BuildStationActionBar : MonoBehaviour
         {
             selectionLabel.gameObject.SetActive(true);
             if (placementInstructionActive) selectionLabel.text = instruction;
-            InputPromptLibrary.ApplyToInstruction(instructionPanel != null ? instructionPanel.transform : selectionLabel.transform.parent,
-                selectionLabel, placementInstructionActive ? instruction : null);
+            InputPromptLibrary.ApplyInlineInstruction(
+                instructionPanel != null ? instructionPanel.transform : selectionLabel.transform.parent,
+                placementInstructionActive ? instruction : null);
+            selectionLabel.gameObject.SetActive(!placementInstructionActive);
         }
         if (messageLabel != null && placementInstructionActive)
             messageLabel.gameObject.SetActive(false);

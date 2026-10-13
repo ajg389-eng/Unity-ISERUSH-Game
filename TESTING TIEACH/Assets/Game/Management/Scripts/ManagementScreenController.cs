@@ -34,12 +34,20 @@ public class ManagementScreenController : MonoBehaviour
     bool isOpen;
     ManagementTabInfoUI tabInfoUI;
     int selectedTabIndex = -1;
+    MainHudTabs cachedMainHudTabs;
+    InventoryUI cachedInventoryUI;
+    Canvas cachedCanvas;
 
     void Start()
     {
         // Older scenes serialized Alpha2 here. Keep the runtime binding authoritative.
         toggleKey = KeyCode.E;
         if (modeManager == null) modeManager = FindObjectOfType<GameModeManager>();
+        cachedMainHudTabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        cachedInventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        cachedCanvas = GetComponentInParent<Canvas>();
+        if (cachedCanvas == null)
+            cachedCanvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
         EnsurePanelClickBlocker(managementPanel);
         ApplyManagementBackdrop();
         if (managementPanel != null)
@@ -54,6 +62,7 @@ public class ManagementScreenController : MonoBehaviour
         RemoveLegacyAnalyticsFromManagement();
         EnsureBusinessTabs();
         WireTabButtons();
+        AlignBusinessContentArea();
         tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
         if (tabInfoUI != null)
             tabInfoUI.SetButtonPosition(new Vector2(-14f, -66f));
@@ -182,6 +191,7 @@ public class ManagementScreenController : MonoBehaviour
         if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
         selectedTabIndex = index;
+        AlignBusinessContentArea();
 
         GameObject selectedPanel = tabPanels[index];
         for (int i = 0; i < tabPanels.Length; i++)
@@ -219,6 +229,29 @@ public class ManagementScreenController : MonoBehaviour
             tabInfoUI = ManagementTabInfoUI.EnsureOn(managementPanel != null ? managementPanel.transform : null);
         if (tabInfoUI != null)
             tabInfoUI.SetTab(selectedPanel);
+    }
+
+    void AlignBusinessContentArea()
+    {
+        if (managementPanel == null) return;
+        Transform contentBox = FindDeep(managementPanel.transform, "ContentBox");
+        if (contentBox == null) return;
+
+        RectTransform contentRect = contentBox as RectTransform;
+        RectTransform tabBar = FindDeep(contentBox, "TabBar") as RectTransform;
+        RectTransform contentArea = FindDeep(contentBox, "TabContentArea") as RectTransform;
+        if (contentRect == null || tabBar == null || contentArea == null) return;
+
+        Canvas.ForceUpdateCanvases();
+        Vector3[] corners = new Vector3[4];
+        tabBar.GetWorldCorners(corners);
+        float topInset = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y;
+        topInset = Mathf.Max(0f, topInset);
+
+        contentArea.anchorMin = Vector2.zero;
+        contentArea.anchorMax = Vector2.one;
+        contentArea.offsetMin = new Vector2(0f, 20f);
+        contentArea.offsetMax = new Vector2(0f, -topInset);
     }
 
     void EnsureBusinessTabs()
@@ -344,7 +377,9 @@ public class ManagementScreenController : MonoBehaviour
     void Update()
     {
         if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
-        bool unifiedNavigation = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+        if (cachedMainHudTabs == null)
+            cachedMainHudTabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        bool unifiedNavigation = cachedMainHudTabs != null;
         if (!unifiedNavigation && Input.GetKeyDown(toggleKey))
         {
             Toggle();
@@ -397,7 +432,9 @@ public class ManagementScreenController : MonoBehaviour
         if (!wasActive)
             managementPanel.SetActive(false);
 
-        var inv = FindObjectOfType<InventoryUI>();
+        if (cachedInventoryUI == null)
+            cachedInventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        var inv = cachedInventoryUI;
         if (inv != null && inv.panel != null && inv.panel.activeSelf)
             inv.panel.SetActive(false);
 
@@ -415,8 +452,9 @@ public class ManagementScreenController : MonoBehaviour
             modeManager.SetMode(GameModeManager.Mode.Manage);
 
         GameUITheme.ApplyTo(managementPanel.transform);
-        Canvas.ForceUpdateCanvases();
         managementPanel.SetActive(true);
+        Canvas.ForceUpdateCanvases();
+        AlignBusinessContentArea();
 
         if (pauseWhileOpen)
         {
@@ -498,9 +536,14 @@ public class ManagementScreenController : MonoBehaviour
         // Analytics is a modal overlay. Leave the current Business page open
         // underneath it so closing Analytics returns to the same tab instead
         // of collapsing the entire Build/Business navigation state.
-        Canvas canvas = GetComponentInParent<Canvas>();
+        Canvas canvas = cachedCanvas;
         if (canvas == null)
-            canvas = FindFirstObjectByType<Canvas>();
+        {
+            canvas = GetComponentInParent<Canvas>();
+            if (canvas == null)
+                canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
+            cachedCanvas = canvas;
+        }
         if (canvas != null)
             AnalyticsPopupUI.Open(canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform);
     }

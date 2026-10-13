@@ -43,14 +43,6 @@ public class CustomerOrderBoard : MonoBehaviour
         wallText.margin = new Vector4(20, 20, 20, 20);
     }
 
-    void OnMouseUpAsButton()
-    {
-        if (mode == null) mode = FindFirstObjectByType<GameModeManager>();
-        if (WallPhotoDrag.InputClaimed || (mode != null && mode.CurrentMode == GameModeManager.Mode.Build)) return;
-        if (UnityEngine.EventSystems.EventSystem.current != null && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
-        OpenOrderView();
-    }
-
     void OpenOrderView()
     {
         var inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
@@ -86,7 +78,7 @@ public class CustomerOrderBoard : MonoBehaviour
         for (int i = 0; i < Mathf.Min(3, customers.Count); i++)
             preview.Append(customers[i].CustomerDisplayName).Append("   #").Append(customers[i].OrderNumber).Append('\n');
         if (customers.Count == 0) preview.Append("No open orders\n");
-        preview.Append("\n<size=26>Click or press 5 • Drag in Build mode</size>");
+        preview.Append("\n<size=26>Press 5 for full orders • Drag in Build mode</size>");
         SetText(wallText, preview.ToString());
         if (overlay == null || !overlay.activeSelf) return;
         SetText(heading, "Customer orders  •  " + customers.Count + " waiting");

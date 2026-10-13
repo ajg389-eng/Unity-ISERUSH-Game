@@ -125,15 +125,31 @@ public class GameUITheme : MonoBehaviour
 
     static void ApplyCanvas(Canvas canvas)
     {
-        foreach (var scroll in canvas.GetComponentsInChildren<ScrollRect>(true)) ConfigureScroll(scroll);
-        foreach (var image in canvas.GetComponentsInChildren<Image>(true)) StyleContainer(image);
-        foreach (var button in canvas.GetComponentsInChildren<Button>(true)) StyleButton(button);
-        foreach (var input in canvas.GetComponentsInChildren<TMP_InputField>(true)) StyleInput(input);
-        foreach (var slider in canvas.GetComponentsInChildren<Slider>(true)) StyleSlider(slider);
-        foreach (var toggle in canvas.GetComponentsInChildren<Toggle>(true)) StyleToggle(toggle);
-        foreach (var scrollbar in canvas.GetComponentsInChildren<Scrollbar>(true)) StyleScrollbar(scrollbar);
-        foreach (var text in canvas.GetComponentsInChildren<TextMeshProUGUI>(true)) StyleText(text);
+        foreach (var scroll in canvas.GetComponentsInChildren<ScrollRect>(true))
+            if (!IsResearchTreeElement(scroll.transform)) ConfigureScroll(scroll);
+        foreach (var image in canvas.GetComponentsInChildren<Image>(true))
+            if (!IsResearchTreeElement(image.transform)) StyleContainer(image);
+        foreach (var button in canvas.GetComponentsInChildren<Button>(true))
+            if (!IsResearchTreeElement(button.transform)) StyleButton(button);
+        foreach (var input in canvas.GetComponentsInChildren<TMP_InputField>(true))
+            if (!IsResearchTreeElement(input.transform)) StyleInput(input);
+        foreach (var slider in canvas.GetComponentsInChildren<Slider>(true))
+            if (!IsResearchTreeElement(slider.transform)) StyleSlider(slider);
+        foreach (var toggle in canvas.GetComponentsInChildren<Toggle>(true))
+            if (!IsResearchTreeElement(toggle.transform)) StyleToggle(toggle);
+        foreach (var scrollbar in canvas.GetComponentsInChildren<Scrollbar>(true))
+            if (!IsResearchTreeElement(scrollbar.transform)) StyleScrollbar(scrollbar);
+        foreach (var text in canvas.GetComponentsInChildren<TextMeshProUGUI>(true))
+            if (!IsResearchTreeElement(text.transform)) StyleText(text);
         DisableDropShadows(canvas.transform);
+    }
+
+    // ResearchTreeUI owns its branch colors and card states. Exclude it from
+    // the periodic generic theme pass so those colors cannot change one second
+    // after the screen opens.
+    static bool IsResearchTreeElement(Transform target)
+    {
+        return target != null && target.GetComponentInParent<ResearchTreeUI>(true) != null;
     }
 
     static void DisableDropShadows(Transform root)

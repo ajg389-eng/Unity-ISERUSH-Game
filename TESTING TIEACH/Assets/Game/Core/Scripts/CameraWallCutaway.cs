@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Applies a Sims-style low-wall cutaway on the camera-facing side of the store.
+/// Applies a line-of-sight wall fade around the point at the center of the view.
 /// Individual compass sides can be locked at full height from Options → Visual.
 /// </summary>
 public class CameraWallCutaway : MonoBehaviour
@@ -48,6 +48,16 @@ public class CameraWallCutaway : MonoBehaviour
     [Tooltip("Also duck window glass pieces with the bricks.")]
     public bool includeWindowGlass = true;
 
+    [Header("Line of sight fade")]
+    [Tooltip("Wall sections within this radius of the camera focus become fully transparent.")]
+    [Min(0.1f)] public float focusClearRadius = 4.5f;
+    [Tooltip("Wall sections within this radius of the focus receive a softer fade.")]
+    [Min(0.5f)] public float surroundingFadeRadius = 9f;
+    [Tooltip("Fade amount applied at the outside edge of the surrounding radius.")]
+    [Range(0f, 1f)] public float surroundingFadeAmount = 0.35f;
+    [Tooltip("Horizontal half-width of the camera line of sight. Sections inside this corridor become fully transparent when they block the view.")]
+    [Min(0f)] public float lineOfSightHalfWidth = 3f;
+
     Transform customerFloor;
 
     void Awake()
@@ -78,6 +88,8 @@ public class CameraWallCutaway : MonoBehaviour
     public static void Register(CameraOcclusionWall wall)
     {
         if (wall == null) return;
+        if (wall.name.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
+            wall.sectionContainer = true;
         if (!Walls.Contains(wall))
             Walls.Add(wall);
         EnsureExists();
@@ -104,18 +116,15 @@ public class CameraWallCutaway : MonoBehaviour
         }
 
         Vector3 focus = GetFocus();
-        Vector3 cam = targetCamera.transform.position;
-        Vector3 camFromFocus = cam - focus;
-        camFromFocus.y = 0f;
-        // Panning directly over the focus must not freeze the last wall targets.
-        if (camFromFocus.sqrMagnitude < 0.01f)
-        {
-            camFromFocus = -targetCamera.transform.forward;
-            camFromFocus.y = 0f;
-            if (camFromFocus.sqrMagnitude < 0.01f)
-                camFromFocus = Vector3.back;
-        }
-        Vector3 camDir = camFromFocus.normalized;
+        Vector3 viewTarget = GetViewTarget(focus);
+        Vector3 cameraPosition = targetCamera.transform.position;
+        Vector3 cameraToTarget = viewTarget - cameraPosition;
+        float targetDistance = cameraToTarget.magnitude;
+        if (targetDistance < 0.01f)
+            cameraToTarget = targetCamera.transform.forward;
+        else
+            cameraToTarget /= targetDistance;
+        Ray viewRay = new Ray(cameraPosition, cameraToTarget);
 
         for (int i = Walls.Count - 1; i >= 0; i--)
         {
@@ -125,24 +134,99 @@ public class CameraWallCutaway : MonoBehaviour
                 Walls.RemoveAt(i);
                 continue;
             }
+            if (wall.sectionContainer)
+            {
+                wall.SetDuckTarget(0f);
+                continue;
+            }
 
-            Vector3 outward = wall.GetOutward(focus);
-            float face = Vector3.Dot(camDir, outward);
-
-            // Also fade walls that sit on the camera side of the store (helps L-shaped dining).
-            Vector3 toWall = wall.transform.position - focus;
-            toWall.y = 0f;
-            float onCamSide = toWall.sqrMagnitude > 0.01f
-                ? Vector3.Dot(toWall.normalized, camDir)
-                : 0f;
-
-            float side = Mathf.Max(face, onCamSide * 0.9f);
-            // Soft blend near the threshold so orbiting feels smooth
-            float t = Mathf.InverseLerp(duckDotThreshold, duckDotThreshold + 0.35f, side);
-            if (IsOutwardLocked(outward))
-                t = 0f;
-            wall.SetDuckTarget(t);
+            float fadeAmount = GetFadeAmount(wall, focus, viewTarget, viewRay,
+                targetDistance, cameraToTarget);
+            if (IsOutwardLocked(wall.GetOutward(focus)))
+                fadeAmount = 0f;
+            wall.SetDuckTarget(fadeAmount);
         }
+    }
+
+    Vector3 GetViewTarget(Vector3 fallback)
+    {
+        if (targetCamera == null) return fallback;
+
+        Ray centerRay = targetCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, fallback.y, 0f));
+        if (floorPlane.Raycast(centerRay, out float enter) && enter > 0f)
+            return centerRay.GetPoint(enter);
+        return fallback;
+    }
+
+    float GetFadeAmount(CameraOcclusionWall wall, Vector3 focus, Vector3 viewTarget,
+        Ray viewRay, float targetDistance, Vector3 cameraToTarget)
+    {
+        if (wall == null || targetDistance <= 0.01f)
+            return 0f;
+
+        Bounds bounds = wall.WorldBounds;
+        if (bounds.size.sqrMagnitude < 0.0001f)
+            return 0f;
+
+        // A wall only fades when the view is aimed toward the store and that
+        // wall is on the camera side of the store focus. Looking away keeps
+        // every wall opaque, including walls behind the building.
+        float focusDepth = Vector3.Dot(focus - viewRay.origin, viewRay.direction);
+        float wallDepth = Vector3.Dot(bounds.center - viewRay.origin, viewRay.direction);
+        if (focusDepth <= 0f || wallDepth <= 0f || wallDepth > focusDepth + 1f)
+            return 0f;
+
+        // Only the exterior face seen by the camera can fade. The opposite
+        // wall has an outward normal pointing away from the camera and stays
+        // opaque even when it is near the focus or ray.
+        Vector3 toCamera = viewRay.origin - bounds.center;
+        toCamera.y = 0f;
+        Vector3 outward = wall.GetOutward(focus);
+        outward.y = 0f;
+        if (toCamera.sqrMagnitude < 0.0001f || outward.sqrMagnitude < 0.0001f)
+            return 0f;
+        float facingCamera = Vector3.Dot(outward.normalized, toCamera.normalized);
+        if (facingCamera < duckDotThreshold)
+            return 0f;
+
+        // Treat each section as a vertical prism for line-of-sight purposes.
+        // The header, sill, and pier pieces that share one strip therefore
+        // receive the same fade even when the center ray passes through a
+        // window opening rather than through the brick band itself.
+        Bounds verticalBounds = bounds;
+        verticalBounds.center = new Vector3(bounds.center.x, viewTarget.y, bounds.center.z);
+        float sightExpand = Mathf.Max(0f, lineOfSightHalfWidth) * 2f;
+        verticalBounds.size = new Vector3(
+            bounds.size.x + sightExpand,
+            Mathf.Max(bounds.size.y, targetDistance + 10f),
+            bounds.size.z + sightExpand);
+        if (verticalBounds.IntersectRay(viewRay, out float hitDistance)
+            && hitDistance > 0f && hitDistance < targetDistance - 0.05f)
+            return 1f;
+
+        float distanceToFocus = wall.DistanceToWall(viewTarget);
+        if (distanceToFocus > surroundingFadeRadius)
+            return 0f;
+
+        // Do not fade sections behind the viewed area. Sections beside the
+        // focus remain as a softer visual guide around the clear area.
+        Vector3 targetToWall = bounds.center - viewTarget;
+        targetToWall.y = 0f;
+        Vector3 horizontalCameraToTarget = cameraToTarget;
+        horizontalCameraToTarget.y = 0f;
+        if (horizontalCameraToTarget.sqrMagnitude > 0.0001f)
+            horizontalCameraToTarget.Normalize();
+        float depthPastTarget = Vector3.Dot(targetToWall, horizontalCameraToTarget);
+        if (depthPastTarget > 2f)
+            return 0f;
+
+        if (distanceToFocus <= focusClearRadius)
+            return 1f;
+
+        float proximity = 1f - Mathf.InverseLerp(
+            focusClearRadius, surroundingFadeRadius, distanceToFocus);
+        return Mathf.Lerp(surroundingFadeAmount, 1f, proximity);
     }
 
     public static bool IsWallLocked(WallSide side)
@@ -198,7 +282,6 @@ public class CameraWallCutaway : MonoBehaviour
         LockedSides[(int)WallSide.East] = PlayerPrefs.GetInt(PrefLockEast, 0) == 1;
         LockedSides[(int)WallSide.South] = PlayerPrefs.GetInt(PrefLockSouth, 0) == 1;
         LockedSides[(int)WallSide.West] = PlayerPrefs.GetInt(PrefLockWest, 0) == 1;
-        LockedSides[(int)WallSide.East] = true;
         locksLoaded = true;
     }
 
@@ -281,11 +364,23 @@ public class CameraWallCutaway : MonoBehaviour
             var t = all[i];
             if (t == null) continue;
             string n = t.name;
-            // Procedural bricks and windows cut away with their parent wall group.
-            if (n.StartsWith("KitchenWallBrick_", System.StringComparison.OrdinalIgnoreCase)
-                || n.StartsWith("KitchenWindow_", System.StringComparison.OrdinalIgnoreCase)
-                || n.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
+            // Wall groups are containers. Their brick and optional window pieces
+            // are registered independently so each section can fade on its own.
+            if (n.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
                 continue;
+
+            bool isProceduralSection = n.StartsWith("KitchenWallBrick_", System.StringComparison.OrdinalIgnoreCase)
+                || (includeWindowGlass && n.StartsWith("KitchenWindow_", System.StringComparison.OrdinalIgnoreCase));
+            if (isProceduralSection)
+            {
+                if (t.GetComponentInChildren<Renderer>(true) == null) continue;
+                var section = t.GetComponent<CameraOcclusionWall>();
+                if (section == null) section = t.gameObject.AddComponent<CameraOcclusionWall>();
+                section.sectionContainer = false;
+                section.SetOutwardFromKitchen(focus);
+                section.RecaptureRestPose();
+                continue;
+            }
 
             bool isWall = n.StartsWith("Wall", System.StringComparison.OrdinalIgnoreCase);
             if (!isWall) continue;

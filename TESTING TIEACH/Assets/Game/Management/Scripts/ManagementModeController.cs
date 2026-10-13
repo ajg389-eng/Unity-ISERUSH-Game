@@ -41,6 +41,7 @@ public class ManagementModeController : MonoBehaviour
     public TextMeshProUGUI productInfoText;
     public Transform productListContainer;
     public TextMeshProUGUI inventoryInfoText;
+    int productBuildHash = int.MinValue;
 
     [Header("Station production previews")]
     public GameObject rawPattyPreviewPrefab;
@@ -1002,6 +1003,7 @@ public class ManagementModeController : MonoBehaviour
         RefreshHeatLampInventory();
         RefreshStationDiagnostics();
         ApplyPanelLayout(isHeatLamp);
+        ApplyStationPopupTheme();
     }
 
     void EnsureStationDiagnosticsUI()
@@ -1011,10 +1013,10 @@ public class ManagementModeController : MonoBehaviour
         stationDiagnosticsRoot = new GameObject("StationDiagnostics", typeof(RectTransform), typeof(Image),
             typeof(LayoutElement));
         stationDiagnosticsRoot.transform.SetParent(stationPopup.transform, false);
-        stationDiagnosticsRoot.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.94f);
+        stationDiagnosticsRoot.GetComponent<Image>().color = GameUITheme.Surface;
         var size = stationDiagnosticsRoot.GetComponent<LayoutElement>();
-        size.minHeight = 62f;
-        size.preferredHeight = 62f;
+        size.minHeight = 82f;
+        size.preferredHeight = 82f;
         size.flexibleHeight = 0f;
 
         var labelObject = new GameObject("DiagnosticsText", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -1025,9 +1027,11 @@ public class ManagementModeController : MonoBehaviour
         labelRect.offsetMin = new Vector2(8f, 5f);
         labelRect.offsetMax = new Vector2(-8f, -5f);
         stationDiagnosticsText = labelObject.GetComponent<TextMeshProUGUI>();
-        stationDiagnosticsText.fontSize = 10.5f;
+        stationDiagnosticsText.fontSize = 11f;
+        stationDiagnosticsText.lineSpacing = -2f;
+        stationDiagnosticsText.overflowMode = TextOverflowModes.Overflow;
         stationDiagnosticsText.alignment = TextAlignmentOptions.TopLeft;
-        stationDiagnosticsText.color = new Color(0.91f, 0.93f, 0.94f, 1f);
+        stationDiagnosticsText.color = GameUITheme.TextPrimary;
         stationDiagnosticsText.richText = true;
         stationDiagnosticsText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) stationDiagnosticsText.font = TMP_Settings.defaultFontAsset;
@@ -1057,8 +1061,9 @@ public class ManagementModeController : MonoBehaviour
         int incoming = manager != null ? manager.GetReservedInputCount(selectedStation.gameObject) : 0;
         int outgoing = manager != null ? manager.GetReservedOutputCount(selectedStation.gameObject) : 0;
         string buffer = BuildBufferSummary(selectedStation, incoming, outgoing);
-        stationDiagnosticsText.text = "<b>STATE: " + state.ToUpperInvariant() + "</b>\n"
-            + utilization + "\n" + buffer;
+        stationDiagnosticsText.text = "<b><color=#D8B365>STATE</color>  " + state.ToUpperInvariant() + "</b>\n"
+            + "<color=#B7BEC5>UTILIZATION</color>  " + utilization + "\n"
+            + "<color=#B7BEC5>BUFFER</color>  " + buffer;
     }
 
     static string BuildBufferSummary(StationNode node, int incoming, int outgoing)
@@ -1153,8 +1158,8 @@ public class ManagementModeController : MonoBehaviour
         diagramBackground.raycastTarget = false;
 
         var layout = productionDiagramRoot.GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(8, 8, 7, 7);
-        layout.spacing = 7f;
+        layout.padding = new RectOffset(7, 7, 7, 7);
+        layout.spacing = 6f;
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -1162,8 +1167,8 @@ public class ManagementModeController : MonoBehaviour
         layout.childForceExpandHeight = true;
 
         var rootLayout = productionDiagramRoot.GetComponent<LayoutElement>();
-        rootLayout.minHeight = 154f;
-        rootLayout.preferredHeight = 154f;
+        rootLayout.minHeight = 166f;
+        rootLayout.preferredHeight = 166f;
         rootLayout.flexibleHeight = 0f;
 
         productionInputCard = CreateProductionCard(productionDiagramRoot.transform, "Input", out productionInputPreview,
@@ -1191,13 +1196,15 @@ public class ManagementModeController : MonoBehaviour
         centerSize.flexibleWidth = 0f;
 
         productionArrowText = CreateDiagramText(productionConversionRoot.transform, "Arrow", ">", 30f, 40f);
-        productionArrowText.color = new Color(0.3f, 0.9f, 1f, 1f);
+        productionArrowText.color = GameUITheme.PositiveAccent;
         productionCycleText = CreateIconMetric(productionConversionRoot.transform, "CycleTime",
             timeToCompleteIcon, "0s", 44f, vertical: true);
-        productionCycleText.color = new Color(1f, 0.78f, 0.32f, 1f);
+        productionCycleText.color = GameUITheme.Accent;
+        productionCycleText.fontStyle = FontStyles.Bold;
         productionEfficiencyText = CreateIconMetric(productionConversionRoot.transform, "Efficiency",
             efficiencyIcon, "0%", 44f, vertical: true);
-        productionEfficiencyText.color = new Color(1f, 0.78f, 0.32f, 1f);
+        productionEfficiencyText.color = GameUITheme.Accent;
+        productionEfficiencyText.fontStyle = FontStyles.Bold;
 
         productionOutputCard = CreateProductionCard(productionDiagramRoot.transform, "Output", out productionOutputPreview,
             out productionOutputName, out productionOutputRate);
@@ -1213,7 +1220,7 @@ public class ManagementModeController : MonoBehaviour
         var card = new GameObject(heading + "Card", typeof(RectTransform), typeof(Image),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));
         card.transform.SetParent(parent, false);
-        card.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.98f);
+        card.GetComponent<Image>().color = GameUITheme.Surface;
         var size = card.GetComponent<LayoutElement>();
         size.minWidth = 98f;
         size.preferredWidth = 104f;
@@ -1229,12 +1236,12 @@ public class ManagementModeController : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         TextMeshProUGUI title = CreateDiagramText(card.transform, "Heading", heading.ToUpperInvariant(), 10f, 15f);
-        title.color = new Color(0.65f, 0.72f, 0.84f, 1f);
+        title.fontStyle = FontStyles.Bold;
+        title.color = GameUITheme.Accent;
 
         var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         previewFrame.transform.SetParent(card.transform, false);
-        // Match ItemPreviewThumbnails' camera background so the frame and texture read as one surface.
-        previewFrame.GetComponent<Image>().color = ItemPreviewThumbnails.BackgroundColor;
+        previewFrame.GetComponent<Image>().color = GameUITheme.Charcoal;
         var previewSize = previewFrame.GetComponent<LayoutElement>();
         previewSize.minHeight = 68f;
         previewSize.preferredHeight = 68f;
@@ -1250,12 +1257,14 @@ public class ManagementModeController : MonoBehaviour
         previewFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
         previewFitter.aspectRatio = 1f;
 
-        itemName = CreateDiagramText(card.transform, "ItemName", "Item", 11f, 22f);
+        itemName = CreateDiagramText(card.transform, "ItemName", "Item", 11f, 26f);
         itemName.enableAutoSizing = true;
         itemName.fontSizeMin = 8f;
         itemName.fontSizeMax = 11f;
-        rate = CreateDiagramText(card.transform, "Rate", "0/min", 12f, 20f);
-        rate.color = new Color(1f, 0.78f, 0.32f, 1f);
+        itemName.color = GameUITheme.TextPrimary;
+        rate = CreateDiagramText(card.transform, "Rate", "0/min", 11f, 34f);
+        rate.fontStyle = FontStyles.Bold;
+        rate.color = GameUITheme.PositiveAccent;
         return card;
     }
 
@@ -1293,15 +1302,26 @@ public class ManagementModeController : MonoBehaviour
         var iconObject = new GameObject("Icon", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         iconObject.transform.SetParent(root.transform, false);
         var image = iconObject.GetComponent<RawImage>();
-        image.texture = icon;
-        image.uvRect = new Rect(0.18f, 0.18f, 0.64f, 0.64f);
-        image.color = Color.white;
+        Texture metricIcon = icon;
+        if (metricIcon == null)
+        {
+            GameIconId iconId = objectName == "Efficiency"
+                ? GameIconId.Analytics : GameIconId.FastForward;
+            Sprite fallback = GameIconLibrary.GetSprite(iconId);
+            metricIcon = fallback != null ? fallback.texture : null;
+        }
+        image.texture = metricIcon;
+        image.uvRect = metricIcon != null
+            ? new Rect(0.18f, 0.18f, 0.64f, 0.64f)
+            : new Rect(0f, 0f, 1f, 1f);
+        image.color = metricIcon != null ? Color.white : Color.clear;
         image.raycastTarget = false;
         var iconSize = iconObject.GetComponent<LayoutElement>();
-        iconSize.minWidth = vertical ? 24f : 18f;
-        iconSize.preferredWidth = vertical ? 24f : 18f;
-        iconSize.minHeight = vertical ? 24f : 18f;
-        iconSize.preferredHeight = vertical ? 24f : 18f;
+        float iconDimension = metricIcon != null ? (vertical ? 24f : 18f) : 0f;
+        iconSize.minWidth = iconDimension;
+        iconSize.preferredWidth = iconDimension;
+        iconSize.minHeight = iconDimension;
+        iconSize.preferredHeight = iconDimension;
 
         TextMeshProUGUI text = CreateDiagramText(root.transform, "Value", value, 11f,
             vertical ? 18f : height);
@@ -1463,23 +1483,27 @@ public class ManagementModeController : MonoBehaviour
         {
             productionInputName.text = inputName;
             productionInputRate.text = FormatPerMinute(inputRate) + "/min";
+            ApplyProductionNameColor(productionInputName, inputName);
         }
         if (hasTwoInputs)
         {
             productionSecondInputName.text = secondInputName;
             productionSecondInputRate.text = FormatPerMinute(secondInputRate) + "/min";
+            ApplyProductionNameColor(productionSecondInputName, secondInputName);
         }
         if (hasThreeInputs)
         {
             productionThirdInputName.text = thirdInputName;
             productionThirdInputRate.text = FormatPerMinute(thirdInputRate) + "/min";
+            ApplyProductionNameColor(productionThirdInputName, thirdInputName);
         }
         productionOutputName.text = outputName;
+        ApplyProductionNameColor(productionOutputName, outputName);
         float maximumRate = node.outputAmountPerMinute;
         StationRuntimeMetrics runtimeMetrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
         float actualRate = runtimeMetrics != null ? runtimeMetrics.ActualOutputPerMinute : 0f;
-        productionOutputRate.text = FormatPerMinute(actualRate) + "/min actual\n"
-            + FormatPerMinute(maximumRate) + "/min max";
+        productionOutputRate.text = "<color=#B7BEC5>ACTUAL</color> " + FormatPerMinute(actualRate) + "/min\n"
+            + "<color=#B7BEC5>MAX</color> " + FormatPerMinute(maximumRate) + "/min";
         if (pantry != null)
         {
             ItemDefinition second = pantry.secondItem;
@@ -1487,9 +1511,19 @@ public class ManagementModeController : MonoBehaviour
             SetDiagramPreview(productionSecondOutputPreview, second != null ? second.prefab : null, secondName);
             productionSecondOutputName.text = secondName;
             productionSecondOutputRate.text = second != null ? FormatPerMinute(node.outputAmountPerMinute) + "/min" : "—";
+            ApplyProductionNameColor(productionSecondOutputName, secondName);
             if (pantry.selectedItem == null) productionOutputRate.text = "—";
         }
         productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
+    }
+
+    static void ApplyProductionNameColor(TextMeshProUGUI label, string value)
+    {
+        if (label == null) return;
+        bool placeholder = string.IsNullOrEmpty(value)
+            || value.StartsWith("Select", System.StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("Not selected", System.StringComparison.OrdinalIgnoreCase);
+        label.color = placeholder ? GameUITheme.TextSecondary : GameUITheme.TextPrimary;
     }
 
     void SetProductionDiagramMode(bool outputOnly, bool twoInputs = false, bool twoOutputs = false,
@@ -1499,8 +1533,8 @@ public class ManagementModeController : MonoBehaviour
             ? productionDiagramRoot.GetComponent<LayoutElement>() : null;
         if (diagramSize != null)
         {
-            diagramSize.minHeight = 154f;
-            diagramSize.preferredHeight = 154f;
+            diagramSize.minHeight = 166f;
+            diagramSize.preferredHeight = 166f;
             diagramSize.flexibleHeight = 0f;
         }
 
@@ -1595,7 +1629,7 @@ public class ManagementModeController : MonoBehaviour
         if (vlg != null)
         {
             vlg.padding = new RectOffset(12, 12, 10, 10);
-            vlg.spacing = 4;
+            vlg.spacing = 6;
             vlg.childAlignment = TextAnchor.UpperCenter;
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
@@ -1683,14 +1717,14 @@ public class ManagementModeController : MonoBehaviour
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
 
-        float minimumHeight = heatLampCompact ? 246f : 286f;
+        float minimumHeight = heatLampCompact ? 246f : 310f;
         float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
         float height = Mathf.Max(minimumHeight, preferredHeight);
         AssemblyStation selectedAssembly = selectedStation != null
             ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool hasThreeInputRecipe = selectedAssembly != null
             && selectedAssembly.GetSelectedRecipe()?.thirdInput != null;
-        float width = hasRecipeControls ? 500f : 300f;
+        float width = hasRecipeControls ? 500f : 360f;
 
         if (!usingScenePopup)
             ApplyPopupLayout(rt, width, height);
@@ -1736,7 +1770,7 @@ public class ManagementModeController : MonoBehaviour
             inventorySize.flexibleHeight = 0f;
         }
 
-        pickupStockText.text = "STOCK  " + lamp.Count + " / 4";
+        pickupStockText.text = "STOCK  " + lamp.Count + " / " + lamp.maxCapacity;
         if (pickupDiscardAllButton != null)
         {
             pickupDiscardAllButton.interactable = lamp.Count > 0;
@@ -1753,7 +1787,7 @@ public class ManagementModeController : MonoBehaviour
             SetDiagramPreview(pickupSlotPreviews[i], prefab, label);
             pickupSlotLabels[i].text = label;
             pickupSlotLabels[i].color = item != null
-                ? Color.white : new Color(0.55f, 0.58f, 0.65f, 1f);
+                ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
 
             TextMeshProUGUI freshnessLabel = pickupSlotFreshnessLabels[i];
             if (freshnessLabel != null)
@@ -1767,10 +1801,8 @@ public class ManagementModeController : MonoBehaviour
                 {
                     freshnessLabel.text = percentage > 0 ? $"+{percentage}%" : $"{percentage}%";
                     freshnessLabel.color = percentage > 0
-                        ? new Color(0.45f, 0.86f, 0.62f, 1f)
-                        : percentage < 0
-                            ? new Color(1f, 0.48f, 0.36f, 1f)
-                            : new Color(1f, 0.78f, 0.32f, 1f);
+                        ? GameUITheme.PositiveAccent
+                        : percentage < 0 ? GameUITheme.DangerAccent : GameUITheme.Accent;
                 }
             }
         }
@@ -1785,7 +1817,7 @@ public class ManagementModeController : MonoBehaviour
         inventoryInfoText = CreateLabel(stationPopup.transform, "Inventory\n—", 18);
         inventoryInfoText.gameObject.name = "InventoryInfo";
         inventoryInfoText.alignment = TextAlignmentOptions.Center;
-        inventoryInfoText.color = new Color(1f, 0.88f, 0.55f, 1f);
+        inventoryInfoText.color = GameUITheme.Accent;
         var le = inventoryInfoText.GetComponent<LayoutElement>();
         le.minHeight = 90;
         le.flexibleHeight = 1;
@@ -1810,7 +1842,7 @@ public class ManagementModeController : MonoBehaviour
 
         pickupStockText = CreateDiagramText(pickupInventoryRoot.transform, "Stock", "STOCK  0 / 4", 14f, 22f);
         pickupStockText.fontStyle = FontStyles.Bold;
-        pickupStockText.color = new Color(1f, 0.78f, 0.32f, 1f);
+        pickupStockText.color = GameUITheme.Accent;
 
         var row = new GameObject("Slots", typeof(RectTransform), typeof(HorizontalLayoutGroup),
             typeof(LayoutElement));
@@ -1832,7 +1864,7 @@ public class ManagementModeController : MonoBehaviour
 
         pickupDiscardAllButton = CreateButton(pickupInventoryRoot.transform, "THROW OUT ALL", ThrowOutPickupStock);
         pickupDiscardAllButton.gameObject.name = "ThrowOutAllButton";
-        pickupDiscardAllButton.GetComponent<Image>().color = new Color(0.62f, 0.23f, 0.23f, 1f);
+        pickupDiscardAllButton.GetComponent<Image>().color = GameUITheme.Danger;
         LayoutElement discardSize = pickupDiscardAllButton.GetComponent<LayoutElement>();
         discardSize.minHeight = 34f;
         discardSize.preferredHeight = 34f;
@@ -1857,7 +1889,7 @@ public class ManagementModeController : MonoBehaviour
         var slot = new GameObject("Slot" + (index + 1), typeof(RectTransform), typeof(Image),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));
         slot.transform.SetParent(parent, false);
-        slot.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.115f, 0.98f);
+        slot.GetComponent<Image>().color = GameUITheme.Surface;
         var slotLayout = slot.GetComponent<VerticalLayoutGroup>();
         slotLayout.padding = new RectOffset(3, 3, 3, 3);
         slotLayout.spacing = 2f;
@@ -1874,7 +1906,7 @@ public class ManagementModeController : MonoBehaviour
         var previewFrame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image),
             typeof(LayoutElement));
         previewFrame.transform.SetParent(slot.transform, false);
-        previewFrame.GetComponent<Image>().color = ItemPreviewThumbnails.BackgroundColor;
+        previewFrame.GetComponent<Image>().color = GameUITheme.Charcoal;
         var frameSize = previewFrame.GetComponent<LayoutElement>();
         frameSize.minHeight = 52f;
         frameSize.preferredHeight = 52f;
@@ -1941,7 +1973,11 @@ public class ManagementModeController : MonoBehaviour
 
         productInfoText.gameObject.SetActive(show);
         productListContainer.gameObject.SetActive(show);
-        if (!show) return;
+        if (!show)
+        {
+            productBuildHash = int.MinValue;
+            return;
+        }
 
         ConfigureProductListLayout();
 
@@ -1951,6 +1987,10 @@ public class ManagementModeController : MonoBehaviour
             : pantry != null ? pantry.selectedItem
             : cutting != null ? cutting.selectedProduct
             : fryer != null ? fryer.GetSelectedOutput() : null;
+
+        int currentProductHash = GetProductBuildHash(current, assembly);
+        if (currentProductHash == productBuildHash && productListContainer.childCount > 0)
+            return;
 
         // Destroy is deferred until the end of the frame. Disable outgoing cards
         // first so the layout system never measures old and new recipe rows together.
@@ -1966,8 +2006,11 @@ public class ManagementModeController : MonoBehaviour
         if (config == null)
         {
             productListContainer.gameObject.SetActive(false);
+            productBuildHash = int.MinValue;
             return;
         }
+
+        productBuildHash = currentProductHash;
 
         productInfoText.text = freezer != null || pantry != null
             ? "SELECT STORED INGREDIENT" : "SELECT RECIPE";
@@ -2057,6 +2100,23 @@ public class ManagementModeController : MonoBehaviour
             grillListSize.preferredHeight = height;
         }
         productListContainer.gameObject.SetActive(optionCount > 0);
+    }
+
+    int GetProductBuildHash(ItemDefinition current, AssemblyStation assembly)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + (selectedStation != null ? selectedStation.GetInstanceID() : 0);
+            hash = hash * 31 + (assembly != null && assembly.IsMk2 ? 1 : 0);
+            hash = hash * 31 + (current != null ? current.GetInstanceID() : 0);
+            hash = hash * 31 + (ResearchProgressManager.Instance != null
+                ? ResearchProgressManager.Instance.CompletedCount : 0);
+            AssemblyRecipeDefinition recipe = assembly != null ? assembly.GetSelectedRecipe() : null;
+            hash = hash * 31 + (recipe != null && recipe.recipeName != null
+                ? recipe.recipeName.GetHashCode() : 0);
+            return hash;
+        }
     }
 
     void ConfigureProductListLayout()
@@ -2298,7 +2358,7 @@ public class ManagementModeController : MonoBehaviour
         var go = new GameObject("ProductPick", typeof(RectTransform));
         go.transform.SetParent(productListContainer, false);
         var img = go.AddComponent<Image>();
-        img.color = new Color(0.28f, 0.4f, 0.32f, 1f);
+        img.color = interactable ? GameUITheme.Positive : GameUITheme.PanelSlate;
         var btn = go.AddComponent<Button>();
         btn.interactable = interactable;
         var btnLe = go.AddComponent<LayoutElement>();
@@ -2312,7 +2372,7 @@ public class ManagementModeController : MonoBehaviour
         tmp.text = label;
         tmp.fontSize = 13;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.white;
+        tmp.color = GameUITheme.TextPrimary;
         tmp.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
         var tr = (RectTransform)textGo.transform;
@@ -3060,7 +3120,7 @@ public class ManagementModeController : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 1f);
         rect.anchoredPosition = new Vector2(0f, -70f);
         float canvasWidth = ((RectTransform)playerUICanvas.transform).rect.width;
-        rect.sizeDelta = new Vector2(Mathf.Min(500f, Mathf.Max(0f, canvasWidth - 32f)), 150f);
+        rect.sizeDelta = new Vector2(Mathf.Min(500f, Mathf.Max(0f, canvasWidth - 32f)), 156f);
         flowCaptureHud.GetComponent<Image>().color = new Color(0.075f, 0.09f, 0.12f, 0.98f);
         var layout = flowCaptureHud.GetComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(16, 16, 12, 12);
@@ -3069,13 +3129,16 @@ public class ManagementModeController : MonoBehaviour
         var instructions = flowCaptureHud.transform.Find("Instructions")?.GetComponent<TextMeshProUGUI>();
         if (instructions == null)
             instructions = MakeCaptureLabel(flowCaptureHud.transform, "Instructions", "", 11f, FontStyles.Normal);
-        instructions.transform.SetSiblingIndex(2);
-        instructions.text = "Drag to connect  •  Reuse a source to split  •  Click to select  •  Ctrl-click to remove";
-        instructions.color = new Color(0.65f, 0.72f, 0.80f, 1f);
-        instructions.overflowMode = TextOverflowModes.Ellipsis;
-        instructions.GetComponent<LayoutElement>().minHeight = 32f;
-        instructions.GetComponent<LayoutElement>().preferredHeight = 32f;
-        InputPromptLibrary.ApplyToInstruction(flowCaptureHud.transform, instructions, instructions.text);
+        // The input icons carry the interaction instructions. Keep this legacy
+        // label hidden so the text does not repeat or force a second icon row.
+        instructions.text = string.Empty;
+        instructions.gameObject.SetActive(false);
+        InputPromptLibrary.ApplyInlineInstruction(
+            flowCaptureHud.transform,
+            "DRAG: Connect    LMB: Select    CTRL: Remove");
+        Transform inlineInstructions = flowCaptureHud.transform.Find("InlineInputInstruction");
+        if (inlineInstructions != null)
+            inlineInstructions.SetSiblingIndex(2);
         foreach (TextMeshProUGUI label in new[] { flowCaptureTitle, flowCapturePath })
         {
             if (label == null) continue;
@@ -3222,9 +3285,7 @@ public class ManagementModeController : MonoBehaviour
         {
             if (capturedFlow.stations.Count == 0)
             {
-                flowCapturePath.text = capturingNewFlow
-                    ? "No paths yet | Drag from one station and release on the next"
-                    : "Current path empty | Drag station to station to rebuild, then Finish";
+                flowCapturePath.text = "No connections yet";
             }
             else
             {
@@ -3356,7 +3417,84 @@ public class ManagementModeController : MonoBehaviour
             if (register != null && !register.IsPlacedRegister) continue;
             return node;
         }
-        return null;
+        // Some two-tile stations only expose a collider over one half of their
+        // model. If the pointer is over the other half, use the station's full
+        // rendered and grid footprint as a drop target instead of requiring a
+        // precise collider hit.
+        StationNode nearest = null;
+        float nearestDistance = float.MaxValue;
+        StationNode[] stations = FindObjectsByType<StationNode>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (StationNode station in stations)
+        {
+            if (!IsValidFlowStation(station)) continue;
+            if (!TryGetFlowStationBounds(station.gameObject, out Bounds bounds)) continue;
+            if (!bounds.IntersectRay(ray, out float distance)) continue;
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = station;
+            }
+        }
+        return nearest;
+    }
+
+    static bool IsValidFlowStation(StationNode station)
+    {
+        if (station == null || !station.gameObject.activeInHierarchy) return false;
+        if (string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(station.gameObject))) return false;
+        Register register = station.GetComponent<Register>();
+        return register == null || register.IsPlacedRegister;
+    }
+
+    static bool TryGetFlowStationBounds(GameObject station, out Bounds bounds)
+    {
+        bounds = new Bounds();
+        if (station == null) return false;
+
+        bool found = false;
+        foreach (Renderer renderer in station.GetComponentsInChildren<Renderer>(true))
+        {
+            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy
+                || renderer is LineRenderer
+                || renderer.GetComponentInParent<Canvas>() != null) continue;
+            if (!found) { bounds = renderer.bounds; found = true; }
+            else bounds.Encapsulate(renderer.bounds);
+        }
+
+        foreach (Collider collider in station.GetComponentsInChildren<Collider>(true))
+        {
+            if (collider == null || !collider.enabled || collider.isTrigger
+                || collider.GetComponentInParent<Canvas>() != null) continue;
+            if (!found) { bounds = collider.bounds; found = true; }
+            else bounds.Encapsulate(collider.bounds);
+        }
+
+        BuildFootprint footprint = station.GetComponent<BuildFootprint>();
+        GridManager grid = GridManager.Instance;
+        if (footprint != null && grid != null)
+        {
+            int sizeX = Mathf.Max(1, footprint.sizeX);
+            int sizeY = Mathf.Max(1, footprint.sizeY);
+            int yaw = Mathf.RoundToInt(station.transform.eulerAngles.y / 90f) & 3;
+            if (yaw == 1 || yaw == 3)
+            {
+                int swap = sizeX;
+                sizeX = sizeY;
+                sizeY = swap;
+            }
+
+            float height = found ? Mathf.Max(1.5f, bounds.size.y) : 1.5f;
+            Bounds footprintBounds = new Bounds(
+                station.transform.position + Vector3.up * height * 0.5f,
+                new Vector3(sizeX * grid.cellSize, height, sizeY * grid.cellSize));
+            if (!found) { bounds = footprintBounds; found = true; }
+            else bounds.Encapsulate(footprintBounds);
+        }
+
+        if (found)
+            bounds.Expand(new Vector3(0.12f, 0.08f, 0.12f));
+        return found;
     }
 
     void SetWorkflowDecisionHudVisible(bool show)
@@ -3405,6 +3543,7 @@ public class ManagementModeController : MonoBehaviour
                 BindPopupReferences();
                 EnsureProductionDiagramUI();
                 WirePopupButtons();
+                ApplyStationPopupTheme();
                 return;
             }
         }
@@ -3424,6 +3563,54 @@ public class ManagementModeController : MonoBehaviour
         BindPopupReferences();
         EnsureProductionDiagramUI();
         WirePopupButtons();
+        ApplyStationPopupTheme();
+    }
+
+    void ApplyStationPopupTheme()
+    {
+        if (stationPopup == null) return;
+
+        Image background = stationPopup.GetComponent<Image>();
+        if (background == null) background = stationPopup.AddComponent<Image>();
+        background.color = GameUITheme.Panel;
+        background.raycastTarget = true;
+
+        Outline outline = stationPopup.GetComponent<Outline>();
+        if (outline == null) outline = stationPopup.AddComponent<Outline>();
+        outline.effectColor = GameUITheme.Edge;
+        outline.effectDistance = new Vector2(1f, -1f);
+        outline.useGraphicAlpha = true;
+
+        if (stationTitleText != null)
+        {
+            stationTitleText.fontStyle |= FontStyles.Bold;
+            stationTitleText.fontSize = 20f;
+            stationTitleText.color = GameUITheme.TextPrimary;
+            stationTitleText.alignment = TextAlignmentOptions.Center;
+        }
+
+        GameUITheme.ApplyTo(stationPopup.transform);
+
+        foreach (Image image in stationPopup.GetComponentsInChildren<Image>(true))
+        {
+            if (image == null) continue;
+            string imageName = image.gameObject.name;
+            if (image.gameObject == stationPopup)
+                image.color = GameUITheme.Panel;
+            else if (imageName.Contains("Card"))
+                image.color = GameUITheme.Surface;
+            else if (imageName == "PreviewFrame")
+                image.color = GameUITheme.Charcoal;
+            else if (imageName == "StationDiagnostics")
+                image.color = GameUITheme.Surface;
+        }
+
+        if (stationTitleText != null)
+        {
+            stationTitleText.fontStyle |= FontStyles.Bold;
+            stationTitleText.fontSize = 20f;
+            stationTitleText.color = GameUITheme.TextPrimary;
+        }
     }
 
     void TryImportScenePopup(GameObject popupGo)

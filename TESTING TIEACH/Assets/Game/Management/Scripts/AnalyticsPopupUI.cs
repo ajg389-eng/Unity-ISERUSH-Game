@@ -36,7 +36,14 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         instance.gameObject.SetActive(false);
         instance.transform.SetAsLastSibling();
         instance.gameObject.SetActive(true);
+        OnboardingTutorial.NotifyAnalyticsScreenOpened();
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    public static void CloseIfOpen()
+    {
+        if (instance != null && instance.gameObject.activeSelf)
+            instance.Close();
     }
 
     void Update()

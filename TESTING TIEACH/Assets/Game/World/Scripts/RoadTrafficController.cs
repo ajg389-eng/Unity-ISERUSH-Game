@@ -17,6 +17,7 @@ public class RoadTrafficController : MonoBehaviour
 
     readonly List<GameObject> carPrefabs = new List<GameObject>();
     readonly List<DrivingCar> liveCars = new List<DrivingCar>();
+    readonly Dictionary<string, List<DrivingCar>> pooledCars = new Dictionary<string, List<DrivingCar>>();
 
     public static float WestSpawnX { get; private set; }
     public static float EastSpawnX { get; private set; }
@@ -45,6 +46,9 @@ public class RoadTrafficController : MonoBehaviour
     float roadY;
     float nextEastbound;
     float nextWestbound;
+    DeliveryVan[] cachedDeliveryVans;
+    LotArrivalVehicle[] cachedArrivalVehicles;
+    float nextLaneVehicleScan;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -86,7 +90,8 @@ public class RoadTrafficController : MonoBehaviour
         nextEastbound -= Time.deltaTime;
         nextWestbound -= Time.deltaTime;
         bool deliveryManeuvering = false;
-        foreach (DeliveryVan van in FindObjectsByType<DeliveryVan>(FindObjectsSortMode.None))
+        RefreshLaneVehicleCache();
+        foreach (DeliveryVan van in cachedDeliveryVans)
             if (van != null && !van.IsParked) { deliveryManeuvering = true; break; }
         SpawnWindow(out float minInterval, out float maxInterval);
         if (nextEastbound <= 0f)
@@ -297,8 +302,7 @@ public class RoadTrafficController : MonoBehaviour
             DrivingCar car = liveCars[i];
             if (car == null) continue;
             if (car.Direction <= 0f) continue;
-            Destroy(car.gameObject);
-            liveCars.RemoveAt(i);
+            RecycleCar(car);
         }
     }
 
@@ -329,16 +333,59 @@ public class RoadTrafficController : MonoBehaviour
         GameObject prefab = carPrefabs[Random.Range(0, carPrefabs.Count)];
         Vector3 pos = new Vector3(spawnX, roadY, laneZ);
         Quaternion facing = Quaternion.LookRotation(direction > 0f ? Vector3.right : Vector3.left, Vector3.up);
-        GameObject car = Instantiate(prefab, pos, facing, transform);
-        car.name = prefab.name;
-
-        var driver = car.GetComponent<DrivingCar>();
-        if (driver == null)
-            driver = car.AddComponent<DrivingCar>();
+        DrivingCar driver = TakePooledCar(prefab.name);
+        GameObject car;
+        if (driver != null)
+        {
+            car = driver.gameObject;
+            car.transform.SetPositionAndRotation(pos, facing);
+            car.SetActive(true);
+            driver.enabled = true;
+        }
+        else
+        {
+            car = Instantiate(prefab, pos, facing, transform);
+            car.name = prefab.name;
+            driver = car.GetComponent<DrivingCar>();
+            if (driver == null)
+                driver = car.AddComponent<DrivingCar>();
+        }
+        driver.Recycle = RecycleCar;
         float slow = MilestoneFeatures.HighestReachedNumberedStage() <= 1 ? 12f : minSpeed;
         float fast = MilestoneFeatures.HighestReachedNumberedStage() <= 1 ? 14f : maxSpeed;
         driver.Configure(Random.Range(slow, fast), direction, direction > 0f ? eastEndX : westEndX);
         liveCars.Add(driver);
+    }
+
+    DrivingCar TakePooledCar(string prefabName)
+    {
+        if (string.IsNullOrEmpty(prefabName) || !pooledCars.TryGetValue(prefabName, out List<DrivingCar> pool))
+            return null;
+
+        for (int i = pool.Count - 1; i >= 0; i--)
+        {
+            DrivingCar car = pool[i];
+            pool.RemoveAt(i);
+            if (car == null) continue;
+            return car;
+        }
+        return null;
+    }
+
+    void RecycleCar(DrivingCar car)
+    {
+        if (car == null) return;
+        liveCars.Remove(car);
+        car.enabled = false;
+        car.gameObject.SetActive(false);
+
+        string key = car.gameObject.name;
+        if (!pooledCars.TryGetValue(key, out List<DrivingCar> pool))
+        {
+            pool = new List<DrivingCar>();
+            pooledCars.Add(key, pool);
+        }
+        if (!pool.Contains(car)) pool.Add(car);
     }
 
     static float CurrentMinGap()
@@ -360,11 +407,25 @@ public class RoadTrafficController : MonoBehaviour
         return false;
     }
 
-    static bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction, float gap)
+    bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction, float gap)
     {
-        if (BlocksLane(spawnX, laneZ, direction, gap, FindObjectsByType<DeliveryVan>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)))
+        RefreshLaneVehicleCache(true);
+        if (BlocksLane(spawnX, laneZ, direction, gap, cachedDeliveryVans))
             return true;
-        return BlocksLane(spawnX, laneZ, direction, gap, FindObjectsByType<LotArrivalVehicle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+        return BlocksLane(spawnX, laneZ, direction, gap, cachedArrivalVehicles);
+    }
+
+    void RefreshLaneVehicleCache(bool force = false)
+    {
+        if (!force && Time.unscaledTime < nextLaneVehicleScan
+            && cachedDeliveryVans != null && cachedArrivalVehicles != null)
+            return;
+
+        nextLaneVehicleScan = Time.unscaledTime + 0.25f;
+        cachedDeliveryVans = FindObjectsByType<DeliveryVan>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        cachedArrivalVehicles = FindObjectsByType<LotArrivalVehicle>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
     }
 
     static bool BlocksLane<T>(float spawnX, float laneZ, float direction, float gap, T[] vehicles) where T : Component

@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
-/// Marks a wall section that uses a Sims-style cutaway when it is between the
-/// camera and the store. Brick walls are shader-clipped in place. Doors can
-/// optionally lower with the cutaway.
+/// Marks a wall section that fades when it is between the camera and the store.
+/// Each section keeps its authored position. The camera controller supplies a
+/// fade amount based on line of sight and neighboring section distance.
 /// </summary>
 public class CameraOcclusionWall : MonoBehaviour
 {
@@ -19,8 +20,10 @@ public class CameraOcclusionWall : MonoBehaviour
     [Tooltip("Visible wall height, in world units, when this wall is fully cut away.")]
     [Min(0.2f)] public float cutawayHeight = 0.8f;
 
-    [Tooltip("Move this object down instead of shader-clipping it (used for doors).")]
-    public bool duckByLowering = true;
+    [Tooltip("Legacy compatibility flag. Wall transforms remain fixed while occlusion uses opacity.")]
+    public bool duckByLowering = false;
+
+    [HideInInspector] public bool sectionContainer;
 
     float cutawayAmount;
     Vector3 restPosition;
@@ -36,6 +39,9 @@ public class CameraOcclusionWall : MonoBehaviour
     readonly List<Material> cutawayMaterialInstances = new List<Material>();
     readonly List<CutawayCap> cutawayCaps = new List<CutawayCap>();
     bool usingCutawayMaterials;
+    bool usingOpacityMaterials;
+    Material[][] opacityMaterials;
+    readonly List<Material> opacityMaterialInstances = new List<Material>();
     bool placementLocked;
     float visualBottom;
     float visualTop;
@@ -51,13 +57,17 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public float DuckAmount => cutawayAmount;
     public bool IsPlacementLocked => placementLocked;
-    public float CutawayDropDistance => hasRestPose
-        ? Mathf.Max(0f, restVisualHeight - Mathf.Max(0.2f, cutawayHeight)) * cutawayAmount
-        : 0f;
+    public float CutawayDropDistance => 0f;
+    public Bounds WorldBounds => worldBounds;
 
     public float DistanceToWall(Vector3 point)
     {
+        // Fade decisions are based on the section's footprint on the floor.
+        // Header, sill, and pier pieces in one vertical strip must share the
+        // same distance even though their bounds have different heights.
+        point.y = worldBounds.center.y;
         Vector3 nearest = worldBounds.ClosestPoint(point);
+        nearest.y = point.y;
         return Vector3.Distance(nearest, point);
     }
 
@@ -84,6 +94,7 @@ public class CameraOcclusionWall : MonoBehaviour
         RestoreOriginalRendering();
         DestroyCutawayCaps();
         DestroyCutawayMaterials();
+        DestroyOpacityMaterials();
     }
 
     public void SetPlacementLock(bool locked)
@@ -93,14 +104,10 @@ public class CameraOcclusionWall : MonoBehaviour
         {
             targetCutaway = 0f;
             cutawayAmount = 0f;
-            if (duckByLowering && wasLowered && hasRestPose)
-                transform.position = restPosition;
             wasLowered = false;
         }
-        else if (duckByLowering)
-        {
+        else
             CaptureRestPose();
-        }
         enabled = !locked;
         if (locked)
             CameraWallCutaway.Unregister(this);
@@ -176,56 +183,42 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void ApplyCutaway(float amount)
     {
-        if (duckByLowering)
-        {
-            ApplyLowering(amount);
-            return;
-        }
-
+        // Wall transforms never move. The amount only controls screen-space
+        // opacity, allowing line-of-sight sections to disappear while nearby
+        // sections remain readable.
+        if (placementLocked)
+            amount = 0f;
+        EnsureRendererCacheCurrent();
         if (amount <= 0.001f)
         {
             RestoreOriginalRendering();
             return;
         }
 
-        EnsureRendererCacheCurrent();
-        EnsureCutawayMaterials();
-        if (renderers == null || cutawayMaterials == null) return;
+        EnsureOpacityMaterials();
+        if (renderers == null || opacityMaterials == null) return;
 
-        if (!usingCutawayMaterials)
+        if (!usingOpacityMaterials)
         {
             for (int i = 0; i < renderers.Length; i++)
             {
-                if (renderers[i] == null) continue;
-                renderers[i].sharedMaterials = cutawayMaterials[i];
+                if (renderers[i] == null || opacityMaterials[i] == null) continue;
+                renderers[i].sharedMaterials = opacityMaterials[i];
             }
-            usingCutawayMaterials = true;
+            usingOpacityMaterials = true;
         }
 
-        float shortTop = Mathf.Min(visualTop, visualBottom + Mathf.Max(0.2f, cutawayHeight));
-        float currentTop = Mathf.Lerp(visualTop + 0.02f, shortTop, amount);
-        for (int i = 0; i < cutawayMaterialInstances.Count; i++)
-        {
-            Material material = cutawayMaterialInstances[i];
-            if (material != null && material.HasProperty("_CutHeight"))
-                material.SetFloat("_CutHeight", currentTop);
-        }
-
-        UpdateCutawayCaps(currentTop);
-
-        // Windows and other non-brick inserts should disappear instead of floating
-        // above the remaining low wall.
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            if (renderers[i] == null) continue;
-            renderers[i].enabled = brickRenderers[i]
-                ? originalRendererEnabled[i]
-                : originalRendererEnabled[i] && amount < 0.08f;
-        }
+        float opacity = amount >= 0.995f
+            ? 0f
+            : Mathf.Lerp(1f, Mathf.Clamp01(occludedAlpha), amount);
+        SetOpacity(opacity);
     }
 
     void CacheRenderers()
     {
+        if (renderers != null)
+            RestoreOriginalRendering();
+        DestroyOpacityMaterials();
         renderers = GetComponentsInChildren<Renderer>(true);
         originalMaterials = new Material[renderers.Length][];
         originalRendererEnabled = new bool[renderers.Length];
@@ -298,7 +291,156 @@ public class CameraOcclusionWall : MonoBehaviour
         RestoreOriginalRendering();
         DestroyCutawayCaps();
         DestroyCutawayMaterials();
+        DestroyOpacityMaterials();
         CacheRenderers();
+    }
+
+    void EnsureOpacityMaterials()
+    {
+        if (opacityMaterials != null || renderers == null) return;
+
+        Shader fadeShader = Shader.Find("Universal Render Pipeline/Lit");
+        Shader brickFadeShader = Shader.Find("ISE Rush/Camera Cutaway Triplanar");
+        if (fadeShader == null && brickFadeShader == null) return;
+
+        opacityMaterials = new Material[renderers.Length][];
+        for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+        {
+            Material[] originals = originalMaterials[rendererIndex];
+            opacityMaterials[rendererIndex] = new Material[originals.Length];
+            for (int materialIndex = 0; materialIndex < originals.Length; materialIndex++)
+            {
+                Material original = originals[materialIndex];
+                if (original == null) continue;
+
+                Material fade;
+                bool useTriplanarFade = brickFadeShader != null
+                    && (IsBrickMaterial(original)
+                        || (original.HasProperty("_Tiling") && original.HasProperty("_Tint")));
+                if (useTriplanarFade)
+                {
+                    Material template = IsBrickMaterial(original)
+                        ? GetBrickCutawayTemplate() : null;
+                    fade = template != null
+                        ? new Material(template)
+                        : new Material(brickFadeShader);
+                }
+                else if (fadeShader != null)
+                {
+                    fade = new Material(fadeShader);
+                }
+                else
+                {
+                    continue;
+                }
+                fade.name = original.name + " (Camera Fade)";
+                fade.hideFlags = HideFlags.HideAndDontSave;
+                CopyFadeMaterialLook(original, fade);
+                opacityMaterials[rendererIndex][materialIndex] = fade;
+                opacityMaterialInstances.Add(fade);
+            }
+        }
+    }
+
+    static void CopyFadeMaterialLook(Material original, Material fade)
+    {
+        // Material.mainTexture and Material.color handle custom shaders that
+        // expose a texture/color under a name other than URP's usual properties.
+        // Copy the standard names as well so the brick shader's tiling survives.
+        Texture baseMap = original.mainTexture;
+        Vector2 textureScale = original.mainTextureScale;
+        Vector2 textureOffset = original.mainTextureOffset;
+        if (original.HasProperty("_BaseMap"))
+        {
+            baseMap = original.GetTexture("_BaseMap") ?? baseMap;
+            textureScale = original.GetTextureScale("_BaseMap");
+            textureOffset = original.GetTextureOffset("_BaseMap");
+        }
+        else if (original.HasProperty("_MainTex"))
+        {
+            baseMap = original.GetTexture("_MainTex") ?? baseMap;
+            textureScale = original.GetTextureScale("_MainTex");
+            textureOffset = original.GetTextureOffset("_MainTex");
+        }
+        if (baseMap != null)
+        {
+            fade.SetTexture("_BaseMap", baseMap);
+            fade.SetTextureScale("_BaseMap", textureScale);
+            fade.SetTextureOffset("_BaseMap", textureOffset);
+            if (original.HasProperty("_Tile"))
+            {
+                float tile = original.GetFloat("_Tile");
+                if (fade.HasProperty("_Tile"))
+                    fade.SetFloat("_Tile", tile);
+                if (tile > 0.001f && fade.HasProperty("_BaseMap"))
+                    fade.SetTextureScale("_BaseMap", Vector2.one * tile);
+            }
+        }
+        if (original.HasProperty("_Tiling") && fade.HasProperty("_Tile"))
+            fade.SetFloat("_Tile", original.GetFloat("_Tiling"));
+        if (original.HasProperty("_BlendSharpness") && fade.HasProperty("_BlendSharpness"))
+            fade.SetFloat("_BlendSharpness", original.GetFloat("_BlendSharpness"));
+
+        Color baseColor = original.color;
+        if (original.HasProperty("_BaseColor"))
+            baseColor = original.GetColor("_BaseColor");
+        else if (original.HasProperty("_Color"))
+            baseColor = original.GetColor("_Color");
+        else if (original.HasProperty("_Tint"))
+            baseColor = original.GetColor("_Tint");
+        baseColor.a = 1f;
+        fade.SetColor("_BaseColor", baseColor);
+        fade.color = baseColor;
+
+        if (original.HasProperty("_Metallic") && fade.HasProperty("_Metallic"))
+            fade.SetFloat("_Metallic", original.GetFloat("_Metallic"));
+        if (original.HasProperty("_Smoothness") && fade.HasProperty("_Smoothness"))
+            fade.SetFloat("_Smoothness", original.GetFloat("_Smoothness"));
+
+        fade.SetFloat("_Surface", 1f);
+        fade.SetFloat("_Blend", 0f);
+        fade.SetFloat("_AlphaClip", 0f);
+        fade.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        fade.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        fade.SetFloat("_ZWrite", 0f);
+        if (fade.HasProperty("_Opacity"))
+            fade.SetFloat("_Opacity", 1f);
+        fade.SetOverrideTag("RenderType", "Transparent");
+        fade.renderQueue = (int)RenderQueue.Transparent;
+        fade.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        fade.DisableKeyword("_ALPHATEST_ON");
+        if (fade.HasProperty("_ReceiveShadows"))
+            fade.SetFloat("_ReceiveShadows", 0f);
+    }
+
+    void SetOpacity(float opacity)
+    {
+        for (int i = 0; i < opacityMaterialInstances.Count; i++)
+        {
+            Material material = opacityMaterialInstances[i];
+            if (material == null) continue;
+            Color color = material.HasProperty("_BaseColor")
+                ? material.GetColor("_BaseColor") : Color.white;
+            color.a = Mathf.Clamp01(opacity);
+            if (material.HasProperty("_BaseColor"))
+                material.SetColor("_BaseColor", color);
+            if (material.HasProperty("_Opacity"))
+                material.SetFloat("_Opacity", Mathf.Clamp01(opacity));
+        }
+    }
+
+    void DestroyOpacityMaterials()
+    {
+        for (int i = 0; i < opacityMaterialInstances.Count; i++)
+        {
+            Material material = opacityMaterialInstances[i];
+            if (material == null) continue;
+            if (Application.isPlaying) Destroy(material);
+            else DestroyImmediate(material);
+        }
+        opacityMaterialInstances.Clear();
+        opacityMaterials = null;
+        usingOpacityMaterials = false;
     }
 
     void EnsureCutawayMaterials()
@@ -473,10 +615,12 @@ public class CameraOcclusionWall : MonoBehaviour
         {
             if (renderers[i] == null) continue;
             renderers[i].enabled = originalRendererEnabled[i];
-            if (usingCutawayMaterials && originalMaterials != null && i < originalMaterials.Length)
+            if ((usingCutawayMaterials || usingOpacityMaterials)
+                && originalMaterials != null && i < originalMaterials.Length)
                 renderers[i].sharedMaterials = originalMaterials[i];
         }
         usingCutawayMaterials = false;
+        usingOpacityMaterials = false;
     }
 
     void DestroyCutawayMaterials()

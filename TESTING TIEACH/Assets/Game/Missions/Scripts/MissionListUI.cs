@@ -4,8 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Multipurpose side panel with Tasks and Progression tabs.
-/// Tasks = current milestone missions. Progression = Tutorial + milestones.
+/// Objectives side panel with daily tasks and progression columns.
 /// Place under PlayerUI via Game → Setup Tasks Progression Panel to edit position in the scene.
 /// </summary>
 public class MissionListUI : MonoBehaviour
@@ -63,6 +62,8 @@ public class MissionListUI : MonoBehaviour
     Button topObjectivesButton;
     Button topResearchButton;
     bool panelOpen;
+    GameObject objectiveColumnsRoot;
+    bool combinedLayoutBuilt;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
@@ -165,6 +166,8 @@ public class MissionListUI : MonoBehaviour
         panelOpen = visible;
         if (panelRoot != null)
             panelRoot.SetActive(visible);
+        if (visible)
+            RefreshAll();
         if (!visible && tabInfoUI != null)
             tabInfoUI.Close();
         RefreshTopTabs();
@@ -187,39 +190,26 @@ public class MissionListUI : MonoBehaviour
     {
         EnsureUI();
 
-        if (tab == SideTab.Progression && OnboardingTutorial.BlocksProgression)
-        {
-            if (playSound)
-                Sfx.Play(SfxId.UiError);
-            tab = SideTab.Tasks;
-            playSound = false;
-        }
+        // The objectives view is now a single page. Keep the enum and public
+        // methods for compatibility with older callers that still open a
+        // specific tab.
+        activeTab = SideTab.Tasks;
 
-        activeTab = tab;
+        if (tasksPage != null) tasksPage.SetActive(true);
+        if (progressionPage != null) progressionPage.SetActive(true);
 
-        if (tasksPage != null) tasksPage.SetActive(tab == SideTab.Tasks);
-        if (progressionPage != null) progressionPage.SetActive(tab == SideTab.Progression);
-
-        SetTabVisual(tasksTabButton, tab == SideTab.Tasks);
-        SetTabVisual(progressionTabButton, tab == SideTab.Progression);
+        SetTabVisual(tasksTabButton, false);
+        SetTabVisual(progressionTabButton, false);
 
         if (tabInfoUI == null && panelRoot != null)
             tabInfoUI = ManagementTabInfoUI.EnsureOn(panelRoot.transform);
         if (tabInfoUI != null)
-            tabInfoUI.SetTab(tab == SideTab.Tasks ? tasksPage : progressionPage);
+            tabInfoUI.SetTab(tasksPage);
 
         if (headerText != null)
-        {
-            if (tab == SideTab.Tasks && OnboardingTutorial.BlocksProgression)
-                headerText.text = "Tasks  (finish tutorial first)";
-            else
-                headerText.text = tab == SideTab.Tasks ? "Tasks" : "Progression";
-        }
+            headerText.text = "Objectives";
 
-        if (tab == SideTab.Tasks)
-            RefreshTasks();
-        else
-            RefreshProgression();
+        RefreshAll();
 
         if (playSound)
             Sfx.Play(SfxId.UiClick);
@@ -290,7 +280,6 @@ public class MissionListUI : MonoBehaviour
         int revenue = stats != null ? stats.RevenueToday : 0;
         float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
 
-        CreateTaskRow("DAILY GOALS", "Shift targets", currentMissionColor, true);
         CreateTaskRow((orders >= orderTarget ? "✓ " : "○ ") + "Serve " + orderTarget + " orders",
             orders + "/" + orderTarget + " orders served", orders >= orderTarget ? completeMissionColor : pendingMissionColor, false);
         CreateTaskRow((revenue >= revenueTarget ? "✓ " : "○ ") + "Earn $" + revenueTarget,
@@ -314,23 +303,10 @@ public class MissionListUI : MonoBehaviour
         var db = milestones != null ? milestones.database : null;
         if (db == null || db.milestones == null || db.milestones.Count == 0)
         {
-            if (progressionDetailText != null)
-                progressionDetailText.text = "No MilestoneDatabase found.\nRun Game → Setup Milestone Database.";
             if (openQuizButton != null)
                 openQuizButton.gameObject.SetActive(false);
             UpdatePanelHeight();
             return;
-        }
-
-        var active = milestones.GetActiveMilestone();
-        if (progressionDetailText != null)
-        {
-            if (active == null)
-                progressionDetailText.text = "All milestones complete.";
-            else if (milestones.IsQuizReady)
-                progressionDetailText.text = $"Active: {milestones.GetMilestoneDisplayLabel(active)}\nTasks done — quiz ready.";
-            else
-                progressionDetailText.text = $"Active: {milestones.GetMilestoneDisplayLabel(active)}\nFinish all tasks, then take the quiz.";
         }
 
         if (openQuizButton != null)
@@ -454,7 +430,11 @@ public class MissionListUI : MonoBehaviour
             BuildPanel();
             useSceneLayout = false;
         }
-        else if (panelRoot.transform.Find("Tabs") == null)
+        // A scene-authored panel may still contain the old tab layout, or a
+        // previous play session may have left an empty runtime hierarchy when
+        // domain/scene reload is disabled. Rebuild only when our combined
+        // layout marker is absent. Once it exists, refreshes reuse the panel.
+        else if (panelRoot.transform.Find("ObjectiveColumns") == null)
         {
             bool wasScene = useSceneLayout;
             var parent = panelRoot.transform.parent;
@@ -466,6 +446,7 @@ public class MissionListUI : MonoBehaviour
 
             Destroy(panelRoot);
             panelRoot = null;
+            combinedLayoutBuilt = false;
             BuildPanel();
 
             if (wasScene && panelRoot != null)
@@ -489,6 +470,7 @@ public class MissionListUI : MonoBehaviour
             useSceneLayout = true;
         }
 
+        EnsureCombinedLayout();
         built = true;
         ApplyLayout();
         WireTabs();
@@ -589,42 +571,76 @@ public class MissionListUI : MonoBehaviour
         layout.childControlHeight = true;
         layout.childForceExpandWidth = false;
         layout.childForceExpandHeight = false;
+    }
 
-        headerText = CreateLabel(panelRoot.transform, "Header", "Tasks", 20, FontStyles.Bold);
+    void EnsureCombinedLayout()
+    {
+        if (panelRoot == null) return;
+        Transform combinedMarker = panelRoot.transform.Find("ObjectiveColumns");
+        if (combinedLayoutBuilt && combinedMarker != null) return;
+        if (!combinedLayoutBuilt && combinedMarker != null)
+        {
+            BindExisting();
+            combinedLayoutBuilt = true;
+            return;
+        }
+
+        // Scene versions of this panel still contain the old tabs and pages.
+        // Keep the scene-authored root and its placement, but rebuild only its
+        // children into the single objectives layout.
+        ClearChildren(panelRoot.transform);
+        progressionDetailText = null;
+
+        headerText = CreateLabel(panelRoot.transform, "Header", "Objectives", 20, FontStyles.Bold);
         headerText.GetComponent<LayoutElement>().preferredHeight = 26f;
 
-        var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        tabs.transform.SetParent(panelRoot.transform, false);
-        tabs.GetComponent<LayoutElement>().minHeight = 34f;
-        var tabsH = tabs.GetComponent<HorizontalLayoutGroup>();
-        tabsH.spacing = 8f;
-        tabsH.childForceExpandWidth = true;
-        tabsH.childControlHeight = true;
+        objectiveColumnsRoot = new GameObject("ObjectiveColumns", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        objectiveColumnsRoot.transform.SetParent(panelRoot.transform, false);
+        var columnsLayout = objectiveColumnsRoot.GetComponent<LayoutElement>();
+        columnsLayout.minHeight = 180f;
+        columnsLayout.preferredHeight = 220f;
+        columnsLayout.flexibleWidth = 1f;
+        columnsLayout.flexibleHeight = 0f;
+        var columnsHlg = objectiveColumnsRoot.GetComponent<HorizontalLayoutGroup>();
+        columnsHlg.spacing = 10f;
+        columnsHlg.childAlignment = TextAnchor.UpperLeft;
+        columnsHlg.childControlWidth = true;
+        columnsHlg.childControlHeight = true;
+        columnsHlg.childForceExpandWidth = true;
+        columnsHlg.childForceExpandHeight = true;
 
-        tasksTabButton = CreateTabButton(tabs.transform, "TasksTab", "Tasks");
-        progressionTabButton = CreateTabButton(tabs.transform, "ProgressionTab", "Progression");
+        tasksPage = CreatePage(objectiveColumnsRoot.transform, "DailyTasksPage");
+        ConfigureColumnPage(tasksPage, "Daily Tasks");
+        tasksListContent = CreateScrollList(tasksPage.transform, "DailyTasksList");
 
-        tasksPage = CreatePage(panelRoot.transform, "TasksPage");
-        tasksListContent = CreateScrollList(tasksPage.transform, "TasksList");
-
-        progressionPage = CreatePage(panelRoot.transform, "ProgressionPage");
-        progressionDetailText = CreateLabel(progressionPage.transform, "Detail", "", 12, FontStyles.Normal);
-        progressionDetailText.color = new Color(0.75f, 0.8f, 0.88f, 1f);
-        progressionDetailText.textWrappingMode = TextWrappingModes.Normal;
-        progressionDetailText.GetComponent<LayoutElement>().minHeight = 44f;
-
+        progressionPage = CreatePage(objectiveColumnsRoot.transform, "ProgressionPage");
+        ConfigureColumnPage(progressionPage, "Progression");
         researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
             new Color(0.22f, 0.48f, 0.58f, 1f));
         researchButton.onClick.AddListener(OpenResearch);
         researchButton.gameObject.SetActive(false);
-
         progressionListContent = CreateScrollList(progressionPage.transform, "ProgressionList");
-
-        openQuizButton = CreateButton(progressionPage.transform, "OpenQuizButton", "Open Quiz", new Color(0.4f, 0.45f, 0.25f, 1f));
+        openQuizButton = CreateButton(progressionPage.transform, "OpenQuizButton", "Open Quiz",
+            new Color(0.4f, 0.45f, 0.25f, 1f));
         openQuizButton.onClick.AddListener(OpenQuiz);
         openQuizButton.gameObject.SetActive(false);
 
-        progressionPage.SetActive(false);
+        tasksPage.SetActive(true);
+        progressionPage.SetActive(true);
+        combinedLayoutBuilt = true;
+    }
+
+    static void ConfigureColumnPage(GameObject page, string title)
+    {
+        if (page == null) return;
+        var le = page.GetComponent<LayoutElement>() ?? page.AddComponent<LayoutElement>();
+        le.minWidth = 0f;
+        le.flexibleWidth = 1f;
+        le.flexibleHeight = 1f;
+        var header = CreateLabel(page.transform, "ColumnHeader", title, 15, FontStyles.Bold);
+        header.alignment = TextAlignmentOptions.Left;
+        header.GetComponent<LayoutElement>().preferredHeight = 24f;
     }
 
     void BindExisting()
@@ -851,7 +867,12 @@ public class MissionListUI : MonoBehaviour
 
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         if (panelLayout != null)
+        {
+            // The objectives rows and both columns use flexible width. The
+            // panel must expand those children across its available width.
+            panelLayout.childForceExpandWidth = true;
             panelLayout.childForceExpandHeight = false;
+        }
 
         SetPageMinimumHeight(tasksPage, 0f);
         SetPageMinimumHeight(progressionPage, 0f);
@@ -873,7 +894,10 @@ public class MissionListUI : MonoBehaviour
         var layout = page.GetComponent<LayoutElement>();
         if (layout == null) return;
         layout.minHeight = minHeight;
-        layout.flexibleHeight = 0f;
+        // Combined objectives pages share a horizontal columns container and
+        // must stretch to the same height as the other column.
+        layout.flexibleHeight = page.transform.parent != null
+            && page.transform.parent.GetComponent<HorizontalLayoutGroup>() != null ? 1f : 0f;
     }
 
     void UpdatePanelHeight()
@@ -882,18 +906,48 @@ public class MissionListUI : MonoBehaviour
 
         float screenHeight = targetCanvas.pixelRect.height;
         if (screenHeight <= 0f) screenHeight = Screen.height;
-        float maxHeight = Mathf.Max(180f, screenHeight - 150f);
-        ResizeListToContent(tasksListContent, maxHeight - 42f);
-        ResizeListToContent(progressionListContent, maxHeight - 160f);
+        float maxHeight = Mathf.Max(220f, screenHeight - 150f);
+        var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
+        float panelPadding = panelLayout != null
+            ? panelLayout.padding.top + panelLayout.padding.bottom
+            : 24f;
+        float maxColumnsHeight = Mathf.Max(180f, maxHeight - panelPadding);
+        // Keep the column headers visible, then let each list scroll inside the
+        // remaining height when there are more rows than fit in the viewport.
+        float listMaxHeight = Mathf.Max(80f, maxColumnsHeight - 32f);
+        ResizeListToContent(tasksListContent, listMaxHeight);
+        ResizeListToContent(progressionListContent, listMaxHeight);
         Canvas.ForceUpdateCanvases();
 
-        GameObject activePage = activeTab == SideTab.Tasks ? tasksPage : progressionPage;
-        if (activePage == null) return;
-        float contentHeight = LayoutUtility.GetPreferredHeight(activePage.transform as RectTransform);
+        float contentHeight;
+        if (objectiveColumnsRoot != null)
+        {
+            float columnsHeight = LayoutUtility.GetPreferredHeight(objectiveColumnsRoot.transform as RectTransform);
+            float dailyHeight = tasksPage != null
+                ? LayoutUtility.GetPreferredHeight(tasksPage.transform as RectTransform) : 0f;
+            float progressionHeight = progressionPage != null
+                ? LayoutUtility.GetPreferredHeight(progressionPage.transform as RectTransform) : 0f;
+            columnsHeight = Mathf.Max(columnsHeight, dailyHeight, progressionHeight, 180f);
+            columnsHeight = Mathf.Clamp(columnsHeight, 180f, maxColumnsHeight);
+
+            var columnsLayout = objectiveColumnsRoot.GetComponent<LayoutElement>();
+            if (columnsLayout != null)
+            {
+                columnsLayout.minHeight = columnsHeight;
+                columnsLayout.preferredHeight = columnsHeight;
+                columnsLayout.flexibleHeight = 0f;
+            }
+            contentHeight = columnsHeight;
+        }
+        else
+        {
+            GameObject activePage = activeTab == SideTab.Tasks ? tasksPage : progressionPage;
+            if (activePage == null) return;
+            contentHeight = LayoutUtility.GetPreferredHeight(activePage.transform as RectTransform);
+        }
         if (contentHeight <= 0f)
             contentHeight = activeTab == SideTab.Tasks ? 220f : 360f;
 
-        var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         if (panelLayout != null)
             contentHeight += panelLayout.padding.top + panelLayout.padding.bottom;
         contentHeight = Mathf.Clamp(contentHeight, 120f, maxHeight);
@@ -941,6 +995,23 @@ public class MissionListUI : MonoBehaviour
             }
         }
         pool.Clear();
+    }
+
+    static void ClearChildren(Transform parent)
+    {
+        if (parent == null) return;
+        for (int i = parent.childCount - 1; i >= 0; i--)
+        {
+            var child = parent.GetChild(i);
+            if (child != null)
+            {
+                child.gameObject.SetActive(false);
+                if (Application.isPlaying)
+                    Destroy(child.gameObject);
+                else
+                    DestroyImmediate(child.gameObject);
+            }
+        }
     }
 
     static GameObject CreatePage(Transform parent, string name)

@@ -20,6 +20,9 @@ public class WorkerCustomizePopup : MonoBehaviour
     PartyCharacterRandomizer appearance;
     TextMeshProUGUI titleText;
     TMP_InputField nameInput;
+    Button nameEditButton;
+    TextMeshProUGUI nameEditLabel;
+    bool nameEditing;
 
     Transform colorGrid;
     Transform faceRow;
@@ -117,7 +120,7 @@ public class WorkerCustomizePopup : MonoBehaviour
 
         var vlg = panel.AddComponent<VerticalLayoutGroup>();
         vlg.padding = new RectOffset(16, 16, 14, 14);
-        vlg.spacing = 10;
+        vlg.spacing = 8;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -206,8 +209,39 @@ public class WorkerCustomizePopup : MonoBehaviour
         nameInput.textComponent = inputText;
         nameInput.lineType = TMPro.TMP_InputField.LineType.SingleLine;
         nameInput.characterLimit = 24;
+        nameInput.readOnly = true;
+        nameInput.interactable = false;
         nameInput.onSelect.AddListener(SelectEntireName);
         nameInput.onEndEdit.AddListener(ApplyName);
+
+        var editGo = new GameObject("EditName", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        editGo.transform.SetParent(row.transform, false);
+        var editLayout = editGo.GetComponent<UnityEngine.UI.LayoutElement>();
+        editLayout.minWidth = 58f;
+        editLayout.preferredWidth = 58f;
+        editLayout.minHeight = 36f;
+        editLayout.preferredHeight = 36f;
+        editLayout.flexibleWidth = 0f;
+        editGo.GetComponent<UnityEngine.UI.Image>().color = new Color(0.28f, 0.4f, 0.55f, 1f);
+        nameEditButton = editGo.GetComponent<UnityEngine.UI.Button>();
+        nameEditButton.onClick.AddListener(BeginNameEdit);
+
+        var editTextGo = new GameObject("Text", typeof(RectTransform));
+        editTextGo.transform.SetParent(editGo.transform, false);
+        var editTextRect = (RectTransform)editTextGo.transform;
+        editTextRect.anchorMin = Vector2.zero;
+        editTextRect.anchorMax = Vector2.one;
+        editTextRect.offsetMin = Vector2.zero;
+        editTextRect.offsetMax = Vector2.zero;
+        nameEditLabel = editTextGo.AddComponent<TextMeshProUGUI>();
+        nameEditLabel.text = "Edit";
+        nameEditLabel.fontSize = 13f;
+        nameEditLabel.fontStyle = FontStyles.Bold;
+        nameEditLabel.alignment = TextAlignmentOptions.Center;
+        nameEditLabel.color = Color.white;
+        nameEditLabel.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) nameEditLabel.font = TMP_Settings.defaultFontAsset;
+        GameUITheme.ApplyButton(nameEditButton);
     }
 
     void SelectEntireName(string _)
@@ -223,15 +257,45 @@ public class WorkerCustomizePopup : MonoBehaviour
         if (employee == null) return;
 
         string cleaned = string.IsNullOrWhiteSpace(value) ? "Worker" : value.Trim();
+        bool changed = !string.Equals(employee.employeeName, cleaned, System.StringComparison.Ordinal);
         employee.employeeName = cleaned;
         if (nameInput != null)
             nameInput.SetTextWithoutNotify(cleaned);
         if (titleText != null)
             titleText.text = "Customize " + cleaned;
 
-        WorkersUI workers = FindObjectOfType<WorkersUI>();
+        EndNameEdit();
+
+        WorkersUI workers = changed ? FindObjectOfType<WorkersUI>() : null;
         if (workers != null)
             workers.Refresh();
+    }
+
+    void BeginNameEdit()
+    {
+        if (nameInput == null || nameEditing) return;
+
+        nameEditing = true;
+        nameInput.readOnly = false;
+        nameInput.interactable = true;
+        nameInput.Select();
+        nameInput.ActivateInputField();
+        nameInput.selectionAnchorPosition = 0;
+        nameInput.selectionFocusPosition = nameInput.text != null ? nameInput.text.Length : 0;
+        if (nameEditButton != null)
+            nameEditButton.interactable = false;
+    }
+
+    void EndNameEdit()
+    {
+        nameEditing = false;
+        if (nameInput != null)
+        {
+            nameInput.readOnly = true;
+            nameInput.interactable = false;
+        }
+        if (nameEditButton != null)
+            nameEditButton.interactable = true;
     }
 
     Transform CreateScrollGridSection(Transform parent, string title, float gridHeight, float cell, int columns)
@@ -344,11 +408,13 @@ public class WorkerCustomizePopup : MonoBehaviour
             Color swatch = PartyCharacterRandomizer.GetMaterialSwatchColor(
                 PartyCharacterRandomizer.GetBodyMaterial(i));
             bool owned = cosmetics.IsOwned(CosmeticKind.Body, index);
-            var frame = CreateColorSwatch(colorGrid, swatch, () =>
+            Image frame = null;
+            frame = CreateColorSwatch(colorGrid, swatch, () =>
             {
                 if (!TrySelectCosmetic(CosmeticKind.Body, index)) return;
                 appearance.SetBodyIndex(index);
-                RebuildAllOptions();
+                RefreshOptionLock(CosmeticKind.Body, index, frame, compact: true);
+                RefreshSelection();
             });
             if (!owned)
                 AddLockOverlay(frame.transform, cosmetics.GetPrice(CosmeticKind.Body), compact: true);
@@ -369,11 +435,13 @@ public class WorkerCustomizePopup : MonoBehaviour
             Texture tex = PartyCharacterRandomizer.GetMaterialPreviewTexture(mat);
             string label = PartyCharacterRandomizer.GetFaceName(i);
             bool owned = cosmetics.IsOwned(CosmeticKind.Face, index);
-            var frame = CreateFaceCard(faceRow, tex, label, () =>
+            Image frame = null;
+            frame = CreateFaceCard(faceRow, tex, label, () =>
             {
                 if (!TrySelectCosmetic(CosmeticKind.Face, index)) return;
                 appearance.SetFaceIndex(index);
-                RebuildAllOptions();
+                RefreshOptionLock(CosmeticKind.Face, index, frame, compact: false);
+                RefreshSelection();
             });
             if (!owned)
                 AddLockOverlay(frame.transform, cosmetics.GetPrice(CosmeticKind.Face), compact: false);
@@ -402,12 +470,15 @@ public class WorkerCustomizePopup : MonoBehaviour
             Texture preview = ItemPreviewThumbnails.GetPrefab(prefab, PartyCharacterRandomizer.GetHatName(i));
             string label = PartyCharacterRandomizer.GetHatName(i);
             bool owned = cosmetics.IsOwned(CosmeticKind.Hat, index);
-            hatFrames.Add(CreateHatCard(hatRow, preview, label, false, () =>
+            Image frame = null;
+            frame = CreateHatCard(hatRow, preview, label, false, () =>
             {
                 if (!TrySelectCosmetic(CosmeticKind.Hat, index)) return;
                 appearance.SetHatIndex(index);
-                RebuildAllOptions();
-            }));
+                RefreshOptionLock(CosmeticKind.Hat, index, frame, compact: false);
+                RefreshSelection();
+            });
+            hatFrames.Add(frame);
             if (!owned)
                 AddLockOverlay(hatFrames[hatFrames.Count - 1].transform, cosmetics.GetPrice(CosmeticKind.Hat), compact: false);
         }
@@ -419,6 +490,24 @@ public class WorkerCustomizePopup : MonoBehaviour
         BuildFaceOptions();
         BuildHatOptions();
         RefreshSelection();
+    }
+
+    void RefreshOptionLock(CosmeticKind kind, int index, Image frame, bool compact)
+    {
+        if (frame == null) return;
+
+        var cosmetics = CosmeticsUnlockManager.Ensure();
+        bool owned = cosmetics == null || cosmetics.IsOwned(kind, index);
+        Transform lockOverlay = frame.transform.Find("Lock");
+        if (owned)
+        {
+            if (lockOverlay != null)
+                Destroy(lockOverlay.gameObject);
+        }
+        else if (lockOverlay == null && cosmetics != null)
+        {
+            AddLockOverlay(frame.transform, cosmetics.GetPrice(kind), compact);
+        }
     }
 
     bool TrySelectCosmetic(CosmeticKind kind, int index)
@@ -639,6 +728,7 @@ public class WorkerCustomizePopup : MonoBehaviour
             titleText.text = "Customize " + (string.IsNullOrEmpty(emp.employeeName) ? "Worker" : emp.employeeName);
         if (nameInput != null)
             nameInput.SetTextWithoutNotify(string.IsNullOrEmpty(emp.employeeName) ? "Worker" : emp.employeeName);
+        EndNameEdit();
 
         RebuildAllOptions();
         gameObject.SetActive(true);
@@ -677,7 +767,7 @@ public class WorkerCustomizePopup : MonoBehaviour
             cosmetics.ApplyRandomOwned(appearance);
         else
             appearance.Randomize();
-        RebuildAllOptions();
+        RefreshSelection();
     }
 
     void Close()

@@ -123,6 +123,7 @@ public class WorkersUI : MonoBehaviour
         var title = transform.Find("Title") as RectTransform;
         if (title != null)
         {
+            title.gameObject.SetActive(false);
             title.anchorMin = new Vector2(0f, 1f);
             title.anchorMax = new Vector2(1f, 1f);
             title.pivot = new Vector2(0.5f, 1f);
@@ -148,7 +149,7 @@ public class WorkersUI : MonoBehaviour
         headerRt.anchorMin = new Vector2(0f, 1f);
         headerRt.anchorMax = new Vector2(1f, 1f);
         headerRt.pivot = new Vector2(0.5f, 1f);
-        headerRt.anchoredPosition = new Vector2(0f, -34f);
+        headerRt.anchoredPosition = new Vector2(0f, -4f);
         headerRt.sizeDelta = new Vector2(-24f, 36f);
 
         var headerImg = header.GetComponent<Image>();
@@ -171,6 +172,7 @@ public class WorkersUI : MonoBehaviour
         if (countText != null)
         {
             countText.transform.SetParent(header, false);
+            countText.text = string.Empty;
             var le = countText.GetComponent<LayoutElement>();
             if (le == null) le = countText.gameObject.AddComponent<LayoutElement>();
             le.minWidth = 90;
@@ -379,8 +381,9 @@ public class WorkersUI : MonoBehaviour
         {
             LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
             float panelHeight = Mathf.Max(44f, flowPanel.rect.height);
-            // Header ends ~70px from top; panel starts at 74px; leave 10px gap under panel.
-            topInset = 74f + panelHeight + 10f;
+            // The header ends near the top of the content area; keep the flow
+            // panel and worker list on the same compact baseline.
+            topInset = 44f + panelHeight + 10f;
         }
 
         scroll.anchorMin = new Vector2(0f, 0f);
@@ -674,7 +677,7 @@ public class WorkersUI : MonoBehaviour
         flowPanel.anchorMin = new Vector2(0f, 1f);
         flowPanel.anchorMax = new Vector2(1f, 1f);
         flowPanel.pivot = new Vector2(0.5f, 1f);
-        flowPanel.anchoredPosition = new Vector2(0f, -74f);
+        flowPanel.anchoredPosition = new Vector2(0f, -44f);
         flowPanel.sizeDelta = new Vector2(-24f, flowPanel.sizeDelta.y);
 
         var fitter = flowPanel.GetComponent<ContentSizeFitter>();
@@ -1217,15 +1220,14 @@ public class WorkersUI : MonoBehaviour
 
             if (production == null)
             {
-                if (countText != null) countText.text = "Workers: —";
+                if (countText != null) countText.text = string.Empty;
                 if (costText != null) costText.text = "Hire: —";
                 if (hireButton != null) hireButton.interactable = false;
                 return;
             }
 
-            int count = production.employees != null ? production.employees.Count : 0;
             if (countText != null)
-                countText.text = "Workers: " + count;
+                countText.text = string.Empty;
 
             bool canHire = production.employeePrefab != null;
             var money = FindObjectOfType<MoneyManager>();

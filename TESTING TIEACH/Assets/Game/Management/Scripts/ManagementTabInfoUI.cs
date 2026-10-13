@@ -330,11 +330,11 @@ public class ManagementTabInfoUI : MonoBehaviour
             return;
         }
 
-        if (panel != null && panel.name == "TasksPage")
+        if (panel != null && (panel.name == "TasksPage" || panel.name == "DailyTasksPage"))
         {
-            title = "Tasks tab help";
+            title = "Objectives help";
             body =
-                "<b>Current task</b>\nThe highlighted task is the next objective to complete. Its description states the gameplay condition being measured.\n\n" +
+                "<b>Daily tasks</b>\nThe left column shows the current shift targets and milestone tasks. The highlighted task is the next objective to complete.\n\n" +
                 "<b>Status symbols</b>\nA pointer marks the current task, an open circle marks a later task, and a check mark marks a completed task.\n\n" +
                 "<b>Why tasks matter</b>\nTasks introduce the restaurant systems in a controlled order and give you a practical reason to apply each ISE concept.\n\n" +
                 "<color=#73BFF2><b>Tip:</b></color> If progress stops, inspect the exact condition in the current task rather than changing several systems at once.";
@@ -343,7 +343,7 @@ public class ManagementTabInfoUI : MonoBehaviour
 
         if (panel != null && panel.name == "ProgressionPage")
         {
-            title = "Progression tab help";
+            title = "Progression help";
             body =
                 "<b>Milestones</b>\nMilestones group related tasks into larger learning stages. Completed stages remain visible so you can track what has been mastered.\n\n" +
                 "<b>Locked progression</b>\nFinish the onboarding tutorial before later milestones become available. Then complete the required tasks in the current stage.\n\n" +

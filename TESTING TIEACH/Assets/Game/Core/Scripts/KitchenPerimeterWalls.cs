@@ -34,6 +34,9 @@ public class KitchenPerimeterWalls : MonoBehaviour
     public float windowSill = 1.2f;
     [Range(0.08f, 0.45f)]
     public float windowGlassAlpha = 0.22f;
+    [Tooltip("Width of each independently fading vertical wall section. Boundaries are shared by every wall band.")]
+    [Min(0.5f)]
+    public float fadeSectionWidth = 2.5f;
 
     [Header("Work floor (dynamic — follows expand)")]
     public bool buildWorkNorth = true;
@@ -53,6 +56,10 @@ public class KitchenPerimeterWalls : MonoBehaviour
     Transform eastCap;
     Transform windowRoot;
     Transform currentWallGroup;
+    Vector3 currentWallOutward;
+    Vector3 currentWallCenter;
+    Vector3 currentWallAlong;
+    float currentWallLength;
     readonly List<Transform> windowPool = new List<Transform>();
     readonly List<Transform> brickPool = new List<Transform>();
     readonly List<Transform> wallGroupPool = new List<Transform>();
@@ -121,6 +128,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
             RestoreOriginalWalls();
             EnsureGlassMaterial();
             EnsurePieces();
+            HideLegacyGlassFrames();
             if (root != null)
                 root.gameObject.SetActive(true);
             Hide(eastCap);
@@ -246,7 +254,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
                 CameraOcclusionWall occ = wallGroupPool[i] != null
                     ? wallGroupPool[i].GetComponent<CameraOcclusionWall>() : null;
                 if (occ == null) continue;
-                occ.duckByLowering = true;
+                occ.duckByLowering = false;
                 occ.RecaptureRestPose();
             }
             currentWallGroup = null;
@@ -358,6 +366,9 @@ public class KitchenPerimeterWalls : MonoBehaviour
         float floorY = baseCenter.y;
         Vector3 along = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
         Vector3 wallPos = new Vector3(baseCenter.x, 0f, baseCenter.z);
+        currentWallCenter = wallPos;
+        currentWallAlong = along.normalized;
+        currentWallLength = length;
 
         var doors = new List<DoorOpening>();
         CollectDoorsOnWall(wallPos, along, length, thick, doors);
@@ -469,6 +480,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
         g.position = new Vector3(worldAnchor.x, 0f, worldAnchor.z);
         g.rotation = Quaternion.identity;
         g.localScale = Vector3.one;
+        currentWallOutward = outward.normalized;
 
         var occ = g.GetComponent<CameraOcclusionWall>();
         if (occ != null)
@@ -631,15 +643,48 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     void PlaceBrick(Vector3 pos, float yaw, float along, float up, float thick)
     {
-        Transform b = EnsureBrick(bricksUsed);
-        bricksUsed++;
-        StripPieceOcclusion(b);
-        b.gameObject.SetActive(true);
-        if (currentWallGroup != null)
-            b.SetParent(currentWallGroup, true);
-        b.position = pos;
-        b.rotation = Quaternion.Euler(0f, yaw, 0f);
-        b.localScale = new Vector3(Mathf.Max(0.08f, along), Mathf.Max(0.08f, up), thick);
+        // All bands use the same world-space boundaries. This keeps the header,
+        // sill, piers, and wall pieces above doors/windows aligned into strict
+        // vertical sections instead of creating horizontal fade fragments.
+        float halfWall = currentWallLength > 0.01f
+            ? currentWallLength * 0.5f
+            : Mathf.Max(0.04f, along * 0.5f);
+        Vector3 horizontalOffset = new Vector3(pos.x, 0f, pos.z) - currentWallCenter;
+        float centerAlong = Vector3.Dot(horizontalOffset, currentWallAlong);
+        float pieceMin = Mathf.Max(-halfWall, centerAlong - along * 0.5f);
+        float pieceMax = Mathf.Min(halfWall, centerAlong + along * 0.5f);
+        float sectionWidth = Mathf.Max(0.5f, fadeSectionWidth);
+        int firstSection = Mathf.FloorToInt((pieceMin + halfWall) / sectionWidth);
+        int lastSection = Mathf.CeilToInt((pieceMax + halfWall) / sectionWidth) - 1;
+        if (lastSection < firstSection)
+            lastSection = firstSection;
+
+        for (int sectionIndex = firstSection; sectionIndex <= lastSection; sectionIndex++)
+        {
+            float sectionMin = -halfWall + sectionIndex * sectionWidth;
+            float sectionMax = -halfWall + (sectionIndex + 1) * sectionWidth;
+            float segmentMin = Mathf.Max(pieceMin, sectionMin);
+            float segmentMax = Mathf.Min(pieceMax, sectionMax);
+            if (segmentMax - segmentMin <= 0.08f)
+                continue;
+
+            Transform b = EnsureBrick(bricksUsed);
+            bricksUsed++;
+            StripPieceOcclusion(b);
+            b.gameObject.SetActive(true);
+            if (currentWallGroup != null)
+                b.SetParent(currentWallGroup, true);
+            Vector3 segmentPos = currentWallCenter
+                + currentWallAlong * ((segmentMin + segmentMax) * 0.5f);
+            segmentPos.y = pos.y;
+            b.position = segmentPos;
+            b.rotation = Quaternion.Euler(0f, yaw, 0f);
+            b.localScale = new Vector3(
+                Mathf.Max(0.08f, segmentMax - segmentMin),
+                Mathf.Max(0.08f, up),
+                thick);
+            TagWallSection(b);
+        }
     }
 
     static void StripPieceOcclusion(Transform piece)
@@ -647,7 +692,10 @@ public class KitchenPerimeterWalls : MonoBehaviour
         if (piece == null) return;
         var occ = piece.GetComponent<CameraOcclusionWall>();
         if (occ != null)
-            Object.Destroy(occ);
+        {
+            occ.sectionContainer = false;
+            occ.SetDuckTarget(0f);
+        }
     }
 
     void TagOcclusionWall(Transform wall, Vector3 outward)
@@ -658,11 +706,24 @@ public class KitchenPerimeterWalls : MonoBehaviour
             occ = wall.gameObject.AddComponent<CameraOcclusionWall>();
 
         occ.SetOutward(outward);
+        occ.sectionContainer = true;
         occ.lowerDistance = Mathf.Max(3.5f, height * 0.95f);
         occ.duckByLowering = false;
         occ.SnapUp();
-        // Moving the complete wall group preserves the exact brick material and UVs.
-        occ.duckByLowering = true;
+        CameraWallCutaway.EnsureExists();
+    }
+
+    void TagWallSection(Transform section)
+    {
+        if (section == null) return;
+        CameraOcclusionWall occ = section.GetComponent<CameraOcclusionWall>();
+        if (occ == null)
+            occ = section.gameObject.AddComponent<CameraOcclusionWall>();
+        occ.sectionContainer = false;
+        occ.SetOutward(currentWallOutward);
+        occ.duckByLowering = false;
+        occ.RecaptureRestPose();
+        occ.SnapUp();
         CameraWallCutaway.EnsureExists();
     }
 
@@ -679,6 +740,20 @@ public class KitchenPerimeterWalls : MonoBehaviour
         }
 
         return windowPool[index];
+    }
+
+    void HideLegacyGlassFrames()
+    {
+        Transform searchRoot = root != null ? root : windowRoot;
+        if (searchRoot == null) return;
+        Transform[] children = searchRoot.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            Transform child = children[i];
+            if (child == null || child == searchRoot) continue;
+            if (child.name.StartsWith("KitchenGlassFrame", System.StringComparison.OrdinalIgnoreCase))
+                child.gameObject.SetActive(false);
+        }
     }
 
     void CreateWindowPart(Transform parent, string name, bool brick)

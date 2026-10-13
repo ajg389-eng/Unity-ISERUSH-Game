@@ -12,6 +12,7 @@ public class KitchenSaveSnapshot
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
     public bool tutorialComplete;
+    public bool tutorialOrderServed;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
     public List<Worker> workers = new List<Worker>();
@@ -19,13 +20,14 @@ public class KitchenSaveSnapshot
     public List<WallPhoto> wallPhotos = new List<WallPhoto>();
     public List<string> completedMilestoneIds = new List<string>();
     public List<string> completedResearchIds = new List<string>();
+    public List<string> enabledMenuItemNames = new List<string>();
     public string activeResearchId;
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; }
-    [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority; public List<int> stations = new List<int>(); }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; public bool registerEnabled = true; }
+    [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
@@ -40,6 +42,7 @@ public class KitchenSaveSnapshot
         var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
         s.tutorialComplete = OnboardingTutorial.IsComplete;
         s.tutorialStep = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.SaveStepIndex : 0;
+        s.tutorialOrderServed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.OrderServedForSave;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
         if (MilestoneProgressManager.Instance != null)
         {
@@ -54,6 +57,9 @@ public class KitchenSaveSnapshot
             s.activeResearchId = ResearchProgressManager.Instance.ActiveId;
             s.activeResearchMinutesRemaining = ResearchProgressManager.Instance.RemainingMinutes;
         }
+        ProductionManager productionForMenu = ProductionManager.Instance;
+        if (productionForMenu != null && productionForMenu.orderConfig != null)
+            s.enabledMenuItemNames.AddRange(productionForMenu.orderConfig.CaptureEnabledMenuItemNames());
         var appearance = StoreAppearanceController.Instance;
         if (appearance != null)
         {
@@ -104,7 +110,9 @@ public class KitchenSaveSnapshot
                         : pantry != null ? pantry.selectedItem
                         : cutting != null ? (cuttingRecipe != null ? cuttingRecipe.output : cutting.selectedProduct)
                         : null;
+                    Register register = go.GetComponent<Register>();
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
+                        registerEnabled=register == null || register.isEnabled,
                         pantrySecondProduct=pantry != null && pantry.secondItem != null ? pantry.secondItem.name : "",
                         slot=mounted != null ? mounted.slotIndex : groundPickup != null ? groundPickup.slotIndex : -1,
                         counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position
@@ -128,7 +136,11 @@ public class KitchenSaveSnapshot
             var staff=new List<KitchenEmployee>();
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
-                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel,priority=(int)employee.taskPriority};
+                PartyCharacterRandomizer look = employee.GetComponent<PartyCharacterRandomizer>();
+                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel,priority=(int)employee.taskPriority,
+                    bodyIndex=look != null ? look.bodyIndex : 0,
+                    faceIndex=look != null ? look.faceIndex : 0,
+                    hatIndex=look != null ? look.hatIndex : -1};
                 foreach(var station in employee.operatedStations) w.stations.Add(objects.IndexOf(station));
                 s.workers.Add(w);
             }
@@ -194,6 +206,9 @@ public class KitchenSaveSnapshot
                 ? item.prefab.transform.localScale : e.scale;
             BuildPlacer.ConfigurePlacedObject(go,item);
             var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
+            Register restoredRegister = go.GetComponent<Register>();
+            if (restoredRegister != null)
+                restoredRegister.isEnabled = e.registerEnabled;
             objects.Add(go);
         }
         // Recipe lookup is milestone-filtered. Restore progression before applying
@@ -279,6 +294,17 @@ public class KitchenSaveSnapshot
         var staff=new List<KitchenEmployee>();
         foreach(var w in workers) {
             var go=UnityEngine.Object.Instantiate(pm.employeePrefab,w.position,Quaternion.identity); var employee=go.GetComponent<KitchenEmployee>();
+            PartyCharacterRandomizer look = PartyCharacterRandomizer.EnsureOn(go);
+            if (look != null)
+            {
+                // Prevent the worker prefab's startup randomizer from replacing
+                // the appearance restored from the save on the next frame.
+                look.randomizeOnStart = false;
+                look.bodyIndex = w.bodyIndex;
+                look.faceIndex = w.faceIndex;
+                look.hatIndex = w.hatIndex;
+                look.ApplyCurrent();
+            }
             employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); employee.taskPriority=(KitchenEmployee.TaskPriority)Mathf.Clamp(w.priority,0,System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length-1); pm.RegisterEmployee(employee); staff.Add(employee);
             foreach(int i in w.stations) if(i>=0 && i<objects.Count) { employee.AddOperatedStation(objects[i]); StationNode.EnsureOn(objects[i]).AddWorker(employee); }
             employee.SyncFromOperatedStations();
@@ -296,7 +322,7 @@ public class KitchenSaveSnapshot
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1
             : tutorialStep;
-        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep);
+        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep,tutorialOrderServed);
         // Version 11 replaces the active milestone task definitions. Preserve the
         // saved milestone checkpoint from v10, but don't carry old task progress
         // into tasks whose objectives have changed.
@@ -308,6 +334,8 @@ public class KitchenSaveSnapshot
                 version >= 13 ? completedResearchIds : null,
                 version >= 13 ? activeResearchId : null,
                 version >= 13 ? activeResearchMinutesRemaining : 0f);
+        if (pm.orderConfig != null)
+            pm.orderConfig.RestoreEnabledMenuItems(enabledMenuItemNames);
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var appearance = StoreAppearanceController.Ensure();
         if (version >= 4)

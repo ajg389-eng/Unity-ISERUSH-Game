@@ -42,6 +42,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public float ProcessRemainingSeconds => IsCookingPatty
         ? Mathf.Max(0f, processTimeSeconds - cookTimer) : 0f;
     public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
+    public int StationMark => Mathf.Clamp(stationMark, 1, 2);
     public int InputSlotCapacity => SlotCapacity;
     public int OutputSlotCapacity => SlotCapacity;
 

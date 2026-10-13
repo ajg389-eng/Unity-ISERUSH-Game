@@ -141,7 +141,9 @@ public class CustomerOrderConfig : ScriptableObject
     public float drinkChance = 0.7f;
 
     // Runtime menu choices. These deliberately are not serialized back into the shared asset.
-    [System.NonSerialized] readonly HashSet<ItemDefinition> disabledMenuItems = new HashSet<ItemDefinition>();
+    // A new run starts with every sellable item disabled. The player explicitly
+    // enables each unlocked recipe from the Menu screen.
+    [System.NonSerialized] readonly HashSet<ItemDefinition> enabledMenuItems = new HashSet<ItemDefinition>();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
         || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem
@@ -159,6 +161,15 @@ public class CustomerOrderConfig : ScriptableObject
         if (stage == 2) return "recipe_upgrades_1";
         if (stage == 3) return "recipe_upgrades_2";
         return "recipe_upgrades_3";
+    }
+
+    /// <summary>Returns the research title for a recipe progression stage.</summary>
+    public static string RecipeResearchTitleForStage(int stage)
+    {
+        ResearchProgressManager.Definition definition = ResearchProgressManager.Get(RecipeResearchId(stage));
+        return definition != null && !string.IsNullOrWhiteSpace(definition.title)
+            ? definition.title
+            : "Recipe Research";
     }
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
@@ -294,9 +305,6 @@ public class CustomerOrderConfig : ScriptableObject
         if (OnboardingTutorial.BlocksProgression && recipe != null && recipe.Produces(burgerBase))
             return true;
         if (recipe == null) return false;
-        if (recipe.RequiresMk2)
-            return MilestoneFeatures.IsResearchComplete("mk2_stations")
-                && MilestoneFeatures.IsResearchComplete("recipe_upgrades_3");
         return MilestoneFeatures.IsResearchComplete(RecipeResearchId(GetRecipeUnlockMilestone(recipe)));
     }
 
@@ -309,8 +317,45 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null || !IsCustomerRecipeUnlocked(item)) return false;
         return (IsBurger(item) || IsFries(item) || IsDrink(item))
-            && !disabledMenuItems.Contains(item);
+            && enabledMenuItems.Contains(item);
     }
+
+    /// <summary>Returns stable asset names for the menu choices selected by the player.</summary>
+    public List<string> CaptureEnabledMenuItemNames()
+    {
+        var names = new List<string>();
+        foreach (ItemDefinition item in GetEnabledMenuItems())
+        {
+            if (item != null && !string.IsNullOrEmpty(item.name))
+                names.Add(item.name);
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// Restores menu choices from a save. The set is cleared first so loading a
+    /// different slot cannot inherit selections from the previous slot.
+    /// Locked or removed items are ignored and remain unavailable.
+    /// </summary>
+    public void RestoreEnabledMenuItems(IEnumerable<string> savedNames)
+    {
+        enabledMenuItems.Clear();
+        if (savedNames == null) return;
+
+        var names = new HashSet<string>();
+        foreach (string name in savedNames)
+            if (!string.IsNullOrEmpty(name)) names.Add(name);
+
+        foreach (ItemDefinition item in GetMenuItems())
+        {
+            if (item == null || !names.Contains(item.name)) continue;
+            if (IsCustomerRecipeUnlocked(item))
+                enabledMenuItems.Add(item);
+        }
+    }
+
+    /// <summary>Clears menu choices when starting a fresh save slot.</summary>
+    public void ClearEnabledMenuItems() => enabledMenuItems.Clear();
 
     /// <summary>
     /// Customer orders are driven by the recipes the player can currently use.
@@ -333,8 +378,8 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
         if (enabled && !IsMenuItemUnlocked(item)) return;
-        if (enabled) disabledMenuItems.Remove(item);
-        else disabledMenuItems.Add(item);
+        if (enabled) enabledMenuItems.Add(item);
+        else enabledMenuItems.Remove(item);
     }
 
     public bool HasEnabledItems

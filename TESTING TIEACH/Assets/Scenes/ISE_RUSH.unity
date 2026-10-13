@@ -3418,6 +3418,8 @@ MonoBehaviour:
   milestoneOneCustomersPerMinute: 2.4
   extraCustomersPerMinutePerMilestone: 0.85
   rushArrivalMultiplier: 2.2
+  comfortableActiveCustomerCount: 8
+  congestedArrivalFloor: 0.35
   orderConfig: {fileID: 11400000, guid: 9fb664fbbdd2ba84495002dcef899cf7, type: 2}
   registers:
   - {fileID: 1883022301}
@@ -5155,6 +5157,7 @@ MonoBehaviour:
   occludedAlpha: 0.18
   cutawayHeight: 0.8
   duckByLowering: 1
+  sectionContainer: 0
 --- !u!114 &389270261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7594,7 +7597,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProductionManager
   orderConfig: {fileID: 11400000, guid: 9fb664fbbdd2ba84495002dcef899cf7, type: 2}
-  productionTargets: []
   registers:
   - {fileID: 1883022301}
   - {fileID: 1105242393}
@@ -9508,6 +9510,7 @@ MonoBehaviour:
   windowHeight: 1.85
   windowSill: 1.2
   windowGlassAlpha: 0.22
+  fadeSectionWidth: 2.5
   buildWorkNorth: 1
   buildWorkWest: 1
   buildWorkSouth: 1
@@ -17731,7 +17734,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 95de563cd677c4347b86195272a184dc, type: 2}
   - {fileID: 11400000, guid: b4816a10c83443c0a62aa991cb8a7d51, type: 2}
   baseStationCapacity: 2
-  capacityPerCompletedMilestone: 1
+  capacityPerResearchProject: 1
   money: {fileID: 626923595}
 --- !u!4 &1463199601
 Transform:
@@ -19176,6 +19179,7 @@ MonoBehaviour:
   occludedAlpha: 0.18
   cutawayHeight: 0.8
   duckByLowering: 1
+  sectionContainer: 0
 --- !u!114 &1570867470
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19497,6 +19501,7 @@ MonoBehaviour:
   occludedAlpha: 0.18
   cutawayHeight: 0.8
   duckByLowering: 1
+  sectionContainer: 0
 --- !u!114 &1584365195
 MonoBehaviour:
   m_ObjectHideFlags: 0

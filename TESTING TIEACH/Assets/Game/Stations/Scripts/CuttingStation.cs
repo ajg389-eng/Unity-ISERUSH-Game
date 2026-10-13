@@ -29,6 +29,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     public bool IsProcessing => processingUnits > 0;
     public float ProcessRemainingSeconds => IsProcessing
         ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
+    public int StationMark => Mathf.Clamp(stationMark, 1, 2);
     public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int AuthoredInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }

@@ -137,6 +137,9 @@ public static class GameSaveSlots
             if (onboarding != null)
                 onboarding.Restart();
 
+            if (ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null)
+                ProductionManager.Instance.orderConfig.ClearEnabledMenuItems();
+
             if (MissionProgressManager.Instance != null)
                 MissionProgressManager.Instance.ResetProgress();
             if (MilestoneProgressManager.Instance != null)

@@ -244,13 +244,13 @@ public class StationNode : MonoBehaviour
             var assembly = GetComponent<AssemblyStation>();
             if (assembly != null) return assembly.IsMk2 ? 2 : 1;
             var cutting = GetComponent<CuttingStation>();
-            if (cutting != null) return cutting.InputSlotCapacity >= 4 ? 2 : 1;
+            if (cutting != null) return cutting.StationMark;
             var grill = GetComponent<GrillStation>();
-            if (grill != null) return grill.InputSlotCapacity >= 4 ? 2 : 1;
+            if (grill != null) return grill.StationMark;
             var fryer = GetComponent<FryerStation>();
-            if (fryer != null) return fryer.InputSlotCapacity >= 4 ? 2 : 1;
+            if (fryer != null) return fryer.StationMark;
             var pickup = GetComponent<HeatLampStation>();
-            if (pickup != null) return pickup.InputSlotCapacity >= 4 ? 2 : 1;
+            if (pickup != null) return pickup.StationMark;
             return 0;
         }
     }

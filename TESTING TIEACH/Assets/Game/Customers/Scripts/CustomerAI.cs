@@ -44,6 +44,7 @@ public class CustomerAI : MonoBehaviour
     HeatLampStation pickupStation;
     bool leaving;
     bool leavingImpatient;
+    bool orderCompletionReported;
 
     readonly List<Vector3> route = new List<Vector3>();
     int routeIndex;
@@ -193,6 +194,7 @@ public class CustomerAI : MonoBehaviour
     {
         order = o != null ? o.Clone() : new CustomerOrder();
         OriginalOrder = order.Clone();
+        orderCompletionReported = false;
         OrderNumber = ++nextOrderNumber;
         CustomerDisplayName = orderNames[customerNameRandom.Next(orderNames.Length)] + " " + (char)('A' + customerNameRandom.Next(26)) + ".";
         salePrice = GetGenericOrderBasePrice(order);
@@ -224,6 +226,17 @@ public class CustomerAI : MonoBehaviour
         if (item == null || order == null) return false;
         if (!order.TryRemoveOne(item)) return false;
         RefreshOrderLabel();
+        return true;
+    }
+
+    /// <summary>
+    /// Marks this customer's order as completed exactly once. Register completion
+    /// can be reached from both worker handoff and self-service pickup paths.
+    /// </summary>
+    public bool TryMarkOrderCompletionReported()
+    {
+        if (orderCompletionReported) return false;
+        orderCompletionReported = true;
         return true;
     }
 
@@ -655,6 +668,19 @@ public class CustomerAI : MonoBehaviour
     void FinishPickupAndLeave()
     {
         if (leaving) return;
+
+        // Complete the sale while the customer is still registered with the
+        // pickup queue. Self-service used to remove the customer first, which
+        // made Register.CompleteServe think the customer was untracked and
+        // skipped the tutorial's order-served event.
+        Register servingRegister = reg;
+        Transform exit = servingRegister != null ? servingRegister.storeExit : null;
+        if (servingRegister != null)
+        {
+            servingRegister.CompleteServe(this, order);
+            if (leaving) return;
+        }
+
         if (pickupStation != null)
         {
             pickupStation.LeavePickupQueue(this);
@@ -663,9 +689,6 @@ public class CustomerAI : MonoBehaviour
         hasQueueSlot = false;
         hasTarget = false;
         isFront = false;
-        Transform exit = reg != null ? reg.storeExit : null;
-        if (reg != null)
-            reg.CompleteServe(this, order);
         // The register only starts the walk home when this customer is still
         // in its queue. A finished order must leave either way.
         if (!leaving)

@@ -5,6 +5,10 @@ using UnityEngine.UI;
 
 public sealed class ResearchTreeUI : MonoBehaviour
 {
+    const float NodeWidth = 360f;
+    const float NodeHeight = 130f;
+    const float BranchOffset = 460f;
+
     sealed class NodeView
     {
         public ResearchProgressManager.Definition definition;
@@ -15,16 +19,23 @@ public sealed class ResearchTreeUI : MonoBehaviour
         public Image statusIcon;
     }
 
+    sealed class BranchView
+    {
+        public int category;
+        public TextMeshProUGUI progress;
+    }
+
     static ResearchTreeUI instance;
     RectTransform chart;
-    Transform categoryTabs;
     TextMeshProUGUI activeStatus;
     TextMeshProUGUI feedback;
     int selectedCategory;
-    readonly List<Button> categoryTabButtons = new List<Button>();
     readonly List<NodeView> nodeViews = new List<NodeView>();
+    readonly List<BranchView> branchViews = new List<BranchView>();
     readonly Dictionary<string, RectTransform> nodeRects = new Dictionary<string, RectTransform>();
     float nextRefresh;
+    int builtDefinitionHash = int.MinValue;
+    bool treeBuilt;
 
     ResearchProgressManager Manager
     {
@@ -48,10 +59,21 @@ public sealed class ResearchTreeUI : MonoBehaviour
         }
         instance.gameObject.SetActive(false);
         instance.transform.SetAsLastSibling();
-        instance.BuildTree();
+        if (OnboardingTutorial.IsResearchTutorialActive)
+            instance.selectedCategory = OnboardingTutorial.TutorialResearchCategory;
+        instance.EnsureTreeBuilt();
+        instance.RefreshStatus();
+        instance.RefreshNodes();
         Canvas.ForceUpdateCanvases();
         instance.gameObject.SetActive(true);
+        OnboardingTutorial.NotifyResearchScreenOpened();
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    public static void CloseIfOpen()
+    {
+        if (instance != null && instance.gameObject.activeSelf)
+            instance.gameObject.SetActive(false);
     }
 
     void OnEnable()
@@ -66,7 +88,20 @@ public sealed class ResearchTreeUI : MonoBehaviour
             ResearchProgressManager.Instance.Changed -= OnResearchChanged;
     }
 
-    void OnResearchChanged() { RefreshStatus(); RefreshNodes(); }
+    void OnResearchChanged()
+    {
+        if (OnboardingTutorial.IsResearchTutorialActive)
+        {
+            int requiredCategory = OnboardingTutorial.TutorialResearchCategory;
+            if (selectedCategory != requiredCategory)
+            {
+                selectedCategory = requiredCategory;
+                BuildTree();
+                return;
+            }
+        }
+        RefreshStatus(); RefreshNodes();
+    }
 
     void Update()
     {
@@ -79,6 +114,8 @@ public sealed class ResearchTreeUI : MonoBehaviour
 
     void Close()
     {
+        if (OnboardingTutorial.IsResearchTutorialActive)
+            return;
         gameObject.SetActive(false);
         Sfx.Play(SfxId.UiClose);
     }
@@ -100,7 +137,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
             FontStyles.Bold, new Vector2(28f, -54f), new Vector2(-90f, -10f), TextAlignmentOptions.Left);
         title.rectTransform.anchorMin = new Vector2(0f, 1f); title.rectTransform.anchorMax = new Vector2(1f, 1f);
         title.rectTransform.pivot = new Vector2(0.5f, 1f);
-        TextMeshProUGUI hint = CreateText(panel.transform, "Hint", "DRAG TO PAN  |  SCROLL TO ZOOM", 11f,
+        TextMeshProUGUI hint = CreateText(panel.transform, "Hint", "DRAG TO PAN  |  SCROLL TO ZOOM  |  SELECT A PROJECT", 11f,
             FontStyles.Bold, new Vector2(30f, -76f), new Vector2(-90f, -54f), TextAlignmentOptions.Left);
         hint.rectTransform.anchorMin = new Vector2(0f, 1f); hint.rectTransform.anchorMax = new Vector2(1f, 1f);
         hint.rectTransform.pivot = new Vector2(0.5f, 1f); hint.color = GameUITheme.TextSecondary;
@@ -126,26 +163,15 @@ public sealed class ResearchTreeUI : MonoBehaviour
         viewport.transform.SetParent(panel.transform, false);
         RectTransform viewportRt = (RectTransform)viewport.transform;
         viewportRt.anchorMin = Vector2.zero; viewportRt.anchorMax = Vector2.one;
-        viewportRt.offsetMin = new Vector2(24f, 24f); viewportRt.offsetMax = new Vector2(-24f, -176f);
+        viewportRt.offsetMin = new Vector2(24f, 24f); viewportRt.offsetMax = new Vector2(-24f, -142f);
         viewport.GetComponent<Image>().color = new Color(0.055f, 0.065f, 0.09f, 1f);
         viewport.GetComponent<Mask>().showMaskGraphic = true;
-
-        var tabs = new GameObject("CategoryTabs", typeof(RectTransform));
-        tabs.transform.SetParent(panel.transform, false);
-        categoryTabs = tabs.transform;
-        RectTransform tabsRt = (RectTransform)tabs.transform;
-        tabsRt.anchorMin = new Vector2(0f, 1f); tabsRt.anchorMax = new Vector2(1f, 1f);
-        tabsRt.pivot = new Vector2(0.5f, 1f);
-        tabsRt.offsetMin = new Vector2(24f, -170f); tabsRt.offsetMax = new Vector2(-24f, -132f);
-        CreateCategoryTab(0, "PRODUCTION", GetBranchColor(0));
-        CreateCategoryTab(1, "WORKFORCE", GetBranchColor(1));
-        CreateCategoryTab(2, "AUTOMATION", GetBranchColor(2));
 
         var chartObject = new GameObject("ResearchChart", typeof(RectTransform));
         chartObject.transform.SetParent(viewport.transform, false);
         chart = (RectTransform)chartObject.transform;
         chart.anchorMin = chart.anchorMax = chart.pivot = new Vector2(0.5f, 0.5f);
-        chart.sizeDelta = new Vector2(2400f, 1100f);
+        chart.sizeDelta = new Vector2(5200f, 1350f);
         RecipeGraphDrag drag = viewport.AddComponent<RecipeGraphDrag>();
         drag.content = chart; drag.minimumZoom = 0.35f; drag.maximumZoom = 1.28f;
         drag.allowPan = true;
@@ -155,25 +181,32 @@ public sealed class ResearchTreeUI : MonoBehaviour
     void BuildTree()
     {
         if (chart == null) return;
+        treeBuilt = false;
         for (int i = chart.childCount - 1; i >= 0; i--)
         {
             GameObject old = chart.GetChild(i).gameObject; old.SetActive(false); Destroy(old);
         }
         nodeViews.Clear(); nodeRects.Clear();
+        branchViews.Clear();
         chart.anchoredPosition = Vector2.zero;
-        // Fit the full category tree on every rebuild, including tab changes.
-        chart.localScale = Vector3.one * 0.4f;
+        // Keep all three branches visible in one map. Players can still pan and
+        // zoom the map to inspect a branch without switching screens.
+        chart.localScale = Vector3.one * 0.34f;
 
-        CreateBranchHeader(selectedCategory, selectedCategory == 0 ? "PRODUCTION"
-            : selectedCategory == 1 ? "WORKFORCE" : "AUTOMATION", GetBranchColor(selectedCategory));
-
-        Dictionary<string, Vector2> positions = BuildNodePositions();
+        CreateMilestoneSections();
+        float[] branchCenters = { -1600f, 0f, 1600f };
+        for (int category = 0; category < 3; category++)
+        {
+            string label = category == 0 ? "PRODUCTION" : category == 1 ? "WORKFORCE" : "AUTOMATION";
+            CreateBranchLane(category, label, GetBranchColor(category), branchCenters[category]);
+            Dictionary<string, Vector2> positions = BuildNodePositions(category, branchCenters[category]);
+            foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
+                if (definition != null && definition.category == category
+                    && positions.TryGetValue(definition.id, out Vector2 position))
+                    CreateNode(definition, position);
+        }
         foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
-            if (definition != null && definition.category == selectedCategory
-                && positions.TryGetValue(definition.id, out Vector2 position))
-                CreateNode(definition, position);
-        foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
-            if (definition != null && definition.category == selectedCategory
+            if (definition != null
                 && !string.IsNullOrEmpty(definition.parentId)
                 && nodeRects.TryGetValue(definition.parentId, out RectTransform parent))
                 CreateConnector(parent, nodeRects[definition.id], definition.parentId,
@@ -187,127 +220,150 @@ public sealed class ResearchTreeUI : MonoBehaviour
             if (child.name.EndsWith("Branch")) child.SetAsLastSibling();
         }
         RefreshStatus(); RefreshNodes();
+        builtDefinitionHash = GetDefinitionHash();
+        treeBuilt = true;
     }
 
-    void CreateBranchHeader(int category, string label, Color color)
+    void EnsureTreeBuilt()
     {
+        if (chart == null) return;
+        int definitionHash = GetDefinitionHash();
+        if (!treeBuilt || builtDefinitionHash != definitionHash)
+            BuildTree();
+    }
+
+    static int GetDefinitionHash()
+    {
+        unchecked
+        {
+            int hash = 17;
+            foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
+            {
+                if (definition == null)
+                {
+                    hash = hash * 31;
+                    continue;
+                }
+
+                hash = hash * 31 + (definition.id ?? string.Empty).GetHashCode();
+                hash = hash * 31 + definition.category;
+                hash = hash * 31 + definition.milestone;
+                hash = hash * 31 + (definition.parentId ?? string.Empty).GetHashCode();
+            }
+            return hash;
+        }
+    }
+
+    void CreateMilestoneSections()
+    {
+        const float rowSpacing = 270f;
+        float firstRow = chart.sizeDelta.y * 0.5f - 240f;
+        for (int milestone = 1; milestone <= 4; milestone++)
+        {
+            var section = new GameObject("Milestone" + milestone + "Section", typeof(RectTransform), typeof(Image));
+            section.transform.SetParent(chart, false);
+            RectTransform sectionRt = (RectTransform)section.transform;
+            sectionRt.anchorMin = sectionRt.anchorMax = sectionRt.pivot = new Vector2(0.5f, 0.5f);
+            sectionRt.sizeDelta = new Vector2(chart.sizeDelta.x - 80f, 224f);
+            sectionRt.anchoredPosition = new Vector2(0f, firstRow - (milestone - 1) * rowSpacing);
+            Image sectionImage = section.GetComponent<Image>();
+            sectionImage.color = milestone % 2 == 0
+                ? new Color(0.08f, 0.10f, 0.14f, 0.38f)
+                : new Color(0.04f, 0.055f, 0.08f, 0.48f);
+            sectionImage.raycastTarget = false;
+            section.transform.SetAsFirstSibling();
+
+            TextMeshProUGUI label = CreateText(section.transform, "Label", "MILESTONE " + milestone,
+                12f, FontStyles.Bold, Vector2.zero, Vector2.zero,
+                TextAlignmentOptions.Left);
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0f, 0.5f);
+            labelRect.anchorMax = new Vector2(0f, 0.5f);
+            labelRect.pivot = new Vector2(0f, 0.5f);
+            labelRect.anchoredPosition = new Vector2(18f, 0f);
+            labelRect.sizeDelta = new Vector2(180f, 26f);
+            label.color = GameUITheme.TextSecondary;
+        }
+    }
+
+    void CreateBranchLane(int category, string label, Color color, float x)
+    {
+        var lane = new GameObject(label + "Lane", typeof(RectTransform), typeof(Image));
+        lane.transform.SetParent(chart, false);
+        RectTransform laneRt = (RectTransform)lane.transform;
+        laneRt.anchorMin = laneRt.anchorMax = laneRt.pivot = new Vector2(0.5f, 0.5f);
+        laneRt.sizeDelta = new Vector2(1500f, 1200f);
+        laneRt.anchoredPosition = new Vector2(x, -30f);
+        Image laneImage = lane.GetComponent<Image>();
+        laneImage.color = new Color(color.r, color.g, color.b, 0.055f);
+        laneImage.raycastTarget = false;
+        lane.transform.SetAsFirstSibling();
+
         var group = new GameObject(label + "Branch", typeof(RectTransform));
         group.transform.SetParent(chart, false);
         RectTransform rt = (RectTransform)group.transform;
         rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(340f, 60f);
-        rt.anchoredPosition = new Vector2(0f, chart.sizeDelta.y * 0.5f - 54f);
-        TextMeshProUGUI text = CreateText(group.transform, "Label", label, 15f, FontStyles.Bold,
-            new Vector2(0f, 0f), new Vector2(0f, 34f), TextAlignmentOptions.Center);
+        rt.sizeDelta = new Vector2(1460f, 110f);
+        rt.anchoredPosition = new Vector2(x, chart.sizeDelta.y * 0.5f - 50f);
+        Image headerImage = group.AddComponent<Image>();
+        headerImage.color = new Color(0.07f, 0.085f, 0.11f, 0.98f);
+        headerImage.raycastTarget = false;
+        TextMeshProUGUI text = CreateText(group.transform, "Label", label, 60f, FontStyles.Bold,
+            Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+        RectTransform textRect = text.rectTransform;
+        textRect.anchorMin = new Vector2(0f, 0.5f);
+        textRect.anchorMax = new Vector2(1f, 0.5f);
+        textRect.pivot = new Vector2(0.5f, 0.5f);
+        textRect.anchoredPosition = new Vector2(0f, 20f);
+        textRect.sizeDelta = new Vector2(-28f, 60f);
         text.color = color;
+        TextMeshProUGUI progress = CreateText(group.transform, "Progress", "0 / 0 COMPLETE", 24f, FontStyles.Bold,
+            Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+        RectTransform progressRect = progress.rectTransform;
+        progressRect.anchorMin = new Vector2(0f, 0.5f);
+        progressRect.anchorMax = new Vector2(1f, 0.5f);
+        progressRect.pivot = new Vector2(0.5f, 0.5f);
+        progressRect.anchoredPosition = new Vector2(0f, -27f);
+        progressRect.sizeDelta = new Vector2(-28f, 24f);
+        progress.color = color;
+        branchViews.Add(new BranchView { category = category, progress = progress });
     }
 
-    void CreateCategoryTab(int category, string label, Color color)
-    {
-        Button tab = CreateButton(categoryTabs, label + "Tab", label,
-            Vector2.zero, Vector2.zero, new Color(0.08f, 0.1f, 0.14f, 1f));
-        RectTransform rt = (RectTransform)tab.transform;
-        rt.anchorMin = new Vector2(category / 3f, 0f);
-        rt.anchorMax = new Vector2((category + 1) / 3f, 1f);
-        rt.offsetMin = new Vector2(category == 0 ? 0f : 4f, 0f);
-        rt.offsetMax = new Vector2(category == 2 ? 0f : -4f, 0f);
-        Image image = tab.GetComponent<Image>();
-        image.color = Color.Lerp(new Color(0.08f, 0.1f, 0.14f, 1f), color,
-            category == selectedCategory ? 0.38f : 0.12f);
-        TextMeshProUGUI text = tab.GetComponentInChildren<TextMeshProUGUI>();
-        if (text != null) text.color = color;
-        int capturedCategory = category;
-        tab.onClick.AddListener(() => SelectCategory(capturedCategory));
-        categoryTabButtons.Add(tab);
-    }
-
-    void SelectCategory(int category)
-    {
-        if (selectedCategory == category) return;
-        selectedCategory = Mathf.Clamp(category, 0, 2);
-        for (int i = 0; i < categoryTabButtons.Count; i++)
-        {
-            Color branch = GetBranchColor(i);
-            Image image = categoryTabButtons[i].GetComponent<Image>();
-            if (image != null)
-                image.color = i == selectedCategory
-                    ? Color.Lerp(new Color(0.08f, 0.1f, 0.14f, 1f), branch, 0.38f)
-                    : Color.Lerp(new Color(0.08f, 0.1f, 0.14f, 1f), branch, 0.12f);
-        }
-        BuildTree();
-        Sfx.Play(SfxId.UiClick);
-    }
-
-    Dictionary<string, Vector2> BuildNodePositions()
+    Dictionary<string, Vector2> BuildNodePositions(int category, float xOffset)
     {
         var positions = new Dictionary<string, Vector2>();
         var definitions = ResearchProgressManager.Definitions;
-        const float center = 0f;
-        float top = chart.sizeDelta.y * 0.5f - 175f;
-        const float rowSpacing = 170f;
-        const float leafSpacing = 330f;
+        float top = chart.sizeDelta.y * 0.5f - 240f;
+        const float rowSpacing = 270f;
 
-        for (int category = selectedCategory; category == selectedCategory; category++)
+        var branch = new List<ResearchProgressManager.Definition>();
+        foreach (ResearchProgressManager.Definition definition in definitions)
+            if (definition != null && definition.category == category) branch.Add(definition);
+        // Keep the dependency branches visible while placing every milestone
+        // on a consistent horizontal row. The source coordinates identify the
+        // left, centre, and right branch within each category.
+        for (int milestone = 1; milestone <= 4; milestone++)
         {
-            var branch = new List<ResearchProgressManager.Definition>();
-            foreach (ResearchProgressManager.Definition definition in definitions)
-                if (definition != null && definition.category == category) branch.Add(definition);
-            var roots = new List<ResearchProgressManager.Definition>();
-            foreach (ResearchProgressManager.Definition definition in branch)
-                if (string.IsNullOrEmpty(definition.parentId)
-                    || branch.Find(candidate => candidate.id == definition.parentId) == null)
-                    roots.Add(definition);
-
-            int totalLeaves = 0;
-            foreach (ResearchProgressManager.Definition root in roots)
-                totalLeaves += CountLeaves(root, branch);
-            float cursor = center - (Mathf.Max(1, totalLeaves) - 1) * leafSpacing * 0.5f;
-            foreach (ResearchProgressManager.Definition root in roots)
+            var row = branch.FindAll(definition => definition.milestone == milestone);
+            row.Sort((a, b) =>
             {
-                int leaves = CountLeaves(root, branch);
-                float rootX = cursor + (leaves - 1) * leafSpacing * 0.5f;
-                PlaceTreeNode(root, rootX, 0, top, rowSpacing, leafSpacing, branch, positions);
-                cursor += leaves * leafSpacing;
+                int compare = a.position.x.CompareTo(b.position.x);
+                return compare != 0 ? compare : string.CompareOrdinal(a.id, b.id);
+            });
+            int count = row.Count;
+            for (int index = 0; index < count; index++)
+            {
+                float branchOffset = count switch
+                {
+                    1 => 0f,
+                    2 => index == 0 ? -BranchOffset : BranchOffset,
+                    _ => -BranchOffset + index * ((BranchOffset * 2f) / Mathf.Max(1, count - 1))
+                };
+                positions[row[index].id] = new Vector2(xOffset + branchOffset,
+                    top - (milestone - 1) * rowSpacing);
             }
         }
         return positions;
-    }
-
-    static int CountLeaves(ResearchProgressManager.Definition definition,
-        List<ResearchProgressManager.Definition> branch)
-    {
-        int children = 0;
-        int leaves = 0;
-        foreach (ResearchProgressManager.Definition candidate in branch)
-            if (candidate.parentId == definition.id)
-            {
-                children++;
-                leaves += CountLeaves(candidate, branch);
-            }
-        return children == 0 ? 1 : leaves;
-    }
-
-    static void PlaceTreeNode(ResearchProgressManager.Definition definition, float x, int depth,
-        float top, float rowSpacing, float leafSpacing,
-        List<ResearchProgressManager.Definition> branch, Dictionary<string, Vector2> positions)
-    {
-        positions[definition.id] = new Vector2(x, top - depth * rowSpacing);
-        var children = new List<ResearchProgressManager.Definition>();
-        foreach (ResearchProgressManager.Definition candidate in branch)
-            if (candidate.parentId == definition.id) children.Add(candidate);
-        if (children.Count == 0) return;
-
-        int totalLeaves = 0;
-        foreach (ResearchProgressManager.Definition child in children)
-            totalLeaves += CountLeaves(child, branch);
-        float cursor = x - (totalLeaves - 1) * leafSpacing * 0.5f;
-        foreach (ResearchProgressManager.Definition child in children)
-        {
-            int leaves = CountLeaves(child, branch);
-            float childX = cursor + (leaves - 1) * leafSpacing * 0.5f;
-            PlaceTreeNode(child, childX, depth + 1, top, rowSpacing, leafSpacing, branch, positions);
-            cursor += leaves * leafSpacing;
-        }
     }
     void CreateNode(ResearchProgressManager.Definition definition, Vector2 position)
     {
@@ -315,7 +371,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         node.transform.SetParent(chart, false);
         RectTransform rt = (RectTransform)node.transform;
         rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(300f, 130f); rt.anchoredPosition = position;
+        rt.sizeDelta = new Vector2(NodeWidth, NodeHeight); rt.anchoredPosition = position;
         Image background = node.GetComponent<Image>();
         Button button = node.GetComponent<Button>(); button.targetGraphic = background;
         Color branchColor = GetBranchColor(definition.category);
@@ -368,7 +424,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         descriptionRect.sizeDelta = new Vector2(-28f, 52f);
         description.color = new Color(0.76f, 0.79f, 0.81f, 1f);
         description.textWrappingMode = TextWrappingModes.Normal;
-        description.overflowMode = TextOverflowModes.Overflow;
+        description.overflowMode = TextOverflowModes.Ellipsis;
         TextMeshProUGUI meta = CreateText(node.transform, "Meta", "", 11f, FontStyles.Bold,
             new Vector2(14f, -58f), new Vector2(-12f, -40f), TextAlignmentOptions.Left);
         RectTransform metaRect = meta.rectTransform;
@@ -422,7 +478,9 @@ public sealed class ResearchTreeUI : MonoBehaviour
         {
             ResearchProgressManager.Definition active = ResearchProgressManager.Get(manager.ActiveId);
             activeStatus.text = "RESEARCHING  " + (active != null ? active.title : "Project")
-                + "  |  " + FormatTime(manager.RemainingMinutes) + " REMAINING";
+                + "  |  " + (manager.IsTutorialTimedResearch
+                    ? FormatSeconds(manager.RemainingSeconds)
+                    : FormatTime(manager.RemainingMinutes)) + " REMAINING";
             activeStatus.color = GameUITheme.PositiveAccent;
         }
         else
@@ -443,7 +501,10 @@ public sealed class ResearchTreeUI : MonoBehaviour
             bool active = manager.IsActive(d.id);
             bool milestone = manager.IsMilestoneAvailable(d);
             bool prerequisite = manager.HasPrerequisite(d);
-            bool available = !complete && !active && !manager.HasActiveResearch && milestone && prerequisite;
+            bool tutorialLocked = OnboardingTutorial.IsResearchTutorialActive
+                && !OnboardingTutorial.IsTutorialResearchRoot(d.id);
+            bool available = !complete && !active && !manager.HasActiveResearch && milestone && prerequisite
+                && !tutorialLocked;
             bool affordable = money != null && money.CanAfford(d.cost);
             view.button.interactable = available;
             Color branch = GetBranchColor(d.category);
@@ -459,16 +520,37 @@ public sealed class ResearchTreeUI : MonoBehaviour
                 view.statusIcon.color = complete ? GameUITheme.PositiveAccent : branch;
             }
             if (complete) view.meta.text = "<color=#73D9A0>COMPLETED</color>";
-            else if (active) view.meta.text = "<color=#73D9C5>" + FormatTime(manager.RemainingMinutes) + " REMAINING</color>";
+            else if (active) view.meta.text = "<color=#73D9C5>" + (manager.IsTutorialTimedResearch
+                ? FormatSeconds(manager.RemainingSeconds)
+                : FormatTime(manager.RemainingMinutes)) + " REMAINING</color>";
+            else if (tutorialLocked) view.meta.text = "TUTORIAL: START WITH THE FOUNDATION CARD";
             else if (!milestone) view.meta.text = "REQUIRES MILESTONE " + d.milestone;
             else if (!prerequisite) view.meta.text = "REQUIRES " + (ResearchProgressManager.Get(d.parentId)?.title ?? "PREREQUISITE").ToUpperInvariant();
             else if (manager.HasActiveResearch) view.meta.text = "RESEARCH SLOT IN USE";
             else view.meta.text = (affordable ? "<color=#F2C66D>" : "<color=#E07A7A>")
                 + "$" + d.cost + "</color>  |  " + FormatTime(d.durationMinutes);
 
-            float progress = complete ? 1f : active ? 1f - manager.RemainingMinutes / Mathf.Max(1f, d.durationMinutes) : 0f;
+            float progress = complete ? 1f : active
+                ? manager.IsTutorialTimedResearch
+                    ? 1f - manager.RemainingSeconds / 1f
+                    : 1f - manager.RemainingMinutes / Mathf.Max(1f, d.durationMinutes)
+                : 0f;
             RectTransform fill = (RectTransform)view.progress.transform;
             fill.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+        }
+
+        foreach (BranchView branchView in branchViews)
+        {
+            int total = 0;
+            int completed = 0;
+            foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
+            {
+                if (definition == null || definition.category != branchView.category) continue;
+                total++;
+                if (manager.IsCompleted(definition.id)) completed++;
+            }
+            if (branchView.progress != null)
+                branchView.progress.text = completed + " / " + total + " COMPLETE";
         }
     }
 
@@ -486,7 +568,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         // This keeps every split at a right angle and prevents arbitrary shallow diagonals.
         // Leave a small visual gap at each card so the branch never appears to
         // run underneath or through the card edge.
-        const float cardHalfHeight = 65f;
+        float cardHalfHeight = NodeHeight * 0.5f;
         const float edgeGap = 6f;
         float parentEdge = a.y > b.y ? a.y - cardHalfHeight - edgeGap : a.y + cardHalfHeight + edgeGap;
         float childEdge = a.y > b.y ? b.y + cardHalfHeight + edgeGap : b.y - cardHalfHeight - edgeGap;
@@ -515,6 +597,11 @@ public sealed class ResearchTreeUI : MonoBehaviour
     {
         int rounded = Mathf.CeilToInt(Mathf.Max(0f, minutes));
         return rounded >= 60 ? (rounded / 60) + "h " + (rounded % 60) + "m" : rounded + "m";
+    }
+
+    static string FormatSeconds(float seconds)
+    {
+        return Mathf.CeilToInt(Mathf.Max(0f, seconds)) + "s";
     }
 
     static Button CreateButton(Transform parent, string name, string label, Vector2 min, Vector2 max, Color color)

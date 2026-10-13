@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Compatibility shim. Progression now lives in MissionListUI's Progression tab.
+/// Compatibility shim. Progression now lives in MissionListUI's objectives panel.
 /// Keep this component so old scene/debug references still compile.
 /// </summary>
 public class MilestoneMapUI : MonoBehaviour

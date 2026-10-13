@@ -20,6 +20,79 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool AllowsPracticeCustomer => IsActive && Steps[Instance.stepIndex].liveCustomer;
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
+    public static bool IsResearchTutorialActive => IsCurrentStep(step => step.requireResearch);
+    public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
+    public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen);
+    public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
+
+    static bool IsCurrentStep(System.Predicate<Step> predicate)
+    {
+        return Instance != null && Instance.running && Instance.stepIndex >= 0
+            && Instance.stepIndex < Steps.Length && predicate(Steps[Instance.stepIndex]);
+    }
+
+    public static bool IsTutorialResearchRoot(string id)
+    {
+        return id == "production_basics" || id == "core_workforce" || id == "manual_operations";
+    }
+
+    public static bool IsTutorialResearchComplete()
+    {
+        ResearchProgressManager research = ResearchProgressManager.Instance;
+        return research != null && research.IsCompleted("production_basics")
+            && research.IsCompleted("core_workforce")
+            && research.IsCompleted("manual_operations");
+    }
+
+    public static int TutorialResearchCategory
+    {
+        get
+        {
+            ResearchProgressManager research = ResearchProgressManager.Instance;
+            if (research == null || !research.IsCompleted("production_basics")) return 0;
+            if (!research.IsCompleted("core_workforce")) return 1;
+            return 2;
+        }
+    }
+
+    public static void NotifyResearchScreenOpened()
+    {
+        if (IsResearchTutorialActive) Instance.researchScreenOpened = true;
+    }
+
+    public static void NotifyRecipeScreenOpened()
+    {
+        if (IsRecipeTutorialActive) Instance.recipeScreenOpened = true;
+    }
+
+    public static void NotifyAnalyticsScreenOpened()
+    {
+        if (IsAnalyticsTutorialActive) Instance.analyticsScreenOpened = true;
+    }
+
+    public static void NotifyMenuScreenOpened()
+    {
+        if (IsMenuTutorialActive) Instance.menuScreenOpened = true;
+    }
+
+    static Transform FindHudCanvas()
+    {
+        Canvas canvas = null;
+        TopHudBar hud = FindFirstObjectByType<TopHudBar>(FindObjectsInactive.Include);
+        if (hud != null) canvas = hud.GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            if (tabs != null) canvas = tabs.GetComponentInParent<Canvas>();
+        }
+        if (canvas == null)
+        {
+            ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null) canvas = management.GetComponentInParent<Canvas>();
+        }
+        if (canvas == null) canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
+        return canvas != null ? (canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform) : null;
+    }
 
     bool running;
     bool pendingStart;
@@ -28,11 +101,14 @@ public class OnboardingTutorial : MonoBehaviour
     bool starterKitchenHidden;
     int stepIndex;
     public int SaveStepIndex => stepIndex;
-    public void RestoreCheckpoint(bool complete, int savedStep)
+    public bool OrderServedForSave => orderServed;
+
+    public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
         furthestStepIndex = stepIndex;
+        orderServed = savedOrderServed;
         if (complete)
         {
             pendingStart = false;
@@ -55,6 +131,11 @@ public class OnboardingTutorial : MonoBehaviour
     float autoAdvanceAt;
     bool flowEditCompleted;
     bool recipeBusinessOpened;
+    bool researchScreenOpened;
+    bool recipeScreenOpened;
+    bool analyticsScreenOpened;
+    bool menuScreenOpened;
+    bool orderServed;
     bool tutorialReviewShown;
     bool cleanedOldWorldCallout;
     int recipeTutorialStationIndex;
@@ -116,6 +197,16 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireRecipes;
         public bool requireIngredients;
         public bool requireStationSequence;
+        public bool openResearch;
+        public bool requireResearch;
+        public bool openRecipes;
+        public bool requireRecipeScreen;
+        public bool openAnalytics;
+        public bool requireAnalyticsScreen;
+        public bool requireMenuScreen;
+        public bool requireHamburger;
+        public bool requireRegisterEnabled;
+        public bool requireOrderServed;
 
         public Step(
             string title,
@@ -134,7 +225,17 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireHiredWorker = false,
             bool requireEditedFlow = false, bool requireRecipes = false,
             bool requireIngredients = false,
-            bool requireStationSequence = false)
+            bool requireStationSequence = false,
+            bool openResearch = false,
+            bool requireResearch = false,
+            bool openRecipes = false,
+            bool requireRecipeScreen = false,
+            bool openAnalytics = false,
+            bool requireAnalyticsScreen = false,
+            bool requireMenuScreen = false,
+            bool requireHamburger = false,
+            bool requireOrderServed = false,
+            bool requireRegisterEnabled = false)
         {
             this.title = title;
             this.body = body;
@@ -154,6 +255,16 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireRecipes = requireRecipes;
             this.requireIngredients = requireIngredients;
             this.requireStationSequence = requireStationSequence;
+            this.openResearch = openResearch;
+            this.requireResearch = requireResearch;
+            this.openRecipes = openRecipes;
+            this.requireRecipeScreen = requireRecipeScreen;
+            this.openAnalytics = openAnalytics;
+            this.requireAnalyticsScreen = requireAnalyticsScreen;
+            this.requireMenuScreen = requireMenuScreen;
+            this.requireHamburger = requireHamburger;
+            this.requireOrderServed = requireOrderServed;
+            this.requireRegisterEnabled = requireRegisterEnabled;
         }
     }
 
@@ -173,8 +284,9 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Register",
             "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here. The queue grows when arrivals outpace your service capacity.\n\n" +
-            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\nKeep the queue area clear. Place the register to unlock Next.",
-            "Next", Highlight.Register, openInventory: true, requirePlaced: true),
+            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\n" +
+            "Keep the queue area clear. After placing it, click the register and choose <b>Enable</b>. Next unlocks after the register is both placed and enabled.",
+            "Next", Highlight.Register, openInventory: true, requirePlaced: true, requireRegisterEnabled: true),
         new Step(
             "Freezer",
             "Buy and place a <b>freezer</b>. Each freezer stores one ingredient. Select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>. A cook carries those patties to the grill.\n\n" +
@@ -206,6 +318,14 @@ public class OnboardingTutorial : MonoBehaviour
             "If this sits empty, upstream stations are too slow. If it fills and items expire, you produced more than you can serve.\n\nPlace one to continue.",
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
+            "Research the three foundations",
+            "Before we choose a recipe, open <b>Research</b>. Gus needs you to complete the first card in each branch: Restaurant Basics, Core Workforce, and Manual Operations. Each tutorial card finishes in one second.",
+            "Next", Highlight.None, requireResearch: true),
+        new Step(
+            "Open the recipe book",
+            "The three foundations are complete. Open the <b>Recipes</b> screen and look through the Burger, Fries, and Shake production trees before we configure the stations.",
+            "Next", Highlight.None, requireRecipeScreen: true),
+        new Step(
             "Configure ingredients and recipes",
             "Click the highlighted station in the kitchen. Gus will point out the exact choice to make in its station panel. We will configure each station one at a time.",
             "Next", Highlight.Management, openWorkers: true, requireRecipes: true, requireStationSequence: true),
@@ -224,6 +344,10 @@ public class OnboardingTutorial : MonoBehaviour
             "Create a flow",
             "Start by clicking <b>Create Flow</b>. Gus will guide you through each connection in the kitchen. Drag from the source station to the destination station, then release.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
+        new Step(
+            "Choose what to sell",
+            "Open <b>Business</b>, then click the <b>Menu</b> tab. Every item starts turned off so you choose exactly what customers can order. Enable <b>Hamburger</b> to make the burger line available.",
+            "Next", Highlight.Management, requireMenuScreen: true, requireHamburger: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
@@ -248,8 +372,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Serve one order",
             "The clock is running. Only <b>one customer</b> will come in and order <b>one burger</b> so you can watch the loop.\n\n" +
             "If nobody is cooking, check workers, outputs, and that you bought ingredient packs.\n\n" +
-            "Serve that order, then click Finish. Extra customers stay away until the tutorial ends.",
-            "Finish", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
+            "Serve that order, then continue to Analytics. Extra customers stay away until the tutorial ends.",
+            "Next", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true, requireOrderServed: true),
+        new Step(
+            "Review analytics",
+            "You have seen the complete service loop. Click the highlighted <b>Analytics</b> button on the HUD to inspect demand, queues, throughput, and utilization after the first order.",
+            "Finish", Highlight.None, requireAnalyticsScreen: true),
     };
 
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
@@ -262,7 +390,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
 
         "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
-        "Keep some floor space clear for the customer line. Place the register and I will show you the kitchen.",
+        "Keep some floor space clear for the customer line. After placing it, click the register and choose <b>Enable</b> so customers can order.",
 
         "Let's start the burger process. Buy and place a <b>freezer</b>. Each freezer stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>.\n\n" +
         "If it is unconfigured or empty, burger production cannot begin.",
@@ -282,6 +410,10 @@ public class OnboardingTutorial : MonoBehaviour
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
 
+        "Before we choose a recipe, open <b>Research</b>. Complete the first card in each branch: Restaurant Basics, Core Workforce, and Manual Operations. These first cards finish in one second for the tutorial.",
+
+        "The foundations are complete. Open the <b>Recipes</b> screen and inspect the Burger, Fries, and Shake production trees. We will configure the burger line next.",
+
         "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Hamburger recipe at Assembly.\n\n" +
         "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
 
@@ -294,6 +426,9 @@ public class OnboardingTutorial : MonoBehaviour
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +
         "In ONE flow, drag Freezer to Grill, Grill to Assembly, Pantry to Assembly, and Assembly to Pickup Station. Release on each destination and click Finish. The pantry supplies buns to the same assembly station.",
 
+        "Now choose the product customers can order. Open <b>Business</b>, click the <b>Menu</b> tab, and enable <b>Hamburger</b>.\n\n" +
+        "Every sellable item starts turned off. That keeps your menu intentional and prevents customers from ordering a recipe before its line is ready.",
+
         "Plans change, so you need to know how to revise one. Select the flow chip, then click <b>Edit Flow</b>.\n\n" +
         "Drag to connect stations. Click selects a station; Ctrl-click removes it and its connections. Check the route, then click Finish to save it.",
 
@@ -305,28 +440,34 @@ public class OnboardingTutorial : MonoBehaviour
         "Waiting, walking, and blocked stations are all clues.",
 
         "I am opening the doors for one test customer. They will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
-        "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then click Finish."
+        "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then continue to Analytics.",
+
+        "You have completed the first service loop. Click the highlighted <b>Analytics</b> button on the HUD to read demand, queues, throughput, and utilization."
     };
 
     static readonly string[] CompactTutorialText =
     {
         "Build a small burger line, connect it, and serve one test customer.",
         "Open <b>Build</b>. The highlighted MK1 station is free for this tutorial.",
-        "Buy the <b>Register</b>, then place it on a lobby counter.",
+        "Buy the <b>Register</b>, place it on a lobby counter, then click it and choose <b>Enable</b>.",
         "Buy a <b>Freezer</b>. You will assign Raw Patty after placement.",
         "Buy a <b>Grill</b>. It turns Raw Patty into Cooked Patty.",
         "Buy a <b>Fryer</b>. Fries use Potato Slices, then combine Cooked Potato Slices with a Fry Container at Assembly.",
         "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
         "Buy an <b>Assembly Station</b>. Its selected recipe determines its required inputs.",
         "Buy a <b>Pickup Station</b>. Only finished products delivered here are sold.",
+        "In <b>Research</b>, complete the first card in each of the three branches. Each first card finishes in one second during the tutorial.",
+        "Open <b>Recipes</b> and inspect the Burger, Fries, and Shake production trees before configuring a station.",
         "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger.",
         "In <b>Food</b>, order Raw Patties and Buns. Express costs $200 and makes the delivery van arrive immediately.",
         "In <b>Staff</b>, hire one worker. Worker priorities can favor specific task types.",
         "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station.",
+        "Open <b>Business > Menu</b> and enable <b>Hamburger</b>. All sellable items start off until you choose them.",
         "Use <b>Edit Flow</b> to adjust connections, then click Finish.",
         "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
         "Customers request a burger and pay when the ordered burger reaches the Pickup Station. Workers keep the line moving, but only stage food that a waiting customer ordered.",
-        "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave."
+        "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave.",
+        "Open <b>Analytics</b> to review demand, queues, throughput, and utilization, then click Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -430,6 +571,11 @@ public class OnboardingTutorial : MonoBehaviour
         furthestStepIndex = -1;
         flowEditCompleted = false;
         liveCustomerSpawned = false;
+        researchScreenOpened = false;
+        recipeScreenOpened = false;
+        analyticsScreenOpened = false;
+        menuScreenOpened = false;
+        orderServed = false;
         HideUI();
         ClearHighlight();
         if (GameTimeManager.Instance != null)
@@ -441,11 +587,20 @@ public class OnboardingTutorial : MonoBehaviour
 
     void OnGameEvent(string eventId)
     {
-        if (!running) return;
         if (eventId != TutorialVoiceEventId.FirstOrderServed && eventId != TutorialVoiceEventId.OrderServed)
             return;
-        if (stepIndex != Steps.Length - 1) return;
-        Complete(skipped: false);
+
+        // Keep this latched even if the event arrives during a step transition
+        // or immediately before a save restore. Serving is a gameplay fact, not
+        // a fact that should depend on the current tutorial panel timing.
+        orderServed = true;
+        if (!running) return;
+        if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireOrderServed)
+        {
+            RefreshAdvanceGate();
+            UpdateContextualCallout();
+            return;
+        }
     }
 
     void OnBack()
@@ -485,6 +640,8 @@ public class OnboardingTutorial : MonoBehaviour
         ingredientTutorialStep = 0;
         ingredientExplanationUntil = 0f;
         tutorialFocusText = null;
+        if (!step.requireMenuScreen)
+            menuScreenOpened = false;
         furthestStepIndex = Mathf.Max(furthestStepIndex, stepIndex);
 
         if (canvasRoot != null)
@@ -508,6 +665,16 @@ public class OnboardingTutorial : MonoBehaviour
         currentHighlight = step.highlight;
         calloutTarget = null;
         UpdateHighlight(step.highlight);
+
+        if (!step.openResearch)
+            ResearchTreeUI.CloseIfOpen();
+        if (!step.openRecipes)
+        {
+            var recipes = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+            if (recipes != null) recipes.CloseRecipesFromHud();
+        }
+        if (!step.openAnalytics)
+            AnalyticsPopupUI.CloseIfOpen();
 
         if (stepIndex == 1)
         {
@@ -552,6 +719,28 @@ public class OnboardingTutorial : MonoBehaviour
             if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
             var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
             if (management != null && management.IsOpen) management.Close();
+        }
+        if (step.openResearch)
+        {
+            var inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventory != null && inventory.IsPanelOpen) inventory.TogglePanel();
+            var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.Close();
+            Transform canvas = FindHudCanvas();
+            if (canvas != null)
+                ResearchTreeUI.Open(canvas);
+        }
+        if (step.openRecipes)
+        {
+            var recipes = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+            if (recipes != null)
+                recipes.OpenRecipesFromHud();
+        }
+        if (step.openAnalytics)
+        {
+            Transform canvas = FindHudCanvas();
+            if (canvas != null)
+                AnalyticsPopupUI.Open(canvas);
         }
         if (step.openWorkers && !step.requireRecipes)
         {
@@ -743,9 +932,17 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
-    static string LockedLabel(Step step)
+    string LockedLabel(Step step)
     {
         if (step.highlight == Highlight.Inventory) return "Open Build";
+        if (step.requireResearch) return "Research all three foundations";
+        if (step.requireRecipeScreen) return "Open Recipes";
+        if (step.requireAnalyticsScreen) return "Open Analytics";
+        if (step.requireMenuScreen && !menuScreenOpened) return "Open Business > Menu";
+        if (step.requireHamburger) return "Enable Hamburger";
+        if (step.requireRegisterEnabled)
+            return HasPlacedStation(step.highlight) ? "Enable the register" : "Place register on counter";
+        if (step.requireOrderServed) return "Serve the burger";
         if (step.requireIngredients) return "Order Raw Patties and Buns";
         if (step.requireRecipes) return MissingRecipeLabel();
         if (step.requireEditedFlow) return "Edit and save flow";
@@ -771,6 +968,32 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
+    static bool IsHamburgerEnabled()
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        return config != null && config.burgerBase != null && config.IsItemEnabled(config.burgerBase);
+    }
+
+    static Register FindTutorialRegister()
+    {
+        Register[] registers = FindObjectsByType<Register>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (Register register in registers)
+        {
+            if (register == null || !register.IsPlacedRegister) continue;
+            if (Instance != null && Instance.starterKitchen.Contains(register.gameObject)) continue;
+            if (register.GetComponent<PlacedBuildItem>() != null) return register;
+        }
+        return null;
+    }
+
+    static bool IsTutorialRegisterEnabled()
+    {
+        Register register = FindTutorialRegister();
+        return register != null && register.isEnabled;
+    }
+
     bool StepRequirementMet()
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
@@ -781,6 +1004,13 @@ public class OnboardingTutorial : MonoBehaviour
             if (inventoryUI == null || !inventoryUI.IsPanelOpen) return false;
         }
         if (step.requireIngredients && !HasTutorialIngredients()) return false;
+        if (step.requireResearch && (!researchScreenOpened || !IsTutorialResearchComplete())) return false;
+        if (step.requireRecipeScreen && !recipeScreenOpened) return false;
+        if (step.requireAnalyticsScreen && !analyticsScreenOpened) return false;
+        if (step.requireMenuScreen && !menuScreenOpened) return false;
+        if (step.requireHamburger && !IsHamburgerEnabled()) return false;
+        if (step.requireRegisterEnabled && !IsTutorialRegisterEnabled()) return false;
+        if (step.requireOrderServed && !orderServed) return false;
         if (step.requireRecipes && (!recipeBusinessOpened || !BurgerRecipesReady())) return false;
         if (step.requireEditedFlow && !flowEditCompleted) return false;
         if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
@@ -801,16 +1031,21 @@ public class OnboardingTutorial : MonoBehaviour
 
     static bool AutomaticallyAdvances(Step step)
     {
-        return step.liveCustomer || step.requirePlaced || step.requireAllStations
+        return (step.liveCustomer && !step.requireOrderServed) || step.requirePlaced || step.requireAllStations
             || step.requireFlow || step.requireWorkerOnFlow || step.requireHiredWorker
-            || step.requireEditedFlow || step.requireRecipes || step.requireIngredients;
+            || step.requireEditedFlow || step.requireRecipes || step.requireIngredients
+            || step.requireResearch || step.requireHamburger || step.requireRegisterEnabled
+            || step.requireOrderServed;
     }
 
     void RefreshAutomaticAdvance()
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         Step step = Steps[stepIndex];
-        if (!AutomaticallyAdvances(step) || step.liveCustomer || !StepRequirementMet())
+        // The live-customer step waits for the order-served event, then advances
+        // automatically. Other live-customer steps still remain manual.
+        bool waitingForServedOrder = step.liveCustomer && !step.requireOrderServed;
+        if (!AutomaticallyAdvances(step) || waitingForServedOrder || !StepRequirementMet())
         {
             autoAdvanceStep = -1;
             return;
@@ -1292,6 +1527,20 @@ public class OnboardingTutorial : MonoBehaviour
         border.SetActive(true);
         border.transform.SetAsLastSibling();
     }
+
+    void HighlightHudButton(string buttonName)
+    {
+        if (string.IsNullOrEmpty(buttonName)) return;
+        foreach (Button button in FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (button != null && button.name == buttonName && button.gameObject.activeInHierarchy)
+            {
+                HighlightControl(button);
+                return;
+            }
+        }
+    }
+
     void RefreshControlHighlights()
     {
         if (Time.unscaledTime < nextControlHighlightRefresh) return;
@@ -1334,6 +1583,94 @@ public class OnboardingTutorial : MonoBehaviour
             if (target != null) HighlightControl(target);
         }
 
+        if (step.requireRegisterEnabled && !IsTutorialRegisterEnabled())
+        {
+            Register register = FindTutorialRegister();
+            if (register != null)
+            {
+                highlightTarget = register.transform;
+                RegisterPopup popup = FindFirstObjectByType<RegisterPopup>(FindObjectsInactive.Exclude);
+                if (popup != null && popup.toggleButton != null
+                    && popup.toggleButton.gameObject.activeInHierarchy)
+                {
+                    tutorialFocusText = "Click <b>Enable</b> on the register popup to let customers order.";
+                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    HighlightControl(popup.toggleButton);
+                }
+                else
+                {
+                    tutorialFocusText = "Click the placed <b>register</b>, then click <b>Enable</b>.";
+                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                }
+            }
+            return;
+        }
+
+        if (step.requireMenuScreen && !menuScreenOpened)
+        {
+            ManagementScreenController menuManagement = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (menuManagement == null || !menuManagement.IsOpen)
+            {
+                tutorialFocusText = "Click <b>Business</b> on the HUD.";
+                if (bodyText != null) bodyText.text = tutorialFocusText;
+                HighlightHudButton("BusinessTab");
+            }
+            else
+            {
+                tutorialFocusText = "Click the <b>Menu</b> tab in Business.";
+                if (bodyText != null) bodyText.text = tutorialFocusText;
+                HighlightHudButton("Tab_Menu");
+            }
+            return;
+        }
+        if (step.requireHamburger && !IsHamburgerEnabled())
+        {
+            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+            CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
+            Toggle target = ingredients != null && config != null
+                ? ingredients.TutorialMenuToggle(config.burgerBase) : null;
+            if (target != null)
+            {
+                tutorialFocusText = "Click the <b>Hamburger</b> toggle to add it to the menu.";
+                if (bodyText != null) bodyText.text = tutorialFocusText;
+                HighlightControl(target);
+            }
+            return;
+        }
+
+        if (step.requireResearch && !researchScreenOpened)
+        {
+            HighlightHudButton("ResearchButton");
+            return;
+        }
+        if (step.requireRecipeScreen && !recipeScreenOpened)
+        {
+            HighlightHudButton("RecipesButton");
+            return;
+        }
+        if (step.requireAnalyticsScreen && !analyticsScreenOpened)
+        {
+            HighlightHudButton("AnalyticsButton");
+            return;
+        }
+        if (step.requireResearch)
+        {
+            string rootId = ResearchProgressManager.Instance != null
+                ? (ResearchProgressManager.Instance.IsCompleted("production_basics")
+                    ? ResearchProgressManager.Instance.IsCompleted("core_workforce")
+                        ? "manual_operations" : "core_workforce"
+                    : "production_basics")
+                : "production_basics";
+            foreach (Button button in FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (button != null && button.name == rootId && button.interactable)
+                {
+                    HighlightControl(button);
+                    break;
+                }
+            }
+            return;
+        }
         if (!step.openWorkers) return;
         var workers = FindFirstObjectByType<WorkersUI>();
         if (workers != null)

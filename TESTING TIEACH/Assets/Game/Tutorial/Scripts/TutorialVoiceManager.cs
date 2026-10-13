@@ -108,6 +108,12 @@ public class TutorialVoiceManager : MonoBehaviour
     void Update()
     {
         SyncPauseWithSimulation();
+
+        // Tutorial subtitles are guidance from Gus. Keep the voice system
+        // available for audio during normal play, but do not leave the
+        // tutorial subtitle bubble over regular gameplay once onboarding ends.
+        if (!OnboardingTutorial.IsActive && voiceUI != null && voiceUI.IsVisible)
+            voiceUI.Hide();
     }
 
     void SyncPauseWithSimulation()
@@ -140,10 +146,7 @@ public class TutorialVoiceManager : MonoBehaviour
         }
 
         if (!database.TryGetLine(eventId, out var line) || line == null)
-        {
-            Debug.LogWarning($"TutorialVoice: no line for event '{eventId}'. Add it to TutorialVoiceDatabase.");
             return;
-        }
 
         if (line.playOnce && playedOnceIds.Contains(eventId))
             return;
@@ -178,7 +181,7 @@ public class TutorialVoiceManager : MonoBehaviour
         if (line == null) yield break;
 
         string text = string.IsNullOrEmpty(line.subtitleText) ? "" : line.subtitleText;
-        if (voiceUI != null)
+        if (voiceUI != null && OnboardingTutorial.IsActive)
             voiceUI.Show(text);
 
         float wait = Mathf.Max(0.1f, line.displayDuration);
@@ -199,7 +202,7 @@ public class TutorialVoiceManager : MonoBehaviour
 
         yield return new WaitForSeconds(wait);
 
-        if (voiceUI != null)
+        if (voiceUI != null && OnboardingTutorial.IsActive)
             voiceUI.Hide();
     }
 
