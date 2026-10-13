@@ -50,13 +50,22 @@ public class CustomersUI : MonoBehaviour
         if (built) return;
         built = true;
 
+        var panelImage = GetComponent<Image>();
+        if (panelImage != null)
+        {
+            panelImage.color = Color.clear;
+            panelImage.raycastTarget = true;
+            if (panelImage.GetComponent<GameUIThemeStyled>() == null)
+                panelImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         HidePlaceholderCopy();
 
         var title = transform.Find("Title");
         if (title != null)
         {
             var tmp = title.GetComponent<TextMeshProUGUI>();
-            if (tmp != null) tmp.text = "Customers";
+            if (tmp != null) tmp.text = "Analytics";
         }
 
         BuildMetricCards();
@@ -82,7 +91,8 @@ public class CustomersUI : MonoBehaviour
         graphRt.anchoredPosition = new Vector2(0, -158);
         graphRt.sizeDelta = new Vector2(-28, 240);
         var frameImg = graphFrame.AddComponent<Image>();
-        frameImg.color = new Color(0.12f, 0.13f, 0.16f, 0.95f);
+        frameImg.color = Color.clear;
+        frameImg.gameObject.AddComponent<GameUIThemeStyled>();
 
         var barsGo = new GameObject("Bars", typeof(RectTransform));
         barsGo.transform.SetParent(graphFrame.transform, false);
@@ -133,6 +143,15 @@ public class CustomersUI : MonoBehaviour
         scroll.horizontal = true;
         scroll.vertical = true;
 
+        var scrollImage = scrollGo.GetComponent<Image>();
+        if (scrollImage != null)
+        {
+            scrollImage.color = Color.clear;
+            scrollImage.raycastTarget = true;
+            if (scrollImage.GetComponent<GameUIThemeStyled>() == null)
+                scrollImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
         var vpRt = (RectTransform)viewport.transform;
@@ -141,8 +160,13 @@ public class CustomersUI : MonoBehaviour
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
         vpRt.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.02f);
-        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        var viewportImage = viewport.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+        viewportImage.raycastTarget = true;
+        viewport.GetComponent<CanvasRenderer>().cullTransparentMesh = false;
+        viewportImage.gameObject.AddComponent<GameUIThemeStyled>();
+        var viewportMask = viewport.AddComponent<Mask>();
+        viewportMask.showMaskGraphic = false;
 
         var content = new GameObject("Content", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
@@ -178,10 +202,21 @@ public class CustomersUI : MonoBehaviour
             demandHeader[i].overflowMode = TextOverflowModes.Overflow;
             demandHeader[i].color = new Color(0.72f, 0.77f, 0.86f, 1f);
         }
-        demandHeader[0].transform.parent.parent.GetComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
+        var demandHeaderImage = demandHeader[0].transform.parent.parent.GetComponent<Image>();
+        if (demandHeaderImage != null)
+        {
+            demandHeaderImage.color = Color.clear;
+            if (demandHeaderImage.GetComponent<GameUIThemeStyled>() == null)
+                demandHeaderImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
 
         scroll.viewport = vpRt;
         scroll.content = contentRt;
+        var rectMask = viewport.GetComponent<RectMask2D>();
+        if (rectMask != null) Destroy(rectMask);
+        var demandMask = viewport.GetComponent<Mask>();
+        if (demandMask == null) demandMask = viewport.gameObject.AddComponent<Mask>();
+        demandMask.showMaskGraphic = false;
     }
 
     void HidePlaceholderCopy()
@@ -219,7 +254,9 @@ public class CustomersUI : MonoBehaviour
     {
         var card = new GameObject(label.Replace(' ', '_'), typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         card.transform.SetParent(parent, false);
-        card.GetComponent<Image>().color = new Color(0.11f, 0.13f, 0.18f, 0.98f);
+        var cardImage = card.GetComponent<Image>();
+        cardImage.color = Color.clear;
+        cardImage.gameObject.AddComponent<GameUIThemeStyled>();
         card.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
         var stripe = new GameObject("Accent", typeof(RectTransform), typeof(Image));
@@ -568,11 +605,7 @@ public class CustomersUI : MonoBehaviour
             cells[6].text = row.completedLastMinute.ToString();
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
-                rowImage.color = row.requiredOutput > 0
-                    ? new Color(0.22f, 0.14f, 0.15f, 0.98f)
-                    : i % 2 == 0
-                        ? new Color(0.13f, 0.16f, 0.20f, 0.98f)
-                        : new Color(0.11f, 0.14f, 0.18f, 0.98f);
+                rowImage.color = Color.clear;
         }
     }
 
@@ -589,7 +622,9 @@ public class CustomersUI : MonoBehaviour
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup));
         go.transform.SetParent(demandListRoot, false);
-        go.GetComponent<Image>().color = new Color(0.13f, 0.16f, 0.20f, 0.98f);
+        var rowImage = go.GetComponent<Image>();
+        rowImage.color = Color.clear;
+        rowImage.gameObject.AddComponent<GameUIThemeStyled>();
         var rowSize = go.GetComponent<LayoutElement>();
         rowSize.minHeight = height;
         rowSize.preferredHeight = height;
@@ -606,7 +641,9 @@ public class CustomersUI : MonoBehaviour
         {
             var cell = new GameObject("Column" + i, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             cell.transform.SetParent(go.transform, false);
-            cell.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.025f);
+            var cellImage = cell.GetComponent<Image>();
+            cellImage.color = Color.clear;
+            cellImage.gameObject.AddComponent<GameUIThemeStyled>();
             var size = cell.GetComponent<LayoutElement>();
             size.minWidth = demandColumnWidths[i];
             size.preferredWidth = demandColumnWidths[i];

@@ -210,7 +210,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Management, openWorkers: true, requireRecipes: true, requireStationSequence: true),
         new Step(
             "Buy ingredients",
-            "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then <b>Menu & Supply</b>.\n\n" +
+            "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then choose <b>Supply</b>.\n\n" +
             "Buy Raw Patties and Buns for the burger line. Packs spend cash. A delivery person brings them in through the front door after a short wait. Potatoes are used later for fries.",
             "Next", Highlight.Management, openIngredients: true, requireIngredients: true, requireStationSequence: true),
         new Step(
@@ -284,7 +284,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Hamburger recipe at Assembly.\n\n" +
         "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
 
-        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Menu & Supply</b>.\n\n" +
+        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Supply</b>.\n\n" +
         "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
 
         "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +

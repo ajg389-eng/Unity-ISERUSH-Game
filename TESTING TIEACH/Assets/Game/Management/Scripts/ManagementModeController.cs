@@ -3387,7 +3387,6 @@ public class ManagementModeController : MonoBehaviour
                     stationPopup.transform.SetParent(parentCanvas.transform, false);
 
                 TryImportScenePopup(stationPopup);
-                stationPopup.GetComponent<StationManagePopup>()?.RemoveBackgroundFill();
                 BindPopupReferences();
                 EnsureProductionDiagramUI();
                 WirePopupButtons();

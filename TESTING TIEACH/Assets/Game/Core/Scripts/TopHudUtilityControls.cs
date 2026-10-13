@@ -229,6 +229,7 @@ public class TopHudUtilityControls : MonoBehaviour
         notificationButton.onClick.RemoveAllListeners();
         notificationButton.onClick.AddListener(ToggleHistory);
         GameIconLibrary.ApplyToButton(notificationButton, GameIconId.Exclamation, 20f, 0f, true);
+        GameUITheme.ApplyCompactControlEffects(notificationButton);
     }
 
     void EnsureGusHelpSection()
@@ -308,13 +309,21 @@ public class TopHudUtilityControls : MonoBehaviour
         rt.pivot = new Vector2(1f, 1f);
         rt.anchoredPosition = new Vector2(430f, -62f);
         rt.sizeDelta = new Vector2(390f, 340f);
-        historyPanel.GetComponent<Image>().color = Panel;
+        ApplyTopHudBackground(historyPanel.GetComponent<Image>());
 
         if (historyPanel.transform.childCount == 0)
             BuildHistoryPanel(historyPanel.transform);
         else
             historyContent = historyPanel.transform.Find("Scroll View/Viewport/Content") as RectTransform;
         historyPanel.SetActive(false);
+    }
+
+    static void ApplyTopHudBackground(Image image)
+    {
+        if (image == null) return;
+        image.color = HudTabColors.Strip;
+        if (image.GetComponent<GameUIThemeStyled>() == null)
+            image.gameObject.AddComponent<GameUIThemeStyled>();
     }
 
     void BuildHistoryPanel(Transform root)

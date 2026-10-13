@@ -18,7 +18,7 @@ public static class WorkerCardPrefabBuilder
     public static GameObject Build()
     {
         var cardGo = new GameObject("WorkerCard", typeof(RectTransform));
-        cardGo.AddComponent<Image>().color = new Color(0.18f, 0.2f, 0.26f, 0.98f);
+        cardGo.AddComponent<Image>().color = Color.clear;
         var le = cardGo.AddComponent<LayoutElement>();
         le.minHeight = 44;
         le.preferredHeight = 44;

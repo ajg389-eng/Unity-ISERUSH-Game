@@ -210,7 +210,7 @@ public class MilestoneProgressManager : MonoBehaviour
         {
             activeMilestoneId = null;
             ApplyActiveMissions(reset: true);
-            NotificationCenter.Post("All milestones complete. Review Research and Menu & Supply to keep improving the restaurant.",
+            NotificationCenter.Post("All milestones complete. Review Research, Supply, and Menu to keep improving the restaurant.",
                 GameNotificationKind.Message, "milestones-complete", 12f);
         }
 

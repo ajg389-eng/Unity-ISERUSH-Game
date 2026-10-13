@@ -12,7 +12,7 @@ public class MissionListUI : MonoBehaviour
 {
     public const string PanelObjectName = "SideMenuPanel";
     const string TopTabsObjectName = "TasksProgressionTabs";
-    const float TopTabsWidth = 650f;
+    const float TopTabsWidth = 210f;
     const float TopTabsHeight = 60f;
 
     public enum SideTab
@@ -60,6 +60,7 @@ public class MissionListUI : MonoBehaviour
     GameObject topTabsRoot;
     Button topTasksButton;
     Button topProgressionButton;
+    Button topObjectivesButton;
     Button topResearchButton;
     bool panelOpen;
 
@@ -141,6 +142,20 @@ public class MissionListUI : MonoBehaviour
     public void ToggleProgressionTab()
     {
         ToggleTopTab(SideTab.Progression);
+    }
+
+    /// <summary>Toggle the single HUD entry that contains both task and progression views.</summary>
+    public void ToggleObjectives()
+    {
+        if (IsOpen)
+        {
+            SetVisible(false);
+            Sfx.Play(SfxId.UiClose);
+            return;
+        }
+
+        SetVisible(true);
+        SelectTab(activeTab);
     }
 
     public void SetVisible(bool visible)
@@ -563,7 +578,7 @@ public class MissionListUI : MonoBehaviour
         panelRoot.transform.SetParent(targetCanvas.transform, false);
 
         var bg = panelRoot.GetComponent<Image>();
-        bg.color = panelColor;
+        ApplyTopHudBackground(bg);
         bg.raycastTarget = true;
 
         var layout = panelRoot.GetComponent<VerticalLayoutGroup>();
@@ -713,14 +728,19 @@ public class MissionListUI : MonoBehaviour
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
+        // Tasks and progression now share one top-level HUD entry. Keep the old
+        // objects hidden so scenes saved with the previous layout do not produce
+        // duplicate clickable tabs.
         topTasksButton = FindOrCreateTopTab("TasksTopTab", "Tasks");
         topProgressionButton = FindOrCreateTopTab("ProgressionTopTab", "Progression");
+        topTasksButton.gameObject.SetActive(false);
+        topProgressionButton.gameObject.SetActive(false);
+        topObjectivesButton = FindOrCreateTopTab("ObjectivesTopTab", "Objectives");
+        topObjectivesButton.gameObject.SetActive(true);
         topResearchButton = FindOrCreateTopResearchButton();
 
-        topTasksButton.onClick.RemoveAllListeners();
-        topTasksButton.onClick.AddListener(() => ToggleTopTab(SideTab.Tasks));
-        topProgressionButton.onClick.RemoveAllListeners();
-        topProgressionButton.onClick.AddListener(() => ToggleTopTab(SideTab.Progression));
+        topObjectivesButton.onClick.RemoveAllListeners();
+        topObjectivesButton.onClick.AddListener(ToggleObjectives);
         topResearchButton.onClick.RemoveAllListeners();
         topResearchButton.onClick.AddListener(OpenResearch);
         RefreshTopTabs();
@@ -762,7 +782,9 @@ public class MissionListUI : MonoBehaviour
         le.flexibleWidth = 1f;
         le.minHeight = 40f;
         le.preferredHeight = 40f;
-        button.transition = Selectable.Transition.None;
+        if (button.targetGraphic == null)
+            button.targetGraphic = button.GetComponent<Graphic>();
+        HudTabColors.Apply(button, false);
         return button;
     }
 
@@ -793,8 +815,7 @@ public class MissionListUI : MonoBehaviour
 
     void RefreshTopTabs()
     {
-        SetTopTabVisual(topTasksButton, IsOpen && activeTab == SideTab.Tasks);
-        SetTopTabVisual(topProgressionButton, IsOpen && activeTab == SideTab.Progression);
+        SetTopTabVisual(topObjectivesButton, IsOpen);
         if (topResearchButton != null)
             topResearchButton.gameObject.SetActive(false);
     }
@@ -822,11 +843,11 @@ public class MissionListUI : MonoBehaviour
             headerText.gameObject.SetActive(false);
         Transform nestedTabs = panelRoot.transform.Find("Tabs");
         if (nestedTabs != null)
-            nestedTabs.gameObject.SetActive(false);
+            nestedTabs.gameObject.SetActive(true);
 
         var bg = panelRoot.GetComponent<Image>();
         if (bg != null)
-            bg.color = panelColor;
+            ApplyTopHudBackground(bg);
 
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         if (panelLayout != null)
@@ -836,6 +857,14 @@ public class MissionListUI : MonoBehaviour
         SetPageMinimumHeight(progressionPage, 0f);
 
         UpdatePanelHeight();
+    }
+
+    static void ApplyTopHudBackground(Image image)
+    {
+        if (image == null) return;
+        image.color = HudTabColors.Strip;
+        if (image.GetComponent<GameUIThemeStyled>() == null)
+            image.gameObject.AddComponent<GameUIThemeStyled>();
     }
 
     static void SetPageMinimumHeight(GameObject page, float minHeight)

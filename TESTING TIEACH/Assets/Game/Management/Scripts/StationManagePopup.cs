@@ -82,30 +82,11 @@ public class StationManagePopup : MonoBehaviour
         var rt = transform as RectTransform;
         if (rt == null) return;
 
-        RemoveBackgroundFill();
         rt.anchorMin = anchor;
         rt.anchorMax = anchor;
         rt.pivot = pivot;
         rt.anchoredPosition = anchoredPosition;
         rt.sizeDelta = size;
-    }
-
-    /// <summary>
-    /// Keeps the station screen as an overlay. The controls and diagnostic cards
-    /// retain their own surfaces, while the large outer grey panel stays clear so
-    /// the kitchen remains visible behind the screen.
-    /// </summary>
-    public void RemoveBackgroundFill()
-    {
-        var background = GetComponent<Image>();
-        if (background == null) background = gameObject.AddComponent<Image>();
-        background.color = Color.clear;
-        background.raycastTarget = true;
-
-        // The global UI pass must not restore the default panel tint to this
-        // intentionally transparent surface.
-        if (background.GetComponent<GameUIThemeStyled>() == null)
-            background.gameObject.AddComponent<GameUIThemeStyled>();
     }
 
     public void CopyReferencesTo(ManagementModeController controller)
@@ -160,7 +141,10 @@ public class StationManagePopup : MonoBehaviour
     {
         ApplyLayout();
 
-        RemoveBackgroundFill();
+        var bg = gameObject.GetComponent<Image>();
+        if (bg == null) bg = gameObject.AddComponent<Image>();
+        bg.color = new Color(0.12f, 0.12f, 0.16f, 0.96f);
+        bg.raycastTarget = true;
 
         var vlg = gameObject.GetComponent<VerticalLayoutGroup>();
         if (vlg == null) vlg = gameObject.AddComponent<VerticalLayoutGroup>();

@@ -44,7 +44,7 @@ public class WorkersUI : MonoBehaviour
         ApplyCleanLayout();
         EnsureCardContainer();
         EnsureFlowSection();
-        PurchaseUndoFooter.EnsureOnPanel(transform);
+        PurchaseUndoFooter.RemoveFromPanel(transform);
     }
 
     void OnEnable()
@@ -54,7 +54,7 @@ public class WorkersUI : MonoBehaviour
         EnsureCardContainer();
         ConfigureWorkerScroll();
         EnsureFlowSection();
-        PurchaseUndoFooter.EnsureOnPanel(transform);
+        PurchaseUndoFooter.RemoveFromPanel(transform);
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
         if (ResearchProgressManager.Instance != null)
@@ -111,6 +111,15 @@ public class WorkersUI : MonoBehaviour
         if (layoutApplied) return;
         layoutApplied = true;
 
+        var panelImage = GetComponent<Image>();
+        if (panelImage != null)
+        {
+            panelImage.color = Color.clear;
+            panelImage.raycastTarget = true;
+            if (panelImage.GetComponent<GameUIThemeStyled>() == null)
+                panelImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         var title = transform.Find("Title") as RectTransform;
         if (title != null)
         {
@@ -144,8 +153,10 @@ public class WorkersUI : MonoBehaviour
 
         var headerImg = header.GetComponent<Image>();
         if (headerImg == null) headerImg = header.gameObject.AddComponent<Image>();
-        headerImg.color = new Color(0.18f, 0.18f, 0.24f, 0.9f);
+        headerImg.color = Color.clear;
         headerImg.raycastTarget = false;
+        if (headerImg.GetComponent<GameUIThemeStyled>() == null)
+            headerImg.gameObject.AddComponent<GameUIThemeStyled>();
 
         var hlg = header.GetComponent<HorizontalLayoutGroup>();
         if (hlg == null) hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
@@ -234,8 +245,9 @@ public class WorkersUI : MonoBehaviour
         workerCardsScroll = scroll;
 
         var scrollBg = scrollGo.AddComponent<Image>();
-        scrollBg.color = new Color(0f, 0f, 0f, 0f);
+        scrollBg.color = Color.clear;
         scrollBg.raycastTarget = true;
+        scrollBg.gameObject.AddComponent<GameUIThemeStyled>();
         scrollGo.AddComponent<ScrollRectWheelBlocker>().scrollRect = scroll;
 
         var viewport = new GameObject("Viewport", typeof(RectTransform));
@@ -245,8 +257,13 @@ public class WorkersUI : MonoBehaviour
         vpRect.anchorMax = Vector2.one;
         vpRect.offsetMin = Vector2.zero;
         vpRect.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
-        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        var viewportImage = viewport.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+        viewportImage.raycastTarget = true;
+        viewport.GetComponent<CanvasRenderer>().cullTransparentMesh = false;
+        viewportImage.gameObject.AddComponent<GameUIThemeStyled>();
+        var viewportMask = viewport.AddComponent<Mask>();
+        viewportMask.showMaskGraphic = false;
 
         var content = new GameObject("CardContainer", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
@@ -317,6 +334,35 @@ public class WorkersUI : MonoBehaviour
         GameUITheme.ConfigureScroll(workerCardsScroll);
         workerCardsScroll.inertia = true;
         workerCardsScroll.decelerationRate = 0.135f;
+
+        var scrollImage = workerCardsScroll.GetComponent<Image>();
+        if (scrollImage != null)
+        {
+            scrollImage.color = Color.clear;
+            scrollImage.raycastTarget = true;
+            if (scrollImage.GetComponent<GameUIThemeStyled>() == null)
+                scrollImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
+        var existingViewportImage = workerCardsScroll.viewport != null
+            ? workerCardsScroll.viewport.GetComponent<Image>() : null;
+        if (workerCardsScroll.viewport != null)
+        {
+            var rectMask = workerCardsScroll.viewport.GetComponent<RectMask2D>();
+            if (rectMask != null) Destroy(rectMask);
+            var viewportMask = workerCardsScroll.viewport.GetComponent<Mask>();
+            if (viewportMask == null) viewportMask = workerCardsScroll.viewport.gameObject.AddComponent<Mask>();
+            viewportMask.showMaskGraphic = false;
+        }
+        if (existingViewportImage != null)
+        {
+            existingViewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+            existingViewportImage.raycastTarget = true;
+            var viewportRenderer = existingViewportImage.GetComponent<CanvasRenderer>();
+            if (viewportRenderer != null) viewportRenderer.cullTransparentMesh = false;
+            if (existingViewportImage.GetComponent<GameUIThemeStyled>() == null)
+                existingViewportImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
     }
 
     void FitScrollArea()
@@ -339,10 +385,10 @@ public class WorkersUI : MonoBehaviour
 
         scroll.anchorMin = new Vector2(0f, 0f);
         scroll.anchorMax = Vector2.one;
-        scroll.offsetMin = new Vector2(12f, 56f);
+        scroll.offsetMin = new Vector2(12f, 12f);
         scroll.offsetMax = new Vector2(-12f, -topInset);
-        PurchaseUndoFooter.EnsureOnPanel(transform);
-        scroll.SetSiblingIndex(Mathf.Max(0, transform.childCount - 2));
+        PurchaseUndoFooter.RemoveFromPanel(transform);
+        scroll.SetAsLastSibling();
     }
 
     void OnHireClicked()

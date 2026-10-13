@@ -108,7 +108,7 @@ public class WorkerCardUI : MonoBehaviour
                 ? (primarySelected
                     ? new Color(0.20f, 0.38f, 0.62f, 1f)
                     : new Color(0.18f, 0.32f, 0.46f, 1f))
-                : new Color(0.18f, 0.2f, 0.26f, 0.98f);
+                : Color.clear;
 
         if (selectionOutline != null)
         {

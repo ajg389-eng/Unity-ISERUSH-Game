@@ -3,7 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Square inventory shop card: name, preview, qty / price / buy.
+/// Square inventory shop card: name, preview, qty / buy button.
 /// </summary>
 public class InventoryItemCardUI : MonoBehaviour
 {
@@ -35,7 +35,8 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         ApplyCompactLayout();
         ApplyPalette();
-        GameIconLibrary.ApplyToButton(buyButton, GameIconId.Cart, 16f, 0f, true);
+        EnsureBuyButtonIcon();
+        EnsurePriceOnBuyButton();
     }
 
     void ApplyCompactLayout()
@@ -64,14 +65,35 @@ public class InventoryItemCardUI : MonoBehaviour
             ? footer.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>() : null;
         if (footerLayout != null)
             footerLayout.spacing = 3f;
+        var footerSize = footer != null ? footer.GetComponent<LayoutElement>() : null;
+        if (footerSize != null)
+        {
+            footerSize.minHeight = 30f;
+            footerSize.preferredHeight = 30f;
+        }
+
+        Transform quantityChip = qtyText != null ? qtyText.transform.parent : null;
+        var quantitySize = quantityChip != null ? quantityChip.GetComponent<LayoutElement>() : null;
+        if (quantitySize != null)
+        {
+            quantitySize.minWidth = 30f;
+            quantitySize.preferredWidth = 30f;
+            quantitySize.flexibleWidth = 0f;
+            quantitySize.minHeight = 30f;
+            quantitySize.preferredHeight = 30f;
+            quantitySize.flexibleHeight = 0f;
+        }
 
         var buyLayout = buyButton != null
             ? buyButton.GetComponent<UnityEngine.UI.LayoutElement>() : null;
         if (buyLayout != null)
         {
-            buyLayout.minWidth = 34f;
-            buyLayout.preferredWidth = 36f;
+            buyLayout.minWidth = 58f;
+            buyLayout.preferredWidth = 68f;
+            buyLayout.minHeight = 30f;
+            buyLayout.preferredHeight = 30f;
             buyLayout.flexibleWidth = 0f;
+            buyLayout.flexibleHeight = 0f;
         }
     }
 
@@ -123,7 +145,63 @@ public class InventoryItemCardUI : MonoBehaviour
             buyButton.onClick.RemoveAllListeners();
             if (onBuy != null)
                 buyButton.onClick.AddListener(() => onBuy());
+            EnsureBuyButtonIcon();
+            EnsurePriceOnBuyButton();
         }
+    }
+
+    void EnsureBuyButtonIcon()
+    {
+        if (buyButton == null) return;
+        if (buyButton.transform.Find("KenneyIcon") == null)
+            GameIconLibrary.ApplyToButton(buyButton, GameIconId.Cart, 16f, 0f, true);
+    }
+
+    void EnsurePriceOnBuyButton()
+    {
+        if (priceText == null || buyButton == null) return;
+
+        Transform oldPriceContainer = priceText.transform.parent;
+        if (oldPriceContainer != buyButton.transform)
+        {
+            priceText.transform.SetParent(buyButton.transform, false);
+            if (oldPriceContainer != null)
+                oldPriceContainer.gameObject.SetActive(false);
+        }
+
+        priceText.gameObject.SetActive(true);
+        priceText.alignment = TextAlignmentOptions.Center;
+        priceText.raycastTarget = false;
+        ConfigureResponsiveText(priceText, 8f, 12f);
+
+        RectTransform priceRect = priceText.rectTransform;
+        priceRect.anchorMin = Vector2.zero;
+        priceRect.anchorMax = Vector2.one;
+        priceRect.offsetMin = new Vector2(22f, 1f);
+        priceRect.offsetMax = new Vector2(-2f, -1f);
+
+        var buyLayout = buyButton.GetComponent<UnityEngine.UI.LayoutElement>();
+        if (buyLayout != null)
+        {
+            buyLayout.minWidth = 58f;
+            buyLayout.preferredWidth = 68f;
+            buyLayout.flexibleWidth = 0f;
+        }
+
+        Transform iconTransform = buyButton.transform.Find("KenneyIcon");
+        if (iconTransform is RectTransform iconRect)
+        {
+            iconRect.anchorMin = new Vector2(0f, 0.5f);
+            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.pivot = new Vector2(0f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(4f, 0f);
+            iconRect.sizeDelta = new Vector2(16f, 16f);
+        }
+
+        Transform legacyLabel = buyButton.transform.Find("Label");
+        if (legacyLabel != null && legacyLabel != priceText.transform
+            && legacyLabel.TryGetComponent(out TextMeshProUGUI legacyText))
+            legacyText.enabled = false;
     }
 
     void ApplyPalette()
@@ -135,9 +213,16 @@ public class InventoryItemCardUI : MonoBehaviour
             cardBaseColor = CardColor;
         }
 
-        SetTextAndParentColor(nameText, TextColor, CardColor);
+        SetTextAndParentColor(nameText, TextColor, GameUITheme.Surface);
         SetTextAndParentColor(qtyText, TextColor, ChipColor);
-        SetTextAndParentColor(priceText, TextColor, ChipColor);
+        if (priceText != null)
+        {
+            priceText.color = TextColor;
+            if (priceText.transform.parent != buyButton?.transform
+                && priceText.transform.parent != null
+                && priceText.transform.parent.TryGetComponent(out Image priceBackground))
+                priceBackground.color = ChipColor;
+        }
 
         Transform preview = previewRawImage != null ? previewRawImage.transform.parent
             : previewImage != null ? previewImage.transform.parent : null;
@@ -263,7 +348,16 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         EnsureMarkSelector();
         Transform row = mark1Button != null ? mark1Button.transform.parent : null;
-        if (row != null) row.gameObject.SetActive(true);
+        if (row != null)
+        {
+            row.gameObject.SetActive(true);
+            var rowSize = row.GetComponent<LayoutElement>();
+            if (rowSize != null)
+            {
+                rowSize.minHeight = 18f;
+                rowSize.preferredHeight = 18f;
+            }
+        }
         ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, mark1Locked);
         ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected, mark2Locked);
         OrderCardRows();
@@ -282,8 +376,8 @@ public class InventoryItemCardUI : MonoBehaviour
             typeof(UnityEngine.UI.HorizontalLayoutGroup), typeof(UnityEngine.UI.LayoutElement));
         row.transform.SetParent(transform, false);
         row.transform.SetSiblingIndex(Mathf.Min(1, transform.childCount - 1));
-        row.GetComponent<UnityEngine.UI.LayoutElement>().minHeight = 20f;
-        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 20f;
+        row.GetComponent<UnityEngine.UI.LayoutElement>().minHeight = 18f;
+        row.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight = 18f;
         var layout = row.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
         layout.spacing = 4f;
         layout.childControlWidth = true;
@@ -322,6 +416,7 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         if (button == null) return;
         button.onClick.RemoveAllListeners();
+        button.transition = Selectable.Transition.None;
         bool unlocked = exists && !locked;
         bool selected = exists && mark == selectedMark;
         // A locked tier remains selectable as a preview. Its station card will
@@ -355,6 +450,12 @@ public class InventoryItemCardUI : MonoBehaviour
             ? new Color(0.72f, 0.95f, 0.84f, 1f)
             : new Color(1f, 0.76f, 0.35f, 1f);
         outline.effectDistance = new Vector2(2f, -2f);
+
+        // The global theme scans canvases periodically. Keep this stateful
+        // selector from being recolored back to the default button surface.
+        var styled = button.GetComponent<GameUIThemeStyled>();
+        if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
+        styled.styleVersion = int.MaxValue;
     }
 
     void OrderCardRows()
@@ -391,8 +492,8 @@ public class InventoryItemCardUI : MonoBehaviour
             LayoutElement footerLayout = footer.GetComponent<LayoutElement>();
             if (footerLayout != null)
             {
-                footerLayout.minHeight = 36f;
-                footerLayout.preferredHeight = 36f;
+                footerLayout.minHeight = 30f;
+                footerLayout.preferredHeight = 30f;
             }
         }
     }

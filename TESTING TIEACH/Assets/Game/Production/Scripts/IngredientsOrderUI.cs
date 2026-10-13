@@ -25,6 +25,7 @@ public class IngredientsOrderUI : MonoBehaviour
     float nextRefresh;
     bool built;
     bool showMenu;
+    bool standaloneBusinessTabs;
     GameObject navigation;
     readonly List<GameObject> menuRows = new List<GameObject>();
     readonly List<GameObject> supplyRows = new List<GameObject>();
@@ -57,6 +58,15 @@ public class IngredientsOrderUI : MonoBehaviour
     public Button TutorialPlaceOrderButton => placeOrderButton;
     public int TutorialCartPacks(ItemDefinition item) => GetCartPacks(item);
 
+    public void ConfigureBusinessSection(bool menu)
+    {
+        standaloneBusinessTabs = true;
+        if (!built) return;
+        SelectSection(menu);
+        if (navigation != null)
+            navigation.SetActive(false);
+    }
+
     public void OpenRecipesFromHud()
     {
         EnsureRefs();
@@ -83,7 +93,7 @@ public class IngredientsOrderUI : MonoBehaviour
         EnsureRefs();
         EnsureList();
         RebuildRows();
-        PurchaseUndoFooter.EnsureOnPanel(transform);
+        PurchaseUndoFooter.RemoveFromPanel(transform);
         RefreshAll();
     }
 
@@ -96,6 +106,15 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void EnsureRefs()
     {
+        var panelImage = GetComponent<Image>();
+        if (panelImage != null)
+        {
+            panelImage.color = Color.clear;
+            panelImage.raycastTarget = true;
+            if (panelImage.GetComponent<GameUIThemeStyled>() == null)
+                panelImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         if (inventory == null) inventory = KitchenInventory.Instance != null ? KitchenInventory.Instance : FindObjectOfType<KitchenInventory>();
         if (money == null) money = FindObjectOfType<MoneyManager>();
         if (headerText == null)
@@ -111,7 +130,8 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         if (listContainer != null)
         {
-            PadListForUndoFooter();
+            ClearListBackgrounds();
+            FitListArea();
             return;
         }
 
@@ -127,6 +147,15 @@ public class IngredientsOrderUI : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
 
+        var scrollImage = scrollGo.GetComponent<Image>();
+        if (scrollImage != null)
+        {
+            scrollImage.color = Color.clear;
+            scrollImage.raycastTarget = true;
+            if (scrollImage.GetComponent<GameUIThemeStyled>() == null)
+                scrollImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         var viewport = new GameObject("Viewport", typeof(RectTransform));
         viewport.transform.SetParent(scrollGo.transform, false);
         var vpRt = (RectTransform)viewport.transform;
@@ -134,8 +163,13 @@ public class IngredientsOrderUI : MonoBehaviour
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
         vpRt.offsetMax = Vector2.zero;
-        viewport.AddComponent<Image>().color = new Color(1, 1, 1, 0.02f);
-        viewport.AddComponent<Mask>().showMaskGraphic = false;
+        var viewportImage = viewport.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+        viewportImage.raycastTarget = true;
+        viewport.GetComponent<CanvasRenderer>().cullTransparentMesh = false;
+        viewportImage.gameObject.AddComponent<GameUIThemeStyled>();
+        var viewportMask = viewport.AddComponent<Mask>();
+        viewportMask.showMaskGraphic = false;
 
         var content = new GameObject("Content", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
@@ -155,11 +189,61 @@ public class IngredientsOrderUI : MonoBehaviour
 
         scroll.viewport = vpRt;
         scroll.content = contentRt;
+        scroll.enabled = true;
+        viewport.gameObject.SetActive(true);
+        content.gameObject.SetActive(true);
+        contentRt.localScale = Vector3.one;
         listContainer = content.transform;
-        PadListForUndoFooter();
+        ClearListBackgrounds();
+        FitListArea();
     }
 
-    void PadListForUndoFooter()
+    void ClearListBackgrounds()
+    {
+        if (listContainer == null) return;
+
+        var contentImage = listContainer.GetComponent<Image>();
+        if (contentImage != null)
+        {
+            contentImage.color = Color.clear;
+            contentImage.raycastTarget = false;
+            if (contentImage.GetComponent<GameUIThemeStyled>() == null)
+                contentImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
+        var scroll = listContainer.GetComponentInParent<ScrollRect>();
+        if (scroll == null) return;
+
+        var scrollImage = scroll.GetComponent<Image>();
+        if (scrollImage != null)
+        {
+            scrollImage.color = Color.clear;
+            scrollImage.raycastTarget = true;
+            if (scrollImage.GetComponent<GameUIThemeStyled>() == null)
+                scrollImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
+        var viewportImage = scroll.viewport != null ? scroll.viewport.GetComponent<Image>() : null;
+        if (scroll.viewport != null)
+        {
+            var rectMask = scroll.viewport.GetComponent<RectMask2D>();
+            if (rectMask != null) Destroy(rectMask);
+            var viewportMask = scroll.viewport.GetComponent<Mask>();
+            if (viewportMask == null) viewportMask = scroll.viewport.gameObject.AddComponent<Mask>();
+            viewportMask.showMaskGraphic = false;
+        }
+        if (viewportImage != null)
+        {
+            viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
+            viewportImage.raycastTarget = true;
+            var viewportRenderer = viewportImage.GetComponent<CanvasRenderer>();
+            if (viewportRenderer != null) viewportRenderer.cullTransparentMesh = false;
+            if (viewportImage.GetComponent<GameUIThemeStyled>() == null)
+                viewportImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+    }
+
+    void FitListArea()
     {
         var scrollRt = transform.Find("IngredientsScroll") as RectTransform;
         if (scrollRt == null && listContainer != null)
@@ -177,7 +261,7 @@ public class IngredientsOrderUI : MonoBehaviour
         }
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = Vector2.one;
-        scrollRt.offsetMin = new Vector2(12, 164);
+        scrollRt.offsetMin = new Vector2(12, showMenu ? 120 : 164);
         scrollRt.offsetMax = new Vector2(-12, -100);
     }
 
@@ -308,6 +392,8 @@ public class IngredientsOrderUI : MonoBehaviour
         MakeNavigationTabFill(menuTab);
         menuTab.onClick.AddListener(() => SelectSection(true));
         DelayedTooltip.Attach(menuTab, "Menu: choose which unlocked recipes to sell");
+        if (standaloneBusinessTabs)
+            navigation.SetActive(false);
     }
 
     static void MakeNavigationTabFill(Button button)
@@ -327,7 +413,9 @@ public class IngredientsOrderUI : MonoBehaviour
         UpdateNavigationTabs();
         if (placeOrderButton != null) placeOrderButton.transform.parent.gameObject.SetActive(!menu);
         if (deliveryStatusText != null) deliveryStatusText.transform.parent.gameObject.SetActive(!menu);
-        PadListForUndoFooter();
+        FitListArea();
+        if (standaloneBusinessTabs && navigation != null)
+            navigation.SetActive(false);
         Canvas.ForceUpdateCanvases();
         var scroll = listContainer.GetComponentInParent<ScrollRect>();
         if (scroll != null) { scroll.StopMovement(); scroll.verticalNormalizedPosition = 1f; }
@@ -379,6 +467,8 @@ public class IngredientsOrderUI : MonoBehaviour
     void BuildRecipesOverlay(CustomerOrderConfig menu)
     {
         Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+            canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
         Transform parent = canvas != null ? canvas.transform : transform.root;
         recipesOverlay = new GameObject("RecipesOverlay", typeof(RectTransform), typeof(Image));
         recipesOverlay.transform.SetParent(parent, false);
@@ -394,16 +484,9 @@ public class IngredientsOrderUI : MonoBehaviour
         var panel = new GameObject("RecipeBook", typeof(RectTransform), typeof(Image));
         panel.transform.SetParent(recipesOverlay.transform, false);
         RectTransform panelRt = (RectTransform)panel.transform;
-        panelRt.anchorMin = panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRt.pivot = new Vector2(0.5f, 0.5f);
         RectTransform canvasRect = parent as RectTransform;
-        float availableCanvasWidth = canvasRect != null && canvasRect.rect.width > 0f
-            ? canvasRect.rect.width : 682f;
-        float availableCanvasHeight = canvasRect != null && canvasRect.rect.height > 0f
-            ? canvasRect.rect.height : 752f;
-        float panelWidth = Mathf.Clamp(availableCanvasWidth - 32f, 720f, 1040f);
-        float panelHeight = Mathf.Clamp(availableCanvasHeight - 32f, 260f, 720f);
-        panelRt.sizeDelta = new Vector2(panelWidth, panelHeight);
+        HudTabColors.SizeOverlayPanel(panelRt, canvasRect);
+        float panelWidth = panelRt.sizeDelta.x;
         panel.GetComponent<Image>().color = GameUITheme.Panel;
 
         TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes  |  Drag to Pan  |  Scroll to Zoom", 18f, FontStyles.Bold,
@@ -1567,7 +1650,9 @@ public class IngredientsOrderUI : MonoBehaviour
                 GameIconLibrary.ApplyToButton(button, GameIconId.Plus, 18f, 7f, objectName == "Add");
                 break;
             case "ClearCart":
-                GameIconLibrary.ApplyToButton(button, GameIconId.Trash, 17f, 7f);
+                // This control is intentionally icon-only so the compact cart footer
+                // does not spend its width on a repeated "Clear" label.
+                GameIconLibrary.ApplyToButton(button, GameIconId.Trash, 17f, 0f, true);
                 break;
             case "PlaceOrder":
                 GameIconLibrary.ApplyToButton(button, GameIconId.Cart, 18f, 8f);
@@ -1635,7 +1720,7 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) cartSummaryText.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI addAllLabel;
-        addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All\n(+1 each)", 96, GameUITheme.Positive, out addAllLabel);
+        addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All", 88, GameUITheme.Positive, out addAllLabel);
         addAllLabel.fontSize = 14;
         addAllButton.onClick.AddListener(() =>
         {
@@ -1646,7 +1731,7 @@ public class IngredientsOrderUI : MonoBehaviour
             RefreshAll();
         });
         TextMeshProUGUI clearLabel;
-        clearCartButton = CreateCartButton(footer.transform, "ClearCart", "Clear", 62f, GameUITheme.Danger, out clearLabel);
+        clearCartButton = CreateCartButton(footer.transform, "ClearCart", string.Empty, 42f, GameUITheme.Danger, out clearLabel);
         clearLabel.fontSize = 14f;
         clearCartButton.onClick.AddListener(() =>
         {
@@ -1654,11 +1739,11 @@ public class IngredientsOrderUI : MonoBehaviour
             RefreshAll();
         });
 
-        placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Place Order", 126f, GameUITheme.Positive, out placeOrderLabel);
+        placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Order", 88f, GameUITheme.Positive, out placeOrderLabel);
         placeOrderLabel.fontSize = 14f;
         placeOrderButton.onClick.AddListener(SubmitCart);
 
-        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 112f, GameUITheme.Accent, out expressOrderLabel);
+        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 86f, GameUITheme.Accent, out expressOrderLabel);
         expressOrderLabel.fontSize = 14f;
         expressOrderButton.onClick.AddListener(SubmitExpressCart);
         clearCartButton.transform.SetAsLastSibling();
@@ -1709,6 +1794,8 @@ public class IngredientsOrderUI : MonoBehaviour
             moneyHintText.text = money != null ? ("Money: $" + money.CurrentMoney) : "Money: —";
 
         if (listContainer == null || inventory == null) return;
+        listContainer.gameObject.SetActive(true);
+        ClearListBackgrounds();
         bool lockedIngredients = HasLockedIngredient();
         foreach (GameObject child in menuRows)
         {
@@ -1799,32 +1886,32 @@ public class IngredientsOrderUI : MonoBehaviour
         {
             float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
             deliveryStatusText.text = deliveryActive
-                ? "Delivery in progress  |  Arrives " + IngredientDeliveryService.FormatCountdown(Mathf.Max(0f, remaining)) + "  |  New orders locked"
-                : "Build your cart, then place one combined delivery order.";
+                ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(Mathf.Max(0f, remaining))
+                : "Build cart, then order.";
             deliveryStatusText.color = deliveryActive
                 ? GameUITheme.Accent : GameUITheme.TextSecondary;
         }
         if (cartSummaryText != null)
-            cartSummaryText.text = cartPackCount == 0 ? "Cart is empty" : "Cart: " + cartPackCount + " pack" + (cartPackCount == 1 ? "" : "s") + "  |  $" + cartTotal;
+            cartSummaryText.text = cartPackCount == 0 ? "Empty" : "x" + cartPackCount + "  $" + cartTotal;
         if (clearCartButton != null)
             clearCartButton.interactable = !deliveryActive && cartPackCount > 0;
         if (placeOrderButton != null)
             placeOrderButton.interactable = !deliveryActive && cartPackCount > 0 && affordable
                 && cartLockMilestone == 0;
         if (placeOrderLabel != null)
-            placeOrderLabel.text = deliveryActive ? "Delivery Active"
-                : cartLockMilestone > 0 ? "Research " + MilestoneFeatures.ResearchTitleForStage(cartLockMilestone)
-                : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Place Order $" + cartTotal;
+            placeOrderLabel.text = deliveryActive ? "Busy"
+                : cartLockMilestone > 0 ? "Research"
+                : !affordable && cartPackCount > 0 ? "Need $" + cartTotal : "Order";
         bool expressUnlocked = MilestoneFeatures.IsResearchComplete("express_ordering");
         if (expressOrderButton != null)
             expressOrderButton.interactable = expressUnlocked && !deliveryActive && cartPackCount > 0 && expressAffordable
                 && cartLockMilestone == 0;
         if (expressOrderLabel != null)
-            expressOrderLabel.text = !expressUnlocked ? "Research Express Ordering"
-                : deliveryActive ? "Delivering"
-                : cartLockMilestone > 0 ? "Research " + MilestoneFeatures.ResearchTitleForStage(cartLockMilestone)
+            expressOrderLabel.text = !expressUnlocked ? "Research"
+                : deliveryActive ? "Busy"
+                : cartLockMilestone > 0 ? "Research"
                 : !expressAffordable && cartPackCount > 0 ? "Need $" + expressTotal
-                : "Express $" + expressTotal;
+                : "Express";
     }
 
     public void FocusRecipeNode(RecipeGraphNodeView selected)

@@ -37,7 +37,8 @@ public enum GameIconId
     Cross,
     Home,
     Information,
-    FastForward
+    FastForward,
+    Analytics
 }
 
 public sealed class GameIconLibrary : ScriptableObject
@@ -70,6 +71,7 @@ public sealed class GameIconLibrary : ScriptableObject
     [SerializeField] Texture2D home;
     [SerializeField] Texture2D information;
     [SerializeField] Texture2D fastForward;
+    [SerializeField] Texture2D analytics;
 
     readonly Dictionary<GameIconId, Sprite> spriteCache = new Dictionary<GameIconId, Sprite>();
     static GameIconLibrary instance;
@@ -190,6 +192,7 @@ public sealed class GameIconLibrary : ScriptableObject
             case GameIconId.Home: return home;
             case GameIconId.Information: return information;
             case GameIconId.FastForward: return fastForward;
+            case GameIconId.Analytics: return analytics;
             default: return null;
         }
     }

@@ -132,7 +132,15 @@ public class MainHudTabs : MonoBehaviour
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayoutGroup(hlg);
 
+        // Scene-authored strips can retain a different expansion mode from an
+        // earlier layout. Force the same 40px visible button height used by the
+        // build and business sub-tabs every time the HUD is rebuilt.
+        hlg.childControlHeight = true;
+        hlg.childForceExpandHeight = false;
+
         EnsureTabVisuals();
+        SetPrimaryTabHeight(inventoryTabButton);
+        SetPrimaryTabHeight(businessTabButton);
         WireTabButtons();
         HideSourceButtons();
         HideManagementPageTitle();
@@ -163,7 +171,23 @@ public class MainHudTabs : MonoBehaviour
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false;
-        hlg.childForceExpandHeight = true;
+        hlg.childForceExpandHeight = false;
+    }
+
+    static void SetPrimaryTabHeight(Button button)
+    {
+        if (button == null) return;
+        var elements = button.GetComponents<LayoutElement>();
+        if (elements == null || elements.Length == 0)
+            elements = new[] { button.gameObject.AddComponent<LayoutElement>() };
+
+        foreach (var element in elements)
+        {
+            if (element == null) continue;
+            element.minHeight = TabHeight;
+            element.preferredHeight = TabHeight;
+            element.flexibleHeight = 0f;
+        }
     }
 
     void EnsureTabVisuals()
@@ -218,26 +242,26 @@ public class MainHudTabs : MonoBehaviour
         {
             inventoryTabButton.onClick.RemoveAllListeners();
             inventoryTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Build));
-            inventoryTabButton.transition = Selectable.Transition.None;
             if (inventoryTabButton.targetGraphic == null)
                 inventoryTabButton.targetGraphic = inventoryBg;
+            GameUITheme.ApplyTabButton(inventoryTabButton, false);
         }
 
         if (managementTabButton != null)
         {
             managementTabButton.onClick.RemoveAllListeners();
-            managementTabButton.transition = Selectable.Transition.None;
             if (managementTabButton.targetGraphic == null)
                 managementTabButton.targetGraphic = managementBg;
+            GameUITheme.ApplyTabButton(managementTabButton, false);
         }
 
         if (businessTabButton != null)
         {
             businessTabButton.onClick.RemoveAllListeners();
             businessTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Business));
-            businessTabButton.transition = Selectable.Transition.None;
             if (businessTabButton.targetGraphic == null)
                 businessTabButton.targetGraphic = businessBg;
+            GameUITheme.ApplyTabButton(businessTabButton, false);
         }
     }
 
@@ -384,10 +408,16 @@ public class MainHudTabs : MonoBehaviour
 
     static void CycleSubmenu(int direction)
     {
+        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (management != null && management.IsOpen)
+        {
+            management.CycleBusinessTab(direction);
+            return;
+        }
+
         Button[] buttons = null;
         GameObject[] panels = null;
         var inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
         if (inventory != null && inventory.IsPanelOpen)
         {
             buttons = inventory.tabButtons;

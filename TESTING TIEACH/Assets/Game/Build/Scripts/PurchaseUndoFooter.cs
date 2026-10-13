@@ -32,6 +32,21 @@ public class PurchaseUndoFooter : MonoBehaviour
         return footer;
     }
 
+    /// <summary>
+    /// Removes the visual undo footer from a panel without clearing purchase history.
+    /// </summary>
+    public static void RemoveFromPanel(Transform panel)
+    {
+        if (panel == null) return;
+
+        var footers = panel.GetComponentsInChildren<PurchaseUndoFooter>(true);
+        foreach (var footer in footers)
+        {
+            if (footer != null)
+                Destroy(footer.gameObject);
+        }
+    }
+
     public static PurchaseUndoFooter EnsureMatching(RectTransform source)
     {
         if (source == null || source.parent == null) return null;

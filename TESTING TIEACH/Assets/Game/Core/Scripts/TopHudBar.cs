@@ -3,7 +3,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top HUD bar for PlayerUI. Wraps money and time controls in a compact centered strip.
+/// Top HUD bar for PlayerUI. Keeps money and time centered while exposing compact
+/// icon actions on the right side of the shared HUD strip.
 /// </summary>
 public class TopHudBar : MonoBehaviour
 {
@@ -74,6 +75,7 @@ public class TopHudBar : MonoBehaviour
         if (existing != null)
         {
             existing.BindReferences();
+            existing.EnsureHudActions();
             existing.ApplyFitLayout();
             existing.RemoveUndoFromBar();
             existing.EnsureUtilityControls();
@@ -179,16 +181,19 @@ public class TopHudBar : MonoBehaviour
                 Vector2.zero, new Vector2(170f, barHeight - 16f));
         }
 
-        var hudActions = transform.Find(HudActionsName) as RectTransform;
+        var hudActions = FindHudActions();
         if (hudActions != null)
         {
             var le = hudActions.GetComponent<LayoutElement>() ?? hudActions.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 96f;
-            le.preferredWidth = 96f;
+            le.minWidth = 144f;
+            le.preferredWidth = 144f;
             le.flexibleWidth = 0f;
-            PositionSection(hudActions, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(66f, 0f), new Vector2(96f, barHeight - 16f));
+            hudActions.anchorMin = new Vector2(1f, 1f);
+            hudActions.anchorMax = new Vector2(1f, 1f);
+            hudActions.pivot = new Vector2(1f, 1f);
+            hudActions.anchoredPosition = new Vector2(-235f, -8f);
+            hudActions.sizeDelta = new Vector2(144f, 48f);
         }
 
         if (moneyText != null)
@@ -273,11 +278,12 @@ public class TopHudBar : MonoBehaviour
 
     void EnsureHudActions()
     {
-        Transform existing = transform.Find(HudActionsName);
+        Transform host = transform.parent != null ? transform.parent : transform;
+        Transform existing = host.Find(HudActionsName) ?? transform.Find(HudActionsName);
         GameObject section = existing != null ? existing.gameObject
             : new GameObject(HudActionsName, typeof(RectTransform), typeof(HorizontalLayoutGroup));
-        if (section.transform.parent != transform)
-            section.transform.SetParent(transform, false);
+        if (section.transform.parent != host)
+            section.transform.SetParent(host, false);
 
         var layout = section.GetComponent<HorizontalLayoutGroup>();
         layout.spacing = 6f;
@@ -290,11 +296,21 @@ public class TopHudBar : MonoBehaviour
 
         Button recipes = FindOrCreateHudAction(section.transform, "RecipesButton", "Recipes", GameIconId.MenuList);
         Button research = FindOrCreateHudAction(section.transform, "ResearchButton", "Research", GameIconId.Gear);
+        Button analytics = FindOrCreateHudAction(section.transform, "AnalyticsButton", "Analytics", GameIconId.Analytics);
 
         recipes.onClick.RemoveAllListeners();
         recipes.onClick.AddListener(OpenRecipesFromHud);
         research.onClick.RemoveAllListeners();
         research.onClick.AddListener(OpenResearchFromHud);
+        analytics.onClick.RemoveAllListeners();
+        analytics.onClick.AddListener(OpenAnalyticsFromHud);
+    }
+
+    RectTransform FindHudActions()
+    {
+        Transform host = transform.parent != null ? transform.parent : transform;
+        return host.Find(HudActionsName) as RectTransform
+            ?? transform.Find(HudActionsName) as RectTransform;
     }
 
     static Button FindOrCreateHudAction(Transform parent, string objectName, string label, GameIconId icon)
@@ -339,10 +355,8 @@ public class TopHudBar : MonoBehaviour
     void OpenRecipesFromHud()
     {
         Sfx.Play(SfxId.UiClick);
-        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>();
-        if (management != null)
-            management.OpenIngredientsTab();
-
+        // Recipes are a utility overlay. Keep the current Build or Business
+        // page underneath instead of switching the player into Supply first.
         IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
         if (ingredients != null)
             ingredients.OpenRecipesFromHud();
@@ -354,6 +368,18 @@ public class TopHudBar : MonoBehaviour
         Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas != null)
             ResearchTreeUI.Open(canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform);
+    }
+
+    void OpenAnalyticsFromHud()
+    {
+        Sfx.Play(SfxId.UiClick);
+        // Analytics is its own overlay, like Recipes and Research. Do not route
+        // through the Business controller, which can change the active page.
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+            canvas = FindFirstObjectByType<Canvas>();
+        if (canvas != null)
+            AnalyticsPopupUI.Open(canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform);
     }
 
     public void RemoveUndoFromBar()

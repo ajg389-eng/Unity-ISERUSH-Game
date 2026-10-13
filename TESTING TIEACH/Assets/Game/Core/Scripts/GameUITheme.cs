@@ -114,8 +114,13 @@ public class GameUITheme : MonoBehaviour
     static void EnsureHoverFeedback(Button button)
     {
         if (button == null) return;
-        if (button.GetComponent<GameUIThemeHoverFeedback>() == null)
-            button.gameObject.AddComponent<GameUIThemeHoverFeedback>();
+        if (button.targetGraphic == null)
+            button.targetGraphic = button.GetComponent<Graphic>();
+
+        var feedback = button.GetComponent<GameUIThemeHoverFeedback>();
+        if (feedback == null)
+            feedback = button.gameObject.AddComponent<GameUIThemeHoverFeedback>();
+        feedback.Bind(button);
     }
 
     static void ApplyCanvas(Canvas canvas)
@@ -253,6 +258,13 @@ public class GameUITheme : MonoBehaviour
     public static void ApplyTabButton(Button button, bool active)
     {
         if (button == null) return;
+        // Scene-authored tabs may already have a styled marker, but they can
+        // still retain Unity's default hover transition. Always normalize the
+        // selectable and border state so hovering cannot change the outline
+        // thickness or add a second border.
+        EnsureHoverFeedback(button);
+        button.transition = Selectable.Transition.None;
+        NormalizeTabOutline(button);
         DisableButtonMotion(button);
         var styled = button.GetComponent<GameUIThemeStyled>();
         if (styled == null || styled.styleVersion < ButtonStyleVersion)
@@ -260,10 +272,31 @@ public class GameUITheme : MonoBehaviour
 
         var image = button.targetGraphic as Image ?? button.GetComponent<Image>();
         if (image != null)
+        {
             image.color = active ? HudTabColors.Active : HudTabColors.Idle;
+            button.GetComponent<GameUIThemeHoverFeedback>()?.SetBaseColor(image.color);
+        }
 
         if (styled == null) styled = button.gameObject.AddComponent<GameUIThemeStyled>();
         styled.styleVersion = ButtonStyleVersion;
+    }
+
+    static void NormalizeTabOutline(Button button)
+    {
+        if (button == null) return;
+
+        var outlines = button.GetComponents<Outline>();
+        Outline outline = outlines.Length > 0 ? outlines[0] : button.gameObject.AddComponent<Outline>();
+        for (int i = 1; i < outlines.Length; i++)
+        {
+            if (outlines[i] != null)
+                UnityEngine.Object.Destroy(outlines[i]);
+        }
+
+        outline.effectColor = Edge;
+        outline.effectDistance = new Vector2(2f, -2f);
+        outline.useGraphicAlpha = true;
+        outline.enabled = true;
     }
 
     /// <summary>Selected-state styling for short flow chips that behave like compact tabs.</summary>
@@ -587,37 +620,39 @@ public sealed class GameUIThemeStyled : MonoBehaviour
 public sealed class GameUIThemeHoverFeedback : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
     Graphic targetGraphic;
-    Outline outline;
     Color baseColor;
-    Color baseOutlineColor;
-    Vector2 baseOutlineDistance;
-    bool baseOutlineEnabled;
+    Color displayedHoverColor;
     bool pointerInside;
 
     void Awake()
     {
-        Button button = GetComponent<Button>();
+        Bind(GetComponent<Button>());
+    }
+
+    public void Bind(Button button)
+    {
         targetGraphic = button != null && button.targetGraphic != null
             ? button.targetGraphic
             : GetComponent<Graphic>();
-        outline = GetComponent<Outline>();
+    }
+
+    /// <summary>
+    /// Lets gameplay state changes update the non-hover color without removing
+    /// the hover tint when the pointer is still over the button.
+    /// </summary>
+    public void SetBaseColor(Color color)
+    {
+        baseColor = color;
+        if (pointerInside)
+            ApplyHoverColor();
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (targetGraphic == null) return;
+        if (targetGraphic == null || pointerInside) return;
         pointerInside = true;
         baseColor = targetGraphic.color;
-        targetGraphic.color = Color.Lerp(baseColor, Color.white, 0.16f);
-
-        if (outline == null)
-            outline = gameObject.AddComponent<Outline>();
-        baseOutlineColor = outline.effectColor;
-        baseOutlineDistance = outline.effectDistance;
-        baseOutlineEnabled = outline.enabled;
-        outline.effectColor = new Color(1f, 0.86f, 0.48f, 0.9f);
-        outline.effectDistance = new Vector2(1.2f, -1.2f);
-        outline.enabled = true;
+        ApplyHoverColor();
     }
 
     public void OnPointerExit(PointerEventData eventData)
@@ -626,12 +661,36 @@ public sealed class GameUIThemeHoverFeedback : MonoBehaviour, IPointerEnterHandl
         pointerInside = false;
         if (targetGraphic != null)
             targetGraphic.color = baseColor;
-        if (outline != null)
+        displayedHoverColor = Color.clear;
+    }
+
+    void LateUpdate()
+    {
+        if (!pointerInside || targetGraphic == null) return;
+
+        // Some controls pulse or change selected state every frame. Rebase the
+        // hover tint around that new color rather than allowing it to cancel
+        // the hover state.
+        if (!Approximately(targetGraphic.color, displayedHoverColor))
         {
-            outline.effectColor = baseOutlineColor;
-            outline.effectDistance = baseOutlineDistance;
-            outline.enabled = baseOutlineEnabled;
+            baseColor = targetGraphic.color;
+            ApplyHoverColor();
         }
+    }
+
+    void ApplyHoverColor()
+    {
+        if (targetGraphic == null) return;
+        displayedHoverColor = Color.Lerp(baseColor, Color.white, 0.16f);
+        targetGraphic.color = displayedHoverColor;
+    }
+
+    static bool Approximately(Color a, Color b)
+    {
+        return Mathf.Abs(a.r - b.r) < 0.002f
+            && Mathf.Abs(a.g - b.g) < 0.002f
+            && Mathf.Abs(a.b - b.b) < 0.002f
+            && Mathf.Abs(a.a - b.a) < 0.002f;
     }
 }
 

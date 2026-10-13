@@ -235,8 +235,6 @@ public class InventoryUI : MonoBehaviour
 
     /// <summary>
     /// Keep the open build panel visually continuous with the connected top HUD.
-    /// The root remains transparent so it does not stack a second translucent
-    /// layer beneath ContentBox and create a darker band along the left edge.
     /// </summary>
     void ApplyConnectedHudBackdrop()
     {
@@ -252,7 +250,12 @@ public class InventoryUI : MonoBehaviour
         Transform contentBox = panel.transform.Find(ContentBoxName);
         var contentImage = contentBox != null ? contentBox.GetComponent<Image>() : null;
         if (contentImage != null)
+        {
             contentImage.color = HudTabColors.Strip;
+            contentImage.raycastTarget = true;
+            if (contentImage.GetComponent<GameUIThemeStyled>() == null)
+                contentImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
     }
 
     /// <summary>Editor / runtime: create Inventory ContentBox + tabs under the panel.</summary>
@@ -290,6 +293,13 @@ public class InventoryUI : MonoBehaviour
             var appearance = tabPanels[customizeIndex].GetComponent<StoreAppearanceUI>();
             if (appearance != null && expandButton != null)
                 appearance.AppendOptions(expandButton.transform.parent);
+
+            // Floor is intentionally hidden from the build navigation. Refit
+            // the remaining Stations and Customize buttons after that hide so
+            // their shared row still has the same gap and width as Build and
+            // Business.
+            if (tabButtons != null && tabButtons.Length > 0 && tabButtons[0] != null)
+                ConfigureInventoryTabLayout(tabButtons[0].transform.parent);
         }
         for (int i = 0; i < tabPanels.Length; i++)
         {
@@ -410,6 +420,16 @@ public class InventoryUI : MonoBehaviour
 
         if (scroll == null) return;
 
+        // Keep the scroll target for pointer input without drawing a panel fill.
+        var scrollImage = scroll.GetComponent<Image>();
+        if (scrollImage != null)
+        {
+            scrollImage.color = Color.clear;
+            scrollImage.raycastTarget = true;
+            if (scrollImage.GetComponent<GameUIThemeStyled>() == null)
+                scrollImage.gameObject.AddComponent<GameUIThemeStyled>();
+        }
+
         var scrollRect = scroll.GetComponent<ScrollRect>();
         if (scrollRect == null)
             scrollRect = scroll.gameObject.AddComponent<ScrollRect>();
@@ -441,6 +461,8 @@ public class InventoryUI : MonoBehaviour
         // RectMask2D does not need a stencil sprite; keep a transparent raycast target.
         vpImage.color = new Color(1f, 1f, 1f, 0f);
         vpImage.raycastTarget = true;
+        if (vpImage.GetComponent<GameUIThemeStyled>() == null)
+            vpImage.gameObject.AddComponent<GameUIThemeStyled>();
 
         // Content must be a child of Viewport.
         RectTransform content = null;
@@ -797,6 +819,8 @@ public class InventoryUI : MonoBehaviour
 
         tabButtons = new[] { stationsTab, floorTab, customizeTab };
         tabPanels = new[] { stationsPanel.gameObject, floorPanel.gameObject, customizePanel.gameObject };
+        HudTabColors.ConfigureTabGroup(tabBar, tabButtons);
+        ConfigureInventoryTabLayout(tabBar);
         floorContentParent = floorPanel.Find("FloorContent") ?? floorPanel;
 
         if (customizePanel.GetComponent<StoreAppearanceUI>() == null)
@@ -808,6 +832,100 @@ public class InventoryUI : MonoBehaviour
             contentParent = scrollContent;
 
         return true;
+    }
+
+    /// <summary>
+    /// Keep the build sub-tab row on the same footprint as the primary Build and
+    /// Business row. The shared tab styling supplies colors and typography, but
+    /// its generic 260x48 footprint is too tall and leaves the two visible build
+    /// tabs at a different width from the primary pair.
+    /// </summary>
+    void ConfigureInventoryTabLayout(Transform tabBar)
+    {
+        if (tabBar == null) return;
+
+        var layout = tabBar.GetComponent<HorizontalLayoutGroup>();
+        if (layout == null) layout = tabBar.gameObject.AddComponent<HorizontalLayoutGroup>();
+
+        // These are the dimensions of the primary HUD row: 40px buttons, a
+        // 10px gap, and 8px outer padding on each side.
+        layout.padding = new RectOffset(8, 8, 6, 6);
+        layout.spacing = 10f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        var tabRect = tabBar as RectTransform;
+        var parentRect = tabRect != null ? tabRect.parent as RectTransform : null;
+        var mainHud = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        var mainRect = mainHud != null ? mainHud.transform as RectTransform : null;
+        if (tabRect != null && parentRect != null && mainRect != null)
+        {
+            Vector3[] mainCorners = new Vector3[4];
+            mainRect.GetWorldCorners(mainCorners);
+            float targetWorldWidth = Vector3.Distance(mainCorners[0], mainCorners[3]);
+            float targetWorldHeight = Vector3.Distance(mainCorners[0], mainCorners[1]);
+            var mainLayout = mainHud.GetComponent<HorizontalLayoutGroup>();
+            if (mainLayout != null)
+                targetWorldWidth = Mathf.Max(0f, mainRect.rect.width - mainLayout.padding.horizontal)
+                    * Mathf.Abs(mainRect.lossyScale.x);
+
+            float parentScaleX = Mathf.Abs(parentRect.lossyScale.x);
+            float parentScaleY = Mathf.Abs(parentRect.lossyScale.y);
+            if (parentScaleX > 0.0001f && targetWorldWidth > 0.01f)
+            {
+                float targetLocalWidth = targetWorldWidth / parentScaleX + layout.padding.horizontal;
+                tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetLocalWidth);
+            }
+            if (parentScaleY > 0.0001f && targetWorldHeight > 0.01f)
+            {
+                float targetLocalHeight = targetWorldHeight / parentScaleY;
+                tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetLocalHeight);
+            }
+        }
+
+        int visibleCount = 0;
+        if (tabButtons != null)
+        {
+            foreach (var button in tabButtons)
+                if (button != null && button.gameObject.activeSelf)
+                    visibleCount++;
+        }
+        if (visibleCount == 0) visibleCount = tabButtons != null ? tabButtons.Length : 0;
+
+        float availableWidth = tabRect != null
+            ? tabRect.rect.width - layout.padding.horizontal - layout.spacing * Mathf.Max(0, visibleCount - 1)
+            : 0f;
+        float tabWidth = visibleCount > 0 ? Mathf.Max(0f, availableWidth / visibleCount) : HudTabColors.SharedTabWidth;
+        if (tabButtons != null)
+        {
+            foreach (var button in tabButtons)
+                SetInventoryTabSize(button, tabWidth, 40f);
+        }
+
+        if (tabRect != null)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(tabRect);
+    }
+
+    static void SetInventoryTabSize(Button button, float width, float height)
+    {
+        if (button == null) return;
+        var elements = button.GetComponents<LayoutElement>();
+        if (elements == null || elements.Length == 0)
+            elements = new[] { button.gameObject.AddComponent<LayoutElement>() };
+
+        foreach (var element in elements)
+        {
+            if (element == null) continue;
+            element.minWidth = width;
+            element.preferredWidth = width;
+            element.flexibleWidth = 0f;
+            element.minHeight = height;
+            element.preferredHeight = height;
+            element.flexibleHeight = 0f;
+        }
     }
 
     void BuildTabsHierarchy(bool applyDefaultLayout)

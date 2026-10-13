@@ -93,8 +93,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         var panel = new GameObject("ResearchPanel", typeof(RectTransform), typeof(Image));
         panel.transform.SetParent(transform, false);
         RectTransform panelRt = (RectTransform)panel.transform;
-        panelRt.anchorMin = panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRt.sizeDelta = new Vector2(1000f, 790f);
+        HudTabColors.SizeOverlayPanel(panelRt, transform as RectTransform);
         panel.GetComponent<Image>().color = new Color(0.105f, 0.12f, 0.16f, 0.995f);
 
         TextMeshProUGUI title = CreateText(panel.transform, "Title", "RESEARCH & DEVELOPMENT", 24f,
