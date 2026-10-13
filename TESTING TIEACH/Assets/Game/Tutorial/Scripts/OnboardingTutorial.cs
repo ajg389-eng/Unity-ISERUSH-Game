@@ -54,6 +54,7 @@ public class OnboardingTutorial : MonoBehaviour
     int autoAdvanceStep = -1;
     float autoAdvanceAt;
     bool flowEditCompleted;
+    bool recipeBusinessOpened;
     bool tutorialReviewShown;
     bool cleanedOldWorldCallout;
     int recipeTutorialStationIndex;
@@ -168,7 +169,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Open <b>Build</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
             "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow. Shorter routes reduce worker travel and help the line keep up.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
-            "Next", Highlight.Inventory, openInventory: true),
+            "Next", Highlight.Inventory),
         new Step(
             "Register",
             "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here. The queue grows when arrivals outpace your service capacity.\n\n" +
@@ -325,7 +326,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Use <b>Edit Flow</b> to adjust connections, then click Finish.",
         "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
         "Customers request a burger and pay when the ordered burger reaches the Pickup Station. Workers keep the line moving, but only stage food that a waiting customer ordered.",
-        "Watch one order move through the line. Use <b>Food > Recipes</b> for recipe trees and <b>Progression > Research</b> for upgrades."
+        "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -403,6 +404,15 @@ public class OnboardingTutorial : MonoBehaviour
         liveCustomerSpawned = false;
         EnsureUI();
         ShowStep();
+        if (stepIndex == 0)
+        {
+            var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
+            var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.Close();
+            var objectives = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
+            if (objectives != null) objectives.SetVisible(false);
+        }
     }
 
     public void Skip()
@@ -471,6 +481,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
         recipeTutorialStationIndex = 0;
+        recipeBusinessOpened = false;
         ingredientTutorialStep = 0;
         ingredientExplanationUntil = 0f;
         tutorialFocusText = null;
@@ -497,6 +508,16 @@ public class OnboardingTutorial : MonoBehaviour
         currentHighlight = step.highlight;
         calloutTarget = null;
         UpdateHighlight(step.highlight);
+
+        if (stepIndex == 1)
+        {
+            var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
+            var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.Close();
+            var objectives = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
+            if (objectives != null) objectives.SetVisible(false);
+        }
 
         if (step.openInventory)
         {
@@ -525,7 +546,14 @@ public class OnboardingTutorial : MonoBehaviour
                 mgmt.OpenIngredientsTab();
         }
 
-        if (step.openWorkers)
+        if (step.requireRecipes)
+        {
+            var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
+            var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.Close();
+        }
+        if (step.openWorkers && !step.requireRecipes)
         {
             var tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
             var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
@@ -594,8 +622,46 @@ public class OnboardingTutorial : MonoBehaviour
             panelPosition = new Vector2(0f, -rootHeight * 0.5f + panelHeight * 0.5f + 82f);
         }
 
+        // Top-bar callouts sit beneath the navigation, leaving its labels readable.
+        if (hasTarget && targetPosition.y > rootHeight * 0.5f - 180f
+            && (currentHighlight == Highlight.Inventory || currentHighlight == Highlight.Management))
+            panelPosition.y = targetPosition.y - panelHeight * 0.5f - 60f;
+
+        // Keep the entire flow editor readable, not just the highlighted button.
+        if (hasTarget && calloutTarget != null)
+        {
+            Transform owner = calloutTarget;
+            while (owner != null && owner.name != "FlowCaptureHUD") owner = owner.parent;
+            if (owner is RectTransform flowHud)
+            {
+                var corners = new Vector3[4];
+                flowHud.GetWorldCorners(corners);
+                Canvas targetCanvas = flowHud.GetComponentInParent<Canvas>();
+                Camera camera = targetCanvas != null && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                    ? targetCanvas.worldCamera : null;
+                Vector2 screenBottom = RectTransformUtility.WorldToScreenPoint(camera, (corners[0] + corners[3]) * 0.5f);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screenBottom, null, out Vector2 bottom);
+                panelPosition.x = Mathf.Clamp(targetPosition.x,
+                    -rootWidth * 0.5f + panelWidth * 0.5f + 18f,
+                    rootWidth * 0.5f - panelWidth * 0.5f - 18f);
+                panelPosition.y = bottom.y - panelHeight * 0.5f - 32f;
+            }
+        }
+        // The final step is for watching the kitchen, rather than pointing at a control.
+        if (running && Steps[stepIndex].liveCustomer)
+        {
+            hasTarget = false;
+            panelPosition = new Vector2(rootWidth * 0.5f - panelWidth * 0.5f - 18f,
+                -rootHeight * 0.5f + panelHeight * 0.5f + 18f);
+        }
+        // Apply screen bounds after every contextual adjustment, including bottom-row targets.
+        panelPosition.x = Mathf.Clamp(panelPosition.x,
+            -rootWidth * 0.5f + panelWidth * 0.5f + 18f,
+            rootWidth * 0.5f - panelWidth * 0.5f - 18f);
+        panelPosition.y = Mathf.Clamp(panelPosition.y,
+            -rootHeight * 0.5f + panelHeight * 0.5f + 18f,
+            rootHeight * 0.5f - panelHeight * 0.5f - 18f);
         panelRect.anchoredPosition = panelPosition;
-        PositionTutorialButtons(panelPosition, panelHeight);
         PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight), targetPosition, hasTarget);
     }
 
@@ -626,20 +692,6 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         return RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screenPoint, null, out localPoint);
-    }
-
-    void PositionTutorialButtons(Vector2 panelPosition, float panelHeight)
-    {
-        float y = panelPosition.y - panelHeight * 0.5f - 30f;
-        PositionTutorialButton(nextButton, new Vector2(panelPosition.x, y));
-    }
-
-    static void PositionTutorialButton(Button button, Vector2 position)
-    {
-        if (button == null) return;
-        RectTransform rect = (RectTransform)button.transform;
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
     }
 
     void PositionCalloutArrow(Vector2 panelPosition, Vector2 panelSize, Vector2 targetPosition, bool visible)
@@ -693,6 +745,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static string LockedLabel(Step step)
     {
+        if (step.highlight == Highlight.Inventory) return "Open Build";
         if (step.requireIngredients) return "Order Raw Patties and Buns";
         if (step.requireRecipes) return MissingRecipeLabel();
         if (step.requireEditedFlow) return "Edit and save flow";
@@ -722,8 +775,13 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.highlight == Highlight.Inventory)
+        {
+            var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventoryUI == null || !inventoryUI.IsPanelOpen) return false;
+        }
         if (step.requireIngredients && !HasTutorialIngredients()) return false;
-        if (step.requireRecipes && !BurgerRecipesReady()) return false;
+        if (step.requireRecipes && (!recipeBusinessOpened || !BurgerRecipesReady())) return false;
         if (step.requireEditedFlow && !flowEditCompleted) return false;
         if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
             && ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
@@ -1394,6 +1452,19 @@ public class OnboardingTutorial : MonoBehaviour
 
     void UpdateStationSequenceStep(Step step)
     {
+        if (step.requireRecipes && !recipeBusinessOpened)
+        {
+            var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management == null || !management.IsOpen)
+            {
+                tutorialFocusText = "Click <b>Business</b> at the top to start configuring ingredients and recipes.";
+                if (bodyText != null) bodyText.text = tutorialFocusText;
+                UpdateHighlight(Highlight.Management);
+                return;
+            }
+            recipeBusinessOpened = true;
+            calloutTarget = null;
+        }
         if (step.requireRecipes)
         {
             if (recipeTutorialStationIndex >= 4) return;
@@ -1405,12 +1476,12 @@ public class OnboardingTutorial : MonoBehaviour
             {
                 highlightTarget = station.transform;
                 secondaryHighlightTarget = null;
-                tutorialFocusText = "Click the highlighted <b>" + station.name + "</b> in the kitchen. Gus will show you its recipe choice.";
+                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> in the kitchen. Gus will show you its recipe choice.";
                 if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
                 return;
             }
 
-            tutorialFocusText = GetRecipeTutorialPrompt(recipeTutorialStationIndex, station.name);
+            tutorialFocusText = GetRecipeTutorialPrompt(recipeTutorialStationIndex, station.name.Replace("(Clone)", "").Trim());
             if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
             if (IsRecipeTutorialStationConfigured(recipeTutorialStationIndex, station))
             {
@@ -1424,7 +1495,7 @@ public class OnboardingTutorial : MonoBehaviour
                 }
                 station = GetRecipeTutorialStation(recipeTutorialStationIndex);
                 if (station == null) return;
-                tutorialFocusText = "Good. Now click the highlighted <b>" + station.name + "</b> and choose its burger-line item or recipe.";
+                tutorialFocusText = "Good. Now click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> and choose its burger-line item or recipe.";
                 if (bodyText != null) bodyText.text = tutorialFocusText;
             }
             highlightTarget = station.transform;
@@ -1518,8 +1589,12 @@ public class OnboardingTutorial : MonoBehaviour
             {
                 highlightTarget = expected.source.transform;
                 secondaryHighlightTarget = expected.destination.transform;
-                tutorialFocusText = "<b>Next link:</b> click and drag from the highlighted <b>" + expected.source.name +
-                    "</b> to the highlighted <b>" + expected.destination.name + "</b>, then release.";
+                tutorialFocusText = "<b>Next link:</b> click and drag from the highlighted <b>" + expected.source.name.Replace("(Clone)", "").Trim() +
+                    "</b> to the highlighted <b>" + expected.destination.name.Replace("(Clone)", "").Trim() + "</b>, then release.";
+                if (expected.source.GetComponent<PantryStation>() != null)
+                    tutorialFocusText = "Start a separate <b>branch</b> from <b>Pantry</b>: click and drag to the existing <b>Assembly</b> station, then release to merge it into the same flow.";
+                else if (expected.source.GetComponent<AssemblyStation>() != null)
+                    tutorialFocusText = "Bring the flow to the <b>Pickup Station</b>: click and drag from <b>Assembly</b> to <b>Pickup Station</b>, then release.";
                 if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
             }
             else if (HasTutorialFlow())
@@ -1646,7 +1721,7 @@ public class OnboardingTutorial : MonoBehaviour
         return "Click the highlighted <b>" + stationName + "</b> in the kitchen. In the station panel, " + task + ".";
     }
 
-    static (StationNode source, StationNode destination) GetExpectedFlowLink(ProductionFlowPlan flow)
+    static (Component source, Component destination) GetExpectedFlowLink(ProductionFlowPlan flow)
     {
         if (flow == null) return (null, null);
         var links = new (StationType? from, StationType? to)[]
@@ -1669,7 +1744,7 @@ public class OnboardingTutorial : MonoBehaviour
             if (!found) break;
         }
         if (next >= links.Length) return (null, null);
-        StationNode source = null, destination = null;
+        Component source = null, destination = null;
         foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
         {
             if (node == null) continue;
@@ -1680,10 +1755,10 @@ public class OnboardingTutorial : MonoBehaviour
         // Until then keep Finish out of focus and point Gus at that final destination.
         if (next == links.Length - 1 && source != null && destination == null)
         {
-            foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
-                if (node != null && node.GetComponent<HeatLampStation>() != null)
+            foreach (HeatLampStation pickup in FindObjectsByType<HeatLampStation>(FindObjectsSortMode.None))
+                if (pickup != null && pickup.GetComponent<PlacedBuildItem>() != null)
                 {
-                    destination = node;
+                    destination = pickup;
                     break;
                 }
         }
@@ -1795,7 +1870,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void EnsureUI()
     {
-        if (canvasRoot != null && nextButton != null && nextButton.transform.parent == canvasRoot.transform)
+        if (canvasRoot != null && panel != null && nextButton != null && nextButton.transform.IsChildOf(panel.transform))
         {
             canvasRoot.SetActive(true);
             if (panel != null) panel.SetActive(true);
@@ -1906,7 +1981,19 @@ public class OnboardingTutorial : MonoBehaviour
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
 
-        nextButton = CreateSideButton(canvasRoot.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f), 1);
+        var footer = new GameObject("Navigation", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        footer.transform.SetParent(panel.transform, false);
+        footer.GetComponent<LayoutElement>().preferredHeight = 46f;
+        var footerLayout = footer.GetComponent<HorizontalLayoutGroup>();
+        footerLayout.childAlignment = TextAnchor.MiddleRight;
+        footerLayout.childControlWidth = true;
+        footerLayout.childControlHeight = true;
+        footerLayout.childForceExpandWidth = false;
+        footerLayout.childForceExpandHeight = false;
+        nextButton = CreateSideButton(footer.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f), 1);
+        var nextLayout = nextButton.gameObject.AddComponent<LayoutElement>();
+        nextLayout.preferredWidth = 188f;
+        nextLayout.preferredHeight = 46f;
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
     }

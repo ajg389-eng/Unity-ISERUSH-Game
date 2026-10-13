@@ -3100,6 +3100,21 @@ public class ManagementModeController : MonoBehaviour
                 back.GetComponentInChildren<TextMeshProUGUI>().fontSize = 12f;
             }
             back.interactable = capturedFlow != null && capturedFlow.stations.Count > 0;
+            GameIconLibrary.ApplyToButton(back, GameIconId.Previous, 18f, 8f);
+            foreach (Button control in buttons.GetComponentsInChildren<Button>(true))
+            {
+                var label = control.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (label == null) continue;
+                label.enableAutoSizing = false;
+                label.fontSize = 12f;
+                label.textWrappingMode = TextWrappingModes.NoWrap;
+                var controlSize = control.GetComponent<LayoutElement>();
+                if (controlSize != null)
+                {
+                    controlSize.minWidth = 132f;
+                    controlSize.preferredWidth = 132f;
+                }
+            }
             Button clear = buttons.Find("Clear Flow")?.GetComponent<Button>();
             if (clear != null)
             {
@@ -3119,8 +3134,8 @@ public class ManagementModeController : MonoBehaviour
         {
             if (button == null) continue;
             var size = button.GetComponent<LayoutElement>();
-            size.minWidth = 88f;
-            size.preferredWidth = 88f;
+            size.minWidth = 110f;
+            size.preferredWidth = 110f;
             size.minHeight = 30f;
             size.preferredHeight = 30f;
             size.flexibleHeight = 0f;
@@ -3188,7 +3203,7 @@ public class ManagementModeController : MonoBehaviour
         tmp.raycastTarget = false;
         Button button = go.GetComponent<Button>();
         GameIconLibrary.ApplyToButton(button,
-            label == "Finish" ? GameIconId.Checkmark : GameIconId.Cross,
+            label == "Finish" ? GameIconId.Checkmark : label == "Back Step" ? GameIconId.Previous : GameIconId.Cross,
             18f, 8f);
         return button;
     }

@@ -144,7 +144,14 @@ public class InventoryItemCardUI : MonoBehaviour
         {
             buyButton.onClick.RemoveAllListeners();
             if (onBuy != null)
-                buyButton.onClick.AddListener(() => onBuy());
+                buyButton.onClick.AddListener(() =>
+                {
+                    var inventory = FindFirstObjectByType<InventoryManager>();
+                    if (inventory != null && inventory.GetCount(boundItem) > 0)
+                        onSelect?.Invoke();
+                    else
+                        onBuy();
+                });
             EnsureBuyButtonIcon();
             EnsurePriceOnBuyButton();
         }
@@ -261,12 +268,18 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         capacity = Mathf.Max(1, capacity);
         bool atCapacity = owned >= capacity;
+        var inventory = FindFirstObjectByType<InventoryManager>();
+        bool canPlace = boundItem != null && inventory != null && inventory.GetCount(boundItem) > 0;
         if (qtyText != null)
             qtyText.text = Mathf.Max(0, owned) + "/" + capacity;
         if (buyButton != null)
-            buyButton.interactable = !atCapacity && !tutorialLocked;
-        if (atCapacity && priceText != null)
-            priceText.text = "MAX";
+            buyButton.interactable = (canPlace || !atCapacity) && !tutorialLocked;
+        if (priceText != null)
+        {
+            if (canPlace) priceText.text = "PLACE";
+            else if (atCapacity) priceText.text = "MAX";
+            else if (inventory != null && boundItem != null) SetPrice(inventory.GetPurchasePrice(boundItem));
+        }
     }
 
     public void SetTutorialLocked(bool locked)
