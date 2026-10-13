@@ -143,6 +143,10 @@ public class BuildPlacer : MonoBehaviour
                 CancelDrag();
             else
                 CancelPlacement();
+            // Cancellation keeps purchased stock. Rebuild the visible actions
+            // so both card layouts offer PLACE rather than a stale capacity label.
+            var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventoryUI != null) inventoryUI.RefreshAll();
             PauseMenuUI.MarkEscapeHandled();
             return;
         }
@@ -415,6 +419,8 @@ public class BuildPlacer : MonoBehaviour
             instruction = rotationLocked
                 ? "LMB: Place    RMB: Remove & return to inventory    ESC: Cancel"
                 : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
+        else if (IsPickupStationDefinition(placingItem))
+            instruction = "Click a counter slot    LMB: Place    ESC: Cancel";
         else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
             instruction = rotationLocked
                 ? "LMB: Place on counter    ESC: Cancel"

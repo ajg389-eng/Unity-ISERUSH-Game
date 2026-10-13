@@ -16,6 +16,7 @@ public class RegisterPopup : MonoBehaviour
     {
         target = reg;
         bound = true;
+        target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(true);
         UpdateText();
         GameUITheme.ApplyButton(toggleButton);
     }
@@ -29,6 +30,16 @@ public class RegisterPopup : MonoBehaviour
             UpdateText();
             GameUITheme.ApplyButton(toggleButton);
         });
+    }
+
+    void OnEnable()
+    {
+        if (target != null) target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(true);
+    }
+
+    void OnDisable()
+    {
+        if (target != null) target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(false);
     }
 
     void LateUpdate()

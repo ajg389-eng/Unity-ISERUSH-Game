@@ -560,7 +560,9 @@ public class InventoryItemCardUI : MonoBehaviour
         if (on)
         {
             EnsureTutorialPrompt();
-            string placementPrompt = boundItem != null && boundItem.placementSurface == ItemDefinition.PlacementSurface.Counter
+            string placementPrompt = boundItem != null && boundItem.stationFamily == "Pickup Station"
+                ? "PLACE AT COUNTER"
+                : boundItem != null && boundItem.placementSurface == ItemDefinition.PlacementSurface.Counter
                 ? "PLACE ON COUNTER"
                 : boundItem != null && boundItem.placementSurface == ItemDefinition.PlacementSurface.CustomerWall
                     ? "PLACE ON A LOBBY WALL" : "PLACE ON A FLOOR TILE";

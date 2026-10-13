@@ -803,6 +803,39 @@ public class GridManager : MonoBehaviour
     /// </summary>
     public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius = 0f)
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try { return GetPathInternal(fromWorld, toWorld, clearanceRadius); }
+        finally
+        {
+            if (pathTimingFrame != Time.frameCount)
+            {
+                pathTimingFrame = Time.frameCount;
+                pathTimingMs = 0;
+                pathTimingCalls = 0;
+            }
+            pathTimingCalls++;
+            pathTimingMs += (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0
+                / System.Diagnostics.Stopwatch.Frequency;
+            if (pathTimingMs >= 12 && Time.realtimeSinceStartup >= nextPathTimingReport)
+            {
+                nextPathTimingReport = Time.realtimeSinceStartup + 5f;
+                Debug.Log($"[Performance] Pathfinding: {pathTimingMs:F1} ms across {pathTimingCalls} calls this frame. Grid {Width}x{Height}.");
+            }
+        }
+#else
+        return GetPathInternal(fromWorld, toWorld, clearanceRadius);
+#endif
+    }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    static int pathTimingFrame = -1, pathTimingCalls;
+    static double pathTimingMs;
+    static float nextPathTimingReport;
+#endif
+
+    List<Vector3> GetPathInternal(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius)
+    {
         var result = new List<Vector3>();
         if (Nodes == null || Width == 0 || Height == 0) return result;
 

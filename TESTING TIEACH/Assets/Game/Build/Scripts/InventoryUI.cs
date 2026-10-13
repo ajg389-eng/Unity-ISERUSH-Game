@@ -705,10 +705,11 @@ public class InventoryUI : MonoBehaviour
         int price = inventory.GetPurchasePrice(item);
         bool atCapacity = inventory.IsAtStationCapacity(item);
         bool tutorialLocked = IsMilestoneStationLocked(item);
-        priceText.text = tutorialLocked ? "LOCKED" : atCapacity
+        bool canPlace = inventory.GetCount(item) > 0;
+        priceText.text = tutorialLocked ? "LOCKED" : canPlace ? "PLACE" : atCapacity
             ? "MAX"
             : price <= 0 ? "FREE" : "$" + price;
-        buyButton.interactable = !tutorialLocked && !atCapacity;
+        buyButton.interactable = !tutorialLocked && (canPlace || !atCapacity);
         nameButton.interactable = !tutorialLocked;
 
         ItemDefinition captured = item;
@@ -719,6 +720,11 @@ public class InventoryUI : MonoBehaviour
 
         buyButton.onClick.AddListener(() =>
         {
+            if (inventory.GetCount(captured) > 0)
+            {
+                BeginItemPlacement(captured);
+                return;
+            }
             bool bought = inventory.PurchaseOne(captured);
             if (bought)
             {
@@ -727,10 +733,11 @@ public class InventoryUI : MonoBehaviour
                 qtyText.text = nextOwned + "/" + nextCapacity;
                 int nextPrice = inventory.GetPurchasePrice(captured);
                 bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
-                priceText.text = nowAtCapacity
+                bool hasUnplaced = inventory.GetCount(captured) > 0;
+                priceText.text = hasUnplaced ? "PLACE" : nowAtCapacity
                     ? "MAX"
                     : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
-                buyButton.interactable = !nowAtCapacity;
+                buyButton.interactable = hasUnplaced || !nowAtCapacity;
                 Sfx.Play(SfxId.Purchase);
                 BeginItemPlacement(captured);
             }

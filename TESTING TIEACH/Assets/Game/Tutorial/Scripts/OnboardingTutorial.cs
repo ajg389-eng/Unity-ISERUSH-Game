@@ -346,7 +346,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
         new Step(
             "Choose what to sell",
-            "Open <b>Business</b>, then click the <b>Menu</b> tab. Every item starts turned off so you choose exactly what customers can order. Enable <b>Hamburger</b> to make the burger line available.",
+            "Click the highlighted <b>Menu</b> tab. Every item starts turned off so you choose exactly what customers can order. Enable <b>Hamburger</b> to make the burger line available.",
             "Next", Highlight.Management, requireMenuScreen: true, requireHamburger: true),
         new Step(
             "Edit a flow",
@@ -455,7 +455,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Buy a <b>Fryer</b>. Fries use Potato Slices, then combine Cooked Potato Slices with a Fry Container at Assembly.",
         "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
         "Buy an <b>Assembly Station</b>. Its selected recipe determines its required inputs.",
-        "Buy a <b>Pickup Station</b>. Only finished products delivered here are sold.",
+        "Buy a <b>Pickup Station</b> and <b>click a counter slot to place it</b>. Only finished products delivered here are sold.",
         "In <b>Research</b>, complete the first card in each of the three branches. Each first card finishes in one second during the tutorial.",
         "Open <b>Recipes</b> and inspect the Burger, Fries, and Shake production trees before configuring a station.",
         "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger.",
@@ -938,7 +938,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireResearch) return "Research all three foundations";
         if (step.requireRecipeScreen) return "Open Recipes";
         if (step.requireAnalyticsScreen) return "Open Analytics";
-        if (step.requireMenuScreen && !menuScreenOpened) return "Open Business > Menu";
+        if (step.requireMenuScreen && !menuScreenOpened) return "Open Menu";
         if (step.requireHamburger) return "Enable Hamburger";
         if (step.requireRegisterEnabled)
             return HasPlacedStation(step.highlight) ? "Enable the register" : "Place register on counter";
@@ -1535,7 +1535,7 @@ public class OnboardingTutorial : MonoBehaviour
         {
             if (button != null && button.name == buttonName && button.gameObject.activeInHierarchy)
             {
-                HighlightControl(button);
+                FocusTutorialControl(button);
                 return;
             }
         }
@@ -1609,18 +1609,14 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireMenuScreen && !menuScreenOpened)
         {
             ManagementScreenController menuManagement = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-            if (menuManagement == null || !menuManagement.IsOpen)
-            {
-                tutorialFocusText = "Click <b>Business</b> on the HUD.";
-                if (bodyText != null) bodyText.text = tutorialFocusText;
-                HighlightHudButton("BusinessTab");
-            }
-            else
-            {
-                tutorialFocusText = "Click the <b>Menu</b> tab in Business.";
-                if (bodyText != null) bodyText.text = tutorialFocusText;
-                HighlightHudButton("Tab_Menu");
-            }
+            // Open the Business panel so the tutorial can point directly at the
+            // action this step requires. The player should not have to guess
+            // that Business is only an intermediate click before Menu.
+            if (menuManagement != null && !menuManagement.IsOpen)
+                menuManagement.Open();
+            tutorialFocusText = "Click the <b>Menu</b> tab to choose what items to sell.";
+            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            HighlightHudButton("Tab_Menu");
             return;
         }
         if (step.requireHamburger && !IsHamburgerEnabled())
@@ -1633,7 +1629,10 @@ public class OnboardingTutorial : MonoBehaviour
             {
                 tutorialFocusText = "Click the <b>Hamburger</b> toggle to add it to the menu.";
                 if (bodyText != null) bodyText.text = tutorialFocusText;
-                HighlightControl(target);
+                // This step replaces the earlier Business-tab target with the
+                // actual menu toggle. Focus explicitly so both the border and
+                // arrow follow the action the player needs to take.
+                FocusTutorialControl(target);
             }
             return;
         }
@@ -1719,7 +1718,8 @@ public class OnboardingTutorial : MonoBehaviour
             }
         }
         var management = ManagementModeController.Instance;
-        if (management != null && management.IsCapturingFlow)
+        if (management != null && management.IsCapturingFlow
+            && management.CapturedFlow != null && IsBurgerTutorialFlow(management.CapturedFlow))
         {
             foreach (var button in FindObjectsByType<Button>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                 if (button.name == "Finish" && button.interactable) HighlightControl(button);
@@ -1763,6 +1763,21 @@ public class OnboardingTutorial : MonoBehaviour
 
     void UpdateTutorialWorldHighlights()
     {
+        if (running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireRegisterEnabled && !IsTutorialRegisterEnabled())
+        {
+            RegisterPopup registerPopup = FindFirstObjectByType<RegisterPopup>(FindObjectsInactive.Exclude);
+            if (registerPopup != null && registerPopup.toggleButton != null
+                && registerPopup.toggleButton.gameObject.activeInHierarchy)
+            {
+                // The yellow world marker sits over this floating button from
+                // the camera angle. The control border and callout already point
+                // to it, so suppress the filled marker while Enable is shown.
+                if (highlight != null) highlight.SetActive(false);
+                if (secondaryHighlight != null) secondaryHighlight.SetActive(false);
+                return;
+            }
+        }
         if (!running || stepIndex < 0 || stepIndex >= Steps.Length || highlightTarget == null)
         {
             if (secondaryHighlight != null) secondaryHighlight.SetActive(false);
@@ -1906,6 +1921,12 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (step.requireFlow)
         {
+            // This step starts with a generic Business highlight. Do not let
+            // that old target remain available as the callout's fallback while
+            // its focus moves to Create Flow or the captured route stations.
+            highlightTarget = null;
+            secondaryHighlightTarget = null;
+            calloutTarget = null;
             var manager = ManagementModeController.Instance;
             if (manager == null) return;
             if (!manager.IsCapturingFlow)
@@ -1919,7 +1940,6 @@ public class OnboardingTutorial : MonoBehaviour
                 return;
             }
 
-            calloutTarget = null;
             var flow = manager.CapturedFlow;
             var expected = GetExpectedFlowLink(flow);
             if (expected.source != null && expected.destination != null)
@@ -1936,10 +1956,14 @@ public class OnboardingTutorial : MonoBehaviour
             }
             else if (HasTutorialFlow())
             {
-                secondaryHighlightTarget = null;
                 tutorialFocusText = "Flow connected. Click <b>Finish</b> to save it.";
                 if (manager.flowCaptureFinishButton != null)
                     FocusTutorialControl(manager.flowCaptureFinishButton);
+                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            }
+            else
+            {
+                tutorialFocusText = "Drag from the highlighted source station to its destination. The pointer will move to the next connection after each link.";
                 if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
             }
         }
@@ -2081,25 +2105,50 @@ public class OnboardingTutorial : MonoBehaviour
             if (!found) break;
         }
         if (next >= links.Length) return (null, null);
-        Component source = null, destination = null;
-        foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
-        {
-            if (node == null) continue;
-            if (MatchesExpectedStation(node.gameObject, links[next].from) && source == null) source = node;
-            if (MatchesExpectedStation(node.gameObject, links[next].to) && destination == null) destination = node;
-        }
+        Component source = FindFlowLinkStation(flow, links[next].from);
+        Component destination = FindFlowLinkStation(flow, links[next].to);
         // A burger flow is complete only after its last link reaches the Pickup Station.
         // Until then keep Finish out of focus and point Gus at that final destination.
-        if (next == links.Length - 1 && source != null && destination == null)
-        {
+        return (source, destination);
+    }
+
+    static Component FindFlowLinkStation(ProductionFlowPlan flow, StationType? expected)
+    {
+        // Prefer nodes already selected into this flow. That keeps the tutorial
+        // arrow attached to the same station when duplicate equipment exists.
+        if (flow != null && flow.stations != null)
+            foreach (GameObject station in flow.stations)
+                if (station != null && MatchesExpectedStation(station, expected))
+                    return FindExpectedStationComponent(station, expected);
+
+        // The first source and the next unconnected destination have not yet
+        // been added to the captured graph, so resolve them from placed objects
+        // only. Unplaced catalog previews and stale StationNodes are not valid
+        // tutorial targets.
+        foreach (StationNode node in FindObjectsByType<StationNode>(FindObjectsSortMode.None))
+            if (node != null && node.GetComponent<PlacedBuildItem>() != null
+                && MatchesExpectedStation(node.gameObject, expected))
+                return FindExpectedStationComponent(node.gameObject, expected);
+
+        if (expected == null)
             foreach (HeatLampStation pickup in FindObjectsByType<HeatLampStation>(FindObjectsSortMode.None))
                 if (pickup != null && pickup.GetComponent<PlacedBuildItem>() != null)
-                {
-                    destination = pickup;
-                    break;
-                }
-        }
-        return (source, destination);
+                    return pickup;
+        return null;
+    }
+
+    static Component FindExpectedStationComponent(GameObject station, StationType? expected)
+    {
+        if (station == null) return null;
+        if (!expected.HasValue) return station.GetComponent<HeatLampStation>();
+        return expected.Value switch
+        {
+            StationType.Freezer => station.GetComponent<FreezerStation>(),
+            StationType.Grill => station.GetComponent<GrillStation>(),
+            StationType.Pantry => station.GetComponent<PantryStation>(),
+            StationType.Assembly => station.GetComponent<AssemblyStation>(),
+            _ => station.GetComponent<StationNode>(),
+        };
     }
 
     static bool MatchesExpectedStation(GameObject station, StationType? expected)
@@ -2239,7 +2288,10 @@ public class OnboardingTutorial : MonoBehaviour
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
-        bg.raycastTarget = true;
+        // The tutorial card can overlap a highlighted station in the kitchen.
+        // Let world clicks pass through its background; the Next button remains
+        // independently clickable.
+        bg.raycastTarget = false;
 
         var layout = panel.AddComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(16, 16, 12, 12);

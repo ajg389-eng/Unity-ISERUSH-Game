@@ -724,7 +724,6 @@ public class CounterSurface : MonoBehaviour
                 new Vector3(oldSegmentBounds.center.x, oldSegmentBounds.center.y, targetCenterZ),
                 new Vector3(oldSegmentBounds.size.x, oldSegmentBounds.size.y, targetWorldLength));
             slotCount = newSlotCount;
-            RebuildCounterSegments();
             foreach (CounterMountedItem item in occupants)
             {
                 if (item == null) continue;
@@ -734,6 +733,8 @@ public class CounterSurface : MonoBehaviour
                 item.slotIndex = Mathf.Clamp(
                     item.slotIndex + slotIndexDelta, 0, Mathf.Max(0, slotCount - span));
             }
+            ShiftGroundStationSlots(slotIndexDelta);
+            RebuildCounterSegments();
             BuildGridVisual();
             RealignMountedItems();
             UpdateGridVisibility();
@@ -1043,8 +1044,7 @@ public class CounterSurface : MonoBehaviour
         if (!counterSegmentMode && !BuildCounterSegments()) return false;
         if (slot < 0 || slot >= slotCount || slot >= counterSegments.Count) return false;
         groundStationSlots.Add(slot);
-        GameObject segment = counterSegments[slot];
-        if (segment != null) segment.SetActive(false);
+        ApplyCounterSlotOpenings();
         EnsurePlacementCollider();
         return true;
     }
@@ -1053,7 +1053,7 @@ public class CounterSurface : MonoBehaviour
     {
         if (slot < 0 || slot >= counterSegments.Count) return;
         groundStationSlots.Remove(slot);
-        if (counterSegments[slot] != null) counterSegments[slot].SetActive(true);
+        ApplyCounterSlotOpenings();
     }
 
     bool BuildCounterSegments()
@@ -1127,9 +1127,43 @@ public class CounterSurface : MonoBehaviour
             counterSegments.Add(segment);
         }
 
+        ApplyCounterSlotOpenings();
+    }
+
+    void ShiftGroundStationSlots(int slotIndexDelta)
+    {
+        if (slotIndexDelta == 0) return;
+
+        var shiftedOpenSlots = new HashSet<int>();
+        foreach (int slot in groundStationSlots)
+            shiftedOpenSlots.Add(Mathf.Clamp(slot + slotIndexDelta, 0, slotCount - 1));
+        groundStationSlots.Clear();
+        foreach (int slot in shiftedOpenSlots)
+            groundStationSlots.Add(slot);
+
+        var shiftedPlacements = new Dictionary<int, GroundPickupStationPlacement>();
+        foreach (KeyValuePair<int, GroundPickupStationPlacement> pair in groundStationItems)
+        {
+            int slot = Mathf.Clamp(pair.Key + slotIndexDelta, 0, slotCount - 1);
+            if (pair.Value != null)
+                pair.Value.slotIndex = slot;
+            shiftedPlacements[slot] = pair.Value;
+        }
+        groundStationItems.Clear();
+        foreach (KeyValuePair<int, GroundPickupStationPlacement> pair in shiftedPlacements)
+            groundStationItems[pair.Key] = pair.Value;
+    }
+
+    void ApplyCounterSlotOpenings()
+    {
         for (int i = 0; i < counterSegments.Count; i++)
-            if (groundStationSlots.Contains(i) && counterSegments[i] != null)
-                counterSegments[i].SetActive(false);
+        {
+            GameObject segment = counterSegments[i];
+            if (segment == null) continue;
+            bool open = groundStationSlots.Contains(i);
+            if (segment.activeSelf == open)
+                segment.SetActive(!open);
+        }
     }
 
     public void Release(CounterMountedItem item)

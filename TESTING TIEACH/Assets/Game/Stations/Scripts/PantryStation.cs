@@ -208,6 +208,14 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     string currentDetails = "";
     float nextRefresh;
 
+    public void SetControlPopupVisible(bool visible)
+    {
+        controlPopupVisible = visible;
+        RefreshVisibility();
+    }
+
+    bool controlPopupVisible;
+
     public static void Ensure(GameObject station)
     {
         if (station != null && station.GetComponent<StationConfigurationCaution>() == null)
@@ -243,7 +251,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     void RefreshVisibility()
     {
-        bool show = TryGetCautionDetails(out currentDetails);
+        bool show = !controlPopupVisible && TryGetCautionDetails(out currentDetails);
         if (show && indicator == null)
             indicator = CreateIndicator();
         if (indicator == null) return;

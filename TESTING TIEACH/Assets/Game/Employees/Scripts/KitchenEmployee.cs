@@ -2005,9 +2005,38 @@ public class KitchenEmployee : MonoBehaviour
         var tiles = deliverTarget.GetComponent<StationInteractionTiles>()
             ?? deliverTarget.GetComponentInChildren<StationInteractionTiles>(true);
         if (tiles != null)
-            return tiles.IsEmployeeOnInteractionTile(transform.position);
+        {
+            if (tiles.IsEmployeeOnInteractionTile(transform.position))
+                return true;
+
+            // A worker can hand food across the counter from an adjacent tile
+            // even when the station's authored floor marker is blocked by the
+            // counter. Only accept this fallback when the worker is still close
+            // enough to the pickup station to complete a real handoff.
+            float handoffRange = GetPickupHandoffRange();
+            return IsPickupDeliveryTarget()
+                && path.Count == 0
+                && pathDestination != Vector3.zero
+                && HorizontalDistSq(transform.position, deliverTarget.transform.position)
+                    <= handoffRange * handoffRange
+                && HorizontalDistSq(transform.position, pathDestination)
+                    <= ArrivalRadius * ArrivalRadius;
+        }
         // Heat lamp / stations without tiles: arrived when MoveToward completed
         return true;
+    }
+
+    bool IsPickupDeliveryTarget()
+    {
+        return deliverTarget != null
+            && (deliverTarget.GetComponent<HeatLampStation>() != null
+                || deliverTarget.GetComponentInParent<HeatLampStation>() != null
+                || deliverTarget.GetComponentInChildren<HeatLampStation>(true) != null);
+    }
+
+    float GetPickupHandoffRange()
+    {
+        return (grid != null ? grid.cellSize : 1f) * 2.25f;
     }
 
     void CompleteOutputDelivery()
@@ -4091,53 +4120,70 @@ public class KitchenEmployee : MonoBehaviour
             return requestedTarget;
 
         List<Vector3> centers = tiles.GetInteractionStandCenters();
-        if (centers == null || centers.Count == 0)
-            return requestedTarget;
+        if (centers == null)
+            centers = new List<Vector3>();
 
         float radius = GetMovementFootprintRadius();
         float bestDistance = float.PositiveInfinity;
         Vector3 bestTarget = requestedTarget;
         foundReachableTarget = false;
         float maxApproach = grid.cellSize * 1.25f;
+        int interactionCenterCount = centers.Count;
 
-        for (int i = 0; i < centers.Count; i++)
+        for (int pass = 0; pass < 2; pass++)
         {
-            Vector3 candidate = centers[i];
-            candidate.y = GroundY;
-            if (!grid.WorldToCell(candidate, out int x, out int y)
-                || !grid.IsWalkable(x, y)
-                || grid.MeasureOccupiedCellPenetration(candidate, radius) > 0.001f)
-                continue;
-
-            Vector3 cellCenter = grid.GetCellCenter(candidate);
-            List<Vector3> route = grid.GetPath(transform.position, cellCenter, radius);
-            if (route == null || route.Count == 0)
-                continue;
-
-            Vector3 last = route[route.Count - 1];
-            if (HorizontalDistSq(last, candidate) > maxApproach * maxApproach
-                || !CanMoveAlongSegment(last, candidate))
-                continue;
-
-            float routeDistance = 0f;
-            Vector3 previous = transform.position;
-            for (int pointIndex = 0; pointIndex < route.Count; pointIndex++)
+            if (pass == 1)
             {
-                routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, route[pointIndex]));
-                previous = route[pointIndex];
+                if (foundReachableTarget || tiles == null || !IsPickupDeliveryTarget())
+                    break;
+                tiles.AddPickupRouteFallbackCenters(centers);
             }
-            routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, candidate));
 
-            if (routeDistance >= bestDistance)
-                continue;
+            int startIndex = pass == 0 ? 0 : interactionCenterCount;
+            for (int i = startIndex; i < centers.Count; i++)
+            {
+                Vector3 candidate = centers[i];
+                candidate.y = GroundY;
+                if (pass == 1 && HorizontalDistSq(candidate, requestedTarget)
+                    > GetPickupHandoffRange() * GetPickupHandoffRange())
+                    continue;
+                if (!grid.WorldToCell(candidate, out int x, out int y)
+                    || !grid.IsWalkable(x, y)
+                    || grid.MeasureOccupiedCellPenetration(candidate, radius) > 0.001f)
+                    continue;
 
-            bestDistance = routeDistance;
-            bestTarget = candidate;
-            foundReachableTarget = true;
+                Vector3 cellCenter = grid.GetCellCenter(candidate);
+                List<Vector3> route = grid.GetPath(transform.position, cellCenter, radius);
+                if (route == null || route.Count == 0)
+                    continue;
+
+                Vector3 last = route[route.Count - 1];
+                if (HorizontalDistSq(last, candidate) > maxApproach * maxApproach
+                    || !CanMoveAlongSegment(last, candidate))
+                    continue;
+
+                float routeDistance = 0f;
+                Vector3 previous = transform.position;
+                for (int pointIndex = 0; pointIndex < route.Count; pointIndex++)
+                {
+                    routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, route[pointIndex]));
+                    previous = route[pointIndex];
+                }
+                routeDistance += Mathf.Sqrt(HorizontalDistSq(previous, candidate));
+
+                if (routeDistance >= bestDistance)
+                    continue;
+
+                bestDistance = routeDistance;
+                bestTarget = candidate;
+                foundReachableTarget = true;
+            }
         }
 
         return foundReachableTarget ? bestTarget : requestedTarget;
     }
+
+    float nextBlockedDeliveryDiagnostic;
 
     bool MoveToward(Vector3 target, StationInteractionTiles targetTiles = null)
     {
@@ -4158,6 +4204,11 @@ public class KitchenEmployee : MonoBehaviour
                 out bool foundReachableTarget);
             if (!foundReachableTarget)
             {
+                if (awaitingOutputDelivery && Time.unscaledTime >= nextBlockedDeliveryDiagnostic)
+                {
+                    nextBlockedDeliveryDiagnostic = Time.unscaledTime + 10f;
+                    Debug.LogWarning($"[Delivery movement] {name} cannot reach {deliverTarget?.name}. Worker={transform.position}, target={requestedTarget}, radius={GetMovementFootprintRadius():F2}, interaction positions={targetTiles?.GetInteractionStandCenters()?.Count ?? 0}.", this);
+                }
                 pathRequestTarget = requestedTarget;
                 pathDestination = Vector3.zero;
                 consecutivePathFailures++;
@@ -4176,6 +4227,8 @@ public class KitchenEmployee : MonoBehaviour
         // Already at the exact stand point
         if (HorizontalDistSq(transform.position, exactTarget) <= ArrivalRadius * ArrivalRadius)
         {
+            pathRequestTarget = requestedTarget;
+            pathDestination = exactTarget;
             if (!SnapToWorldXZ(exactTarget))
                 return false;
             path.Clear();

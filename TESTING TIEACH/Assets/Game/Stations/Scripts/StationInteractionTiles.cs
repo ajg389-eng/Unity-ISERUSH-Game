@@ -9,6 +9,14 @@ using UnityEngine;
 /// </summary>
 public class StationInteractionTiles : MonoBehaviour
 {
+    static readonly Vector2Int[] PickupStandRingDirections =
+    {
+        new Vector2Int(0, -1), new Vector2Int(1, -1),
+        new Vector2Int(1, 0), new Vector2Int(1, 1),
+        new Vector2Int(0, 1), new Vector2Int(-1, 1),
+        new Vector2Int(-1, 0), new Vector2Int(-1, -1),
+    };
+
     public GridManager grid;
     public GameModeManager modeManager;
 
@@ -479,8 +487,17 @@ public class StationInteractionTiles : MonoBehaviour
             return;
         if (footprint == null)
             footprint = GetComponent<BuildFootprint>();
+
         if (footprint == null)
+        {
+            // Counter mounted pickup stations may not have a floor footprint.
+            // Their authored green position can lie inside the counter's blocked
+            // grid cell, so offer nearby walkable stand cells as alternatives.
+            if (GetComponent<HeatLampStation>() != null
+                && grid.WorldToCell(transform.position, out int centerX, out int centerY))
+                AddNearbyPickupStandCenters(centers, centerX, centerY);
             return;
+        }
 
         int sizeX = Mathf.Max(1, footprint.sizeX);
         int sizeY = Mathf.Max(1, footprint.sizeY);
@@ -527,6 +544,51 @@ public class StationInteractionTiles : MonoBehaviour
             if ((centers[i] - center).sqrMagnitude < 0.001f)
                 return;
         centers.Add(center);
+    }
+
+    void AddNearbyPickupStandCenters(List<Vector3> centers, int centerX, int centerY)
+    {
+        for (int radius = 1; radius <= 4; radius++)
+        {
+            int before = centers.Count;
+            for (int i = 0; i < PickupStandRingDirections.Length; i++)
+                AddReachableFootprintStandCenter(centers,
+                    centerX + PickupStandRingDirections[i].x * radius,
+                    centerY + PickupStandRingDirections[i].y * radius);
+            if (centers.Count > before) return;
+        }
+    }
+
+    /// <summary>
+    /// Adds nearby walkable positions for pathfinding when a mounted pickup
+    /// station's authored and immediately adjacent stand tiles are unreachable.
+    /// These are route fallbacks only and are deliberately not included in the
+    /// general interaction tiles used to clear grid occupancy.
+    /// </summary>
+    public void AddPickupRouteFallbackCenters(List<Vector3> centers)
+    {
+        if (centers == null || !HasPickupStation())
+            return;
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        if (grid == null || !grid.WorldToCell(transform.position, out int centerX, out int centerY))
+            return;
+
+        // Search a small service area around the station. This lets the worker
+        // use a reachable aisle tile when the exact counter-adjacent tile is
+        // occupied, while keeping the handoff close to the pickup point.
+        for (int radius = 1; radius <= 2; radius++)
+            for (int i = 0; i < PickupStandRingDirections.Length; i++)
+                AddReachableFootprintStandCenter(centers,
+                    centerX + PickupStandRingDirections[i].x * radius,
+                    centerY + PickupStandRingDirections[i].y * radius);
+    }
+
+    bool HasPickupStation()
+    {
+        return GetComponent<HeatLampStation>() != null
+            || GetComponentInParent<HeatLampStation>() != null
+            || GetComponentInChildren<HeatLampStation>(true) != null;
     }
 
     Vector3 SnapToTileCenter(Vector3 world)

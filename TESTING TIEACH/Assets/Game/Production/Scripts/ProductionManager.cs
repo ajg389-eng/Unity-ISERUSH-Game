@@ -1114,6 +1114,8 @@ public class ProductionManager : MonoBehaviour
             Instance = null;
     }
 
+    float nextPlanningDiagnostic;
+
     void Update()
     {
         if (Time.timeScale <= 0f)
@@ -1121,11 +1123,23 @@ public class ProductionManager : MonoBehaviour
         if (Time.unscaledTime < nextPlanningTime)
             return;
         nextPlanningTime = Time.unscaledTime + Mathf.Max(0.25f, planningInterval);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
         RefreshStations();
         RecoverOrphanedJobAssignments();
         CollectProductionJobs();
         EnsureAssemblySupplyJobs();
         AssignJobsToEmployees();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        double elapsed = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0
+            / System.Diagnostics.Stopwatch.Frequency;
+        if (elapsed >= 12 && Time.realtimeSinceStartup >= nextPlanningDiagnostic)
+        {
+            nextPlanningDiagnostic = Time.realtimeSinceStartup + 5f;
+            Debug.Log($"[Performance] Production planning: {elapsed:F1} ms; workers={employees.Count}, pending jobs={pendingJobs.Count}.");
+        }
+#endif
     }
 
     void EnsureAssemblySupplyJobs()
@@ -1382,6 +1396,10 @@ public class ProductionManager : MonoBehaviour
         // player-entered item target.
         while (openSlots > 0)
         {
+            // Dependency-blocked jobs do not reserve pickup slots, but still
+            // count as queued demand. Do not recreate them every planning tick.
+            cookable.RemoveAll(candidate => stockCounts.TryGetValue(candidate, out int queued)
+                && queued >= totalCapacity);
             ItemDefinition item = PickLeastStockedItem(cookable, stockCounts);
             if (item == null) break;
             var job = CreateJob(CustomerOrder.FromItem(item, 1));
@@ -2436,6 +2454,7 @@ public class ProductionManager : MonoBehaviour
         Dictionary<ItemDefinition, int> stockCounts = CountInFlightByItem();
         ItemDefinition item = PickItemWorkerCanCook(employee, cookable, searchEntireFlow);
         if (item == null) return null;
+        if (stockCounts.TryGetValue(item, out int queued) && queued >= capacity) return null;
 
         ProductionJob job = CreateJob(CustomerOrder.FromItem(item, 1));
         if (job == null || !employee.CanTakeJobStep(job, searchEntireFlow)) return null;
