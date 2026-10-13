@@ -838,20 +838,19 @@ public class IngredientsOrderUI : MonoBehaviour
         ConnectGraphNodes(cookedPatty, burger, null, -28f);
         ConnectGraphNodes(bun, burger, "ASSEMBLE", 28f);
 
-        AssemblyRecipeDefinition cheeseRecipe = FindRecipeFeeding(menu, menu.cheeseburgerItem);
-        ItemDefinition rawCheese = cheeseRecipe != null ? cheeseRecipe.rawPantryInput : menu.cheeseIngredient;
-        ItemDefinition slicedCheese = cheeseRecipe != null ? cheeseRecipe.pantryInput : menu.slicedCheeseIngredient;
-        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "FREEZER", new Vector2(60f, 560f));
+        ItemDefinition rawCheese = menu.cheeseIngredient;
+        ItemDefinition slicedCheese = menu.slicedCheeseIngredient;
+        var rawCheeseNode = AddGraphNode(rawCheese, "RAW CHEESE", "PANTRY", new Vector2(60f, 560f));
         var slicedCheeseNode = AddGraphNode(slicedCheese, "SLICED CHEESE", "CUTTING", new Vector2(60f, 390f));
         ConnectGraphNodes(rawCheeseNode, slicedCheeseNode, "SLICE");
-        var cheesePatty = AddGraphNode(cheeseRecipe != null ? cheeseRecipe.output : null,
-            "CHEESE PATTY", "ASSEMBLY", new Vector2(-60f, 190f), true);
-        ConnectGraphNodes(cookedPatty, cheesePatty, null, -28f);
-        ConnectGraphNodes(slicedCheeseNode, cheesePatty, "ASSEMBLE", 28f);
+        var burgerWithCheese = AddGraphNode(FindGrillOutput(menu, menu.cheeseburgerItem),
+            "BURGER WITH CHEESE", "GRILL", new Vector2(-60f, 190f), true);
+        ConnectGraphNodes(rawPatty, burgerWithCheese, "GRILL", -28f);
+        ConnectGraphNodes(slicedCheeseNode, burgerWithCheese, "ADD CHEESE", 28f);
 
         var cheeseburger = AddGraphNode(menu.cheeseburgerItem, "CHEESEBURGER", "ASSEMBLY",
             new Vector2(-60f, -20f), true);
-        ConnectGraphNodes(cheesePatty, cheeseburger, null, -28f);
+        ConnectGraphNodes(burgerWithCheese, cheeseburger, null, -28f);
         ConnectGraphNodes(bun, cheeseburger, "ASSEMBLE", 28f);
 
         var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER", new Vector2(330f, 190f));
@@ -859,7 +858,7 @@ public class IngredientsOrderUI : MonoBehaviour
         var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL", new Vector2(330f, -150f));
         var cb = AddGraphNode(menu.cheeseBaconBurgerItem, "BACON CHEESEBURGER", "ASSEMBLY", new Vector2(190f, -690f), true);
         ConnectGraphNodes(baconSlab, cutBacon, "CUT"); ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
-        ConnectGraphNodes(cheesePatty, cb, null, -46f);
+        ConnectGraphNodes(burgerWithCheese, cb, null, -46f);
         ConnectGraphNodes(cookedBacon, cb, null, 0f);
         ConnectGraphNodes(bun, cb, "ASSEMBLE", 46f);
 
@@ -918,11 +917,13 @@ public class IngredientsOrderUI : MonoBehaviour
         return processed ? recipe.processedInput : recipe.pantryInput;
     }
 
-    AssemblyRecipeDefinition FindRecipeFeeding(CustomerOrderConfig menu, ItemDefinition output)
+    ItemDefinition FindGrillOutput(CustomerOrderConfig menu, ItemDefinition finalProduct)
     {
-        AssemblyRecipeDefinition final = menu != null ? menu.GetAssemblyRecipe(output) : null;
-        return final != null && final.processedInput != null
-            ? menu.GetAssemblyRecipe(final.processedInput) : null;
+        if (menu == null || finalProduct == null) return null;
+        List<ItemDefinition> chain = menu.GetAssemblyChain(finalProduct);
+        if (chain == null || chain.Count == 0) return null;
+        AssemblyRecipeDefinition first = menu.GetAssemblyRecipe(chain[0]);
+        return first != null ? first.processedInput : null;
     }
 
     void AddBurgerToppingBranch(CustomerOrderConfig menu, ItemDefinition output, RectTransform baseProduct,

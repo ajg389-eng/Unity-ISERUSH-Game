@@ -574,8 +574,9 @@ public class KitchenEmployee : MonoBehaviour
         ProductionManager production = manager != null ? manager : ProductionManager.Instance;
         ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(this) : null;
         if (flow?.stations == null) return null;
-        if (job.isAssemblySupply && (job.assemblySupplyTarget == null
-            || !flow.stations.Contains(job.assemblySupplyTarget.gameObject)))
+        GameObject supplyTarget = job.assemblySupplyTarget != null ? job.assemblySupplyTarget.gameObject
+            : job.grillSupplyTarget != null ? job.grillSupplyTarget.gameObject : null;
+        if (job.isAssemblySupply && (supplyTarget == null || !flow.stations.Contains(supplyTarget)))
             return null;
 
         // operatedStations can briefly retain entries from a previous assignment.
@@ -635,8 +636,10 @@ public class KitchenEmployee : MonoBehaviour
                 // after loading and recovery, so object-reference order checks
                 // can reject a perfectly valid patty and leave every worker idle.
                 ItemDefinition grillInput = grill.GetSelectedInput();
+                ItemDefinition grillSecondaryInput = grill.GetSelectedSecondaryInput();
                 bool canLoadCarriedInput = job.heldUnits > 0
                     && grillInput != null
+                    && (grillSecondaryInput == null || grill.GetInputCount(grillSecondaryInput) > 0)
                     && grill.CanAcceptInput(grillInput, 1);
                 bool canCollectOutput = grill.IsCooked();
                 if (requireReady && !canLoadCarriedInput && !canCollectOutput) continue;
@@ -654,6 +657,21 @@ public class KitchenEmployee : MonoBehaviour
                 ItemDefinition freezerItem = production?.GetBranchTransferItem(job);
                 if (freezer == null || freezerItem == null || !freezer.CanSupply(freezerItem)) continue;
                 if (requireReady && freezer.GetOutputCount(freezerItem) <= 0) continue;
+                // Do not let a worker pick up a patty and carry it to a Grill
+                // that cannot cook it yet. With one worker, doing so strands
+                // that worker at the Grill and prevents the cheese supply task
+                // (Pantry -> Cutting -> Grill) from ever running.
+                if (requireReady && !job.isAssemblySupply)
+                {
+                    GameObject destination = production != null
+                        ? production.GetFlowOutput(this, candidate, job) : null;
+                    GrillStation destinationGrill = destination != null
+                        ? destination.GetComponent<GrillStation>() : null;
+                    ItemDefinition secondary = destinationGrill != null
+                        ? destinationGrill.GetSelectedSecondaryInput() : null;
+                    if (secondary != null && destinationGrill.GetInputCount(secondary) <= 0)
+                        continue;
+                }
             }
             else if (stationType == StationType.Pantry)
             {
@@ -1602,7 +1620,8 @@ public class KitchenEmployee : MonoBehaviour
     ItemDefinition GetCurrentTransferItem()
     {
         if (currentJob == null) return null;
-        if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null)
+        if (currentJob.isAssemblySupply
+            && (currentJob.assemblySupplyTarget != null || currentJob.grillSupplyTarget != null))
             return manager.GetAssemblySupplyStepOutput(currentJob);
         if (currentJob.CurrentStationType == StationType.Pantry
             && manager.orderConfig != null && manager.orderConfig.IsFries(currentJob.product))
@@ -1616,7 +1635,7 @@ public class KitchenEmployee : MonoBehaviour
         if (currentJob.CurrentStationType == StationType.Freezer && manager.orderConfig != null)
             return manager.orderConfig.rawPattyIngredient;
         if (currentJob.CurrentStationType == StationType.Grill && manager.orderConfig != null)
-            return manager.orderConfig.cookedPattyIngredient;
+            return manager.GetBranchTransferItem(currentJob);
         return currentJob.CurrentWorkProduct ?? currentJob.product;
     }
 
@@ -1651,7 +1670,8 @@ public class KitchenEmployee : MonoBehaviour
         currentJob.ingredientsHeld.Clear();
         currentJob.ingredientsHeld.AddRange(ingredientsHeld);
 
-        if (currentJob.isAssemblySupply && currentJob.assemblySupplyTarget != null
+        if (currentJob.isAssemblySupply
+            && (currentJob.assemblySupplyTarget != null || currentJob.grillSupplyTarget != null)
             && (currentJob.CurrentStationType == StationType.Freezer
                 || currentJob.CurrentStationType == StationType.Pantry
                 || currentJob.CurrentStationType == StationType.Cutting
@@ -1665,7 +1685,10 @@ public class KitchenEmployee : MonoBehaviour
                 GameObject source = GetOperatedStationObject(currentJob.CurrentStationType.Value);
                 deliverTarget = source != null ? manager.GetFlowOutput(this, source, currentJob) : null;
                 heldDeliveryItem = manager.GetAssemblySupplyOutput(currentJob);
-                if (deliverTarget != currentJob.assemblySupplyTarget.gameObject
+                GameObject supplyTarget = currentJob.assemblySupplyTarget != null
+                    ? currentJob.assemblySupplyTarget.gameObject
+                    : currentJob.grillSupplyTarget != null ? currentJob.grillSupplyTarget.gameObject : null;
+                if (deliverTarget != supplyTarget
                     || !manager.IsStationInWorkerFlow(this, deliverTarget)
                     || (manager.GetReservedInputUnits(currentJob) <= 0
                     && !manager.TryReserveDestination(currentJob, deliverTarget,
@@ -2154,6 +2177,32 @@ public class KitchenEmployee : MonoBehaviour
             if (accepted < carried && KitchenInventory.Instance != null && suppliedItem != null)
                 KitchenInventory.Instance.AddStock(suppliedItem, carried - accepted);
 
+            ClearHeldInventory();
+            awaitingOutputDelivery = false;
+            heldDeliveryItem = null;
+            ProductionJob finishedSupply = currentJob;
+            currentJob = null;
+            deliverTarget = null;
+            step = Step.None;
+            stateTimer = 0f;
+            path.Clear();
+            pathDestination = Vector3.zero;
+            SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
+            manager.CompleteJob(finishedSupply);
+            manager.RequestImmediateProduction();
+            BeginTaskReevaluationDelay();
+            return;
+        }
+
+        if (currentJob.isAssemblySupply && currentJob.grillSupplyTarget != null
+            && deliverTarget == currentJob.grillSupplyTarget.gameObject)
+        {
+            ItemDefinition suppliedItem = manager.GetAssemblySupplyOutput(currentJob);
+            int carried = Mathf.Max(0, heldUnits);
+            int accepted = currentJob.grillSupplyTarget.StoreInput(suppliedItem, carried);
+            manager.ConsumeInputReservation(currentJob, accepted);
+            if (accepted < carried && KitchenInventory.Instance != null && suppliedItem != null)
+                KitchenInventory.Instance.AddStock(suppliedItem, carried - accepted);
             ClearHeldInventory();
             awaitingOutputDelivery = false;
             heldDeliveryItem = null;

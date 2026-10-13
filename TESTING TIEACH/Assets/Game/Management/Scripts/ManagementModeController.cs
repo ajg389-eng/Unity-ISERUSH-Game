@@ -761,7 +761,9 @@ public class ManagementModeController : MonoBehaviour
         if (target.GetComponent<GrillStation>() != null)
         {
             GrillStation grill = target.GetComponent<GrillStation>();
-            return grill != null && item == grill.GetSelectedInput();
+            // A Grill recipe can accept more than its main patty input. For
+            // example, Burger with Cheese has a sliced-cheese branch from Cutting.
+            return grill != null && grill.CanAcceptInput(item, 1);
         }
         CuttingStation cutting = target.GetComponent<CuttingStation>();
         if (cutting != null)
@@ -1084,9 +1086,17 @@ public class ManagementModeController : MonoBehaviour
 
         GrillStation grill = node.GetComponent<GrillStation>();
         if (grill != null)
+        {
+            ItemDefinition secondary = grill.GetSelectedSecondaryInput();
+            string secondaryStatus = secondary != null
+                ? "  |  " + DisplayItemName(secondary) + " " + grill.GetInputCount(secondary)
+                : string.Empty;
             return "Buffer: " + grill.BufferedPattyCount + "/" + grill.InputSlotCapacity
+                + "  |  " + DisplayItemName(grill.GetSelectedInput()) + " "
+                + grill.GetInputCount(grill.GetSelectedInput()) + secondaryStatus
                 + (grill.IsCooked() ? " ready" : (grill.IsCookingPatty ? " cooking" : " empty"))
                 + "  |  reserved in " + incoming + ", out " + outgoing;
+        }
 
         HeatLampStation pickup = node.GetComponent<HeatLampStation>();
         if (pickup != null)
@@ -1395,10 +1405,18 @@ public class ManagementModeController : MonoBehaviour
         else if (grill != null)
         {
             ItemDefinition grillInput = grill.GetSelectedInput();
+            ItemDefinition grillSecondaryInput = grill.GetSelectedSecondaryInput();
             ItemDefinition grillOutput = grill.GetSelectedOutput();
             inputPrefab = grillInput != null && grillInput.prefab != null ? grillInput.prefab : rawPattyModel;
             outputPrefab = grillOutput != null && grillOutput.prefab != null ? grillOutput.prefab : cookedPattyModel;
             inputName = grillInput != null ? DisplayItemName(grillInput) : "Select recipe";
+            inputRate = node.outputAmountPerMinute;
+            if (grillSecondaryInput != null)
+            {
+                secondInputPrefab = grillSecondaryInput.prefab;
+                secondInputName = DisplayItemName(grillSecondaryInput);
+                secondInputRate = node.outputAmountPerMinute;
+            }
             outputName = grillOutput != null ? DisplayItemName(grillOutput) : "Select recipe";
             cycleSeconds = grill.processTimeSeconds;
         }
@@ -1469,7 +1487,8 @@ public class ManagementModeController : MonoBehaviour
         }
 
         productionDiagramRoot.SetActive(true);
-        bool hasTwoInputs = assembly != null;
+        bool hasTwoInputs = assembly != null
+            || (grill != null && grill.GetSelectedSecondaryInput() != null);
         bool hasThreeInputs = assembly != null && assembly.GetSelectedRecipe()?.thirdInput != null;
         SetProductionDiagramMode(outputOnly, hasTwoInputs, pantry != null, hasThreeInputs);
         if (!outputOnly)

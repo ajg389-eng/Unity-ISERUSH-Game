@@ -127,9 +127,14 @@ public class StationNode : MonoBehaviour
         if (grill != null)
         {
             int stationBatch = grill.SlotCapacity;
-            SetIo(RateForCycle(grill.processTimeSeconds, stationBatch),
-                RateForCycle(grill.processTimeSeconds, stationBatch),
-                ItemLabel(grill.GetSelectedInput(), "select recipe"),
+            ItemDefinition secondaryInput = grill.GetSelectedSecondaryInput();
+            float outputRate = RateForCycle(grill.processTimeSeconds, stationBatch);
+            string inputLabel = ItemLabel(grill.GetSelectedInput(), "select recipe");
+            if (secondaryInput != null)
+                inputLabel += " + " + ItemLabel(secondaryInput, "select recipe");
+            SetIo(outputRate * (secondaryInput != null ? 2f : 1f),
+                outputRate,
+                inputLabel,
                 ItemLabel(grill.GetSelectedOutput(), "select recipe"));
         }
         else if (assembly != null)

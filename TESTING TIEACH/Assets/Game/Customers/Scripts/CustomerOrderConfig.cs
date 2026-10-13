@@ -50,6 +50,8 @@ public class StationProcessingRecipeDefinition
 {
     public string recipeName;
     public ItemDefinition input;
+    [Tooltip("Optional second ingredient consumed by this station recipe.")]
+    public ItemDefinition secondaryInput;
     public ItemDefinition output;
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName) ? recipeName
         : (output != null ? output.itemName : "Processing Recipe");
@@ -492,8 +494,10 @@ public class CustomerOrderConfig : ScriptableObject
     bool IsProcessingRecipeUnlocked(StationProcessingRecipeDefinition recipe)
     {
         if (recipe == null) return false;
-        if (IsRemovedIngredient(recipe.input) || IsRemovedIngredient(recipe.output)) return false;
-        int requiredStage = Mathf.Max(GetIngredientMilestone(recipe.input), GetIngredientMilestone(recipe.output));
+        if (IsRemovedIngredient(recipe.input) || IsRemovedIngredient(recipe.secondaryInput)
+            || IsRemovedIngredient(recipe.output)) return false;
+        int requiredStage = Mathf.Max(GetIngredientMilestone(recipe.input),
+            Mathf.Max(GetIngredientMilestone(recipe.secondaryInput), GetIngredientMilestone(recipe.output)));
         return MilestoneFeatures.IsResearchComplete(RecipeResearchId(requiredStage));
     }
 

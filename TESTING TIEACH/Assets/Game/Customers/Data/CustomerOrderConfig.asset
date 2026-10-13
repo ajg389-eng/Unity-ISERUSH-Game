@@ -50,29 +50,10 @@ MonoBehaviour:
     rawThirdInput: {fileID: 0}
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
-  - recipeName: Cheese Patty
-    output: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
-    processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
-    processedInputName: Cooked Patty
-    processedInputAmount: 1
-    processedInputFromPantry: 0
-    processedInputFromFreezer: 0
-    pantryInput: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
-    pantryInputAmount: 1
-    rawPantryInput: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
-    supplyPipeline: 0200000007000000
-    supplyStageOutputs:
-    - {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
-    - {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
-    thirdInput: {fileID: 0}
-    thirdInputAmount: 1
-    rawThirdInput: {fileID: 0}
-    thirdSupplyPipeline:
-    thirdSupplyStageOutputs: []
   - recipeName: Cheeseburger
     output: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
     processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
-    processedInputName: Cheese Patty
+    processedInputName: Burger with Cheese
     processedInputAmount: 1
     processedInputFromPantry: 0
     processedInputFromFreezer: 0
@@ -125,7 +106,7 @@ MonoBehaviour:
   - recipeName: Bacon Cheeseburger
     output: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
     processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
-    processedInputName: Cheese Patty
+    processedInputName: Burger with Cheese
     processedInputAmount: 1
     processedInputFromPantry: 0
     processedInputFromFreezer: 0
@@ -302,12 +283,19 @@ MonoBehaviour:
   grillRecipes:
   - recipeName: Cooked Patty
     input: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
+    secondaryInput: {fileID: 0}
     output: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
+  - recipeName: Burger with Cheese
+    input: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
+    secondaryInput: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
+    output: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
   - recipeName: Cooked Bacon
     input: {fileID: 11400000, guid: 6cee302aec6e481458cb4eadcb0e8ea3, type: 2}
+    secondaryInput: {fileID: 0}
     output: {fileID: 11400000, guid: 04d306ef11534d249a61f3fcc795c0cf, type: 2}
   - recipeName: Cooked Egg
     input: {fileID: 11400000, guid: a94596b1c47524f4fb2d099f0f1e72a8, type: 2}
+    secondaryInput: {fileID: 0}
     output: {fileID: 11400000, guid: 6ba9a38cba507d84a9634aaf82340b08, type: 2}
   fryerRecipes:
   - recipeName: Cooked Potato Slices

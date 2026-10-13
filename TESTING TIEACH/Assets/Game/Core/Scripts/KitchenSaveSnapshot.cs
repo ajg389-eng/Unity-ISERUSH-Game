@@ -26,7 +26,7 @@ public class KitchenSaveSnapshot
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; public bool registerEnabled = true; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; public bool registerEnabled = true; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
@@ -121,7 +121,8 @@ public class KitchenSaveSnapshot
                         pantryInputs=assembly != null ? assembly.BufferedPantryInputCount : 0,
                         thirdInputs=assembly != null ? assembly.BufferedThirdInputCount : 0,
                         bufferedOutputs=assembly != null ? assembly.BufferedOutputCount : 0,
-                        processingUnits=grill != null ? grill.BufferedPattyCount : 0,
+                        processingUnits=grill != null ? grill.BufferedPattyCount - grill.SecondaryInputUnitCount : 0,
+                        secondaryInputs=grill != null ? grill.SecondaryInputUnitCount : 0,
                         processProgress=grill != null ? grill.CookProgressSeconds : 0f,
                         assemblyProcessingUnits=assembly != null ? assembly.ProcessingUnitCount : 0,
                         assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f });
@@ -230,7 +231,7 @@ public class KitchenSaveSnapshot
             // Always restore configurable stations, including an intentionally empty
             // assignment. Skipping null previously left whatever default happened to
             // be serialized on the prefab, which made load results station-dependent.
-            var grill=go.GetComponent<GrillStation>(); if(grill!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress);
+            var grill=go.GetComponent<GrillStation>(); if(grill!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress,e.secondaryInputs);
             var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
             var fryer=go.GetComponent<FryerStation>(); if(fryer!=null) fryer.SetRecipeOutput(product);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);

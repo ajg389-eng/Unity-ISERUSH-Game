@@ -63,9 +63,10 @@ public class ProductionJob
     /// <summary>Batch size carried between stations (upgraded workers hold more).</summary>
     public int heldUnits;
     public readonly List<ItemDefinition> ingredientsHeld = new List<ItemDefinition>();
-    /// <summary>Parallel Pantry task that stocks an Assembly Station with its second input.</summary>
+    /// <summary>Parallel supply task that stocks a station with a recipe input.</summary>
     public bool isAssemblySupply;
     public AssemblyStation assemblySupplyTarget;
+    public GrillStation grillSupplyTarget;
     /// <summary>The pantry item collected for this exact assembly input.</summary>
     public ItemDefinition assemblySupplySourceItem;
     /// <summary>The item delivered to the assembly station after optional processing.</summary>
@@ -742,6 +743,17 @@ public class ProductionManager : MonoBehaviour
         if (flow?.stations == null || station == null || !flow.stations.Contains(station)) return null;
         List<GameObject> outgoing = flow.GetOutgoing(station);
         outgoing.RemoveAll(candidate => candidate == null || !flow.stations.Contains(candidate));
+        job ??= worker != null ? worker.ActiveJob : null;
+        // A cutting branch that supplies a Grill's secondary recipe input is
+        // intentionally allowed to merge into that Grill even when the player
+        // has not drawn a separate directed edge. Resolve this explicit supply
+        // destination before the terminal-node check below; otherwise a Cutting
+        // Station shown as END in the flow has nowhere to deliver its cheese.
+        GameObject requiredTarget = GetRequiredBranchTarget(job, station);
+        if (requiredTarget != null && flow.stations.Contains(requiredTarget)
+            && CanBranchAcceptItem(requiredTarget, GetBranchTransferItem(job)))
+            return requiredTarget;
+
         bool finalProduct = job != null
             ? !GetRequiredNextStationType(job).HasValue
             : producedItem != null && orderConfig != null
@@ -777,7 +789,6 @@ public class ProductionManager : MonoBehaviour
             return null;
         }
 
-        job ??= worker != null ? worker.ActiveJob : null;
         if (job == null)
         {
             if (producedItem == null) return outgoing[0];
@@ -797,11 +808,6 @@ public class ProductionManager : MonoBehaviour
             }
             return itemTarget;
         }
-        GameObject requiredTarget = GetRequiredBranchTarget(job, station);
-        if (requiredTarget != null && flow.stations.Contains(requiredTarget)
-            && CanBranchAcceptItem(requiredTarget, GetBranchTransferItem(job)))
-            return requiredTarget;
-
         StationType? requiredType = GetRequiredNextStationType(job);
         ItemDefinition requiredAssemblyProduct = GetRequiredNextAssemblyProduct(job);
         GameObject best = null;
@@ -874,12 +880,13 @@ public class ProductionManager : MonoBehaviour
 
     GameObject GetRequiredBranchTarget(ProductionJob job, GameObject source)
     {
-        if (job == null || !job.isAssemblySupply || job.assemblySupplyTarget == null) return null;
-        // Only force the configured Assembly Station on the final supply step.
+        if (job == null || !job.isAssemblySupply) return null;
+        // Only force the configured destination on the final supply step.
         // Multi-stage ingredients can continue after Cutting, for example
         // Bacon Slab -> Cutting -> Grill -> Assembly.
         if (job.currentStepIndex >= job.pipeline.Length - 1)
-            return job.assemblySupplyTarget.gameObject;
+            return job.assemblySupplyTarget != null ? job.assemblySupplyTarget.gameObject
+                : job.grillSupplyTarget != null ? job.grillSupplyTarget.gameObject : null;
         return null;
     }
 
@@ -903,7 +910,7 @@ public class ProductionManager : MonoBehaviour
     public ItemDefinition GetBranchTransferItem(ProductionJob job)
     {
         if (job == null) return null;
-        if (job.isAssemblySupply && job.assemblySupplyTarget != null)
+        if (job.isAssemblySupply && (job.assemblySupplyTarget != null || job.grillSupplyTarget != null))
         {
             if (job.assemblySupplyStageItems != null && job.currentStepIndex >= 0
                 && job.currentStepIndex < job.assemblySupplyStageItems.Length
@@ -921,7 +928,12 @@ public class ProductionManager : MonoBehaviour
         if (job.CurrentStationType == StationType.Freezer && orderConfig != null)
             return orderConfig.rawPattyIngredient;
         if (job.CurrentStationType == StationType.Grill && orderConfig != null)
-            return orderConfig.cookedPattyIngredient;
+        {
+            List<ItemDefinition> stages = orderConfig.GetAssemblyChain(job.product);
+            AssemblyRecipeDefinition first = stages.Count > 0 ? orderConfig.GetAssemblyRecipe(stages[0]) : null;
+            return first != null && first.processedInput != null
+                ? first.processedInput : orderConfig.cookedPattyIngredient;
+        }
         return job.CurrentWorkProduct ?? job.product;
     }
 
@@ -931,7 +943,7 @@ public class ProductionManager : MonoBehaviour
         if (target.GetComponent<HeatLampStation>() != null)
             return orderConfig.IsBurger(item) || orderConfig.IsFries(item) || orderConfig.IsDrink(item);
         GrillStation grill = target.GetComponent<GrillStation>();
-        if (grill != null) return item == grill.GetSelectedInput();
+        if (grill != null) return grill.CanAcceptInput(item, 1);
         CuttingStation cutting = target.GetComponent<CuttingStation>();
         if (cutting != null) return cutting.CanProcess(item);
         FryerStation fryer = target.GetComponent<FryerStation>();
@@ -1130,6 +1142,7 @@ public class ProductionManager : MonoBehaviour
         RecoverOrphanedJobAssignments();
         CollectProductionJobs();
         EnsureAssemblySupplyJobs();
+        EnsureGrillInputSupplyJobs();
         AssignJobsToEmployees();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         double elapsed = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0
@@ -1184,6 +1197,51 @@ public class ProductionManager : MonoBehaviour
                     recipe.thirdInput, station.BufferedThirdInputCount,
                     orderConfig != null && orderConfig.AssemblyThirdSupplyRequiresProcessing(recipe),
                     recipe.thirdSupplyPipeline, recipe.thirdSupplyStageOutputs);
+        }
+    }
+
+    void EnsureGrillInputSupplyJobs()
+    {
+        if (orderConfig == null) return;
+        foreach (GrillStation grill in cachedGrillStations)
+        {
+            if (grill == null || grill.GetSelectedSecondaryInput() == null) continue;
+            ItemDefinition secondary = grill.GetSelectedSecondaryInput();
+            CuttingRecipeDefinition cuttingRecipe = orderConfig.GetCuttingRecipe(secondary);
+            if (cuttingRecipe == null || cuttingRecipe.input == null) continue;
+
+            ProductionJob parentDemand = null;
+            foreach (ProductionJob candidate in pendingJobs)
+            {
+                if (candidate == null || candidate.isAssemblySupply) continue;
+                List<ItemDefinition> stages = orderConfig.GetAssemblyChain(candidate.product);
+                AssemblyRecipeDefinition first = stages.Count > 0
+                    ? orderConfig.GetAssemblyRecipe(stages[0]) : null;
+                if (first != null && first.processedInput == grill.GetSelectedOutput())
+                { parentDemand = candidate; break; }
+            }
+            if (parentDemand == null) continue;
+
+            bool alreadyQueued = false;
+            foreach (ProductionJob queued in pendingJobs)
+                if (queued != null && queued.isAssemblySupply && queued.grillSupplyTarget == grill
+                    && queued.assemblySupplyOutputItem == secondary) { alreadyQueued = true; break; }
+            if (alreadyQueued || grill.GetInputCount(secondary) > 0) continue;
+
+            var supply = new ProductionJob(CustomerOrder.FromItem(parentDemand.product, 1),
+                new[] { StationType.Pantry, StationType.Cutting }, null, parentDemand.rootDemandId)
+            {
+                isAssemblySupply = true,
+                grillSupplyTarget = grill,
+                assemblySupplySourceItem = cuttingRecipe.input,
+                assemblySupplyOutputItem = secondary,
+                assemblySupplyStageItems = new[] { cuttingRecipe.input, secondary },
+                requestedSupplyUnits = 1
+            };
+            if (!CanAnyWorkerContinue(supply)) continue;
+            pendingJobs.Add(supply);
+            if (!parentDemand.prerequisiteTaskIds.Contains(supply.taskId))
+                parentDemand.prerequisiteTaskIds.Add(supply.taskId);
         }
     }
 
@@ -2122,10 +2180,12 @@ public class ProductionManager : MonoBehaviour
 
         // Starved assembly inputs are the useful exception to downstream-first.
         // Supplying an empty input unblocks an already selected final recipe.
-        if (job.isAssemblySupply && job.assemblySupplyTarget != null)
+        if (job.isAssemblySupply && (job.assemblySupplyTarget != null || job.grillSupplyTarget != null))
         {
             ItemDefinition supplied = GetAssemblySupplyOutput(job);
-            IStationBuffer buffer = job.assemblySupplyTarget.GetComponent<IStationBuffer>();
+            IStationBuffer buffer = job.assemblySupplyTarget != null
+                ? job.assemblySupplyTarget.GetComponent<IStationBuffer>()
+                : job.grillSupplyTarget.GetComponent<IStationBuffer>();
             if (buffer != null && supplied != null && buffer.GetInputCount(supplied) == 0)
                 score += 110f;
         }
@@ -2278,6 +2338,8 @@ public class ProductionManager : MonoBehaviour
                 activeDemandStations.Add(job.reservedDestinationStation);
             if (job.assemblySupplyTarget != null)
                 activeDemandStations.Add(job.assemblySupplyTarget.gameObject);
+            if (job.grillSupplyTarget != null)
+                activeDemandStations.Add(job.grillSupplyTarget.gameObject);
             if (job.pipeline == null) continue;
 
             foreach (ProductionFlowPlan flow in productionFlows)
@@ -2650,6 +2712,16 @@ public class ProductionManager : MonoBehaviour
         if (job == null || employee == null || !job.CurrentStationType.HasValue) return false;
         GameObject station = employee.FindStationForJob(job, searchEntireFlow, true);
         if (station == null || !IsStationInWorkerFlow(employee, station)) return false;
+        if (job.CurrentStationType.Value == StationType.Freezer && !job.isAssemblySupply)
+        {
+            GameObject destination = GetFlowOutput(employee, station, job);
+            GrillStation grillTarget = destination != null
+                ? destination.GetComponent<GrillStation>() : null;
+            ItemDefinition secondary = grillTarget != null
+                ? grillTarget.GetSelectedSecondaryInput() : null;
+            if (secondary != null && grillTarget.GetInputCount(secondary) <= 0)
+                return false;
+        }
         if (!TryClaimWorkStation(job, station)) return false;
         job.reservedWorkStation = station;
         jobsWithReservations.Add(job);
