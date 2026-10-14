@@ -249,19 +249,15 @@ public class StoreStatisticsManager : MonoBehaviour
             stationBusyTime.Clear();
         }
 
-        var registers = FindRegisters();
-        foreach (var r in registers)
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
+        for (int i = 0; i < registers.Count; i++)
         {
+            Register r = registers[i];
             if (r == null || !r.isEnabled) continue;
             if (!stationBusyTime.ContainsKey(r)) stationBusyTime[r] = 0f;
             if (r.QueueCount > 0)
                 stationBusyTime[r] += Time.deltaTime;
         }
-    }
-
-    Register[] FindRegisters()
-    {
-        return FindObjectsByType<Register>(FindObjectsSortMode.None);
     }
 
     // ---- Public metrics ----
@@ -271,8 +267,7 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         get
         {
-            var customers = FindObjectsByType<CustomerAI>(FindObjectsSortMode.None);
-            return customers != null ? customers.Length : 0;
+            return CustomerAI.OrderBoardCustomers.Count;
         }
     }
 
@@ -282,8 +277,10 @@ public class StoreStatisticsManager : MonoBehaviour
         get
         {
             var d = new Dictionary<string, int>();
-            foreach (var r in FindRegisters())
+            IReadOnlyList<Register> registers = Register.ActiveRegisters;
+            for (int i = 0; i < registers.Count; i++)
             {
+                Register r = registers[i];
                 if (r == null) continue;
                 string label = r.gameObject.name;
                 if (d.ContainsKey(label)) label = label + " (#" + r.GetInstanceID() + ")";

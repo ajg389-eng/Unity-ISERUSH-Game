@@ -13,10 +13,25 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one freezer operation.")]
     [Min(0f)] public float processTimeSeconds = 0f;
+    [Tooltip("Maximum sustained amount this freezer can dispense per minute.")]
+    [Min(0.1f)] public float maxOutputPerMinute = 30f;
     public Vector3 interactionOffset = Vector3.zero;
+
+    [System.NonSerialized] float outputTokens;
+    [System.NonSerialized] float outputTokensUpdatedAt;
+    [System.NonSerialized] bool outputTokensInitialized;
 
     public int InputSlotCapacity => 0;
     public int OutputSlotCapacity => int.MaxValue;
+    public float EffectiveMaxOutputPerMinute
+    {
+        get
+        {
+            StationNode node = GetComponent<StationNode>();
+            return Mathf.Max(0f, maxOutputPerMinute)
+                * (node != null ? node.ProductionRateMultiplier : 1f);
+        }
+    }
 
     void OnEnable()
     {
@@ -36,15 +51,34 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
     {
         if (!CanSupply(item) || amount <= 0) return 0;
         var inv = KitchenInventory.Instance;
+        int stock = inv != null ? inv.GetCount(selectedItem) : amount;
+        int requested = Mathf.Min(amount, stock);
+        int limited = StationOutputRateLimiter.TakeUnits(requested, EffectiveMaxOutputPerMinute,
+            ref outputTokens, ref outputTokensUpdatedAt, ref outputTokensInitialized);
+        if (limited <= 0) return 0;
         if (inv == null)
         {
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(amount);
-            return amount;
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(limited);
+            return limited;
         }
-        int taken = Mathf.Min(amount, inv.GetCount(selectedItem));
-        if (taken <= 0 || !inv.TryConsume(selectedItem, taken)) return 0;
+        if (!inv.TryConsume(selectedItem, limited))
+        {
+            StationOutputRateLimiter.RefundUnits(limited, ref outputTokens);
+            return 0;
+        }
+        int taken = limited;
         StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(taken);
         return taken;
+    }
+
+    public int GetReadyOutputCount(ItemDefinition item)
+    {
+        if (!CanSupply(item)) return 0;
+        var inv = KitchenInventory.Instance;
+        int stock = inv != null ? inv.GetCount(selectedItem) : int.MaxValue;
+        int rateReady = StationOutputRateLimiter.GetAvailableUnits(EffectiveMaxOutputPerMinute,
+            ref outputTokens, ref outputTokensUpdatedAt, ref outputTokensInitialized);
+        return Mathf.Min(stock, rateReady);
     }
 
     public bool HasItemSelected => selectedItem != null;
@@ -80,6 +114,6 @@ public class FreezerStation : MonoBehaviour, IStationBuffer
 
     public bool HasPatty(ItemDefinition pattyItem)
     {
-        return GetOutputCount(pattyItem) > 0;
+        return GetReadyOutputCount(pattyItem) > 0;
     }
 }

@@ -27,14 +27,24 @@ public class WorkerCardUI : MonoBehaviour
 
     ProductionManager production;
     Transform assignmentControls;
-    string assignmentSignature;
+    int assignmentSignature;
+    bool hasAssignmentSignature;
     bool detailsExpanded;
     Button expandButton;
     TextMeshProUGUI expandArrowLabel;
     TMP_Dropdown priorityDropdown;
+    bool priorityDropdownConfigured;
+    bool priorityListenerAttached;
     bool settingPriorityDropdown;
     Image cardImage;
     Outline selectionOutline;
+    float nextDetailsRefreshTime;
+    float nextSelectionRefreshTime;
+    float nextUpgradeRefreshTime;
+
+    const float DetailsRefreshInterval = 0.2f;
+    const float SelectionRefreshInterval = 0.12f;
+    const float UpgradeRefreshInterval = 1f;
 
     void OnValidate()
     {
@@ -44,9 +54,14 @@ public class WorkerCardUI : MonoBehaviour
     void Update()
     {
         TrySelectFromCardClick();
-        if (employee != null)
+        float now = Time.unscaledTime;
+        if (employee != null && now >= nextDetailsRefreshTime)
             RefreshDetails();
-        RefreshSelectionHighlight();
+        if (now >= nextSelectionRefreshTime)
+        {
+            nextSelectionRefreshTime = now + SelectionRefreshInterval;
+            RefreshSelectionHighlight();
+        }
     }
 
     void TrySelectFromCardClick()
@@ -171,15 +186,21 @@ public class WorkerCardUI : MonoBehaviour
         if (expandButton != null)
             expandButton.onClick.RemoveListener(ToggleDetailsExpanded);
         if (priorityDropdown != null)
+        {
             priorityDropdown.onValueChanged.RemoveListener(OnPriorityChanged);
+            priorityListenerAttached = false;
+        }
 
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
         detailsExpanded = false;
+        hasAssignmentSignature = false;
+        nextUpgradeRefreshTime = 0f;
 
         HideLegacyUi();
         EnsureLayout();
         BindReferences();
+        EnsurePriorityDropdown();
 
         if (emp == null)
         {
@@ -208,8 +229,7 @@ public class WorkerCardUI : MonoBehaviour
 
     public void RefreshDetails()
     {
-        EnsureLayout();
-        EnsurePriorityDropdown();
+        nextDetailsRefreshTime = Time.unscaledTime + DetailsRefreshInterval;
 
         if (employee == null)
         {
@@ -220,13 +240,16 @@ public class WorkerCardUI : MonoBehaviour
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
-        RefreshPriorityDropdown();
 
         if (stationsLabel != null)
             stationsLabel.gameObject.SetActive(false);
 
         EnsureAssignmentControls();
-        RefreshUpgradeButton();
+        if (Time.unscaledTime >= nextUpgradeRefreshTime)
+        {
+            nextUpgradeRefreshTime = Time.unscaledTime + UpgradeRefreshInterval;
+            RefreshUpgradeButton();
+        }
     }
 
     void EnsurePriorityDropdown()
@@ -241,15 +264,32 @@ public class WorkerCardUI : MonoBehaviour
         if (assignmentsText != null) assignmentsText.gameObject.SetActive(false);
 
         if (priorityDropdown == null)
+        {
             priorityDropdown = section.Find("PriorityDropdown")?.GetComponent<TMP_Dropdown>();
+            if (priorityDropdown != null)
+            {
+                priorityDropdownConfigured = false;
+                priorityListenerAttached = false;
+            }
+        }
         if (priorityDropdown == null)
+        {
             priorityDropdown = CreatePriorityDropdown(section);
+            priorityDropdownConfigured = false;
+            priorityListenerAttached = false;
+        }
         if (priorityDropdown == null) return;
 
-        ConfigurePriorityDropdown(priorityDropdown);
-
-        priorityDropdown.onValueChanged.RemoveListener(OnPriorityChanged);
-        priorityDropdown.onValueChanged.AddListener(OnPriorityChanged);
+        if (!priorityDropdownConfigured)
+        {
+            ConfigurePriorityDropdown(priorityDropdown);
+            priorityDropdownConfigured = true;
+        }
+        if (!priorityListenerAttached)
+        {
+            priorityDropdown.onValueChanged.AddListener(OnPriorityChanged);
+            priorityListenerAttached = true;
+        }
         RefreshPriorityDropdown();
     }
 
@@ -405,17 +445,9 @@ public class WorkerCardUI : MonoBehaviour
         }
     }
 
-    static string FormatUpgradeStars(int level)
-    {
-        level = Mathf.Clamp(level, 0, KitchenEmployee.MaxUpgradeLevel);
-        // ASCII-safe star readout (avoids missing TMP glyphs).
-        return "[" + level + "/" + KitchenEmployee.MaxUpgradeLevel + "]";
-    }
-
     static string FormatRate(float rate)
     {
-        if (rate >= 10f) return rate.ToString("0");
-        return rate.ToString("0.0");
+        return rate.ToString("0.#");
     }
 
     static string FormatAssignments(string detailText)
@@ -767,14 +799,15 @@ public class WorkerCardUI : MonoBehaviour
             if (oldAssignments != null) Destroy(oldAssignments.gameObject);
         }
 
-        string signature = employee == null ? "none" : employee.GetInstanceID().ToString();
+        int signature = employee != null ? employee.GetInstanceID() : 0;
         if (employee != null)
-            signature += ":u" + employee.UpgradeLevel;
+            signature = unchecked(signature * 397 ^ employee.UpgradeLevel);
         if (employee != null && employee.operatedStations != null)
             foreach (GameObject station in employee.operatedStations)
-                signature += ":" + (station != null ? station.GetInstanceID().ToString() : "null");
-        if (assignmentControls != null && assignmentSignature == signature) return;
+                signature = unchecked(signature * 397 ^ (station != null ? station.GetInstanceID() : 0));
+        if (assignmentControls != null && hasAssignmentSignature && assignmentSignature == signature) return;
         assignmentSignature = signature;
+        hasAssignmentSignature = true;
 
         if (assignmentControls != null)
             Destroy(assignmentControls.gameObject);
@@ -798,18 +831,27 @@ public class WorkerCardUI : MonoBehaviour
         ApplyUpgradeButtonStyle(upgrade);
     }
 
+    float GetTrainedTransportRateForDisplay(int level)
+    {
+        if (employee == null) return 0f;
+        return KitchenEmployee.GetTransportItemsPerMinuteForLevel(level);
+    }
+
     string GetUpgradeButtonLabel()
     {
         if (employee == null) return "Upgrade";
+        float currentRate = GetTrainedTransportRateForDisplay(employee.UpgradeLevel);
+        if (employee.UpgradeLevel >= KitchenEmployee.MaxUpgradeLevel)
+            return "Transport " + FormatRate(currentRate) + " items/min max";
+
+        float nextRate = GetTrainedTransportRateForDisplay(employee.UpgradeLevel + 1);
         if (employee.IsMaxUpgraded)
-        {
-            if (employee.UpgradeLevel < KitchenEmployee.MaxUpgradeLevel)
-                return employee.UpgradeLevel < 2 ? "Carry 3: Research" : "Carry 4: Research";
-            return "Carry Max " + FormatUpgradeStars(employee.UpgradeLevel);
-        }
+            return "Transport " + FormatRate(currentRate) + " items/min max | Research to unlock "
+                + FormatRate(nextRate) + " items/min";
+
         int cost = employee.GetNextUpgradeCost();
-        return "Upgrade Carry  $" + cost + "  → " + FormatUpgradeStars(employee.UpgradeLevel + 1)
-            + " (" + (employee.UpgradeLevel + 2) + " items)";
+        return "Upgrade Transport: " + FormatRate(currentRate) + " → " + FormatRate(nextRate)
+            + " items/min  ($" + cost + ")";
     }
 
     void RefreshUpgradeButton()
@@ -854,7 +896,8 @@ public class WorkerCardUI : MonoBehaviour
             RefreshUpgradeButton();
             return;
         }
-        assignmentSignature = null; // force rebuild so label/level update
+        hasAssignmentSignature = false; // force rebuild so label/level update
+        nextUpgradeRefreshTime = 0f;
         RefreshDetails();
     }
 
@@ -884,6 +927,9 @@ public class WorkerCardUI : MonoBehaviour
         var tmp = textObject.AddComponent<TextMeshProUGUI>();
         tmp.text = text;
         tmp.fontSize = 11f;
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = 9f;
+        tmp.fontSizeMax = 11f;
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.raycastTarget = false;
@@ -918,7 +964,7 @@ public class WorkerCardUI : MonoBehaviour
 
     static void SetDetailText(TextMeshProUGUI label, string text)
     {
-        if (label != null)
+        if (label != null && label.text != text)
             label.text = text;
     }
 

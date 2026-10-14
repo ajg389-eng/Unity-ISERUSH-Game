@@ -24,6 +24,10 @@ public class BuildPlacer : MonoBehaviour
     private int placementRotation;
 
     private GameObject draggingObject;
+    private GameObject previewVisibilityOwner;
+    private Renderer[] previewVisibilityRenderers;
+    private bool[] previewVisibilityOriginalStates;
+    private bool previewRenderersHidden;
     private BuildFootprint dragFootprint;
     private StationSelectionHighlight dragSelectionHighlight;
     private int dragOrigX, dragOrigY;
@@ -232,12 +236,15 @@ public class BuildPlacer : MonoBehaviour
             {
                 GetEffectiveDragSize(out int sx, out int sy);
                 ClampPlacementOrigin(ref dx, ref dy, sx, sy);
+                SetPreviewVisible(draggingObject, true);
                 Vector3 pos = grid.GetFootprintCenter(dx, dy, sx, sy);
                 pos.y = GetYOnFloor(draggingObject, grid.Origin.y);
                 draggingObject.transform.position = pos;
                 if (Input.GetMouseButtonDown(0))
                     TryPlaceDraggedAt(dx, dy);
             }
+            else
+                SetPreviewVisible(draggingObject, false);
             return;
         }
 
@@ -322,6 +329,7 @@ public class BuildPlacer : MonoBehaviour
             ClampPlacementOrigin(ref x, ref y, sizeX, sizeY);
             if (ghost)
             {
+                SetPreviewVisible(ghost, true);
                 Vector3 pos = grid.GetFootprintCenter(x, y, sizeX, sizeY);
                 pos.y = GetYOnFloor(ghost, grid.Origin.y);
                 ghost.transform.position = pos;
@@ -329,6 +337,8 @@ public class BuildPlacer : MonoBehaviour
             if (Input.GetMouseButtonDown(0))
                 TryPlaceAt(x, y);
         }
+        else
+            SetPreviewVisible(ghost, false);
     }
 
     public void BeginPlacement(ItemDefinition item)
@@ -588,15 +598,50 @@ public class BuildPlacer : MonoBehaviour
         if (IsDragging) GetEffectiveDragSize(out sizeX, out sizeY);
         else GetEffectivePlacementSize(out sizeX, out sizeY);
 
-        // Search legal origins using the entire rotated footprint, not just one tile.
+        // A blocked tile under the cursor should have no placement preview. Previously,
+        // searching for the nearest legal origin could move the preview beside a station
+        // whose interaction highlight overlapped the intended position.
+        int hoveredX = Mathf.RoundToInt((aim.x - grid.Origin.x) / grid.cellSize - sizeX * 0.5f);
+        int hoveredY = Mathf.RoundToInt((aim.z - grid.Origin.z) / grid.cellSize - sizeY * 0.5f);
+        StationInteractionTiles candidateHighlight = IsDragging
+            ? draggingObject != null ? draggingObject.GetComponent<StationInteractionTiles>() : null
+            : ghost != null ? ghost.GetComponent<StationInteractionTiles>() : null;
+        Quaternion candidateRotation = IsDragging && draggingObject != null
+            ? draggingObject.transform.rotation
+            : ghost != null
+                ? ghost.transform.rotation
+                : Quaternion.Euler(placingItem != null
+                    ? placingItem.placementEuler + Vector3.up * (placementRotation * 90f)
+                    : Vector3.zero);
+
+        if (hoveredX >= 0 && hoveredY >= 0
+            && hoveredX <= grid.Width - sizeX && hoveredY <= grid.Height - sizeY)
+        {
+            Vector3 hoveredCenter = grid.GetFootprintCenter(hoveredX, hoveredY, sizeX, sizeY);
+            float previewY = IsDragging && draggingObject != null
+                ? GetYOnFloor(draggingObject, grid.Origin.y)
+                : ghost != null ? GetYOnFloor(ghost, grid.Origin.y) : grid.Origin.y;
+            hoveredCenter.y = previewY;
+            if (!grid.CanPlaceWithInteractionHighlight(hoveredX, hoveredY, sizeX, sizeY,
+                candidateHighlight, hoveredCenter, candidateRotation))
+                return false;
+
+            x = hoveredX;
+            y = hoveredY;
+            return true;
+        }
+
+        // Preserve edge snapping when the cursor lies outside the build grid.
         // Projecting onto the floor plane lets the cursor pass through walls.
         float bestDistance = float.PositiveInfinity;
         bool found = false;
         for (int cx = 0; cx <= grid.Width - sizeX; cx++)
             for (int cy = 0; cy <= grid.Height - sizeY; cy++)
             {
-                if (!grid.CanPlace(cx, cy, sizeX, sizeY)) continue;
                 Vector3 center = grid.GetFootprintCenter(cx, cy, sizeX, sizeY);
+                if (ghost != null) center.y = ghost.transform.position.y;
+                if (!grid.CanPlaceWithInteractionHighlight(cx, cy, sizeX, sizeY,
+                    candidateHighlight, center, candidateRotation)) continue;
                 float distance = (new Vector2(center.x, center.z) - new Vector2(aim.x, aim.z)).sqrMagnitude;
                 if (distance >= bestDistance) continue;
                 bestDistance = distance;
@@ -605,6 +650,36 @@ public class BuildPlacer : MonoBehaviour
                 found = true;
             }
         return found;
+    }
+
+    void SetPreviewVisible(GameObject preview, bool visible)
+    {
+        if (preview == null) return;
+        if (previewVisibilityOwner != preview)
+        {
+            previewVisibilityOwner = preview;
+            previewVisibilityRenderers = preview.GetComponentsInChildren<Renderer>(true);
+            previewVisibilityOriginalStates = new bool[previewVisibilityRenderers.Length];
+            for (int i = 0; i < previewVisibilityRenderers.Length; i++)
+                previewVisibilityOriginalStates[i] = previewVisibilityRenderers[i] != null
+                    && previewVisibilityRenderers[i].enabled;
+            previewRenderersHidden = false;
+        }
+
+        if (visible == !previewRenderersHidden) return;
+        for (int i = 0; i < previewVisibilityRenderers.Length; i++)
+        {
+            Renderer renderer = previewVisibilityRenderers[i];
+            if (renderer == null) continue;
+            if (visible)
+                renderer.enabled = previewVisibilityOriginalStates[i];
+            else
+            {
+                previewVisibilityOriginalStates[i] = renderer.enabled;
+                renderer.enabled = false;
+            }
+        }
+        previewRenderersHidden = !visible;
     }
 
     static bool IsPickupStationDefinition(ItemDefinition item) => item != null
@@ -971,6 +1046,8 @@ public class BuildPlacer : MonoBehaviour
                 Sfx.Play(SfxId.UiError);
                 return;
             }
+            grid?.ReleaseInteractionHighlightForPlacement(
+                target.GetComponent<StationInteractionTiles>());
             draggingObject = target;
             draggingMountedItem = legacyMounted;
             dragOriginalSurface = legacyMounted.surface;
@@ -1002,6 +1079,9 @@ public class BuildPlacer : MonoBehaviour
                 footprint.sizeY = Mathf.Max(1, item.footprintY);
             }
             if (footprint == null || grid == null) return;
+
+            grid.ReleaseInteractionHighlightForPlacement(
+                target.GetComponent<StationInteractionTiles>());
 
             int x = -1;
             int y = -1;
@@ -1045,6 +1125,8 @@ public class BuildPlacer : MonoBehaviour
         }
         GetPlacedFootprint(target, fp, out int ox, out int oy, out int sx, out int sy, out int rot);
         if (ox < 0) return;
+        grid.ReleaseInteractionHighlightForPlacement(
+            target.GetComponent<StationInteractionTiles>());
         grid.SetOccupied(ox, oy, sx, sy, false);
         draggingObject = target;
         dragFootprint = fp;
@@ -1115,6 +1197,8 @@ public class BuildPlacer : MonoBehaviour
         {
             member.offsetX = member.originalX - anchorX;
             member.offsetY = member.originalY - anchorY;
+            grid.ReleaseInteractionHighlightForPlacement(
+                member.root.GetComponent<StationInteractionTiles>());
             grid.SetOccupied(member.originalX, member.originalY, member.sizeX, member.sizeY, false);
         }
         SetHint(true, true);
@@ -1144,40 +1228,82 @@ public class BuildPlacer : MonoBehaviour
         anchorX = Mathf.Clamp(anchorX, 0, Mathf.Max(0, grid.Width - groupWidth));
         anchorY = Mathf.Clamp(anchorY, 0, Mathf.Max(0, grid.Height - groupHeight));
 
-        bool valid = true;
         foreach (GroupMoveMember member in groupMoveMembers)
         {
             int x = anchorX + member.offsetX;
             int y = anchorY + member.offsetY;
-            if (!grid.CanPlace(x, y, member.sizeX, member.sizeY))
-            {
-                valid = false;
-                break;
-            }
-        }
-        if (!valid)
-        {
-            if (Input.GetMouseButtonDown(0)) Sfx.Play(SfxId.BuildPlaceFail);
-            return;
-        }
-
-        foreach (GroupMoveMember member in groupMoveMembers)
-        {
-            int x = anchorX + member.offsetX;
-            int y = anchorY + member.offsetY;
+            grid.ReleaseInteractionHighlightForPlacement(
+                member.root.GetComponent<StationInteractionTiles>());
             Vector3 pos = grid.GetFootprintCenter(x, y, member.sizeX, member.sizeY);
             pos.y = GetYOnFloor(member.root, grid.Origin.y);
             member.root.transform.position = pos;
         }
 
+        foreach (GroupMoveMember member in groupMoveMembers)
+            grid.ReserveInteractionHighlightForPlacement(
+                member.root.GetComponent<StationInteractionTiles>());
+
+        bool valid = true;
+        foreach (GroupMoveMember member in groupMoveMembers)
+        {
+            int x = anchorX + member.offsetX;
+            int y = anchorY + member.offsetY;
+            StationInteractionTiles tile = member.root.GetComponent<StationInteractionTiles>();
+            if (grid.CanPlaceWithInteractionHighlight(x, y, member.sizeX, member.sizeY,
+                tile, member.root.transform.position, member.root.transform.rotation, tile)
+                && !InteractionHighlightOverlapsGroupFootprint(member)) continue;
+            valid = false;
+            break;
+        }
+        if (!valid)
+        {
+            foreach (GroupMoveMember member in groupMoveMembers)
+            {
+                grid.ReleaseInteractionHighlightForPlacement(
+                    member.root.GetComponent<StationInteractionTiles>());
+                member.root.transform.SetPositionAndRotation(
+                    member.originalPosition, member.originalRotation);
+                grid.ReserveInteractionHighlightForPlacement(
+                    member.root.GetComponent<StationInteractionTiles>());
+            }
+            if (Input.GetMouseButtonDown(0)) Sfx.Play(SfxId.BuildPlaceFail);
+            return;
+        }
+
         if (!Input.GetMouseButtonDown(0)) return;
         foreach (GroupMoveMember member in groupMoveMembers)
+        {
             grid.SetOccupied(anchorX + member.offsetX, anchorY + member.offsetY,
                 member.sizeX, member.sizeY, true);
+            grid.ReserveInteractionHighlightForPlacement(
+                member.root.GetComponent<StationInteractionTiles>());
+        }
         groupMoveMembers.Clear();
         SetHint(IsPlacing);
         actionBar?.Refresh();
         Sfx.Play(SfxId.BuildPlace);
+    }
+
+    bool InteractionHighlightOverlapsGroupFootprint(GroupMoveMember owner)
+    {
+        if (owner == null || owner.root == null || grid == null) return false;
+        StationInteractionTiles tile = owner.root.GetComponent<StationInteractionTiles>();
+        if (tile == null) return false;
+
+        List<Vector3> positions = tile.GetInteractionPositionsFromModel();
+        foreach (Vector3 position in positions)
+        {
+            if (!grid.WorldToCell(position, out int x, out int y)) continue;
+            foreach (GroupMoveMember other in groupMoveMembers)
+            {
+                if (other == owner || other.root == null) continue;
+                GetPlacedFootprint(other.root, other.footprint, out int ox, out int oy,
+                    out int sx, out int sy, out _);
+                if (ox >= 0 && x >= ox && x < ox + sx && y >= oy && y < oy + sy)
+                    return true;
+            }
+        }
+        return false;
     }
 
     void CancelGroupMove()
@@ -1187,6 +1313,8 @@ public class BuildPlacer : MonoBehaviour
             if (member.root == null) continue;
             member.root.transform.SetPositionAndRotation(member.originalPosition, member.originalRotation);
             grid.SetOccupied(member.originalX, member.originalY, member.sizeX, member.sizeY, true);
+            grid.ReserveInteractionHighlightForPlacement(
+                member.root.GetComponent<StationInteractionTiles>());
         }
         groupMoveMembers.Clear();
         SetHint(IsPlacing);
@@ -1336,14 +1464,16 @@ public class BuildPlacer : MonoBehaviour
         if (draggingObject == null || dragFootprint == null) return;
 
         GetEffectiveDragSize(out int sizeX, out int sizeY);
-        if (!grid.CanPlace(x, y, sizeX, sizeY))
+        Vector3 pos = grid.GetFootprintCenter(x, y, sizeX, sizeY);
+        pos.y = GetYOnFloor(draggingObject, grid.Origin.y);
+        if (!grid.CanPlaceWithInteractionHighlight(x, y, sizeX, sizeY,
+            draggingObject.GetComponent<StationInteractionTiles>(), pos,
+            draggingObject.transform.rotation))
         {
             Sfx.Play(SfxId.BuildPlaceFail);
             return;
         }
 
-        Vector3 pos = grid.GetFootprintCenter(x, y, sizeX, sizeY);
-        pos.y = GetYOnFloor(draggingObject, grid.Origin.y);
         draggingObject.transform.position = pos;
         grid.SetOccupied(x, y, sizeX, sizeY, true);
         Sfx.Play(SfxId.BuildPlace);
@@ -1450,11 +1580,16 @@ public class BuildPlacer : MonoBehaviour
     void EndDrag()
     {
         GameObject movedObject = draggingObject;
+        SetPreviewVisible(movedObject, true);
         bool moved = movedObject != null
             && (Vector3.Distance(movedObject.transform.position, dragOriginalPosition) > 0.05f
                 || Quaternion.Angle(movedObject.transform.rotation, dragOriginalWorldRotation) > 1f);
         if (moved && movedObject.GetComponent<StationNode>() != null)
             TutorialVoiceEvents.Raise(TutorialVoiceEventId.StationRepositioned);
+
+        if (grid != null && movedObject != null)
+            grid.ReserveInteractionHighlightForPlacement(
+                movedObject.GetComponent<StationInteractionTiles>());
 
         if (draggingWallDoor != null)
             draggingWallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(false);
@@ -1513,6 +1648,10 @@ public class BuildPlacer : MonoBehaviour
         if (draggingMountedItem != null && draggingMountedItem.surface != null)
             draggingMountedItem.surface.Release(draggingMountedItem);
 
+        if (grid != null)
+            grid.ReleaseInteractionHighlightForPlacement(
+                draggingObject.GetComponent<StationInteractionTiles>());
+
         selectedObjects.Remove(draggingObject);
         ClearDraggedObjectHighlight();
         Object.Destroy(draggingObject);
@@ -1547,7 +1686,14 @@ public class BuildPlacer : MonoBehaviour
         GetEffectivePlacementSize(out int sizeX, out int sizeY);
 
         // Check space
-        if (!grid.CanPlace(x, y, sizeX, sizeY))
+        Vector3 candidatePosition = grid.GetFootprintCenter(x, y, sizeX, sizeY);
+        candidatePosition.y = GetYOnFloor(ghost, grid.Origin.y);
+        Quaternion candidateRotation = ghost != null
+            ? ghost.transform.rotation
+            : Quaternion.Euler(placingItem.placementEuler + Vector3.up * (placementRotation * 90f));
+        if (!grid.CanPlaceWithInteractionHighlight(x, y, sizeX, sizeY,
+            ghost != null ? ghost.GetComponent<StationInteractionTiles>() : null,
+            candidatePosition, candidateRotation))
         {
             Sfx.Play(SfxId.BuildPlaceFail);
             return;
@@ -1579,6 +1725,8 @@ public class BuildPlacer : MonoBehaviour
 
         // Mark occupied + not walkable
         grid.SetOccupied(x, y, sizeX, sizeY, true);
+        grid.ReserveInteractionHighlightForPlacement(
+            placed.GetComponent<StationInteractionTiles>());
         Sfx.Play(SfxId.BuildPlace);
 
         var undo = PurchaseUndoManager.Ensure();
@@ -2088,6 +2236,8 @@ public class BuildPlacer : MonoBehaviour
         surface.Attach(mounted, slot);
         RememberCounterPlacement(placingItem, slot, placementRotation);
         FinalizeMountedOrientation(placed);
+        grid?.ReserveInteractionHighlightForPlacement(
+            placed.GetComponent<StationInteractionTiles>());
 
         var pbi = placed.GetComponent<PlacedBuildItem>();
         if (pbi == null) pbi = placed.AddComponent<PlacedBuildItem>();
@@ -2236,10 +2386,21 @@ public class BuildPlacer : MonoBehaviour
                 position.y = GetYOnFloor(placed, grid.Origin.y);
                 placed.transform.position = position;
 
+                if (!grid.CanPlaceWithInteractionHighlight(x, y, sizeX, sizeY,
+                    placed.GetComponent<StationInteractionTiles>(), position,
+                    placed.transform.rotation))
+                {
+                    placed.SetActive(false);
+                    Destroy(placed);
+                    continue;
+                }
+
                 PlacedBuildItem marker = placed.GetComponent<PlacedBuildItem>();
                 if (marker == null) marker = placed.AddComponent<PlacedBuildItem>();
                 marker.itemDefinition = item;
                 grid.SetOccupied(x, y, sizeX, sizeY, true);
+                grid.ReserveInteractionHighlightForPlacement(
+                    placed.GetComponent<StationInteractionTiles>());
                 return true;
             }
         }
@@ -2359,6 +2520,8 @@ public class BuildPlacer : MonoBehaviour
             return false;
         }
         FinalizeMountedOrientation(placed);
+        grid?.ReserveInteractionHighlightForPlacement(
+            placed.GetComponent<StationInteractionTiles>());
 
         PlacedBuildItem marker = placed.GetComponent<PlacedBuildItem>();
         if (marker == null) marker = placed.AddComponent<PlacedBuildItem>();

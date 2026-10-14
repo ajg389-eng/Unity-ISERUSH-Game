@@ -7,6 +7,8 @@ public class AssemblyRecipeDefinition
 {
     public string recipeName = "Burger";
     public ItemDefinition output;
+    [Tooltip("Seconds for one item at 100% on an MK1 station. MK2 stations run this recipe twice as fast.")]
+    [Min(0.01f)] public float baseCycleSeconds = 4f;
 
     [Header("Input 1: processed work")]
     [Tooltip("Optional output from an earlier Assembly recipe. Leave empty when the input comes directly from the grill.")]
@@ -40,6 +42,7 @@ public class AssemblyRecipeDefinition
         ? recipeName
         : (output != null && !string.IsNullOrWhiteSpace(output.itemName) ? output.itemName : "Recipe");
 
+    public bool RequiresProcessedInput => processedInput != null;
     public bool Produces(ItemDefinition item) => item != null && output == item;
     public bool RequiresMk2 => thirdInput != null;
 
@@ -51,6 +54,8 @@ public class StationProcessingRecipeDefinition
     public string recipeName;
     public ItemDefinition input;
     public ItemDefinition output;
+    [Tooltip("Seconds for one item at 100% on an MK1 station. MK2 stations run this recipe twice as fast.")]
+    [Min(0.01f)] public float baseCycleSeconds = 4f;
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName) ? recipeName
         : (output != null ? output.itemName : "Processing Recipe");
 }
@@ -144,6 +149,186 @@ public class CustomerOrderConfig : ScriptableObject
     // A new run starts with every sellable item disabled. The player explicitly
     // enables each unlocked recipe from the Menu screen.
     [System.NonSerialized] readonly HashSet<ItemDefinition> enabledMenuItems = new HashSet<ItemDefinition>();
+    [System.NonSerialized] bool demandScheduleReady;
+    [System.NonSerialized] int demandScheduleRevision;
+    [System.NonSerialized] float demandScheduleMultiplier = -1f;
+    [System.NonSerialized] int demandCustomersPerMinute;
+    [System.NonSerialized] CustomerOrder[] demandOrderCycle = System.Array.Empty<CustomerOrder>();
+    [System.NonSerialized] readonly Dictionary<ItemDefinition, int> demandRateByItem =
+        new Dictionary<ItemDefinition, int>();
+
+    sealed class DemandProduct
+    {
+        public ItemDefinition item;
+        public int rate;
+    }
+
+    /// <summary>Customers scheduled per simulation minute to satisfy the enabled menu rates.</summary>
+    public int DemandCustomersPerMinute
+    {
+        get
+        {
+            EnsureDemandSchedule(1f);
+            return demandCustomersPerMinute;
+        }
+    }
+
+    public int GetDemandCustomersPerMinute(float multiplier)
+    {
+        EnsureDemandSchedule(multiplier);
+        return demandCustomersPerMinute;
+    }
+
+    public int CalculateDemandCustomersPerMinute(float multiplier)
+    {
+        multiplier = Mathf.Max(0.01f, multiplier);
+        int[] categoryRates = new int[3];
+        foreach (ItemDefinition item in GetEnabledMenuItems())
+        {
+            int categoryIndex = (int)GetProductKind(item) - 1;
+            if (categoryIndex < 0 || categoryIndex >= categoryRates.Length) continue;
+            categoryRates[categoryIndex] += GetDemandRate(item, multiplier);
+        }
+        return Mathf.Max(categoryRates[0], Mathf.Max(categoryRates[1], categoryRates[2]));
+    }
+
+    public int DemandScheduleRevision
+    {
+        get
+        {
+            EnsureDemandSchedule(1f);
+            return demandScheduleRevision;
+        }
+    }
+
+    public int GetDemandScheduleRevision(float multiplier)
+    {
+        EnsureDemandSchedule(multiplier);
+        return demandScheduleRevision;
+    }
+
+    public int GetCustomerDemandPerMinute(ItemDefinition item)
+    {
+        EnsureDemandSchedule(1f);
+        return item != null && demandRateByItem.TryGetValue(item, out int rate) ? rate : 0;
+    }
+
+    public int GetCustomerDemandPerMinute(ItemDefinition item, float multiplier)
+    {
+        EnsureDemandSchedule(multiplier);
+        return item != null && demandRateByItem.TryGetValue(item, out int rate) ? rate : 0;
+    }
+
+    /// <summary>Returns the next order in the exact repeating one-minute demand cycle.</summary>
+    public CustomerOrder GenerateScheduledOrder(int sequenceIndex)
+    {
+        return GenerateScheduledOrder(sequenceIndex, 1f);
+    }
+
+    public CustomerOrder GenerateScheduledOrder(int sequenceIndex, float multiplier)
+    {
+        EnsureDemandSchedule(multiplier);
+        if (demandOrderCycle.Length == 0) return new CustomerOrder();
+        int index = (sequenceIndex % demandOrderCycle.Length + demandOrderCycle.Length)
+            % demandOrderCycle.Length;
+        return demandOrderCycle[index].Clone();
+    }
+
+    void EnsureDemandSchedule(float multiplier)
+    {
+        multiplier = Mathf.Max(0.01f, multiplier);
+        if (demandScheduleReady && Mathf.Approximately(demandScheduleMultiplier, multiplier)) return;
+
+        demandRateByItem.Clear();
+        var categories = new List<DemandProduct>[3]
+        {
+            new List<DemandProduct>(),
+            new List<DemandProduct>(),
+            new List<DemandProduct>()
+        };
+        int[] categoryRates = new int[3];
+        foreach (ItemDefinition item in GetEnabledMenuItems())
+        {
+            ProductKind kind = GetProductKind(item);
+            int categoryIndex = (int)kind - 1;
+            if (categoryIndex < 0 || categoryIndex >= categories.Length) continue;
+
+            int adjustedRate = GetDemandRate(item, multiplier);
+            demandRateByItem[item] = adjustedRate;
+            categories[categoryIndex].Add(new DemandProduct { item = item, rate = adjustedRate });
+            categoryRates[categoryIndex] += adjustedRate;
+        }
+
+        demandCustomersPerMinute = Mathf.Max(categoryRates[0],
+            Mathf.Max(categoryRates[1], categoryRates[2]));
+        if (demandCustomersPerMinute > 0)
+        {
+            demandOrderCycle = new CustomerOrder[demandCustomersPerMinute];
+            for (int i = 0; i < demandOrderCycle.Length; i++)
+                demandOrderCycle[i] = new CustomerOrder();
+
+            for (int categoryIndex = 0; categoryIndex < categories.Length; categoryIndex++)
+                AddCategoryDemandToCycle(categories[categoryIndex], categoryRates[categoryIndex],
+                    demandCustomersPerMinute, demandOrderCycle);
+        }
+        else
+            demandOrderCycle = System.Array.Empty<CustomerOrder>();
+
+        demandScheduleReady = true;
+        demandScheduleMultiplier = multiplier;
+        demandScheduleRevision++;
+    }
+
+    int GetDemandRate(ItemDefinition item, float multiplier)
+    {
+        AssemblyRecipeDefinition recipe = GetAssemblyRecipe(item);
+        float baseRate = recipe != null && recipe.baseCycleSeconds > 0.01f
+            ? 60f / recipe.baseCycleSeconds
+            : 15f;
+        // Start from the recipe's MK1 100% output, quantized to five. Apply
+        // any known demand modifier to that baseline and quantize again.
+        int baselineRate = Mathf.Max(5, Mathf.FloorToInt(baseRate / 5f + 0.5f) * 5);
+        return Mathf.Max(5, Mathf.FloorToInt(baselineRate * multiplier / 5f + 0.5f) * 5);
+    }
+
+    static void AddCategoryDemandToCycle(List<DemandProduct> products, int categoryRate,
+        int customersPerMinute, CustomerOrder[] cycle)
+    {
+        if (products == null || products.Count == 0 || categoryRate <= 0
+            || customersPerMinute <= 0 || cycle == null) return;
+
+        List<ItemDefinition> weightedCycle = BuildWeightedItemCycle(products, categoryRate);
+        int emittedBefore = 0;
+        for (int slot = 0; slot < customersPerMinute; slot++)
+        {
+            int emittedAfter = ((slot + 1) * categoryRate) / customersPerMinute;
+            for (int emitted = emittedBefore; emitted < emittedAfter; emitted++)
+                cycle[slot].lines.Add(new CustomerOrder.OrderLine(weightedCycle[emitted], 1));
+            emittedBefore = emittedAfter;
+        }
+    }
+
+    static List<ItemDefinition> BuildWeightedItemCycle(List<DemandProduct> products, int totalRate)
+    {
+        var result = new List<ItemDefinition>(totalRate);
+        if (products == null || products.Count == 0 || totalRate <= 0) return result;
+
+        var credits = new int[products.Count];
+        for (int step = 0; step < totalRate; step++)
+        {
+            int selected = 0;
+            for (int i = 0; i < products.Count; i++)
+            {
+                credits[i] += products[i].rate;
+                if (credits[i] > credits[selected]) selected = i;
+            }
+            result.Add(products[selected].item);
+            credits[selected] -= totalRate;
+        }
+        return result;
+    }
+
+    void InvalidateDemandSchedule() => demandScheduleReady = false;
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
         || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem
@@ -340,7 +525,11 @@ public class CustomerOrderConfig : ScriptableObject
     public void RestoreEnabledMenuItems(IEnumerable<string> savedNames)
     {
         enabledMenuItems.Clear();
-        if (savedNames == null) return;
+        if (savedNames == null)
+        {
+            InvalidateDemandSchedule();
+            return;
+        }
 
         var names = new HashSet<string>();
         foreach (string name in savedNames)
@@ -352,10 +541,15 @@ public class CustomerOrderConfig : ScriptableObject
             if (IsCustomerRecipeUnlocked(item))
                 enabledMenuItems.Add(item);
         }
+        InvalidateDemandSchedule();
     }
 
     /// <summary>Clears menu choices when starting a fresh save slot.</summary>
-    public void ClearEnabledMenuItems() => enabledMenuItems.Clear();
+    public void ClearEnabledMenuItems()
+    {
+        enabledMenuItems.Clear();
+        InvalidateDemandSchedule();
+    }
 
     /// <summary>
     /// Customer orders are driven by the recipes the player can currently use.
@@ -378,8 +572,10 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
         if (enabled && !IsMenuItemUnlocked(item)) return;
-        if (enabled) enabledMenuItems.Add(item);
-        else enabledMenuItems.Remove(item);
+        bool changed = enabled
+            ? enabledMenuItems.Add(item)
+            : enabledMenuItems.Remove(item);
+        if (changed) InvalidateDemandSchedule();
     }
 
     public bool HasEnabledItems
@@ -773,6 +969,8 @@ public class CuttingRecipeDefinition
     public string recipeName = "Sliced Ingredient";
     public ItemDefinition input;
     public ItemDefinition output;
+    [Tooltip("Seconds for one item at 100% on an MK1 station. MK2 stations run this recipe twice as fast.")]
+    [Min(0.01f)] public float baseCycleSeconds = 4f;
 
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
         ? recipeName

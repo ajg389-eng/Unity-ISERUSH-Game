@@ -32,6 +32,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 {
     public const int FixedCapacity = 4;
     public static HeatLampStation Instance { get; private set; }
+    static readonly List<HeatLampStation> activeStations = new List<HeatLampStation>();
+    public static IReadOnlyList<HeatLampStation> ActiveStations => activeStations;
 
     [Header("Station tier")]
     [SerializeField, Range(1, 2)] int stationMark = 1;
@@ -154,11 +156,16 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     void OnEnable()
     {
         Instance = this;
+        if (!activeStations.Contains(this))
+            activeStations.Add(this);
+        ProductionManager.Instance?.InvalidateStationCache();
         RefreshFoodDisplay();
     }
 
     void OnDisable()
     {
+        activeStations.Remove(this);
+        ProductionManager.Instance?.InvalidateStationCache();
         if (Instance == this)
             Instance = null;
         CustomerAI[] waiting = customerPickupQueue.ToArray();
@@ -169,6 +176,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void OnDestroy()
     {
+        activeStations.Remove(this);
         if (Instance == this)
             Instance = null;
         if (cautionIndicator != null)
@@ -376,11 +384,10 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     public static HeatLampStation FindNearest(Vector3 worldPosition)
     {
-        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
         HeatLampStation best = null;
         float bestDistance = float.MaxValue;
-        for (int i = 0; i < stations.Length; i++)
+        for (int i = 0; i < stations.Count; i++)
         {
             HeatLampStation station = stations[i];
             if (station == null) continue;
@@ -398,12 +405,13 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     /// </summary>
     public static HeatLampStation FindBestWaitingArea(Vector3 worldPosition)
     {
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
         HeatLampStation best = null;
         int bestQueue = int.MaxValue;
         float bestDistance = float.MaxValue;
-        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        for (int i = 0; i < stations.Count; i++)
         {
+            HeatLampStation station = stations[i];
             if (station == null || !station.isActiveAndEnabled) continue;
             int queue = station.PickupQueueCount;
             float distance = (station.transform.position - worldPosition).sqrMagnitude;
@@ -444,15 +452,16 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public static HeatLampStation FindBestPickupFor(ItemDefinition item, Vector3 customerPosition)
     {
         if (item == null) return null;
-        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
         HeatLampStation best = null;
         int bestQueue = int.MaxValue;
         float bestDistance = float.MaxValue;
 
         for (int pass = 0; pass < 2 && best == null; pass++)
         {
-            foreach (HeatLampStation station in stations)
+            for (int i = 0; i < stations.Count; i++)
             {
+                HeatLampStation station = stations[i];
                 if (station == null) continue;
                 bool suitable = station.CanProvideItem(item);
                 if (pass == 0 && !suitable) continue;
@@ -472,10 +481,12 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public static HeatLampStation FindReadyPickupFor(ItemDefinition item, Vector3 customerPosition)
     {
         if (item == null) return null;
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
         HeatLampStation best = null;
         float bestDistance = float.MaxValue;
-        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        for (int i = 0; i < stations.Count; i++)
         {
+            HeatLampStation station = stations[i];
             if (station == null || !station.HasSingleItem(item)) continue;
             float distance = (station.transform.position - customerPosition).sqrMagnitude;
             if (distance >= bestDistance) continue;
@@ -490,12 +501,13 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         Vector3 customerPosition, HeatLampStation excluded = null)
     {
         if (order == null || order.GetTotalQuantity() <= 0) return null;
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
         HeatLampStation best = null;
         int bestQueue = int.MaxValue;
         float bestDistance = float.MaxValue;
-        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        for (int i = 0; i < stations.Count; i++)
         {
+            HeatLampStation station = stations[i];
             if (station == null || station == excluded || !station.HasAnyItemFor(order)) continue;
             int queue = station.PickupQueueCount;
             float distance = (station.transform.position - customerPosition).sqrMagnitude;
@@ -520,9 +532,10 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         HeatLampStation best = null;
         int bestQueue = int.MaxValue;
         float bestDistance = float.MaxValue;
-        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
+        for (int i = 0; i < stations.Count; i++)
         {
+            HeatLampStation station = stations[i];
             if (station == null || !station.CanProvideAnyItem(order)) continue;
             int queue = station.PickupQueueCount;
             float distance = (station.transform.position - customerPosition).sqrMagnitude;
@@ -644,13 +657,13 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     Register FindNearestRegister()
     {
-        var registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        if (registers == null || registers.Length == 0) return null;
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
+        if (registers.Count == 0) return null;
 
         Register best = null;
         float bestDist = float.MaxValue;
         Vector3 origin = transform.position;
-        for (int i = 0; i < registers.Length; i++)
+        for (int i = 0; i < registers.Count; i++)
         {
             var reg = registers[i];
             if (reg == null) continue;
@@ -936,6 +949,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         cautionMessage.enableWordWrapping = true;
         cautionMessage.raycastTarget = false;
         messageObject.SetActive(false);
+        GameUITheme.ApplyToCanvas(canvas);
         return root;
     }
 
@@ -950,8 +964,9 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         foreach (ProductionManager.ItemOutputNeed need in production.GetRequiredOutputByItem(includeDrinks: true))
         {
             if (need.item == null) continue;
+            if (need.requiredPerMinute <= 0.01f && need.requested <= 0) continue;
             parts.Add(GetItemDisplayName(need.item) + ": " + need.requested + " open, "
-                + need.orderedLastMinute + "/min ordered");
+                + Mathf.RoundToInt(need.requiredPerMinute) + "/min demand");
         }
 
         if (parts.Count == 0)
@@ -1140,25 +1155,28 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         adjustedSaleValue = 0;
         if (customer == null || customerOrder?.lines == null) return false;
 
-        HeatLampStation[] stations = FindObjectsByType<HeatLampStation>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        IReadOnlyList<HeatLampStation> stations = ActiveStations;
 
         foreach (CustomerOrder.OrderLine line in customerOrder.lines)
         {
             if (line.item == null || line.quantity <= 0) continue;
 
             int totalHeld = 0;
-            foreach (HeatLampStation station in stations)
+            for (int i = 0; i < stations.Count; i++)
+            {
+                HeatLampStation station = stations[i];
                 if (station != null)
                     totalHeld += station.CountHeldMatching(line.item);
+            }
 
             int claimsAhead = CountGlobalClaimsAhead(customer, line.item, stations);
             if (totalHeld <= claimsAhead) continue;
 
             HeatLampStation source = null;
             float nearestDistance = float.MaxValue;
-            foreach (HeatLampStation station in stations)
+            for (int i = 0; i < stations.Count; i++)
             {
+                HeatLampStation station = stations[i];
                 if (station == null || !station.HasSingleItem(line.item)) continue;
                 float distance = (station.transform.position - customer.transform.position).sqrMagnitude;
                 if (distance >= nearestDistance) continue;
@@ -1192,16 +1210,16 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     }
 
     static int CountGlobalClaimsAhead(CustomerAI customer, ItemDefinition item,
-        HeatLampStation[] stations = null)
+        IReadOnlyList<HeatLampStation> stations = null)
     {
         if (customer == null || item == null) return 0;
         if (stations == null)
-            stations = FindObjectsByType<HeatLampStation>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            stations = ActiveStations;
 
         int claims = 0;
-        foreach (HeatLampStation station in stations)
+        for (int stationIndex = 0; stationIndex < stations.Count; stationIndex++)
         {
+            HeatLampStation station = stations[stationIndex];
             if (station == null) continue;
             for (int i = 0; i < station.customerPickupQueue.Count; i++)
             {

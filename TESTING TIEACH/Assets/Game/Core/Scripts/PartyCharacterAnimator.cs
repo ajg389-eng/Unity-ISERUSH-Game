@@ -69,6 +69,11 @@ public class PartyCharacterAnimator : MonoBehaviour
     bool hasRun;
     int lockFacingFrames;
     Vector3 lockedFaceDir = Vector3.forward;
+    GameObject cachedAimTarget;
+    Collider[] cachedAimColliders;
+    Vector3 cachedAimFrom;
+    Vector3 cachedAimPoint;
+    bool hasCachedAimPoint;
     RuntimeAnimatorController locomotionController;
     Avatar locomotionAvatar;
     StationWorkKind activeWork;
@@ -600,14 +605,33 @@ public class PartyCharacterAnimator : MonoBehaviour
     public void FaceTowardAdjacentObject(GameObject target, bool smooth = true)
     {
         if (target == null) return;
-        FaceTowardAdjacent(GetNearestAimPoint(transform.position, target), smooth);
+        Vector3 from = transform.position;
+        if (cachedAimTarget != target || cachedAimColliders == null)
+        {
+            cachedAimTarget = target;
+            cachedAimColliders = target.GetComponentsInChildren<Collider>();
+            hasCachedAimPoint = false;
+        }
+
+        if (!hasCachedAimPoint || (from - cachedAimFrom).sqrMagnitude > 0.0025f)
+        {
+            cachedAimFrom = from;
+            cachedAimPoint = GetNearestAimPoint(from, target, cachedAimColliders);
+            hasCachedAimPoint = true;
+        }
+
+        FaceTowardAdjacent(cachedAimPoint, smooth);
     }
 
     public static Vector3 GetNearestAimPoint(Vector3 fromWorld, GameObject target)
     {
         if (target == null) return fromWorld;
 
-        var cols = target.GetComponentsInChildren<Collider>();
+        return GetNearestAimPoint(fromWorld, target, target.GetComponentsInChildren<Collider>());
+    }
+
+    static Vector3 GetNearestAimPoint(Vector3 fromWorld, GameObject target, Collider[] cols)
+    {
         bool any = false;
         Vector3 best = target.transform.position;
         float bestDist = float.MaxValue;
@@ -615,7 +639,13 @@ public class PartyCharacterAnimator : MonoBehaviour
         {
             Collider col = cols[i];
             if (col == null || !col.enabled) continue;
-            Vector3 p = col.ClosestPoint(fromWorld);
+            // Unity warns on every call to ClosestPoint for a non-convex mesh.
+            // Waiting customers face queue stations every frame, so use the
+            // collider bounds for this unsupported shape instead.
+            MeshCollider mesh = col as MeshCollider;
+            Vector3 p = mesh != null && !mesh.convex
+                ? col.bounds.ClosestPoint(fromWorld)
+                : col.ClosestPoint(fromWorld);
             float d = (p - fromWorld).sqrMagnitude;
             if (!any || d < bestDist)
             {

@@ -75,6 +75,9 @@ public static class StationBufferLayout
 /// </summary>
 public class StationNode : MonoBehaviour
 {
+    public const float MinimumProductionRatePercent = 1f;
+    public const float MaximumProductionRatePercent = 100f;
+
     [Tooltip("Worker currently assigned to operate this station")]
     public KitchenEmployee assignedWorker;
     [Tooltip("All workers allowed to operate this shared station. The first is kept in assignedWorker for legacy UI.")]
@@ -92,14 +95,43 @@ public class StationNode : MonoBehaviour
     public string inputUnit = "";
     [Tooltip("Unit label for output (e.g. cooked patties).")]
     public string outputUnit = "";
+    [Header("Production rate")]
+    [Tooltip("Clock speed for this station. The target rate scales from the selected recipe's base capacity.")]
+    [SerializeField, Range(MinimumProductionRatePercent, MaximumProductionRatePercent)]
+    float productionRatePercent = 100f;
+    [System.NonSerialized] float baseOutputAmountPerMinute;
+
+    public float ProductionRatePercent => Mathf.Clamp(productionRatePercent,
+        MinimumProductionRatePercent, MaximumProductionRatePercent);
+    public float ProductionRateMultiplier => ProductionRatePercent / 100f;
+    public float BaseOutputAmountPerMinute => baseOutputAmountPerMinute;
+    public bool SupportsProductionRateControl => GetComponent<FreezerStation>() != null
+        || GetComponent<GrillStation>() != null
+        || GetComponent<AssemblyStation>() != null
+        || GetComponent<CuttingStation>() != null
+        || GetComponent<FryerStation>() != null
+        || GetComponent<DrinkStation>() != null
+        || GetComponent<PantryStation>() != null;
 
     void Awake()
     {
+        productionRatePercent = Mathf.Clamp(productionRatePercent,
+            MinimumProductionRatePercent, MaximumProductionRatePercent);
         SyncAssignedWorkers();
         StationRuntimeMetrics.EnsureOn(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
+    }
+
+    void OnEnable()
+    {
+        ProductionManager.Instance?.InvalidateStationCache();
+    }
+
+    void OnDisable()
+    {
+        ProductionManager.Instance?.InvalidateStationCache();
     }
 
     void Reset()
@@ -115,8 +147,8 @@ public class StationNode : MonoBehaviour
         if (!force && !string.IsNullOrEmpty(outputUnit))
             return;
 
-        // A cycle processes the active worker's carried batch. Source stations show no input.
-        int batchSize = GetActiveBatchSize();
+        // Station capacity is the machine's own recipe rate. Worker travel and
+        // carry limits are accounted for separately by flow labor metrics.
         GrillStation grill = GetComponent<GrillStation>();
         AssemblyStation assembly = GetComponent<AssemblyStation>();
         CuttingStation cutting = GetComponent<CuttingStation>();
@@ -126,53 +158,63 @@ public class StationNode : MonoBehaviour
         PantryStation pantry = GetComponent<PantryStation>();
         if (grill != null)
         {
-            int stationBatch = grill.SlotCapacity;
-            SetIo(RateForCycle(grill.processTimeSeconds, stationBatch),
-                RateForCycle(grill.processTimeSeconds, stationBatch),
+            SetIo(RateForCycle(grill.BaseProcessCycleSeconds),
+                RateForCycle(grill.BaseProcessCycleSeconds),
                 ItemLabel(grill.GetSelectedInput(), "select recipe"),
                 ItemLabel(grill.GetSelectedOutput(), "select recipe"));
         }
         else if (assembly != null)
         {
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-            float outputRate = RateForCycle(assembly.processTimeSeconds,
-                Mathf.Min(batchSize, assembly.MaxProcessBatch));
-            int processedAmount = recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1;
-            int pantryAmount = recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1;
+            float outputRate = recipe != null
+                ? RateForCycle(assembly.BaseProcessCycleSeconds) : 0f;
+            int processedAmount = recipe != null && recipe.RequiresProcessedInput
+                ? Mathf.Max(1, recipe.processedInputAmount) : 0;
+            int pantryAmount = recipe != null && recipe.pantryInput != null
+                ? Mathf.Max(1, recipe.pantryInputAmount) : 0;
+            int thirdAmount = recipe != null && recipe.thirdInput != null
+                ? Mathf.Max(1, recipe.thirdInputAmount) : 0;
             string processedName = recipe != null && !string.IsNullOrWhiteSpace(recipe.processedInputName)
-                ? recipe.processedInputName : "cooked patty";
+                ? recipe.processedInputName
+                : recipe != null && recipe.RequiresProcessedInput ? "cooked patty" : "";
             string pantryName = recipe != null && recipe.pantryInput != null
                 ? (!string.IsNullOrEmpty(recipe.pantryInput.itemName)
                     ? recipe.pantryInput.itemName : recipe.pantryInput.name)
-                : "bun";
+                : "";
+            string thirdName = recipe != null && recipe.thirdInput != null
+                ? (!string.IsNullOrEmpty(recipe.thirdInput.itemName)
+                    ? recipe.thirdInput.itemName : recipe.thirdInput.name)
+                : "";
             string outputName = recipe != null ? recipe.DisplayName : "burger";
-            SetIo(outputRate * (processedAmount + pantryAmount), outputRate,
-                processedName + " + " + pantryName, outputName);
+            var inputNames = new List<string>();
+            if (processedAmount > 0) inputNames.Add(processedName);
+            if (pantryAmount > 0) inputNames.Add(pantryName);
+            if (thirdAmount > 0) inputNames.Add(thirdName);
+            SetIo(outputRate * (processedAmount + pantryAmount + thirdAmount), outputRate,
+                inputNames.Count > 0 ? string.Join(" + ", inputNames) : "-", outputName);
         }
         else if (cutting != null)
         {
             CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
-            int stationBatch = Mathf.Min(batchSize, cutting.InputSlotCapacity, cutting.OutputSlotCapacity);
-            SetIo(RateForCycle(cutting.processTimeSeconds, stationBatch),
-                RateForCycle(cutting.processTimeSeconds, stationBatch),
+            SetIo(RateForCycle(cutting.BaseProcessCycleSeconds),
+                RateForCycle(cutting.BaseProcessCycleSeconds),
                 ItemLabel(recipe != null ? recipe.input : null, "select ingredient"),
                 ItemLabel(recipe != null ? recipe.output : null, "select recipe"));
         }
         else if (freezer != null)
-            SetIo(0f, RateForCycle(freezer.processTimeSeconds, batchSize), "-",
+            SetIo(0f, Mathf.Max(0f, freezer.maxOutputPerMinute), "-",
                 ItemLabel(freezer.selectedItem, "select ingredient"));
         else if (fryer != null)
         {
-            int stationBatch = Mathf.Min(batchSize, fryer.InputSlotCapacity, fryer.OutputSlotCapacity);
-            SetIo(RateForCycle(fryer.processTimeSeconds, stationBatch),
-                RateForCycle(fryer.processTimeSeconds, stationBatch),
+            SetIo(RateForCycle(fryer.BaseProcessCycleSeconds),
+                RateForCycle(fryer.BaseProcessCycleSeconds),
                 ItemLabel(fryer.GetSelectedInput(), "select recipe"),
                 ItemLabel(fryer.GetSelectedOutput(), "select recipe"));
         }
         else if (drink != null)
-            SetIo(0f, RateForCycle(drink.processTimeSeconds, batchSize), "-", "drinks");
+            SetIo(0f, RateForCycle(drink.processTimeSeconds), "-", "drinks");
         else if (pantry != null)
-            SetIo(0f, RateForCycle(pantry.processTimeSeconds, batchSize), "-",
+            SetIo(0f, Mathf.Max(0f, pantry.maxOutputPerMinute), "-",
                 pantry.StoredItemsLabel);
         else if (GetComponent<Register>() != null)
             SetIo(0f, 10f, "-", "orders");
@@ -186,37 +228,61 @@ public class StationNode : MonoBehaviour
         return !string.IsNullOrEmpty(item.itemName) ? item.itemName : item.name;
     }
 
-    int GetActiveBatchSize()
+    static float RateForCycle(float seconds)
     {
-        int batch = 1;
-        SyncAssignedWorkers();
-        foreach (KitchenEmployee worker in assignedWorkers)
-            if (worker != null)
-                batch = Mathf.Max(batch, worker.CarryCapacity);
-
-        ProductionManager production = ProductionManager.Instance;
-        if (production?.productionFlows == null) return batch;
-        foreach (ProductionFlowPlan flow in production.productionFlows)
-        {
-            if (flow?.stations == null || !flow.stations.Contains(gameObject) || flow.workers == null) continue;
-            foreach (KitchenEmployee worker in flow.workers)
-                if (worker != null)
-                    batch = Mathf.Max(batch, worker.CarryCapacity);
-        }
-        return Mathf.Clamp(batch, 1, 4);
+        return seconds > 0.001f ? 60f / seconds : 0f;
     }
 
-    static float RateForCycle(float seconds, int batchSize)
+    /// <summary>Returns an MK1 recipe cycle adjusted for the selected station tier.</summary>
+    public static float GetTierAdjustedCycleSeconds(Component station, float mk1CycleSeconds)
     {
-        return seconds > 0.001f ? 60f * Mathf.Max(1, batchSize) / seconds : 0f;
+        if (station == null || mk1CycleSeconds <= 0f) return mk1CycleSeconds;
+        StationNode node = station.GetComponent<StationNode>();
+        return node != null && node.StationMark >= 2 ? mk1CycleSeconds * 0.5f : mk1CycleSeconds;
     }
 
     void SetIo(float input, float output, string inUnit, string outUnit)
     {
-        inputAmountPerMinute = input;
-        outputAmountPerMinute = output;
+        baseOutputAmountPerMinute = Mathf.Max(0f, output);
+        float rateScale = SupportsProductionRateControl ? ProductionRateMultiplier : 1f;
+        inputAmountPerMinute = Mathf.Max(0f, input) * rateScale;
+        outputAmountPerMinute = baseOutputAmountPerMinute * rateScale;
         inputUnit = inUnit;
         outputUnit = outUnit;
+    }
+
+    public void SetProductionRatePercent(float percent)
+    {
+        if (!SupportsProductionRateControl) return;
+        productionRatePercent = Mathf.Clamp(percent,
+            MinimumProductionRatePercent, MaximumProductionRatePercent);
+        EnsureIoDefaults(force: true);
+    }
+
+    public void SetTargetOutputPerMinute(float targetRate)
+    {
+        if (!SupportsProductionRateControl) return;
+        EnsureIoDefaults(force: true);
+        if (baseOutputAmountPerMinute <= 0.001f) return;
+        float requestedPercent = targetRate / baseOutputAmountPerMinute * 100f;
+        SetProductionRatePercent(requestedPercent);
+    }
+
+    public float GetEffectiveCycleSeconds(float nominalSeconds)
+    {
+        return nominalSeconds > 0f ? nominalSeconds / ProductionRateMultiplier : nominalSeconds;
+    }
+
+    public float GetEffectiveOutputRate(float nominalRate)
+    {
+        return Mathf.Max(0f, nominalRate) * ProductionRateMultiplier;
+    }
+
+    public static float GetEffectiveCycleSeconds(Component station, float nominalSeconds)
+    {
+        if (station == null) return nominalSeconds;
+        StationNode node = station.GetComponent<StationNode>();
+        return node != null ? node.GetEffectiveCycleSeconds(nominalSeconds) : nominalSeconds;
     }
 
     public bool HasInputAmount => inputAmountPerMinute > 0.01f;
@@ -420,13 +486,27 @@ public enum StationRuntimeState
 public sealed class StationRuntimeMetrics : MonoBehaviour
 {
     struct OutputSample { public float time; public int units; }
+    struct EfficiencySample { public float time; public float seconds; public StationRuntimeState state; }
+
+    /// <summary>
+    /// Satisfactory's machine productivity display is a rolling uptime value over
+    /// approximately five minutes. Keeping the same window makes short stalls
+    /// visible without letting a station's entire lifetime hide recent changes.
+    /// </summary>
+    public const float EfficiencyWindowSeconds = 300f;
+    const float StateSampleIntervalSeconds = 0.1f;
+
     readonly Queue<OutputSample> outputSamples = new Queue<OutputSample>();
+    readonly Queue<EfficiencySample> efficiencySamples = new Queue<EfficiencySample>();
     float outputTrackingStartedAt;
+    float rollingObservedSeconds;
+    float rollingWorkingSeconds;
     StationNode node;
     float workingSeconds;
     float starvedSeconds;
     float blockedSeconds;
     float idleSeconds;
+    float stateSampleElapsed;
     StationRuntimeState previousState = StationRuntimeState.Idle;
 
     public StationRuntimeState CurrentState { get; private set; } = StationRuntimeState.Idle;
@@ -440,13 +520,17 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
     public float StarvedPercent => Percent(starvedSeconds);
     public float BlockedPercent => Percent(blockedSeconds);
     public float IdlePercent => Percent(idleSeconds);
-    /// <summary>
-    /// Productive time divided only by time in which production was demanded.
-    /// Intentional idle time after targets are met does not reduce efficiency.
-    /// </summary>
+    /// <summary>Lifetime time spent in a state, retained for diagnostics and flow summaries.</summary>
     public float DemandSeconds => workingSeconds + starvedSeconds + blockedSeconds;
-    public float EfficiencyPercent => DemandSeconds > 0.01f
-        ? workingSeconds * 100f / DemandSeconds : 0f;
+    /// <summary>Time represented by the current rolling efficiency window.</summary>
+    public float ObservedSeconds => rollingObservedSeconds;
+    /// <summary>
+    /// Productive uptime over the recent rolling window. Every second spent
+    /// starved, blocked, or idle lowers this value, matching Satisfactory's
+    /// productivity display behavior.
+    /// </summary>
+    public float EfficiencyPercent => rollingObservedSeconds > 0.01f
+        ? rollingWorkingSeconds * 100f / rollingObservedSeconds : 0f;
     public float ActualOutputPerMinute
     {
         get
@@ -488,9 +572,16 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
 
     void Update()
     {
+        stateSampleElapsed += Time.deltaTime;
+        if (stateSampleElapsed < StateSampleIntervalSeconds) return;
+
+        // Station state feeds analytics and the worker planner, which evaluates
+        // on a 0.25s cadence. Sampling at 10 Hz keeps those displays responsive
+        // without rechecking every station's buffers on every rendered frame.
+        float elapsed = stateSampleElapsed;
+        stateSampleElapsed = 0f;
         if (node == null) node = GetComponent<StationNode>();
         CurrentState = EvaluateState();
-        float elapsed = Time.deltaTime;
         if (CurrentState == previousState)
             CurrentStateSeconds += elapsed;
         else
@@ -505,6 +596,35 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
             case StationRuntimeState.Blocked: blockedSeconds += elapsed; break;
             default: idleSeconds += elapsed; break;
         }
+        RecordEfficiencySample(CurrentState, elapsed);
+    }
+
+    void RecordEfficiencySample(StationRuntimeState state, float seconds)
+    {
+        if (seconds <= 0f) return;
+        efficiencySamples.Enqueue(new EfficiencySample
+        {
+            time = Time.time,
+            seconds = seconds,
+            state = state
+        });
+        rollingObservedSeconds += seconds;
+        if (state == StationRuntimeState.Working)
+            rollingWorkingSeconds += seconds;
+
+        float cutoff = Time.time - EfficiencyWindowSeconds;
+        while (efficiencySamples.Count > 0 && efficiencySamples.Peek().time < cutoff)
+        {
+            EfficiencySample sample = efficiencySamples.Dequeue();
+            rollingObservedSeconds -= sample.seconds;
+            if (sample.state == StationRuntimeState.Working)
+                rollingWorkingSeconds -= sample.seconds;
+        }
+
+        // Floating point accumulation can leave a tiny negative remainder after
+        // pruning many samples. Keep the public values stable at zero.
+        rollingObservedSeconds = Mathf.Max(0f, rollingObservedSeconds);
+        rollingWorkingSeconds = Mathf.Max(0f, rollingWorkingSeconds);
     }
 
     float Percent(float seconds)

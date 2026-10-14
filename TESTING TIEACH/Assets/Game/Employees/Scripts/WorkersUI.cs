@@ -1106,60 +1106,18 @@ public class WorkersUI : MonoBehaviour
 
             if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
             {
-                flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n"
-                    + "Add stations to analyze this flow.\n"
-                    + "<b>Resources Required:</b> None";
+                var emptyFlowText = new System.Text.StringBuilder();
+                AppendDeliveryRateSummary(emptyFlowText, flow, null);
+                flowStatus.text = "<size=14><b><color=#F1C66D>Flow Capacity</color></b></size>\n"
+                    + emptyFlowText;
                 LayoutFlowPanel();
                 return;
             }
 
-            var economics = WorkflowAnalysis.AnalyzeFlow(flow);
+            var layout = WorkflowAnalysis.AnalyzeFlowLayout(flow);
             var sb = new System.Text.StringBuilder();
-            if (!string.IsNullOrEmpty(economics.summary))
-            {
-                int detailStart = economics.summary.IndexOf('\n');
-                sb.Append(detailStart >= 0
-                    ? economics.summary.Substring(0, detailStart)
-                    : economics.summary);
-                int bottleneckStart = economics.summary.IndexOf("Bottleneck:", System.StringComparison.OrdinalIgnoreCase);
-                if (bottleneckStart >= 0)
-                {
-                    int lineEnd = economics.summary.IndexOf('\n', bottleneckStart);
-                    string bottleneck = economics.summary.Substring(bottleneckStart,
-                        lineEnd >= 0 ? lineEnd - bottleneckStart : economics.summary.Length - bottleneckStart);
-                    if (!bottleneck.EndsWith("None", System.StringComparison.OrdinalIgnoreCase))
-                        sb.Append("\n<color=#F2C66D><b>⚠ ").Append(bottleneck).Append("</b></color>");
-                }
-            }
-            for (int i = 0; i < economics.lines.Count; i++)
-            {
-                if (sb.Length > 0) sb.Append('\n');
-                sb.Append(economics.lines[i]);
-            }
-            if (sb.Length > 0) sb.Append('\n');
-            int stationCount = flow.stations != null ? flow.stations.Count : 0;
-            int workerCount = flow.workers != null ? flow.workers.Count : 0;
-            sb.Append("<b>Process metrics:</b> ")
-                .Append(stationCount).Append(" stations | ")
-                .Append(workerCount).Append(" workers | Load ")
-                .Append(stationCount + workerCount);
-            sb.Append('\n');
-            sb.Append("<b>Resources Required:</b> ");
-            if (economics.requiredResources.Count > 0)
-            {
-                for (int i = 0; i < economics.requiredResources.Count; i++)
-                {
-                    if (i > 0) sb.Append(", ");
-                    ItemDefinition resource = economics.requiredResources[i];
-                    string resourceName = GetRawResourceName(resource);
-                    sb.Append(resourceName).Append(" ×1");
-                }
-            }
-            else
-            {
-                sb.Append("None");
-            }
-            flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n" + sb;
+            AppendDeliveryRateSummary(sb, flow, layout);
+            flowStatus.text = "<size=14><b><color=#F1C66D>Flow Capacity</color></b></size>\n" + sb;
             LayoutFlowPanel();
         }
         finally
@@ -1168,22 +1126,49 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
-    string GetRawResourceName(ItemDefinition resource)
+    static void AppendDeliveryRateSummary(System.Text.StringBuilder text,
+        ProductionFlowPlan selectedFlow, WorkflowAnalysis.FlowLayoutMetrics selectedMetrics)
     {
-        if (resource == null) return "Unknown";
+        if (text == null) return;
 
-        CustomerOrderConfig config = production != null ? production.orderConfig : null;
-        if (config != null)
+        if (selectedMetrics == null || selectedFlow == null
+            || selectedFlow.stations == null || selectedFlow.stations.Count == 0)
         {
-            if (config.IsBurger(resource)) return "Patty";
-            if (resource == config.friesIngredient) return "Potatoes";
-            if (config.IsFries(resource)) return "Potatoes";
-            if (config.IsDrink(resource)) return "Shake";
+            text.Append("Add stations to see this flow capacity.");
+            return;
         }
 
-        return KitchenInventory.Instance != null
-            ? KitchenInventory.Instance.GetDisplayName(resource)
-            : (!string.IsNullOrEmpty(resource.itemName) ? resource.itemName : resource.name);
+        bool understaffed = selectedMetrics.transportShortfallPerMinute > 0.01f;
+        text.Append("<b>Workers:</b> ")
+            .Append(FormatItemRate(selectedMetrics.laborCapacityPerMinute)).Append(" / ")
+            .Append(FormatItemRate(selectedMetrics.totalRateNeededPerMinute))
+            .Append(" items/min load incl. station time and travel")
+            .Append(" (").Append(selectedMetrics.activeWorkerCount).Append(" assigned");
+        if (understaffed)
+        {
+            int extraWorkers = WorkflowAnalysis.GetBaseWorkersNeeded(selectedMetrics.transportShortfallPerMinute);
+            text.Append("; short ").Append(FormatItemRate(selectedMetrics.transportShortfallPerMinute))
+                .Append("; add ").Append(extraWorkers)
+                .Append(extraWorkers == 1 ? " worker" : " workers")
+                .Append(" at ")
+                .Append(FormatItemRate(KitchenEmployee.GetTransportItemsPerMinuteForLevel(0)))
+                .Append("/min");
+        }
+        else
+        {
+            text.Append("; covered");
+        }
+        text.Append(")")
+            .Append("\n<b>Output:</b> ")
+            .Append(FormatItemRate(selectedMetrics.effectiveOutputPerMinute)).Append(" estimated / ")
+            .Append(FormatItemRate(selectedMetrics.stationCapacityPerMinute)).Append(" items/min max");
+        if (!string.IsNullOrEmpty(selectedMetrics.stationBottleneckName))
+            text.Append(" (").Append(selectedMetrics.stationBottleneckName).Append(" limit)");
+    }
+
+    static string FormatItemRate(float rate)
+    {
+        return rate.ToString("0.0");
     }
 
     public void RefreshFlowOnly()

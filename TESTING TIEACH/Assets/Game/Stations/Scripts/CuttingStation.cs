@@ -8,7 +8,8 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
-    [Min(0f)] public float processTimeSeconds = 8f;
+    [Tooltip("Time to process one item at 100% rate.")]
+    [Min(0f)] public float processTimeSeconds = 4f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -27,8 +28,19 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     public bool HasRecipeSelected => GetSelectedRecipe() != null;
     public bool IsProcessing => processingUnits > 0;
+    public float BaseProcessCycleSeconds
+    {
+        get
+        {
+            CuttingRecipeDefinition recipe = GetSelectedRecipe();
+            return recipe != null
+                ? StationNode.GetTierAdjustedCycleSeconds(this, recipe.baseCycleSeconds)
+                : processTimeSeconds;
+        }
+    }
+    public float EffectiveProcessTimeSeconds => StationNode.GetEffectiveCycleSeconds(this, BaseProcessCycleSeconds);
     public float ProcessRemainingSeconds => IsProcessing
-        ? Mathf.Max(0f, processTimeSeconds - processingTimer) : 0f;
+        ? Mathf.Max(0f, EffectiveProcessTimeSeconds - processingTimer) : 0f;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
     public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
@@ -123,11 +135,12 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     public int ProcessBuffered(int amount)
     {
-        amount = Mathf.Max(1, amount);
-        int processed = Mathf.Min(amount, inputUnits, OutputSlotCapacity - outputUnits);
+        // One call represents one item cycle, regardless of older batch callers.
+        int processed = Mathf.Min(1, Mathf.Min(inputUnits, OutputSlotCapacity - outputUnits));
         if (processed <= 0) return 0;
         inputUnits -= processed;
         outputUnits += processed;
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(processed);
         RefreshItemDisplay(true);
         return processed;
     }
@@ -137,24 +150,46 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null) return;
 
-        if (processingUnits <= 0)
+        float remainingTime = Mathf.Max(0f, deltaTime);
+        bool changed = false;
+        while (true)
         {
-            int availableOutput = Mathf.Max(0, OutputSlotCapacity - outputUnits);
-            int batch = Mathf.Min(inputUnits, availableOutput, InputSlotCapacity, OutputSlotCapacity);
-            if (batch <= 0) return;
-            inputUnits -= batch;
-            processingUnits = batch;
-            processingTimer = 0f;
-            RefreshItemDisplay(true);
+            if (processingUnits <= 0)
+            {
+                if (inputUnits <= 0 || outputUnits >= OutputSlotCapacity) break;
+                inputUnits--;
+                processingUnits = 1;
+                processingTimer = 0f;
+                changed = true;
+            }
+
+            float cycleSeconds = EffectiveProcessTimeSeconds;
+            if (cycleSeconds <= 0.001f)
+            {
+                outputUnits++;
+                processingUnits--;
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                changed = true;
+                if (outputUnits >= OutputSlotCapacity) break;
+                continue;
+            }
+
+            float untilOutput = Mathf.Max(0f, cycleSeconds - processingTimer);
+            float elapsed = Mathf.Min(remainingTime, untilOutput);
+            processingTimer += elapsed;
+            remainingTime -= elapsed;
+            if (processingTimer + 0.0001f < cycleSeconds) break;
+            if (outputUnits >= OutputSlotCapacity) break;
+
+            outputUnits++;
+            processingUnits = Mathf.Max(0, processingUnits - 1);
+            processingTimer = Mathf.Max(0f, processingTimer - cycleSeconds);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            changed = true;
+            if (processingUnits <= 0) processingTimer = 0f;
         }
 
-        processingTimer += deltaTime;
-        if (processingTimer < processTimeSeconds) return;
-        outputUnits = Mathf.Min(OutputSlotCapacity, outputUnits + processingUnits);
-        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(processingUnits);
-        processingUnits = 0;
-        processingTimer = 0f;
-        RefreshItemDisplay(true);
+        if (changed) RefreshItemDisplay(true);
     }
 
     public bool CanProcess(ItemDefinition input, ItemDefinition output = null)
@@ -182,7 +217,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     public bool TryProcess(CustomerOrderConfig config, List<ItemDefinition> processedIngredients, int amount = 1)
     {
-        amount = Mathf.Max(1, amount);
+        amount = 1;
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         if (config == null || recipe == null || processedIngredients == null
             || !HasIngredients(config, amount)) return false;
@@ -208,7 +243,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null) return false;
-        amount = Mathf.Max(1, amount);
+        amount = 1;
         if (!HasCarriedSupply(config, carried, amount)) return false;
         int remaining = amount;
         for (int i = carried.Count - 1; i >= 0 && remaining > 0; i--)
@@ -229,7 +264,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     {
         AdvanceAutomaticProcessing(Time.deltaTime);
         processProgressIndicator?.SetProgress(
-            IsProcessing, processingTimer / Mathf.Max(0.01f, processTimeSeconds));
+            IsProcessing, processingTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(false);
     }
 

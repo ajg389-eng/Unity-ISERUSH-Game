@@ -198,6 +198,7 @@ public sealed class DelayedTooltip : MonoBehaviour, IPointerEnterHandler, IPoint
         if (TMP_Settings.defaultFontAsset != null) tooltipText.font = TMP_Settings.defaultFontAsset;
         tooltipCanvasRect = canvasRect;
         tooltipObject.SetActive(false);
+        GameUITheme.ApplyTo(tooltipObject.transform);
     }
 
     static void UpdateSortingOrder(Canvas sourceCanvas)

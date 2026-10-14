@@ -15,6 +15,8 @@ public class OperationalNotificationMonitor : MonoBehaviour
     readonly Dictionary<ItemDefinition, int> stockBands = new Dictionary<ItemDefinition, int>();
     readonly HashSet<int> congestedRegisters = new HashSet<int>();
     readonly HashSet<int> congestedPickupStations = new HashSet<int>();
+    readonly HashSet<int> liveRegisters = new HashSet<int>();
+    readonly HashSet<int> livePickups = new HashSet<int>();
     float nextPoll;
     bool cashInitialized;
     bool cashWasLow;
@@ -67,9 +69,11 @@ public class OperationalNotificationMonitor : MonoBehaviour
 
     void CheckQueues()
     {
-        var liveRegisters = new HashSet<int>();
-        foreach (Register register in FindObjectsByType<Register>(FindObjectsSortMode.None))
+        liveRegisters.Clear();
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
+        for (int i = 0; i < registers.Count; i++)
         {
+            Register register = registers[i];
             if (register == null || !register.IsPlacedRegister || !register.isEnabled) continue;
             int id = register.GetInstanceID();
             liveRegisters.Add(id);
@@ -85,9 +89,11 @@ public class OperationalNotificationMonitor : MonoBehaviour
         }
         congestedRegisters.RemoveWhere(id => !liveRegisters.Contains(id));
 
-        var livePickups = new HashSet<int>();
-        foreach (HeatLampStation pickup in FindObjectsByType<HeatLampStation>(FindObjectsSortMode.None))
+        livePickups.Clear();
+        IReadOnlyList<HeatLampStation> pickups = HeatLampStation.ActiveStations;
+        for (int i = 0; i < pickups.Count; i++)
         {
+            HeatLampStation pickup = pickups[i];
             if (pickup == null || !pickup.isActiveAndEnabled) continue;
             int id = pickup.GetInstanceID();
             livePickups.Add(id);

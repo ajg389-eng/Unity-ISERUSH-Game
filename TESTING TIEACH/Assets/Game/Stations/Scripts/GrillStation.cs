@@ -15,8 +15,8 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     public ItemDefinition selectedProduct;
 
     [FormerlySerializedAs("cookTimeSeconds")]
-    [Tooltip("Total time for one grill operation. Loading, cooking, and unloading are included.")]
-    [Min(0f)] public float processTimeSeconds = 8f;
+    [Tooltip("Time to cook one item at 100% rate.")]
+    [Min(0f)] public float processTimeSeconds = 4f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -36,11 +36,25 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public bool HasProductSelected => selectedProduct != null;
     public bool HasPattyOnGrill => pattyUnits > 0;
-    public bool IsCookingPatty => pattyUnits > 0 && cookTimer < processTimeSeconds;
+    public float BaseProcessCycleSeconds
+    {
+        get
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            StationProcessingRecipeDefinition recipe = config != null
+                ? config.GetGrillRecipe(selectedProduct) : null;
+            return recipe != null
+                ? StationNode.GetTierAdjustedCycleSeconds(this, recipe.baseCycleSeconds)
+                : processTimeSeconds;
+        }
+    }
+    public float EffectiveProcessTimeSeconds => StationNode.GetEffectiveCycleSeconds(this, BaseProcessCycleSeconds);
+    public bool IsCookingPatty => pattyUnits > 0 && cookTimer < EffectiveProcessTimeSeconds;
     public int BufferedPattyCount => waitingInputUnits + pattyUnits + cookedOutputUnits;
     public float CookProgressSeconds => cookTimer;
     public float ProcessRemainingSeconds => IsCookingPatty
-        ? Mathf.Max(0f, processTimeSeconds - cookTimer) : 0f;
+        ? Mathf.Max(0f, EffectiveProcessTimeSeconds - cookTimer) : 0f;
     public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
     public int InputSlotCapacity => SlotCapacity;
@@ -175,15 +189,33 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     public void UpdateCooking(float deltaTime)
     {
-        if (pattyUnits > 0 && cookTimer < processTimeSeconds)
-            cookTimer += deltaTime;
-        if (pattyUnits > 0 && cookTimer >= processTimeSeconds)
+        float remainingTime = Mathf.Max(0f, deltaTime);
+        while (true)
         {
-            cookedOutputUnits += pattyUnits;
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(pattyUnits);
-            pattyUnits = 0;
-            cookTimer = 0f;
-            StartNextBatchIfPossible();
+            if (pattyUnits <= 0)
+                StartNextBatchIfPossible();
+            if (pattyUnits <= 0 || cookedOutputUnits >= SlotCapacity) break;
+
+            float cycleSeconds = EffectiveProcessTimeSeconds;
+            if (cycleSeconds <= 0.001f)
+            {
+                pattyUnits--;
+                cookedOutputUnits++;
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                continue;
+            }
+
+            float untilOutput = Mathf.Max(0f, cycleSeconds - cookTimer);
+            float elapsed = Mathf.Min(remainingTime, untilOutput);
+            cookTimer += elapsed;
+            remainingTime -= elapsed;
+            if (cookTimer + 0.0001f < cycleSeconds) break;
+
+            pattyUnits--;
+            cookedOutputUnits++;
+            cookTimer = Mathf.Max(0f, cookTimer - cycleSeconds);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            if (pattyUnits <= 0) cookTimer = 0f;
         }
     }
 
@@ -197,10 +229,11 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         if (pattyUnits > 0 || waitingInputUnits <= 0) return;
         // Raw food already occupies its final grill slots. Starting or finishing
         // cooking changes item state without moving it into another buffer.
-        int batch = Mathf.Min(waitingInputUnits, SlotCapacity - cookedOutputUnits);
-        if (batch <= 0) return;
-        waitingInputUnits -= batch;
-        pattyUnits = batch;
+        int availableItems = Mathf.Min(waitingInputUnits, SlotCapacity - cookedOutputUnits);
+        if (availableItems <= 0) return;
+        waitingInputUnits -= availableItems;
+        // These items are queued in the grill, but each gets its own cycle.
+        pattyUnits = availableItems;
         cookTimer = 0f;
     }
 
@@ -222,7 +255,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         cookedOutputUnits = 0;
         pattyUnits = Mathf.Clamp(units, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
         cookTimer = pattyUnits > 0
-            ? Mathf.Clamp(progressSeconds, 0f, processTimeSeconds)
+            ? Mathf.Clamp(progressSeconds, 0f, EffectiveProcessTimeSeconds)
             : 0f;
         bufferedOrder = null;
     }
@@ -231,7 +264,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     {
         UpdateCooking(Time.deltaTime);
         processProgressIndicator?.SetProgress(
-            IsCookingPatty, cookTimer / Mathf.Max(0.01f, processTimeSeconds));
+            IsCookingPatty, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(force: false);
     }
 

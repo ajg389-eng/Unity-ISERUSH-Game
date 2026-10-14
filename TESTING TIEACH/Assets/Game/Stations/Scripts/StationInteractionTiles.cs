@@ -25,6 +25,22 @@ public class StationInteractionTiles : MonoBehaviour
 
     BuildFootprint footprint;
     bool? lastShown;
+    readonly List<Vector3> interactionStandCenterCache = new List<Vector3>();
+    readonly List<Vector3> interactionPositionScratch = new List<Vector3>();
+    GridManager subscribedGrid;
+    bool interactionStandCenterCacheValid;
+    Vector3 cachedStationPosition;
+    Quaternion cachedStationRotation;
+    Vector3 cachedStationScale;
+    Vector3 cachedGridOrigin;
+    float cachedGridCellSize;
+    int cachedGridWidth;
+    int cachedGridHeight;
+    int cachedFootprintSizeX;
+    int cachedFootprintSizeY;
+    int cachedOffsetSignature;
+    GameObject cachedHighlight;
+    int cachedHighlightChildCount;
 
     void Awake()
     {
@@ -35,6 +51,7 @@ public class StationInteractionTiles : MonoBehaviour
             interactionTileOffsets = new List<Vector2Int> { new Vector2Int(0, -1) };
         if (buildModeHighlight == null)
             TryAutoFindHighlight();
+        EnsureGridSubscription();
     }
 
     void Start()
@@ -355,7 +372,22 @@ public class StationInteractionTiles : MonoBehaviour
 
     void OnEnable()
     {
+        EnsureGridSubscription();
         ApplyHighlightVisibility(force: true);
+    }
+
+    void OnDisable()
+    {
+        if (subscribedGrid != null)
+            subscribedGrid.GridChanged -= InvalidateInteractionStandCenterCache;
+        subscribedGrid = null;
+        interactionStandCenterCacheValid = false;
+    }
+
+    void OnDestroy()
+    {
+        GridManager ownerGrid = grid != null ? grid : GridManager.Instance;
+        ownerGrid?.ReleaseInteractionHighlightForPlacement(this);
     }
 
     void ApplyHighlightVisibility(bool force)
@@ -388,7 +420,15 @@ public class StationInteractionTiles : MonoBehaviour
     public List<Vector3> GetInteractionTileWorldPositions()
     {
         var list = new List<Vector3>();
-        if (grid == null || interactionTileOffsets == null) return list;
+        GetInteractionTileWorldPositions(list);
+        return list;
+    }
+
+    public void GetInteractionTileWorldPositions(List<Vector3> list)
+    {
+        if (list == null) return;
+        list.Clear();
+        if (grid == null || interactionTileOffsets == null) return;
 
         GetOriginCell(out int ox, out int oy);
         foreach (var offset in interactionTileOffsets)
@@ -398,14 +438,23 @@ public class StationInteractionTiles : MonoBehaviour
             if (gx >= 0 && gx < grid.Width && gy >= 0 && gy < grid.Height)
                 list.Add(grid.CellToWorld(gx, gy));
         }
-        return list;
     }
 
     /// <summary>World centers of the green interaction quads on the model.</summary>
     public List<Vector3> GetInteractionPositionsFromModel()
     {
         var list = new List<Vector3>();
-        if (buildModeHighlight == null) return list;
+        GetInteractionPositionsFromModel(list);
+        return list;
+    }
+
+    public void GetInteractionPositionsFromModel(List<Vector3> list)
+    {
+        if (list == null) return;
+        list.Clear();
+        if (buildModeHighlight == null)
+            TryAutoFindHighlight();
+        if (buildModeHighlight == null) return;
 
         // If highlight has child quads, each child is a stand point
         int childCount = buildModeHighlight.transform.childCount;
@@ -417,12 +466,40 @@ public class StationInteractionTiles : MonoBehaviour
                 if (child != null)
                     list.Add(FlattenToGround(child.position));
             }
-            return list;
+            return;
         }
 
         // Highlight itself is the quad
         list.Add(FlattenToGround(buildModeHighlight.transform.position));
-        return list;
+    }
+
+    /// <summary>Returns the authored quad positions as if the station root were placed at this pose.</summary>
+    public List<Vector3> GetInteractionPositionsAt(Vector3 rootPosition, Quaternion rootRotation)
+    {
+        List<Vector3> positions = GetInteractionPositionsFromModel();
+        TransformPositionsAt(positions, rootPosition, rootRotation);
+        return positions;
+    }
+
+    public void GetInteractionPositionsAt(Vector3 rootPosition, Quaternion rootRotation,
+        List<Vector3> positions)
+    {
+        if (positions == null) return;
+        GetInteractionPositionsFromModel(positions);
+        TransformPositionsAt(positions, rootPosition, rootRotation);
+    }
+
+    void TransformPositionsAt(List<Vector3> positions, Vector3 rootPosition,
+        Quaternion rootRotation)
+    {
+        Quaternion inverseCurrentRotation = Quaternion.Inverse(transform.rotation);
+        for (int i = 0; i < positions.Count; i++)
+        {
+            Vector3 localOffset = inverseCurrentRotation * (positions[i] - transform.position);
+            positions[i] = rootPosition + rootRotation * localOffset;
+            if (grid != null)
+                positions[i] = FlattenToGround(positions[i]);
+        }
     }
 
     Vector3 FlattenToGround(Vector3 world)
@@ -432,7 +509,7 @@ public class StationInteractionTiles : MonoBehaviour
         return world;
     }
 
-    /// <summary>First interaction stand position (center of first green quad).</summary>
+    /// <summary>First interaction stand position, which is also the station's flow-node tile.</summary>
     public Vector3 GetFirstInteractionPosition()
     {
         var centers = GetInteractionStandCenters();
@@ -441,15 +518,36 @@ public class StationInteractionTiles : MonoBehaviour
         return SnapToTileCenter(FlattenToGround(transform.position));
     }
 
-    /// <summary>
-    /// Stand positions: authored green quad centers first, then configured offsets
-    /// and free cells around the station footprint as reachable alternatives.
-    /// </summary>
+    /// <summary>Tile center used by both the station's flow node and its workers.</summary>
+    public Vector3 GetFlowNodeInteractionPosition()
+    {
+        Vector3 position = GetFirstInteractionPosition();
+        if (grid == null)
+            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        if (grid == null)
+            return position;
+
+        position = grid.GetCellCenter(position);
+        position.y = grid.Origin.y;
+        return position;
+    }
+
+    /// <summary>Stand positions authored as green quads, or configured fallback offsets.</summary>
     public List<Vector3> GetInteractionStandCenters()
     {
-        var list = new List<Vector3>();
+        EnsureGridSubscription();
+        if (!IsInteractionStandCenterCacheCurrent())
+            RebuildInteractionStandCenterCache();
+        return interactionStandCenterCache;
+    }
 
-        var fromModel = GetInteractionPositionsFromModel();
+    void RebuildInteractionStandCenterCache()
+    {
+        List<Vector3> list = interactionStandCenterCache;
+        list.Clear();
+
+        List<Vector3> fromModel = interactionPositionScratch;
+        GetInteractionPositionsFromModel(fromModel);
         if (fromModel != null && fromModel.Count > 0)
         {
             foreach (var p in fromModel)
@@ -457,76 +555,85 @@ public class StationInteractionTiles : MonoBehaviour
         }
         else
         {
-            var fromOffsets = GetInteractionTileWorldPositions();
-            if (fromOffsets != null)
-            {
-                foreach (var p in fromOffsets)
-                    AddUniqueTileCenter(list, p);
-            }
+            GetInteractionTileWorldPositions(fromModel);
+            foreach (var p in fromModel)
+                AddUniqueTileCenter(list, p);
         }
 
-        AddReachableFootprintStandCenters(list);
-        return list;
+        CacheInteractionStandCenterState();
     }
 
-    void AddReachableFootprintStandCenters(List<Vector3> centers)
+    bool IsInteractionStandCenterCacheCurrent()
     {
-        if (centers == null)
-            return;
-        if (grid == null)
-            grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
-        if (grid == null)
-            return;
-        if (footprint == null)
-            footprint = GetComponent<BuildFootprint>();
-        if (footprint == null)
-            return;
+        if (!interactionStandCenterCacheValid)
+            return false;
 
-        int sizeX = Mathf.Max(1, footprint.sizeX);
-        int sizeY = Mathf.Max(1, footprint.sizeY);
-        int yaw = Mathf.RoundToInt(transform.eulerAngles.y / 90f) & 3;
-        if (yaw == 1 || yaw == 3)
-        {
-            int temp = sizeX;
-            sizeX = sizeY;
-            sizeY = temp;
-        }
+        if (grid != subscribedGrid
+            || transform.position != cachedStationPosition
+            || transform.rotation != cachedStationRotation
+            || transform.lossyScale != cachedStationScale
+            || buildModeHighlight != cachedHighlight
+            || (buildModeHighlight != null
+                && buildModeHighlight.transform.childCount != cachedHighlightChildCount)
+            || (grid != null && (grid.Origin != cachedGridOrigin
+                || grid.cellSize != cachedGridCellSize
+                || grid.Width != cachedGridWidth || grid.Height != cachedGridHeight)))
+            return false;
 
-        if (!grid.TryGetFootprintOriginFromCenter(transform.position, sizeX, sizeY,
-            out int originX, out int originY))
-            return;
+        int sizeX = footprint != null ? Mathf.Max(1, footprint.sizeX) : 1;
+        int sizeY = footprint != null ? Mathf.Max(1, footprint.sizeY) : 1;
+        return sizeX == cachedFootprintSizeX && sizeY == cachedFootprintSizeY
+            && GetInteractionOffsetSignature() == cachedOffsetSignature;
+    }
 
-        // Authored green tiles remain preferred, but if nearby equipment blocks
-        // them workers can use any free cell directly beside the station. These
-        // cells are also accepted by IsEmployeeOnInteractionTile, so the worker
-        // can finish the action after routing to an alternate side.
-        int minX = originX - 1;
-        int maxX = originX + sizeX;
-        int minY = originY - 1;
-        int maxY = originY + sizeY;
-        for (int x = minX; x <= maxX; x++)
+    void CacheInteractionStandCenterState()
+    {
+        cachedStationPosition = transform.position;
+        cachedStationRotation = transform.rotation;
+        cachedStationScale = transform.lossyScale;
+        cachedGridOrigin = grid != null ? grid.Origin : Vector3.zero;
+        cachedGridCellSize = grid != null ? grid.cellSize : 0f;
+        cachedGridWidth = grid != null ? grid.Width : 0;
+        cachedGridHeight = grid != null ? grid.Height : 0;
+        cachedFootprintSizeX = footprint != null ? Mathf.Max(1, footprint.sizeX) : 1;
+        cachedFootprintSizeY = footprint != null ? Mathf.Max(1, footprint.sizeY) : 1;
+        cachedOffsetSignature = GetInteractionOffsetSignature();
+        cachedHighlight = buildModeHighlight;
+        cachedHighlightChildCount = buildModeHighlight != null
+            ? buildModeHighlight.transform.childCount : 0;
+        interactionStandCenterCacheValid = true;
+    }
+
+    int GetInteractionOffsetSignature()
+    {
+        unchecked
         {
-            AddReachableFootprintStandCenter(centers, x, minY);
-            AddReachableFootprintStandCenter(centers, x, maxY);
-        }
-        for (int y = originY; y < originY + sizeY; y++)
-        {
-            AddReachableFootprintStandCenter(centers, minX, y);
-            AddReachableFootprintStandCenter(centers, maxX, y);
+            int signature = interactionTileOffsets != null ? interactionTileOffsets.Count : 0;
+            if (interactionTileOffsets != null)
+                for (int i = 0; i < interactionTileOffsets.Count; i++)
+                    signature = signature * 397 ^ interactionTileOffsets[i].GetHashCode();
+            return signature;
         }
     }
 
-    void AddReachableFootprintStandCenter(List<Vector3> centers, int x, int y)
+    void EnsureGridSubscription()
     {
-        if (grid == null || !grid.IsWalkable(x, y))
+        if (grid == null && GridManager.Instance != null)
+            grid = GridManager.Instance;
+        if (subscribedGrid == grid)
             return;
 
-        Vector3 center = grid.CellToWorld(x, y);
-        center.y = grid.Origin.y;
-        for (int i = 0; i < centers.Count; i++)
-            if ((centers[i] - center).sqrMagnitude < 0.001f)
-                return;
-        centers.Add(center);
+        if (subscribedGrid != null)
+            subscribedGrid.GridChanged -= InvalidateInteractionStandCenterCache;
+        subscribedGrid = grid;
+        if (subscribedGrid != null)
+            subscribedGrid.GridChanged += InvalidateInteractionStandCenterCache;
+        interactionStandCenterCacheValid = false;
+    }
+
+    void InvalidateInteractionStandCenterCache()
+    {
+        interactionStandCenterCacheValid = false;
     }
 
     Vector3 SnapToTileCenter(Vector3 world)
@@ -616,7 +723,7 @@ public class StationInteractionTiles : MonoBehaviour
         return 0.35f;
     }
 
-    /// <summary>True only when the employee is at the center of a green interaction quad.</summary>
+    /// <summary>True only when the employee is at the station's flow-node interaction tile.</summary>
     public bool IsEmployeeOnInteractionTile(Vector3 worldPosition)
     {
         var centers = GetInteractionStandCenters();
@@ -625,15 +732,9 @@ public class StationInteractionTiles : MonoBehaviour
 
         float tol = GetStandTolerance();
         float tolSq = tol * tol;
-
-        for (int i = 0; i < centers.Count; i++)
-        {
-            Vector3 c = centers[i];
-            float dx = worldPosition.x - c.x;
-            float dz = worldPosition.z - c.z;
-            if (dx * dx + dz * dz <= tolSq)
-                return true;
-        }
-        return false;
+        Vector3 center = GetFlowNodeInteractionPosition();
+        float dx = worldPosition.x - center.x;
+        float dz = worldPosition.z - center.z;
+        return dx * dx + dz * dz <= tolSq;
     }
 }

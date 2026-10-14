@@ -44,6 +44,9 @@ public class GridManager : MonoBehaviour
     readonly Dictionary<(int x, int y), (int x, int y)> pathParent = new Dictionary<(int x, int y), (int x, int y)>();
     readonly Dictionary<(int x, int y), float> pathBestG = new Dictionary<(int x, int y), float>();
     readonly List<(int x, int y)> pathCells = new List<(int x, int y)>();
+    readonly Dictionary<StationInteractionTiles, List<Vector2Int>> interactionBuildReservations =
+        new Dictionary<StationInteractionTiles, List<Vector2Int>>();
+    readonly List<Vector3> interactionPositionScratch = new List<Vector3>();
 
     /// <summary>Fired after Width/Height/Origin/Nodes change (e.g. expand).</summary>
     public event System.Action GridChanged;
@@ -454,14 +457,58 @@ public class GridManager : MonoBehaviour
         return x >= 0 && y >= 0 && x < Width && y < Height;
     }
 
-    public bool CanPlace(int startX, int startY, int sizeX, int sizeY)
+    public bool CanPlace(int startX, int startY, int sizeX, int sizeY,
+        StationInteractionTiles ignoredHighlightOwner = null)
     {
         for (int x = startX; x < startX + sizeX; x++)
             for (int y = startY; y < startY + sizeY; y++)
             {
                 if (x < 0 || y < 0 || x >= Width || y >= Height) return false;
-                if (Nodes[x, y].occupied) return false;
+                Node node = Nodes[x, y];
+                int ignoredReservations = 0;
+                if (ignoredHighlightOwner != null
+                    && interactionBuildReservations.TryGetValue(ignoredHighlightOwner,
+                        out List<Vector2Int> ignoredCells)
+                    && ignoredCells.Contains(new Vector2Int(x, y)))
+                    ignoredReservations = 1;
+                if (node.occupied
+                    || node.interactionBuildReservationCount > ignoredReservations)
+                    return false;
             }
+        return true;
+    }
+
+    /// <summary>
+    /// Checks both the station body and its highlighted interaction cells against
+    /// existing station bodies and interaction cells.
+    /// </summary>
+    public bool CanPlaceWithInteractionHighlight(int startX, int startY, int sizeX, int sizeY,
+        StationInteractionTiles candidateHighlight, Vector3 candidatePosition,
+        Quaternion candidateRotation, StationInteractionTiles ignoredHighlightOwner = null)
+    {
+        if (!CanPlace(startX, startY, sizeX, sizeY, ignoredHighlightOwner)) return false;
+        if (candidateHighlight == null) return true;
+
+        candidateHighlight.grid = this;
+        candidateHighlight.GetInteractionPositionsAt(candidatePosition,
+            candidateRotation, interactionPositionScratch);
+        for (int i = 0; i < interactionPositionScratch.Count; i++)
+        {
+            if (!WorldToCell(interactionPositionScratch[i], out int x, out int y)) continue;
+            bool insideCandidateBody = x >= startX && x < startX + sizeX
+                && y >= startY && y < startY + sizeY;
+            Node node = Nodes[x, y];
+            if (!insideCandidateBody && node.occupied) return false;
+
+            int ignoredReservations = 0;
+            if (ignoredHighlightOwner != null
+                && interactionBuildReservations.TryGetValue(ignoredHighlightOwner,
+                    out List<Vector2Int> ignoredCells)
+                && ignoredCells.Contains(new Vector2Int(x, y)))
+                ignoredReservations = 1;
+            if (node.interactionBuildReservationCount > ignoredReservations)
+                return false;
+        }
         return true;
     }
 
@@ -547,7 +594,9 @@ public class GridManager : MonoBehaviour
             {
                 if (Nodes[x, y] == null) continue;
                 Nodes[x, y].occupied = false;
+                Nodes[x, y].interactionBuildReservationCount = 0;
             }
+        interactionBuildReservations.Clear();
     }
 
     /// <summary>
@@ -601,12 +650,70 @@ public class GridManager : MonoBehaviour
 
             // Keep green stand tiles walkable so workers can path onto them.
             ClearInteractionStandOccupancy();
+            RebuildInteractionBuildReservations();
         }
         finally
         {
             suppressGridChanged = false;
             GridChanged?.Invoke();
         }
+    }
+
+    void RebuildInteractionBuildReservations()
+    {
+        var tiles = FindObjectsByType<StationInteractionTiles>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (StationInteractionTiles tile in tiles)
+        {
+            if (tile == null || ShouldIgnoreOccupancyObject(tile.gameObject)) continue;
+            tile.grid = this;
+            ReserveInteractionHighlightForPlacement(tile);
+        }
+    }
+
+    /// <summary>
+    /// Reserves the grid cells covered by this station's visible interaction quads
+    /// for building, while leaving those cells walkable for station workers.
+    /// </summary>
+    public void ReserveInteractionHighlightForPlacement(StationInteractionTiles tiles)
+    {
+        if (tiles == null || Nodes == null) return;
+        ReleaseInteractionHighlightForPlacement(tiles);
+
+        tiles.grid = this;
+        List<Vector3> quadPositions = tiles.GetInteractionPositionsFromModel();
+        if (quadPositions == null || quadPositions.Count == 0) return;
+
+        var reservedCells = new List<Vector2Int>(quadPositions.Count);
+        for (int i = 0; i < quadPositions.Count; i++)
+        {
+            if (!WorldToCell(quadPositions[i], out int x, out int y)) continue;
+            var cell = new Vector2Int(x, y);
+            if (reservedCells.Contains(cell)) continue;
+            reservedCells.Add(cell);
+            Nodes[x, y].interactionBuildReservationCount++;
+        }
+
+        if (reservedCells.Count > 0)
+            interactionBuildReservations[tiles] = reservedCells;
+    }
+
+    /// <summary>Releases a station's highlighted cells while it is being moved.</summary>
+    public void ReleaseInteractionHighlightForPlacement(StationInteractionTiles tiles)
+    {
+        if (tiles == null || !interactionBuildReservations.TryGetValue(tiles,
+            out List<Vector2Int> reservedCells)) return;
+
+        for (int i = 0; i < reservedCells.Count; i++)
+        {
+            Vector2Int cell = reservedCells[i];
+            if (cell.x < 0 || cell.y < 0 || cell.x >= Width || cell.y >= Height) continue;
+            Node node = Nodes[cell.x, cell.y];
+            if (node != null)
+                node.interactionBuildReservationCount = Mathf.Max(
+                    0, node.interactionBuildReservationCount - 1);
+        }
+        interactionBuildReservations.Remove(tiles);
     }
 
     void ClearInteractionStandOccupancy()
@@ -869,21 +976,15 @@ public class GridManager : MonoBehaviour
 
             // Iterate the fixed neighbor set directly. The previous iterator method
             // allocated an enumerator for every node expanded by every path query.
-            for (int neighborIndex = 0; neighborIndex < 9; neighborIndex++)
+            for (int neighborIndex = 0; neighborIndex < 4; neighborIndex++)
             {
-                int dx = neighborIndex % 3 - 1;
-                int dy = neighborIndex / 3 - 1;
-                if (dx == 0 && dy == 0) continue;
+                int dx = neighborIndex == 0 ? 1 : neighborIndex == 1 ? -1 : 0;
+                int dy = neighborIndex == 2 ? 1 : neighborIndex == 3 ? -1 : 0;
                 int nx = cur.x + dx;
                 int ny = cur.y + dy;
                 if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
-                if (dx != 0 && dy != 0
-                    && (!IsWalkableForRadius(cur.x + dx, cur.y, clearanceRadius)
-                        || !IsWalkableForRadius(cur.x, cur.y + dy, clearanceRadius)))
-                    continue;
                 if (!IsWalkableForRadius(nx, ny, clearanceRadius) || closed.Contains((nx, ny))) continue;
-                bool diagonal = nx != cur.x && ny != cur.y;
-                float g = cur.g + (diagonal ? 1.41421356f : 1f);
+                float g = cur.g + 1f;
                 if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)
                     continue;
                 bestG[(nx, ny)] = g;
@@ -899,8 +1000,7 @@ public class GridManager : MonoBehaviour
     {
         int dx = Mathf.Abs(x - gx);
         int dy = Mathf.Abs(y - gy);
-        int diagonal = Mathf.Min(dx, dy);
-        return diagonal * 1.41421356f + Mathf.Abs(dx - dy);
+        return dx + dy;
     }
 
     static void SimplifyPathInPlace(List<(int x, int y)> path)
@@ -945,6 +1045,7 @@ public class Node
     public Vector3 world;
     public bool walkable = true;
     public bool occupied = false;
+    public int interactionBuildReservationCount = 0;
 
     public Node(int x, int y, Vector3 world)
     {

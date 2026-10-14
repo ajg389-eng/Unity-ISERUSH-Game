@@ -384,9 +384,9 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
                 "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows arrivals during one hour. The highlighted bar is the current hour. Customers arrive as a Poisson process, so the count jumps around the average. That average is lowest on <b>Milestone 1</b> and rises with each later milestone. Complete <b>Queue Analytics</b> research to enable lunch and dinner rush hours. Prepare inventory and labor before the peak.\n\n" +
-                "<b>Live demand and throughput</b>\nOutstanding is the exact number of items customers still need. Ready and in production are live counts. Ordered and completed are measured totals from the trailing 60 simulation seconds, not forecasts.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Demand changes over time. Capacity that works during a quiet hour may fail during the peak.";
+                "<b>Visit trend</b>\nEach bar shows actual arrivals during one hour. The highlighted bar is the current hour. The exact plan shows scheduled arrivals for that hour. Customers arrive at evenly spaced intervals; research-unlocked lunch and dinner rushes use a fixed multiplier.\n\n" +
+                "<b>Demand and throughput by item</b>\nDemand / Min is the exact scheduled request rate for each enabled menu recipe. Its baseline starts from that assembler recipe's 100% MK1 output, rounded to the nearest multiple of five. A researched rush applies the fixed multiplier while keeping rates on five-item increments. Outstanding is the number of items customers still need. Ready and cooking are live counts; completed is the measured total from the trailing 60 simulation seconds.\n\n" +
+                "<color=#73BFF2><b>ISE idea:</b></color> Compare each fixed demand rate with the production line's output and add or split stations to balance capacity.";
             return;
         }
 

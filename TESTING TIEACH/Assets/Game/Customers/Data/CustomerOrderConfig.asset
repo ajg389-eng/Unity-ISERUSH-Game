@@ -34,6 +34,7 @@ MonoBehaviour:
   cookedPattyIngredient: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   assemblyRecipes:
   - recipeName: Hamburger
+    baseCycleSeconds: 4
     output: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
     processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
     processedInputName: Cooked Patty
@@ -51,6 +52,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Cheese Patty
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
     processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
     processedInputName: Cooked Patty
@@ -70,6 +72,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Cheeseburger
+    baseCycleSeconds: 4
     output: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
     processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
     processedInputName: Cheese Patty
@@ -87,6 +90,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Veggie Mix
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: 7b59b4f74a14476da609f2569bb57f1a, type: 2}
     processedInput: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
     processedInputName: Tomato Slice
@@ -106,6 +110,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Classic Burger
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
     processedInput: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
     processedInputName: Cooked Patty
@@ -123,6 +128,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Bacon Cheeseburger
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: a45136d6ad1b05e4db7673d678326a0e, type: 2}
     processedInput: {fileID: 11400000, guid: a1c4e68f53014cf196b17dfdd2182ab9, type: 2}
     processedInputName: Cheese Patty
@@ -143,6 +149,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Super Burger
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
     processedInput: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
     processedInputName: Classic Burger
@@ -162,6 +169,7 @@ MonoBehaviour:
     - {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
     - {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   - recipeName: Fries
+    baseCycleSeconds: 4
     output: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
     processedInput: {fileID: 11400000, guid: 0751b0a0296e2194d87f5a36ac2663a0, type: 2}
     processedInputName: Cooked potato slices
@@ -179,6 +187,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Shake
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
     processedInput: {fileID: 11400000, guid: f7a17e9a936db4546b74e51b950c0a0e, type: 2}
     processedInputName: Milk
@@ -196,6 +205,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Cheese Sauce
+    baseCycleSeconds: 3
     output: {fileID: 11400000, guid: df34134f4a5910b48aff3c200b517b25, type: 2}
     processedInput: {fileID: 0}
     processedInputName: 
@@ -215,6 +225,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Cheese Fries
+    baseCycleSeconds: 4
     output: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
     processedInput: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
     processedInputName: Fries
@@ -232,6 +243,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Cheese Bacon Fries
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: 8ff4b007de730b947a71007696e5897b, type: 2}
     processedInput: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
     processedInputName: Cheese Fries
@@ -252,6 +264,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Whipped Cream Shake
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
     processedInput: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
     processedInputName: Shake
@@ -269,6 +282,7 @@ MonoBehaviour:
     thirdSupplyPipeline:
     thirdSupplyStageOutputs: []
   - recipeName: Whipped Cream Sprinkle Shake
+    baseCycleSeconds: 6
     output: {fileID: 11400000, guid: a3bdaf8885c359245a823625c462ad68, type: 2}
     processedInput: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
     processedInputName: Whipped Cream Shake
@@ -301,38 +315,49 @@ MonoBehaviour:
   cookedEggIngredient: {fileID: 11400000, guid: 6ba9a38cba507d84a9634aaf82340b08, type: 2}
   grillRecipes:
   - recipeName: Cooked Patty
+    baseCycleSeconds: 6
     input: {fileID: 11400000, guid: aa410000000000000000000000000001, type: 2}
     output: {fileID: 11400000, guid: aa410000000000000000000000000002, type: 2}
   - recipeName: Cooked Bacon
+    baseCycleSeconds: 4
     input: {fileID: 11400000, guid: 6cee302aec6e481458cb4eadcb0e8ea3, type: 2}
     output: {fileID: 11400000, guid: 04d306ef11534d249a61f3fcc795c0cf, type: 2}
   - recipeName: Cooked Egg
+    baseCycleSeconds: 3
     input: {fileID: 11400000, guid: a94596b1c47524f4fb2d099f0f1e72a8, type: 2}
     output: {fileID: 11400000, guid: 6ba9a38cba507d84a9634aaf82340b08, type: 2}
   fryerRecipes:
   - recipeName: Cooked Potato Slices
+    baseCycleSeconds: 6
     input: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
     output: {fileID: 11400000, guid: 0751b0a0296e2194d87f5a36ac2663a0, type: 2}
   - recipeName: Fried Onion Ring
+    baseCycleSeconds: 4
     input: {fileID: 11400000, guid: e98c12eea6c888145a87ba87b8a1d3ff, type: 2}
     output: {fileID: 11400000, guid: 04c7bfa1dd1e8fe42b53b7cae3ae0bf7, type: 2}
   cuttingRecipes:
   - recipeName: Sliced Cheese
+    baseCycleSeconds: 3
     input: {fileID: 11400000, guid: f6e7e873808746579e3df94a823321bb, type: 2}
     output: {fileID: 11400000, guid: d7a18a5f06b24ac1a1d5a0c8f7e2c901, type: 2}
   - recipeName: Lettuce Slice
+    baseCycleSeconds: 3
     input: {fileID: 11400000, guid: 08d802adcbd44bf8acb10fbb2b354dee, type: 2}
     output: {fileID: 11400000, guid: c1110000000000000000000000000001, type: 2}
   - recipeName: Tomato Slice
+    baseCycleSeconds: 4
     input: {fileID: 11400000, guid: a2e40310316a4ae994d3232b0dc4c9ad, type: 2}
     output: {fileID: 11400000, guid: c1110000000000000000000000000002, type: 2}
   - recipeName: Potato Slices
+    baseCycleSeconds: 5
     input: {fileID: 11400000, guid: 76ccabf15284402ea17c8f2e7d92c405, type: 2}
     output: {fileID: 11400000, guid: c1110000000000000000000000000005, type: 2}
   - recipeName: Onion Ring
+    baseCycleSeconds: 4
     input: {fileID: 11400000, guid: d1d6f3572f3e19e4e8ce2ee16de2adf7, type: 2}
     output: {fileID: 11400000, guid: e98c12eea6c888145a87ba87b8a1d3ff, type: 2}
   - recipeName: Cut Bacon
+    baseCycleSeconds: 4
     input: {fileID: 11400000, guid: 73163869681dd054a8e5ed64a8fa8453, type: 2}
     output: {fileID: 11400000, guid: 6cee302aec6e481458cb4eadcb0e8ea3, type: 2}
   drinkItem: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}

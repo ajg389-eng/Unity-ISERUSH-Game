@@ -55,12 +55,26 @@ public class ProductionFlowPlan
     public List<GameObject> GetOutgoing(GameObject station)
     {
         var result = new List<GameObject>();
-        if (station == null) return result;
-        EnsureLegacyConnections();
-        foreach (ProductionFlowConnection connection in connections)
-            if (connection.from == station && connection.to != null && !result.Contains(connection.to))
-                result.Add(connection.to);
+        GetOutgoing(station, result);
         return result;
+    }
+
+    public void GetOutgoing(GameObject station, List<GameObject> result)
+    {
+        if (result == null) return;
+        result.Clear();
+        if (station == null) return;
+        if (!graphInitialized)
+            EnsureLegacyConnections();
+        if (connections == null || stations == null || !stations.Contains(station)) return;
+        for (int i = 0; i < connections.Count; i++)
+        {
+            ProductionFlowConnection connection = connections[i];
+            if (connection == null || connection.from != station || connection.to == null
+                || !stations.Contains(connection.to) || result.Contains(connection.to))
+                continue;
+            result.Add(connection.to);
+        }
     }
 
     public bool HasConnection(GameObject from, GameObject to)
@@ -356,6 +370,130 @@ public static class WorkerFlowAssigner
         }
     }
 
+    static void ConfigureAssemblyRecipesFromConnections(ProductionFlowPlan flow)
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig
+            : null;
+        if (flow == null || config == null || flow.connections == null
+            || flow.connections.Count == 0 || flow.stations == null)
+            return;
+
+        // Resolve connected assembly stages in route order, repeating so an
+        // upstream assembly can expose its output to a later assembly stage.
+        for (int pass = 0; pass < flow.stations.Count; pass++)
+        {
+            bool changed = false;
+            foreach (GameObject station in flow.stations)
+            {
+                AssemblyStation assembly = station != null
+                    ? station.GetComponent<AssemblyStation>()
+                    : null;
+                if (assembly == null || assembly.BufferedProcessedInputCount > 0
+                    || assembly.BufferedPantryInputCount > 0 || assembly.BufferedThirdInputCount > 0
+                    || assembly.BufferedOutputCount > 0 || assembly.ProcessingUnitCount > 0)
+                    continue;
+
+                var connectedInputs = new HashSet<ItemDefinition>();
+                foreach (ProductionFlowConnection connection in flow.connections)
+                {
+                    if (connection == null || connection.to != station || connection.from == null)
+                        continue;
+                    AddConnectedStationProducts(connection.from, connectedInputs);
+                }
+                if (connectedInputs.Count == 0)
+                    continue;
+
+                AssemblyRecipeDefinition match = null;
+                bool ambiguous = false;
+                foreach (AssemblyRecipeDefinition candidate in config.GetAssemblyRecipes())
+                {
+                    if (!AllRecipeInputsConnected(candidate, connectedInputs))
+                        continue;
+                    if (match != null && match != candidate)
+                    {
+                        ambiguous = true;
+                        break;
+                    }
+                    match = candidate;
+                }
+
+                if (ambiguous || match == null || assembly.GetSelectedRecipe() == match)
+                    continue;
+
+                assembly.SetRecipe(match);
+                changed = true;
+            }
+
+            if (!changed)
+                break;
+        }
+    }
+
+    static bool AllRecipeInputsConnected(AssemblyRecipeDefinition recipe,
+        HashSet<ItemDefinition> connectedInputs)
+    {
+        if (recipe == null || connectedInputs == null)
+            return false;
+        return (recipe.processedInput == null || connectedInputs.Contains(recipe.processedInput))
+            && (recipe.pantryInput == null || connectedInputs.Contains(recipe.pantryInput))
+            && (recipe.thirdInput == null || connectedInputs.Contains(recipe.thirdInput));
+    }
+
+    static void AddConnectedStationProducts(GameObject source, HashSet<ItemDefinition> products)
+    {
+        if (source == null || products == null)
+            return;
+
+        PantryStation pantry = source.GetComponent<PantryStation>();
+        if (pantry != null)
+        {
+            if (pantry.selectedItem != null) products.Add(pantry.selectedItem);
+            if (pantry.secondItem != null) products.Add(pantry.secondItem);
+            return;
+        }
+
+        FreezerStation freezer = source.GetComponent<FreezerStation>();
+        if (freezer != null)
+        {
+            if (freezer.selectedItem != null) products.Add(freezer.selectedItem);
+            return;
+        }
+
+        GrillStation grill = source.GetComponent<GrillStation>();
+        if (grill != null)
+        {
+            ItemDefinition output = grill.GetSelectedOutput();
+            if (output != null) products.Add(output);
+            return;
+        }
+
+        FryerStation fryer = source.GetComponent<FryerStation>();
+        if (fryer != null)
+        {
+            ItemDefinition output = fryer.GetSelectedOutput();
+            if (output != null) products.Add(output);
+            return;
+        }
+
+        CuttingStation cutting = source.GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            ItemDefinition output = recipe != null ? recipe.output : cutting.selectedProduct;
+            if (output != null) products.Add(output);
+            return;
+        }
+
+        AssemblyStation upstreamAssembly = source.GetComponent<AssemblyStation>();
+        if (upstreamAssembly != null)
+        {
+            AssemblyRecipeDefinition recipe = upstreamAssembly.GetSelectedRecipe();
+            ItemDefinition output = recipe != null ? recipe.output : upstreamAssembly.selectedProduct;
+            if (output != null) products.Add(output);
+        }
+    }
+
     static GameObject FindOpenStation(System.Type componentType, KitchenEmployee emp)
     {
         var found = Object.FindObjectsByType(componentType, FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -567,6 +705,7 @@ public static class WorkerFlowAssigner
                 worker.ClearAllOperatedStations();
 
         ConfigureProducts(flow.kind, route);
+        ConfigureAssemblyRecipesFromConnections(flow);
         // Every worker assigned to a flow may operate every work station in it.
         // Jobs and station reservations coordinate multiple workers at runtime.
         for (int workerIndex = 0; workerIndex < activeWorkers; workerIndex++)
@@ -650,8 +789,8 @@ public static class WorkerFlowAssigner
 }
 
 /// <summary>
-/// Lightweight ISE decision support for workflow assignment. Estimates are deliberately
-/// transparent: station work time plus grid walking time, without pretending to predict demand.
+/// Lightweight ISE decision support for workflow assignment. Estimates combine station
+/// capacity with trained item handling and the walking time for required transfers.
 /// </summary>
 public static class WorkflowAnalysis
 {
@@ -659,15 +798,27 @@ public static class WorkflowAnalysis
     {
         public float routeTiles;
         public float travelSeconds;
+        public float workerTravelSecondsPerMinute;
         public float stationWorkSeconds;
+        /// <summary>Station item throughput required to deliver max flow output at Pickup.</summary>
+        public float totalStationOutputPerMinute;
         public float stationCapacityPerMinute;
         public float laborCapacityPerMinute;
+        public float travelOverheadPerMinute;
+        public float workerOperationSecondsPerMinute;
+        public float workerOperationOverheadPerMinute;
+        public float travelOverheadPerTilePerMinute;
+        public float totalRateNeededPerMinute;
+        public float transportShortfallPerMinute;
         public float effectiveOutputPerMinute;
         public float effectiveCycleSeconds;
         public bool hasAssignedWorker;
+        public int activeWorkerCount;
+        public int baseWorkersNeeded;
         public int minimumCarryCapacity = 1;
         public int maximumCarryCapacity = 1;
         public string bottleneck = "None";
+        public string stationBottleneckName = "";
         public float layoutEfficiencyPercent;
         public float runtimeWorkingPercent;
         public float runtimeWaitPercent;
@@ -798,6 +949,11 @@ public static class WorkflowAnalysis
 
     public static float GetEstimatedCycleSeconds(KitchenEmployee employee)
     {
+        return GetEstimatedWorkSeconds(employee) + GetEstimatedTravelSeconds(employee);
+    }
+
+    public static float GetEstimatedWorkSeconds(KitchenEmployee employee)
+    {
         if (employee == null) return 0f;
         float work = 0f;
         foreach (GameObject station in GetOrderedRoute(employee))
@@ -806,10 +962,115 @@ public static class WorkflowAnalysis
             if (node == null || !node.IsWorkStation || node.IsWorkerAssigned(employee))
                 work += GetStationWorkSeconds(station);
         }
-        float walkWorld = GetRouteDistanceTiles(employee)
-            * ((employee.grid != null ? employee.grid : GridManager.Instance)?.cellSize ?? 1f);
-        float walk = walkWorld / Mathf.Max(0.1f, employee.moveSpeed);
-        return work + walk;
+        return work;
+    }
+
+    public static float GetEstimatedTravelSeconds(KitchenEmployee employee)
+    {
+        if (employee == null) return 0f;
+        return GetRouteDistanceTiles(employee) * GetSecondsPerTravelTile(employee);
+    }
+
+    public static float GetSecondsPerTravelTile(KitchenEmployee employee)
+    {
+        if (employee == null) return 0f;
+        GridManager grid = employee.grid != null ? employee.grid : GridManager.Instance;
+        float cellSize = grid != null ? grid.cellSize : 1f;
+        return cellSize / Mathf.Max(0.1f, employee.moveSpeed);
+    }
+
+    /// <summary>
+    /// Trained maximum transport rate for one worker. Route travel is included in
+    /// the system's required rate, so it must not reduce this cap a second time.
+    /// </summary>
+    public static float GetEstimatedDeliveryPerMinute(KitchenEmployee employee)
+    {
+        return GetEstimatedDeliveryPerMinute(employee, employee != null ? employee.UpgradeLevel : 0);
+    }
+
+    public static float GetEstimatedDeliveryPerMinute(KitchenEmployee employee, int upgradeLevel)
+    {
+        if (employee == null || employee.OperatedStationCount <= 0) return 0f;
+        return Mathf.Max(0.01f, KitchenEmployee.GetTransportItemsPerMinuteForLevel(upgradeLevel));
+    }
+
+    public sealed class SystemRateSummary
+    {
+        public float stationRatePerMinute;
+        public float travelOverheadPerMinute;
+        public float workerOperationOverheadPerMinute;
+        public float travelOverheadPerTilePerMinute;
+        public float totalRateNeededPerMinute;
+        public float travelTiles;
+        public float travelSeconds;
+        public float workerDeliveryCapacityPerMinute;
+        public float transportShortfallPerMinute;
+        public int activeWorkerCount;
+        public int baseWorkersNeeded;
+        public int additionalBaseWorkersNeeded;
+        public float sustainableOutputPerMinute;
+    }
+
+    /// <summary>
+    /// Sums only station output required by finished products delivered to pickup,
+    /// then reports travel workload, transport coverage, and finished output.
+    /// </summary>
+    public static SystemRateSummary AnalyzeSystemRates()
+    {
+        var result = new SystemRateSummary();
+        ProductionManager production = ProductionManager.Instance;
+        if (production == null || production.productionFlows == null) return result;
+
+        var countedWorkers = new HashSet<KitchenEmployee>();
+        foreach (ProductionFlowPlan flow in production.productionFlows)
+        {
+            if (flow == null) continue;
+            FlowLayoutMetrics metrics = AnalyzeFlowLayout(flow);
+            float flowStationRate = metrics.totalStationOutputPerMinute;
+            result.stationRatePerMinute += flowStationRate;
+
+            // Use the same per-flow travel workload used by the selected-flow
+            // staffing estimate, so the global summary and flow panel agree.
+            if (flowStationRate > 0.01f)
+            {
+                result.travelOverheadPerMinute += metrics.travelOverheadPerMinute;
+                result.workerOperationOverheadPerMinute += metrics.workerOperationOverheadPerMinute;
+                result.travelTiles += metrics.routeTiles;
+                result.travelSeconds += metrics.travelSeconds;
+            }
+
+            if (flow.workers != null)
+            {
+                foreach (KitchenEmployee worker in flow.workers)
+                {
+                    if (worker == null || !countedWorkers.Add(worker)) continue;
+                    if (worker.OperatedStationCount > 0)
+                        result.activeWorkerCount++;
+                    result.workerDeliveryCapacityPerMinute += GetEstimatedDeliveryPerMinute(worker);
+                }
+            }
+
+            if (metrics.hasAssignedWorker && metrics.stationCapacityPerMinute > 0.01f)
+                result.sustainableOutputPerMinute += metrics.effectiveOutputPerMinute;
+        }
+        result.totalRateNeededPerMinute = result.stationRatePerMinute
+            + result.workerOperationOverheadPerMinute + result.travelOverheadPerMinute;
+        result.travelOverheadPerTilePerMinute = result.travelTiles > 0.01f
+            ? result.travelOverheadPerMinute / result.travelTiles
+            : 0f;
+        result.transportShortfallPerMinute = Mathf.Max(0f,
+            result.totalRateNeededPerMinute - result.workerDeliveryCapacityPerMinute);
+        result.baseWorkersNeeded = GetBaseWorkersNeeded(result.totalRateNeededPerMinute);
+        result.additionalBaseWorkersNeeded = GetBaseWorkersNeeded(result.transportShortfallPerMinute);
+        return result;
+    }
+
+    public static int GetBaseWorkersNeeded(float requiredRatePerMinute)
+    {
+        float baseRate = KitchenEmployee.GetTransportItemsPerMinuteForLevel(0);
+        return requiredRatePerMinute > 0.01f
+            ? Mathf.CeilToInt(requiredRatePerMinute / Mathf.Max(0.01f, baseRate))
+            : 0;
     }
 
     public static string GetWorkerDecisionSummary(KitchenEmployee employee)
@@ -820,17 +1081,18 @@ public static class WorkflowAnalysis
             return employee.employeeName + " | Unassigned: no productive capacity";
 
         float distance = GetRouteDistanceTiles(employee);
-        float cycle = GetEstimatedCycleSeconds(employee);
-        int carry = Mathf.Clamp(employee.CarryCapacity, 1, 4);
-        float laborRate = cycle > 0.01f ? 60f * carry / cycle : 0f;
+        float laborRate = GetEstimatedDeliveryPerMinute(employee);
+        float travelSeconds = GetEstimatedTravelSeconds(employee);
+        float secondsPerTile = GetSecondsPerTravelTile(employee);
         string risk = distance >= 12f ? " | Risk: excess walking" : "";
         string flow = !string.IsNullOrEmpty(employee.assignedFlowName)
             ? employee.assignedFlowName + " | "
             : "";
         return flow + employee.employeeName + " | " + count
-            + " stations | Route " + distance.ToString("F0") + " tiles | Base cycle "
-            + cycle.ToString("F1") + "s | Carry " + carry + " | Labor "
-            + laborRate.ToString("0.0") + "/min" + risk;
+            + " stations | Route " + distance.ToString("F0") + " tiles | Delivery "
+            + laborRate.ToString("0.0") + " items/min max | Travel "
+            + distance.ToString("F0") + " tiles Ã— " + secondsPerTile.ToString("F2") + "s/tile = "
+            + travelSeconds.ToString("F1") + "s/trip" + risk;
     }
 
     public static string GetAssignmentPreview(KitchenEmployee employee, StationNode candidate)
@@ -902,9 +1164,13 @@ public static class WorkflowAnalysis
         List<Vector3> path = grid.GetPath(a, b);
         if (path.Count >= 2)
         {
-            float distance = 0f;
+            int distance = 0;
             for (int i = 1; i < path.Count; i++)
-                distance += Vector3.Distance(path[i - 1], path[i]) / Mathf.Max(0.01f, grid.cellSize);
+            {
+                grid.WorldToCell(path[i - 1], out int fromX, out int fromY);
+                grid.WorldToCell(path[i], out int toX, out int toY);
+                distance += Mathf.Abs(toX - fromX) + Mathf.Abs(toY - fromY);
+            }
             return distance;
         }
 
@@ -912,26 +1178,28 @@ public static class WorkflowAnalysis
         grid.WorldToCell(b, out int bx, out int by);
         int dx = Mathf.Abs(ax - bx);
         int dy = Mathf.Abs(ay - by);
-        return Mathf.Min(dx, dy) * 1.41421356f + Mathf.Abs(dx - dy);
+        return dx + dy;
     }
 
     public static float GetStationWorkSeconds(GameObject station)
     {
         if (station == null) return 0f;
         FreezerStation freezer = station.GetComponent<FreezerStation>();
-        if (freezer != null) return freezer.processTimeSeconds;
+        if (freezer != null)
+            return StationOutputRateLimiter.SecondsPerItem(freezer.EffectiveMaxOutputPerMinute);
         GrillStation grill = station.GetComponent<GrillStation>();
-        if (grill != null) return grill.processTimeSeconds;
+        if (grill != null) return grill.EffectiveProcessTimeSeconds;
         AssemblyStation assembly = station.GetComponent<AssemblyStation>();
-        if (assembly != null) return assembly.processTimeSeconds;
+        if (assembly != null) return assembly.EffectiveProcessTimeSeconds;
         CuttingStation cutting = station.GetComponent<CuttingStation>();
-        if (cutting != null) return cutting.processTimeSeconds;
+        if (cutting != null) return cutting.EffectiveProcessTimeSeconds;
         FryerStation fryer = station.GetComponent<FryerStation>();
-        if (fryer != null) return fryer.processTimeSeconds;
+        if (fryer != null) return fryer.EffectiveProcessTimeSeconds;
         DrinkStation drink = station.GetComponent<DrinkStation>();
-        if (drink != null) return drink.processTimeSeconds;
+        if (drink != null) return StationNode.GetEffectiveCycleSeconds(drink, drink.processTimeSeconds);
         PantryStation pantry = station.GetComponent<PantryStation>();
-        if (pantry != null) return pantry.processTimeSeconds;
+        if (pantry != null)
+            return StationOutputRateLimiter.SecondsPerItem(pantry.EffectiveMaxOutputPerMinute);
         return 0f;
     }
 
@@ -1127,9 +1395,7 @@ public static class WorkflowAnalysis
             if (!produces) continue;
 
             // Only the product made at the terminal production station counts.
-            // A pickup station is one possible terminal, but it is not required
-            // for capacity analysis. This lets the flow report what it can make
-            // while output is still buffered at the producer.
+            // Capacity analysis separately requires that product to reach Pickup.
             bool hasDownstreamProduction = false;
             foreach (GameObject next in flow.GetOutgoing(station))
             {
@@ -1166,8 +1432,8 @@ public static class WorkflowAnalysis
     }
 
     /// <summary>
-    /// Flow throughput is limited by the slowest station output on the route
-    /// (e.g. grill 5/min with assembly 10/min → 5/min).
+    /// Flow throughput is limited by the equipment ceiling and the fraction of
+    /// total station plus travel workload the assigned workers can cover.
     /// </summary>
     public static float GetFlowBottleneckOutputPerMinute(ProductionFlowPlan flow)
     {
@@ -1177,8 +1443,8 @@ public static class WorkflowAnalysis
 
     /// <summary>
     /// Deterministic layout model shared by the flow UI and configured production rate.
-    /// Throughput is the lower of equipment capacity and worker route capacity. Walking is
-    /// measured on the same grid path workers use, with no random congestion penalty.
+    /// Walking is measured on the same grid path workers use. Trained worker rate stays fixed;
+    /// travel adds to required handling workload. No random congestion penalty is applied.
     /// </summary>
     public static FlowLayoutMetrics AnalyzeFlowLayout(ProductionFlowPlan flow)
     {
@@ -1197,19 +1463,10 @@ public static class WorkflowAnalysis
         }
 
         GridManager grid = GridManager.Instance;
-        float moveSpeed = GetDefaultMoveSpeed();
-        for (int i = 0; i < route.Count; i++)
-        {
-            result.stationWorkSeconds += GetStationWorkSeconds(route[i]);
-            if (i == 0 || grid == null) continue;
-            result.routeTiles += GetDistanceTiles(grid, route[i - 1], route[i]);
-        }
-        if (grid != null)
-            result.travelSeconds = result.routeTiles * grid.cellSize / Mathf.Max(0.1f, moveSpeed);
-
-        float productiveCycleSeconds = result.stationWorkSeconds + result.travelSeconds;
-        result.layoutEfficiencyPercent = productiveCycleSeconds > 0.01f
-            ? result.stationWorkSeconds * 100f / productiveCycleSeconds : 0f;
+        GetFlowWorkerTransportProfile(flow, out _,
+            out float averageTransportRate, out float moveSpeed,
+            out float travelSecondsPerItemTile);
+        flow.EnsureLegacyConnections();
 
         float trackedWorking = 0f;
         float trackedWaiting = 0f;
@@ -1226,61 +1483,85 @@ public static class WorkflowAnalysis
         result.runtimeWorkingPercent = trackedTotal > 0.01f ? trackedWorking * 100f / trackedTotal : 0f;
         result.runtimeWaitPercent = trackedTotal > 0.01f ? trackedWaiting * 100f / trackedTotal : 0f;
 
-        result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, out string stationBottleneck);
+        result.stationCapacityPerMinute = GetNominalStationCapacityPerMinute(route, flow,
+            out result.stationBottleneckName, out result.totalStationOutputPerMinute,
+            out result.stationWorkSeconds, out result.routeTiles,
+            out result.workerTravelSecondsPerMinute,
+            out result.workerOperationSecondsPerMinute, travelSecondsPerItemTile);
+        if (grid != null)
+            result.travelSeconds = result.routeTiles * grid.cellSize / Mathf.Max(0.1f, moveSpeed);
 
-        float laborCycle = 0f;
+        float productiveCycleSeconds = result.stationWorkSeconds + result.travelSeconds;
+        result.layoutEfficiencyPercent = productiveCycleSeconds > 0.01f
+            ? result.stationWorkSeconds * 100f / productiveCycleSeconds : 0f;
+
+        // The trained rate is enforced across pickup and placement handling.
+        // Walking adds worker time for each required batch transfer, independent
+        // of how long autonomous station processing takes.
+        result.travelOverheadPerMinute = result.workerTravelSecondsPerMinute
+            * averageTransportRate / 60f;
+        // Drink dispensers and stocked sources hold a worker for their configured
+        // operation time. Convert that worker time to the same item-equivalent
+        // workload used by the transport rating, so the forecast includes time
+        // that the live task runner actually spends waiting at those stations.
+        result.workerOperationOverheadPerMinute = result.workerOperationSecondsPerMinute
+            * averageTransportRate / 60f;
+        result.totalRateNeededPerMinute = result.totalStationOutputPerMinute
+            + result.workerOperationOverheadPerMinute
+            + result.travelOverheadPerMinute;
+        result.travelOverheadPerTilePerMinute = result.routeTiles > 0.01f
+            ? result.travelOverheadPerMinute / result.routeTiles
+            : 0f;
+        result.baseWorkersNeeded = GetBaseWorkersNeeded(result.totalRateNeededPerMinute);
+
         float staffedLaborCapacity = 0f;
-        bool foundStaffedSegment = false;
         result.minimumCarryCapacity = int.MaxValue;
         result.maximumCarryCapacity = 1;
+        var countedFlowWorkers = new HashSet<KitchenEmployee>();
         if (flow.workers != null)
         {
             foreach (KitchenEmployee worker in flow.workers)
             {
-                if (worker == null || worker.OperatedStationCount == 0) continue;
+                if (worker == null || !countedFlowWorkers.Add(worker)
+                    || worker.OperatedStationCount == 0) continue;
                 result.hasAssignedWorker = true;
-                float workerCycle = GetEstimatedCycleSeconds(worker);
+                result.activeWorkerCount++;
                 int carry = Mathf.Clamp(worker.CarryCapacity, 1, 4);
                 result.minimumCarryCapacity = Mathf.Min(result.minimumCarryCapacity, carry);
                 result.maximumCarryCapacity = Mathf.Max(result.maximumCarryCapacity, carry);
-                laborCycle = Mathf.Max(laborCycle, workerCycle);
-                if (workerCycle > 0.01f)
+                float deliveryRate = GetEstimatedDeliveryPerMinute(worker);
+                if (deliveryRate > 0.01f)
                 {
                     // Workers on the same shared flow operate in parallel. Their
                     // labor capacities add together; taking the minimum made a
                     // second worker appear to provide no throughput improvement.
-                    staffedLaborCapacity += 60f * carry / workerCycle;
-                    foundStaffedSegment = true;
+                    staffedLaborCapacity += deliveryRate;
                 }
             }
         }
 
-        // Before staffing, preview this layout using the employee prefab's movement speed.
-        // Once staffed, the slowest worker-owned route segment becomes the labor constraint.
         if (!result.hasAssignedWorker)
         {
-            laborCycle = result.stationWorkSeconds + result.travelSeconds;
             result.minimumCarryCapacity = 1;
             result.maximumCarryCapacity = 1;
         }
 
-        result.laborCapacityPerMinute = result.hasAssignedWorker
-            ? (foundStaffedSegment ? staffedLaborCapacity : 0f)
-            : (laborCycle > 0.01f ? 60f / laborCycle : 0f);
-        if (result.stationCapacityPerMinute > 0.01f && result.laborCapacityPerMinute > 0.01f)
-            result.effectiveOutputPerMinute = Mathf.Min(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
-        else
-            result.effectiveOutputPerMinute = Mathf.Max(result.stationCapacityPerMinute, result.laborCapacityPerMinute);
+        result.laborCapacityPerMinute = staffedLaborCapacity;
+        result.transportShortfallPerMinute = Mathf.Max(0f,
+            result.totalRateNeededPerMinute - result.laborCapacityPerMinute);
+        float staffingCoverage = result.totalRateNeededPerMinute > 0.01f
+            ? Mathf.Clamp01(result.laborCapacityPerMinute / result.totalRateNeededPerMinute)
+            : 0f;
+        result.effectiveOutputPerMinute = result.stationCapacityPerMinute * staffingCoverage;
 
         result.effectiveCycleSeconds = result.effectiveOutputPerMinute > 0.01f
             ? 60f / result.effectiveOutputPerMinute
-            : laborCycle;
+            : 0f;
 
-        bool laborLimited = result.laborCapacityPerMinute > 0.01f
-            && (result.stationCapacityPerMinute <= 0.01f
-                || result.laborCapacityPerMinute < result.stationCapacityPerMinute - 0.01f);
-        result.bottleneck = laborLimited ? "Worker travel/workload"
-            : (!string.IsNullOrEmpty(stationBottleneck) ? stationBottleneck : "None");
+        bool laborLimited = result.transportShortfallPerMinute > 0.01f;
+        result.bottleneck = laborLimited ? "Worker transport"
+            : (!string.IsNullOrEmpty(result.stationBottleneckName)
+                ? result.stationBottleneckName : "None");
         ProductionManager production = ProductionManager.Instance;
         result.actualOutputPerMinute = production != null
             ? production.GetFlowCompletedOutputPerMinute(flow) : 0f;
@@ -1288,6 +1569,48 @@ public static class WorkflowAnalysis
             ? Mathf.Clamp(result.actualOutputPerMinute * 100f / result.effectiveOutputPerMinute, 0f, 100f)
             : 0f;
         return result;
+    }
+
+    static void GetFlowWorkerTransportProfile(ProductionFlowPlan flow,
+        out int workerCount, out float averageTransportRate,
+        out float averageMoveSpeed,
+        out float travelSecondsPerItemTile)
+    {
+        workerCount = 0;
+        float totalRate = 0f;
+        float speedWeighted = 0f;
+        float travelTimeWeighted = 0f;
+        GridManager grid = GridManager.Instance;
+        float cellSize = grid != null ? grid.cellSize : 1f;
+        var countedWorkers = new HashSet<KitchenEmployee>();
+        if (flow?.workers != null)
+        {
+            foreach (KitchenEmployee worker in flow.workers)
+            {
+                if (worker == null || !countedWorkers.Add(worker)
+                    || worker.OperatedStationCount <= 0) continue;
+                float rate = GetEstimatedDeliveryPerMinute(worker);
+                if (rate <= 0.01f) continue;
+                workerCount++;
+                totalRate += rate;
+                int carry = Mathf.Clamp(worker.CarryCapacity, 1, 4);
+                float speed = Mathf.Max(0.1f, worker.moveSpeed);
+                speedWeighted += rate * speed;
+                travelTimeWeighted += rate * cellSize / (carry * speed);
+            }
+        }
+
+        if (workerCount > 0 && totalRate > 0.01f)
+        {
+            averageTransportRate = totalRate / workerCount;
+            averageMoveSpeed = speedWeighted / totalRate;
+            travelSecondsPerItemTile = travelTimeWeighted / totalRate;
+            return;
+        }
+
+        averageTransportRate = KitchenEmployee.GetTransportItemsPerMinuteForLevel(0);
+        averageMoveSpeed = GetDefaultMoveSpeed();
+        travelSecondsPerItemTile = cellSize / Mathf.Max(0.1f, averageMoveSpeed);
     }
 
     static string FormatCarryRange(FlowLayoutMetrics layout)
@@ -1300,27 +1623,505 @@ public static class WorkflowAnalysis
             : min + "-" + max + " items";
     }
 
-    static float GetNominalStationCapacityPerMinute(List<GameObject> route, out string bottleneckName)
+    sealed class StationRateInput
+    {
+        public ItemDefinition item;
+        public float unitsPerOutput;
+    }
+
+    sealed class StationRateNode
+    {
+        public GameObject station;
+        public float capacityPerMinute;
+        public float ratePerMinute;
+        public float outputToPickupPerMinute;
+        public bool requiresInput;
+        public bool outputsToPickup;
+        public readonly List<ItemDefinition> outputs = new List<ItemDefinition>();
+        public readonly List<StationRateInput> inputs = new List<StationRateInput>();
+        public readonly List<StationRateNode> outgoing = new List<StationRateNode>();
+        public readonly List<StationRateNode> usedOutgoing = new List<StationRateNode>();
+        public readonly Dictionary<StationRateNode, float> usedOutgoingRates =
+            new Dictionary<StationRateNode, float>();
+        public readonly List<GameObject> pickupTargets = new List<GameObject>();
+    }
+
+    /// <summary>
+    /// Estimates finished output through the connected station graph. Rates from
+    /// parallel stations are added when they supply the same recipe input. A
+    /// station's output is shared across its outgoing connections, so a split
+    /// cannot make one producer count as full capacity on every branch.
+    /// </summary>
+    static float GetNominalStationCapacityPerMinute(List<GameObject> route,
+        ProductionFlowPlan flow, out string bottleneckName,
+        out float requiredStationOutputPerMinute, out float requiredStationWorkSeconds,
+        out float requiredRouteTiles, out float requiredWorkerTravelSecondsPerMinute,
+        out float requiredWorkerOperationSecondsPerMinute,
+        float travelSecondsPerItemTile)
     {
         bottleneckName = "";
-        float minOut = float.MaxValue;
-        bool any = false;
+        requiredStationOutputPerMinute = 0f;
+        requiredStationWorkSeconds = 0f;
+        requiredRouteTiles = 0f;
+        requiredWorkerTravelSecondsPerMinute = 0f;
+        requiredWorkerOperationSecondsPerMinute = 0f;
+        if (route == null || route.Count == 0) return 0f;
 
-        if (route != null)
+        var nodes = new List<StationRateNode>();
+        var byStation = new Dictionary<GameObject, StationRateNode>();
+        foreach (GameObject station in route)
         {
-            foreach (GameObject station in route)
+            if (station == null || byStation.ContainsKey(station)
+                || !TryGetStationOutputPerMinute(station, out float output))
+                continue;
+
+            var node = new StationRateNode
             {
-                if (!TryGetStationOutputPerMinute(station, out float output)) continue;
-                if (!any || output < minOut)
+                station = station,
+                capacityPerMinute = output,
+                ratePerMinute = output
+            };
+            GetStationRateItems(station, node.outputs);
+            GetStationRateInputs(station, node.inputs, out node.requiresInput);
+            nodes.Add(node);
+            byStation.Add(station, node);
+        }
+
+        if (nodes.Count == 0) return 0f;
+
+        flow?.EnsureLegacyConnections();
+        if (flow?.connections != null)
+        {
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection?.from == null || connection.to == null
+                    || !byStation.TryGetValue(connection.from, out StationRateNode from))
+                    continue;
+                if (connection.to.GetComponent<HeatLampStation>() != null)
                 {
-                    minOut = output;
-                    bottleneckName = GetName(station);
+                    from.outputsToPickup = true;
+                    if (!from.pickupTargets.Contains(connection.to))
+                        from.pickupTargets.Add(connection.to);
+                    continue;
                 }
-                any = true;
+                if (!byStation.TryGetValue(connection.to, out StationRateNode to)
+                    || from.outgoing.Contains(to)) continue;
+                from.outgoing.Add(to);
             }
         }
 
-        return any ? minOut : 0f;
+        // Process nodes in graph order. Cyclic stations are left at zero because
+        // a closed loop cannot create ingredients without an upstream source.
+        var indegree = new Dictionary<StationRateNode, int>();
+        var ready = new Queue<StationRateNode>();
+        foreach (StationRateNode node in nodes)
+        {
+            indegree[node] = 0;
+            if (node.requiresInput && node.inputs.Count == 0)
+                node.ratePerMinute = 0f;
+        }
+        foreach (StationRateNode node in nodes)
+            foreach (StationRateNode next in node.outgoing)
+                indegree[next]++;
+        foreach (StationRateNode node in nodes)
+            if (indegree[node] == 0) ready.Enqueue(node);
+
+        var ordered = new List<StationRateNode>(nodes.Count);
+        while (ready.Count > 0)
+        {
+            StationRateNode node = ready.Dequeue();
+            ordered.Add(node);
+            foreach (StationRateNode next in node.outgoing)
+            {
+                indegree[next]--;
+                if (indegree[next] == 0) ready.Enqueue(next);
+            }
+        }
+        if (ordered.Count != nodes.Count)
+        {
+            foreach (StationRateNode node in nodes)
+                if (indegree[node] > 0) node.ratePerMinute = 0f;
+        }
+
+        // Rebalance shared upstream output as downstream stations discover
+        // shortages in their other ingredients. The bounded passes stay cheap
+        // for the small station graphs used by a single flow.
+        int iterations = Mathf.Clamp(nodes.Count * 2, 8, 32);
+        for (int iteration = 0; iteration < iterations; iteration++)
+        {
+            var incomingRates = new Dictionary<StationRateNode, Dictionary<ItemDefinition, float>>();
+            var genericIncomingRates = new Dictionary<StationRateNode, float>();
+            foreach (StationRateNode node in ordered)
+            {
+                if (node.ratePerMinute <= 0.001f || node.outgoing.Count == 0) continue;
+
+                float totalDemand = 0f;
+                var demands = new List<(StationRateNode consumer, ItemDefinition item, float amount)>();
+                foreach (StationRateNode consumer in node.outgoing)
+                {
+                    foreach (ItemDefinition outputItem in node.outputs)
+                    {
+                        float inputAmount = GetRequiredUnitsPerOutput(consumer, outputItem);
+                        if (inputAmount <= 0f) continue;
+                        float amount = consumer.ratePerMinute * inputAmount;
+                        if (amount <= 0.001f) continue;
+                        demands.Add((consumer, outputItem, amount));
+                        totalDemand += amount;
+                    }
+                }
+
+                if (totalDemand <= 0.001f) continue;
+                float allocation = Mathf.Min(1f, node.ratePerMinute / totalDemand);
+                foreach (var demand in demands)
+                {
+                    float supplied = demand.amount * allocation;
+                    if (demand.item == null)
+                    {
+                        genericIncomingRates[demand.consumer] =
+                            genericIncomingRates.TryGetValue(demand.consumer, out float currentGeneric)
+                                ? currentGeneric + supplied : supplied;
+                        continue;
+                    }
+
+                    if (!incomingRates.TryGetValue(demand.consumer,
+                        out Dictionary<ItemDefinition, float> itemRates))
+                    {
+                        itemRates = new Dictionary<ItemDefinition, float>();
+                        incomingRates.Add(demand.consumer, itemRates);
+                    }
+                    itemRates[demand.item] = itemRates.TryGetValue(demand.item, out float current)
+                        ? current + supplied : supplied;
+                }
+            }
+
+            float largestChange = 0f;
+            foreach (StationRateNode node in ordered)
+            {
+                float nextRate = node.capacityPerMinute;
+                if (node.requiresInput)
+                {
+                    if (node.inputs.Count == 0)
+                        nextRate = 0f;
+                    else
+                    {
+                        incomingRates.TryGetValue(node,
+                            out Dictionary<ItemDefinition, float> itemRates);
+                        genericIncomingRates.TryGetValue(node, out float genericRate);
+                        float allIncoming = genericRate;
+                        if (itemRates != null)
+                            foreach (float itemRate in itemRates.Values) allIncoming += itemRate;
+
+                        foreach (StationRateInput input in node.inputs)
+                        {
+                            float available = input.item == null
+                                ? allIncoming
+                                : genericRate + (itemRates != null
+                                    && itemRates.TryGetValue(input.item, out float matchingRate)
+                                        ? matchingRate : 0f);
+                            nextRate = Mathf.Min(nextRate,
+                                available / Mathf.Max(0.001f, input.unitsPerOutput));
+                        }
+                    }
+                }
+
+                largestChange = Mathf.Max(largestChange, Mathf.Abs(node.ratePerMinute - nextRate));
+                node.ratePerMinute = nextRate;
+            }
+
+            if (largestChange < 0.01f) break;
+        }
+
+        float finishedOutput = 0f;
+        int terminalCount = 0;
+        string limitingName = "";
+        foreach (StationRateNode node in nodes)
+        {
+            if (!node.outputsToPickup || node.ratePerMinute <= 0.001f) continue;
+            float downstreamDemand = 0f;
+            foreach (StationRateNode consumer in node.outgoing)
+                foreach (ItemDefinition outputItem in node.outputs)
+                    downstreamDemand += consumer.ratePerMinute
+                        * GetRequiredUnitsPerOutput(consumer, outputItem);
+            node.outputToPickupPerMinute = Mathf.Max(0f,
+                node.ratePerMinute - Mathf.Min(node.ratePerMinute, downstreamDemand));
+            if (node.outputToPickupPerMinute <= 0.001f) continue;
+            finishedOutput += node.outputToPickupPerMinute;
+            terminalCount++;
+            if (node.ratePerMinute + 0.01f < node.capacityPerMinute)
+                limitingName = GetName(node.station) + " input supply";
+            else if (string.IsNullOrEmpty(limitingName))
+                limitingName = GetName(node.station);
+        }
+
+        bottleneckName = terminalCount <= 1 ? limitingName : "Flow branches";
+        CalculateRequiredStationWorkload(ordered, nodes, out requiredStationOutputPerMinute,
+            out requiredStationWorkSeconds, out requiredRouteTiles,
+            out requiredWorkerTravelSecondsPerMinute,
+            out requiredWorkerOperationSecondsPerMinute, travelSecondsPerItemTile);
+        return finishedOutput;
+    }
+
+    static void CalculateRequiredStationWorkload(List<StationRateNode> ordered,
+        List<StationRateNode> nodes, out float requiredOutputPerMinute,
+        out float requiredWorkSeconds, out float requiredRouteTiles,
+        out float requiredWorkerTravelSecondsPerMinute,
+        out float requiredWorkerOperationSecondsPerMinute,
+        float travelSecondsPerItemTile)
+    {
+        requiredOutputPerMinute = 0f;
+        requiredWorkSeconds = 0f;
+        requiredRouteTiles = 0f;
+        requiredWorkerTravelSecondsPerMinute = 0f;
+        requiredWorkerOperationSecondsPerMinute = 0f;
+        if (ordered == null || nodes == null) return;
+
+        var requiredItems = new Dictionary<StationRateNode, Dictionary<ItemDefinition, float>>();
+        var requiredGeneric = new Dictionary<StationRateNode, float>();
+        var remainingCapacity = new Dictionary<StationRateNode, float>();
+        foreach (StationRateNode node in nodes)
+            remainingCapacity[node] = Mathf.Max(0f,
+                node.ratePerMinute - node.outputToPickupPerMinute);
+
+        // Start at finished products that are actually connected to the pickup
+        // station, then work backward through the recipes to find used inputs.
+        foreach (StationRateNode node in nodes)
+        {
+            if (node.outputToPickupPerMinute <= 0.001f)
+                continue;
+            ItemDefinition item = node.outputs.Count == 1 ? node.outputs[0] : null;
+            AddRequiredRate(node, item, node.outputToPickupPerMinute,
+                requiredItems, requiredGeneric);
+        }
+
+        for (int i = ordered.Count - 1; i >= 0; i--)
+        {
+            StationRateNode node = ordered[i];
+            float requestedRate = requiredGeneric.TryGetValue(node, out float genericRate)
+                ? genericRate : 0f;
+            if (requiredItems.TryGetValue(node, out Dictionary<ItemDefinition, float> itemRates))
+                foreach (float itemRate in itemRates.Values)
+                    requestedRate += itemRate;
+
+            float usedRate = Mathf.Min(node.ratePerMinute, requestedRate);
+            if (usedRate <= 0.001f) continue;
+
+            requiredOutputPerMinute += usedRate;
+            requiredWorkSeconds += GetStationWorkSeconds(node.station);
+            requiredWorkerOperationSecondsPerMinute += usedRate
+                * GetWorkerOccupiedOperationSecondsPerOutput(node.station);
+            if (!node.requiresInput || node.inputs.Count == 0) continue;
+
+            foreach (StationRateInput input in node.inputs)
+            {
+                float needed = usedRate * input.unitsPerOutput;
+                AllocateRequiredInputRate(node, input.item, needed, nodes,
+                    requiredItems, requiredGeneric, remainingCapacity);
+            }
+        }
+
+        GridManager grid = GridManager.Instance;
+        if (grid == null) return;
+        foreach (StationRateNode node in nodes)
+        {
+            foreach (StationRateNode next in node.usedOutgoing)
+            {
+                float distance = GetDistanceTiles(grid, node.station, next.station);
+                requiredRouteTiles += distance;
+                if (node.usedOutgoingRates.TryGetValue(next, out float itemRate))
+                    requiredWorkerTravelSecondsPerMinute += itemRate * distance
+                        * travelSecondsPerItemTile;
+            }
+            if (node.outputToPickupPerMinute > 0.001f)
+            {
+                float outputRatePerPickup = node.outputToPickupPerMinute
+                    / Mathf.Max(1, node.pickupTargets.Count);
+                foreach (GameObject pickup in node.pickupTargets)
+                {
+                    float distance = GetDistanceTiles(grid, node.station, pickup);
+                    requiredRouteTiles += distance;
+                    requiredWorkerTravelSecondsPerMinute += outputRatePerPickup * distance
+                        * travelSecondsPerItemTile;
+                }
+            }
+        }
+    }
+
+    static void AllocateRequiredInputRate(StationRateNode consumer, ItemDefinition item,
+        float neededRate, List<StationRateNode> nodes,
+        Dictionary<StationRateNode, Dictionary<ItemDefinition, float>> requiredItems,
+        Dictionary<StationRateNode, float> requiredGeneric,
+        Dictionary<StationRateNode, float> remainingCapacity)
+    {
+        if (neededRate <= 0.001f) return;
+
+        var suppliers = new List<StationRateNode>();
+        float availableRate = 0f;
+        foreach (StationRateNode supplier in nodes)
+        {
+            if (!supplier.outgoing.Contains(consumer)
+                || !ProducesRateItem(supplier, item)
+                || !remainingCapacity.TryGetValue(supplier, out float available)
+                || available <= 0.001f)
+                continue;
+            suppliers.Add(supplier);
+            availableRate += available;
+        }
+
+        float allocatedRate = Mathf.Min(neededRate, availableRate);
+        if (allocatedRate <= 0.001f) return;
+        foreach (StationRateNode supplier in suppliers)
+        {
+            float available = remainingCapacity[supplier];
+            float share = allocatedRate * available / availableRate;
+            share = Mathf.Min(available, share);
+            remainingCapacity[supplier] = available - share;
+            AddRequiredRate(supplier, item, share, requiredItems, requiredGeneric);
+            supplier.usedOutgoingRates[consumer] =
+                supplier.usedOutgoingRates.TryGetValue(consumer, out float currentRate)
+                    ? currentRate + share : share;
+            if (share > 0.001f && !supplier.usedOutgoing.Contains(consumer))
+                supplier.usedOutgoing.Add(consumer);
+        }
+    }
+
+    static bool ProducesRateItem(StationRateNode station, ItemDefinition item)
+    {
+        if (item == null) return true;
+        foreach (ItemDefinition output in station.outputs)
+            if (output == null || output == item) return true;
+        return false;
+    }
+
+    static void AddRequiredRate(StationRateNode station, ItemDefinition item, float rate,
+        Dictionary<StationRateNode, Dictionary<ItemDefinition, float>> requiredItems,
+        Dictionary<StationRateNode, float> requiredGeneric)
+    {
+        if (station == null || rate <= 0.001f) return;
+        if (item == null)
+        {
+            requiredGeneric[station] = requiredGeneric.TryGetValue(station, out float current)
+                ? current + rate : rate;
+            return;
+        }
+
+        if (!requiredItems.TryGetValue(station, out Dictionary<ItemDefinition, float> rates))
+        {
+            rates = new Dictionary<ItemDefinition, float>();
+            requiredItems.Add(station, rates);
+        }
+        rates[item] = rates.TryGetValue(item, out float existing) ? existing + rate : rate;
+    }
+
+    static void GetStationRateItems(GameObject station, List<ItemDefinition> outputs)
+    {
+        outputs.Clear();
+        if (station == null) return;
+
+        ItemDefinition output = null;
+        FreezerStation freezer = station.GetComponent<FreezerStation>();
+        PantryStation pantry = station.GetComponent<PantryStation>();
+        GrillStation grill = station.GetComponent<GrillStation>();
+        FryerStation fryer = station.GetComponent<FryerStation>();
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+        DrinkStation drink = station.GetComponent<DrinkStation>();
+
+        if (freezer != null) output = freezer.selectedItem;
+        else if (pantry != null)
+        {
+            AddRateItem(outputs, pantry.selectedItem);
+            AddRateItem(outputs, pantry.secondItem);
+        }
+        else if (grill != null) output = grill.GetSelectedOutput();
+        else if (fryer != null) output = fryer.GetSelectedOutput();
+        else if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            output = recipe != null ? recipe.output : null;
+        }
+        else if (assembly != null)
+        {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            output = recipe != null ? recipe.output : null;
+        }
+        else if (drink != null && ProductionManager.Instance != null
+            && ProductionManager.Instance.orderConfig != null)
+            output = ProductionManager.Instance.orderConfig.drinkItem;
+
+        if (output != null) AddRateItem(outputs, output);
+        if (outputs.Count == 0) outputs.Add(null);
+    }
+
+    static void AddRateItem(List<ItemDefinition> items, ItemDefinition item)
+    {
+        if (item != null && !items.Contains(item)) items.Add(item);
+    }
+
+    static void GetStationRateInputs(GameObject station, List<StationRateInput> inputs,
+        out bool requiresInput)
+    {
+        inputs.Clear();
+        requiresInput = false;
+        if (station == null) return;
+
+        GrillStation grill = station.GetComponent<GrillStation>();
+        FryerStation fryer = station.GetComponent<FryerStation>();
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+
+        if (grill != null)
+        {
+            requiresInput = true;
+            AddRateInput(inputs, grill.GetSelectedInput(), 1f);
+        }
+        else if (fryer != null)
+        {
+            requiresInput = true;
+            AddRateInput(inputs, fryer.GetSelectedInput(), 1f);
+        }
+        else if (cutting != null)
+        {
+            requiresInput = true;
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            AddRateInput(inputs, recipe != null ? recipe.input : null, 1f);
+        }
+        else if (assembly != null)
+        {
+            AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+            if (recipe == null)
+            {
+                requiresInput = true;
+                return;
+            }
+
+            if (recipe.RequiresProcessedInput)
+                AddRateInput(inputs, recipe.processedInput, Mathf.Max(1, recipe.processedInputAmount));
+            if (recipe.pantryInput != null)
+                AddRateInput(inputs, recipe.pantryInput, Mathf.Max(1, recipe.pantryInputAmount));
+            if (recipe.thirdInput != null)
+                AddRateInput(inputs, recipe.thirdInput, Mathf.Max(1, recipe.thirdInputAmount));
+            requiresInput = inputs.Count > 0;
+        }
+    }
+
+    static void AddRateInput(List<StationRateInput> inputs, ItemDefinition item, float units)
+    {
+        for (int i = 0; i < inputs.Count; i++)
+        {
+            if (inputs[i].item != item) continue;
+            inputs[i].unitsPerOutput += units;
+            return;
+        }
+        inputs.Add(new StationRateInput { item = item, unitsPerOutput = units });
+    }
+
+    static float GetRequiredUnitsPerOutput(StationRateNode consumer, ItemDefinition item)
+    {
+        float units = 0f;
+        foreach (StationRateInput input in consumer.inputs)
+            if (input.item == null || input.item == item)
+                units += input.unitsPerOutput;
+        return units;
     }
 
     static float GetDefaultMoveSpeed()
@@ -1334,12 +2135,40 @@ public static class WorkflowAnalysis
         return 3f;
     }
 
+    static float GetWorkerOccupiedOperationSecondsPerOutput(GameObject station)
+    {
+        if (station == null) return 0f;
+        FreezerStation freezer = station.GetComponent<FreezerStation>();
+        if (freezer != null) return Mathf.Max(0f, freezer.processTimeSeconds);
+        PantryStation pantry = station.GetComponent<PantryStation>();
+        if (pantry != null) return Mathf.Max(0f, pantry.processTimeSeconds);
+        DrinkStation drink = station.GetComponent<DrinkStation>();
+        if (drink != null)
+            return Mathf.Max(0f,
+                StationNode.GetEffectiveCycleSeconds(drink, drink.processTimeSeconds));
+        return 0f;
+    }
+
     static bool TryGetStationOutputPerMinute(GameObject station, out float outputPerMinute)
     {
         outputPerMinute = 0f;
         if (station == null) return false;
         if (station.GetComponent<HeatLampStation>() != null) return false;
         if (station.GetComponent<Register>() != null) return false;
+
+        FreezerStation freezer = station.GetComponent<FreezerStation>();
+        PantryStation pantry = station.GetComponent<PantryStation>();
+        GrillStation grill = station.GetComponent<GrillStation>();
+        FryerStation fryer = station.GetComponent<FryerStation>();
+        CuttingStation cutting = station.GetComponent<CuttingStation>();
+        AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+        if ((freezer != null && !freezer.HasItemSelected)
+            || (pantry != null && !pantry.HasItemSelected)
+            || (grill != null && !grill.HasProductSelected)
+            || (fryer != null && fryer.GetSelectedOutput() == null)
+            || (cutting != null && !cutting.HasRecipeSelected)
+            || (assembly != null && !assembly.HasProductSelected))
+            return false;
 
         StationNode node = StationNode.EnsureOn(station);
         if (node == null) return false;

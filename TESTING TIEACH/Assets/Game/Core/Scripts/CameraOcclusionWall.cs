@@ -46,6 +46,8 @@ public class CameraOcclusionWall : MonoBehaviour
     float visualBottom;
     float visualTop;
     Bounds worldBounds;
+    bool rendererCacheDirty = true;
+    float lastAppliedOpacity = -1f;
     static Material brickCutawayTemplate;
     Material capMaterial;
 
@@ -74,6 +76,14 @@ public class CameraOcclusionWall : MonoBehaviour
     void Awake()
     {
         CacheRenderers();
+    }
+
+    void OnTransformChildrenChanged()
+    {
+        // Wall hierarchies are stable during play. Rebuild the renderer snapshot
+        // only when a child is added or removed, rather than searching the tree
+        // from every wall on every frame.
+        rendererCacheDirty = true;
     }
 
     void OnEnable()
@@ -173,11 +183,17 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void LateUpdate()
     {
+        float desiredAmount = placementLocked ? 0f : targetCutaway;
+        bool isMoving = !Mathf.Approximately(cutawayAmount, desiredAmount);
+        if (!isMoving && !rendererCacheDirty)
+            return;
+
         float speed = CameraWallCutaway.Instance != null
             ? CameraWallCutaway.Instance.duckSpeed
             : 8f;
-        cutawayAmount = Mathf.MoveTowards(
-            cutawayAmount, targetCutaway, speed * Time.unscaledDeltaTime);
+        if (isMoving)
+            cutawayAmount = Mathf.MoveTowards(
+                cutawayAmount, desiredAmount, speed * Time.unscaledDeltaTime);
         ApplyCutaway(cutawayAmount);
     }
 
@@ -220,6 +236,7 @@ public class CameraOcclusionWall : MonoBehaviour
             RestoreOriginalRendering();
         DestroyOpacityMaterials();
         renderers = GetComponentsInChildren<Renderer>(true);
+        rendererCacheDirty = false;
         originalMaterials = new Material[renderers.Length][];
         originalRendererEnabled = new bool[renderers.Length];
         brickRenderers = new bool[renderers.Length];
@@ -275,18 +292,7 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void EnsureRendererCacheCurrent()
     {
-        Renderer[] current = GetComponentsInChildren<Renderer>(true);
-        bool changed = renderers == null || current.Length != renderers.Length;
-        if (!changed)
-        {
-            for (int i = 0; i < current.Length; i++)
-            {
-                if (current[i] == renderers[i]) continue;
-                changed = true;
-                break;
-            }
-        }
-        if (!changed) return;
+        if (!rendererCacheDirty) return;
 
         RestoreOriginalRendering();
         DestroyCutawayCaps();
@@ -344,36 +350,26 @@ public class CameraOcclusionWall : MonoBehaviour
 
     static void CopyFadeMaterialLook(Material original, Material fade)
     {
-        // Material.mainTexture and Material.color handle custom shaders that
-        // expose a texture/color under a name other than URP's usual properties.
-        // Copy the standard names as well so the brick shader's tiling survives.
-        Texture baseMap = original.mainTexture;
-        Vector2 textureScale = original.mainTextureScale;
-        Vector2 textureOffset = original.mainTextureOffset;
-        if (original.HasProperty("_BaseMap"))
+        string sourceTextureProperty = original.HasProperty("_BaseMap") ? "_BaseMap"
+            : original.HasProperty("_MainTex") ? "_MainTex" : null;
+        string fadeTextureProperty = fade.HasProperty("_BaseMap") ? "_BaseMap"
+            : fade.HasProperty("_MainTex") ? "_MainTex" : null;
+        if (sourceTextureProperty != null && fadeTextureProperty != null)
         {
-            baseMap = original.GetTexture("_BaseMap") ?? baseMap;
-            textureScale = original.GetTextureScale("_BaseMap");
-            textureOffset = original.GetTextureOffset("_BaseMap");
-        }
-        else if (original.HasProperty("_MainTex"))
-        {
-            baseMap = original.GetTexture("_MainTex") ?? baseMap;
-            textureScale = original.GetTextureScale("_MainTex");
-            textureOffset = original.GetTextureOffset("_MainTex");
-        }
-        if (baseMap != null)
-        {
-            fade.SetTexture("_BaseMap", baseMap);
-            fade.SetTextureScale("_BaseMap", textureScale);
-            fade.SetTextureOffset("_BaseMap", textureOffset);
+            Texture baseMap = original.GetTexture(sourceTextureProperty);
+            Vector2 textureScale = original.GetTextureScale(sourceTextureProperty);
+            Vector2 textureOffset = original.GetTextureOffset(sourceTextureProperty);
+            if (baseMap != null)
+                fade.SetTexture(fadeTextureProperty, baseMap);
+            fade.SetTextureScale(fadeTextureProperty, textureScale);
+            fade.SetTextureOffset(fadeTextureProperty, textureOffset);
             if (original.HasProperty("_Tile"))
             {
                 float tile = original.GetFloat("_Tile");
                 if (fade.HasProperty("_Tile"))
                     fade.SetFloat("_Tile", tile);
-                if (tile > 0.001f && fade.HasProperty("_BaseMap"))
-                    fade.SetTextureScale("_BaseMap", Vector2.one * tile);
+                if (tile > 0.001f)
+                    fade.SetTextureScale(fadeTextureProperty, Vector2.one * tile);
             }
         }
         if (original.HasProperty("_Tiling") && fade.HasProperty("_Tile"))
@@ -381,28 +377,29 @@ public class CameraOcclusionWall : MonoBehaviour
         if (original.HasProperty("_BlendSharpness") && fade.HasProperty("_BlendSharpness"))
             fade.SetFloat("_BlendSharpness", original.GetFloat("_BlendSharpness"));
 
-        Color baseColor = original.color;
-        if (original.HasProperty("_BaseColor"))
-            baseColor = original.GetColor("_BaseColor");
-        else if (original.HasProperty("_Color"))
-            baseColor = original.GetColor("_Color");
-        else if (original.HasProperty("_Tint"))
-            baseColor = original.GetColor("_Tint");
+        string sourceColorProperty = original.HasProperty("_BaseColor") ? "_BaseColor"
+            : original.HasProperty("_Color") ? "_Color"
+            : original.HasProperty("_Tint") ? "_Tint" : null;
+        string fadeColorProperty = fade.HasProperty("_BaseColor") ? "_BaseColor"
+            : fade.HasProperty("_Color") ? "_Color"
+            : fade.HasProperty("_Tint") ? "_Tint" : null;
+        Color baseColor = sourceColorProperty != null
+            ? original.GetColor(sourceColorProperty) : Color.white;
         baseColor.a = 1f;
-        fade.SetColor("_BaseColor", baseColor);
-        fade.color = baseColor;
+        if (fadeColorProperty != null)
+            fade.SetColor(fadeColorProperty, baseColor);
 
         if (original.HasProperty("_Metallic") && fade.HasProperty("_Metallic"))
             fade.SetFloat("_Metallic", original.GetFloat("_Metallic"));
         if (original.HasProperty("_Smoothness") && fade.HasProperty("_Smoothness"))
             fade.SetFloat("_Smoothness", original.GetFloat("_Smoothness"));
 
-        fade.SetFloat("_Surface", 1f);
-        fade.SetFloat("_Blend", 0f);
-        fade.SetFloat("_AlphaClip", 0f);
-        fade.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-        fade.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-        fade.SetFloat("_ZWrite", 0f);
+        if (fade.HasProperty("_Surface")) fade.SetFloat("_Surface", 1f);
+        if (fade.HasProperty("_Blend")) fade.SetFloat("_Blend", 0f);
+        if (fade.HasProperty("_AlphaClip")) fade.SetFloat("_AlphaClip", 0f);
+        if (fade.HasProperty("_SrcBlend")) fade.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        if (fade.HasProperty("_DstBlend")) fade.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        if (fade.HasProperty("_ZWrite")) fade.SetFloat("_ZWrite", 0f);
         if (fade.HasProperty("_Opacity"))
             fade.SetFloat("_Opacity", 1f);
         fade.SetOverrideTag("RenderType", "Transparent");
@@ -415,17 +412,20 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void SetOpacity(float opacity)
     {
+        opacity = Mathf.Clamp01(opacity);
+        if (Mathf.Approximately(lastAppliedOpacity, opacity)) return;
+        lastAppliedOpacity = opacity;
         for (int i = 0; i < opacityMaterialInstances.Count; i++)
         {
             Material material = opacityMaterialInstances[i];
             if (material == null) continue;
             Color color = material.HasProperty("_BaseColor")
                 ? material.GetColor("_BaseColor") : Color.white;
-            color.a = Mathf.Clamp01(opacity);
+            color.a = opacity;
             if (material.HasProperty("_BaseColor"))
                 material.SetColor("_BaseColor", color);
             if (material.HasProperty("_Opacity"))
-                material.SetFloat("_Opacity", Mathf.Clamp01(opacity));
+                material.SetFloat("_Opacity", opacity);
         }
     }
 
@@ -441,6 +441,7 @@ public class CameraOcclusionWall : MonoBehaviour
         opacityMaterialInstances.Clear();
         opacityMaterials = null;
         usingOpacityMaterials = false;
+        lastAppliedOpacity = -1f;
     }
 
     void EnsureCutawayMaterials()
@@ -607,6 +608,8 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void RestoreOriginalRendering()
     {
+        if (!usingCutawayMaterials && !usingOpacityMaterials)
+            return;
         HideCutawayCaps();
         if (renderers == null) return;
         int count = Mathf.Min(renderers.Length, originalRendererEnabled != null
@@ -621,6 +624,7 @@ public class CameraOcclusionWall : MonoBehaviour
         }
         usingCutawayMaterials = false;
         usingOpacityMaterials = false;
+        lastAppliedOpacity = -1f;
     }
 
     void DestroyCutawayMaterials()

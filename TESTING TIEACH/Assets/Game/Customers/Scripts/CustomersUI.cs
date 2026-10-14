@@ -74,7 +74,7 @@ public class CustomersUI : MonoBehaviour
             new Vector2(0, 1), new Vector2(1, 1),
             new Vector2(0, -126), new Vector2(-28, 28),
             15, TextAlignmentOptions.MidlineLeft);
-        graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F0BE55>Usual Range (Most Hours)</color> · <color=#F8F5EE>Average</color>";
+        graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F8F5EE>Exact Plan</color>";
         graphTitle.richText = true;
         graphTitle.textWrappingMode = TextWrappingModes.NoWrap;
         graphTitle.enableAutoSizing = true;
@@ -189,7 +189,7 @@ public class CustomersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         demandHeader = CreateDemandTableRow("Header", 42f, out _);
-        string[] headings = { "Item", "Status", "Open\nOrders", "Ready", "Cooking", "Ordered\nLast Min", "Completed\nLast Min" };
+        string[] headings = { "Item", "Status", "Open\nOrders", "Ready", "Cooking", "Demand /\nMin", "Completed\nLast Min" };
         for (int i = 0; i < headings.Length; i++)
         {
             demandHeader[i].text = headings[i];
@@ -439,7 +439,7 @@ public class CustomersUI : MonoBehaviour
 
         int startH = stats.ShiftStartHour;
         if (graphTitle != null)
-            graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F0BE55>Usual Range (Most Hours)</color> · <color=#F8F5EE>Average</color>";
+            graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F8F5EE>Exact Plan</color>";
 
         int[] buckets = stats.GetVisitTrendBuckets();
         string[] hourLabels = stats.GetVisitHourLabels();
@@ -453,7 +453,7 @@ public class CustomersUI : MonoBehaviour
         for (int i = 0; i < buckets.Length; i++)
         {
             means[i] = spawner != null ? spawner.ExpectedCustomersPerGameHour(startH + i) : 0f;
-            GetPoissonRange(means[i], out lowerBounds[i], out upperBounds[i]);
+            lowerBounds[i] = upperBounds[i] = Mathf.RoundToInt(means[i]);
             max = Mathf.Max(max, Mathf.Max(buckets[i], upperBounds[i]));
         }
 
@@ -511,36 +511,6 @@ public class CustomersUI : MonoBehaviour
         }
     }
 
-    static void GetPoissonRange(float mean, out int lower, out int upper)
-    {
-        if (mean <= 0f)
-        {
-            lower = 0;
-            upper = 0;
-            return;
-        }
-
-        double probability = System.Math.Exp(-mean);
-        double cumulative = probability;
-        int value = 0;
-        lower = -1;
-        upper = -1;
-        while (value < 512)
-        {
-            if (lower < 0 && cumulative >= 0.025d) lower = value;
-            if (upper < 0 && cumulative >= 0.975d)
-            {
-                upper = value;
-                break;
-            }
-            value++;
-            probability *= mean / value;
-            cumulative += probability;
-        }
-        if (lower < 0) lower = 0;
-        if (upper < 0) upper = value;
-    }
-
     void RefreshDemand()
     {
         if (demandListRoot == null) return;
@@ -553,8 +523,8 @@ public class CustomersUI : MonoBehaviour
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
         demandTitle.text = needs.Count == 1
-            ? "Live Demand by Item (1 Item)"
-            : $"Live Demand by Item ({needs.Count} Items)";
+            ? "Current Demand by Item (1 Item)"
+            : $"Current Demand by Item ({needs.Count} Items)";
         UpdateDemandTableLayout();
 
         // Hide entire rows so inactive items leave no backgrounds or layout gaps.
@@ -601,7 +571,7 @@ public class CustomersUI : MonoBehaviour
             cells[2].text = row.requested.ToString();
             cells[3].text = row.ready.ToString();
             cells[4].text = row.cooking.ToString();
-            cells[5].text = row.orderedLastMinute.ToString();
+            cells[5].text = Mathf.RoundToInt(row.requiredPerMinute).ToString();
             cells[6].text = row.completedLastMinute.ToString();
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)

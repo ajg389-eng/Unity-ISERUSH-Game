@@ -3,6 +3,9 @@ using UnityEngine;
 
 public class Register : MonoBehaviour
 {
+    static readonly List<Register> activeRegisters = new List<Register>();
+    public static IReadOnlyList<Register> ActiveRegisters => activeRegisters;
+
     public bool isEnabled = true;
     [System.NonSerialized] public bool isPlacementPreview;
     public bool IsPlacedRegister => !isPlacementPreview && isActiveAndEnabled;
@@ -64,8 +67,17 @@ public class Register : MonoBehaviour
         EnsureInteractionTiles();
     }
 
+    void OnEnable()
+    {
+        if (!activeRegisters.Contains(this))
+            activeRegisters.Add(this);
+        ProductionManager.Instance?.InvalidateStationCache();
+    }
+
     void OnDisable()
     {
+        activeRegisters.Remove(this);
+        ProductionManager.Instance?.InvalidateStationCache();
         CustomerAI[] waiting = queue.ToArray();
         CustomerAI[] collecting = pickup.ToArray();
         queue.Clear();
@@ -96,9 +108,12 @@ public class Register : MonoBehaviour
 
     public bool TryJoinQueue(CustomerAI customer)
     {
-        if (!HasSpace() || customer == null) return false;
+        if (customer == null || !IsPlacedRegister || !isEnabled) return false;
         if (queue.Contains(customer) || pickup.Contains(customer)) return true;
 
+        // HasSpace selects the least-loaded register for new arrivals. The queue
+        // itself can extend beyond that preferred capacity so a full line does not
+        // alter the scheduled customer request rate.
         customer.SetQueueJoinTime(Time.time);
         queue.Add(customer);
         TryUnlockPickup();
@@ -170,7 +185,8 @@ public class Register : MonoBehaviour
     {
         var front = GetFrontCustomer();
         if (front == null) return false;
-        return Vector3.Distance(front.transform.position, GetQueueSlot(0)) <= serveArrivalRadius;
+        return HorizontalDistance(front.transform.position, GetQueueSlot(0))
+            <= Mathf.Max(0f, serveArrivalRadius);
     }
 
     public void SendCustomerToPickup(CustomerAI customer)
@@ -213,16 +229,29 @@ public class Register : MonoBehaviour
             return false;
 
         CustomerOrderConfig menu = ResolveOrderConfig();
-        CustomerOrder selectedOrder = menu == null ? null
-            : OnboardingTutorial.IsActive ? CustomerOrder.FromItem(menu.burgerBase, 1)
-            : menu.GenerateRandomOrder();
+        bool tutorialOrder = OnboardingTutorial.IsActive;
+        CustomerOrder selectedOrder = tutorialOrder
+            ? (menu != null ? CustomerOrder.FromItem(menu.burgerBase, 1) : null)
+            : front.GetOrder();
+        bool needsOrderAssignment = tutorialOrder
+            || selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0;
+        if (needsOrderAssignment && !tutorialOrder && menu != null)
+        {
+            CustomerSpawner spawner = FindObjectOfType<CustomerSpawner>();
+            selectedOrder = spawner != null
+                ? spawner.GenerateNextScheduledOrder()
+                : menu.GenerateScheduledOrder(0);
+        }
         if (selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0)
         {
             orderTimer = 0f;
             return false;
         }
 
-        front.SetOrder(selectedOrder);
+        // Normal customers receive their deterministic order when they arrive.
+        // Only assign here for tutorial orders or legacy customers without one.
+        if (needsOrderAssignment)
+            front.SetOrder(selectedOrder);
         SendCustomerToPickup(front);
         return true;
     }
@@ -252,7 +281,15 @@ public class Register : MonoBehaviour
         var worker = AssignedWorker;
         if (worker == null) return false;
         Vector3 stand = GetInteractionPosition();
-        return Vector3.Distance(worker.transform.position, stand) <= workerDutyRadius;
+        return HorizontalDistance(worker.transform.position, stand)
+            <= Mathf.Max(0f, workerDutyRadius);
+    }
+
+    static float HorizontalDistance(Vector3 a, Vector3 b)
+    {
+        float dx = a.x - b.x;
+        float dz = a.z - b.z;
+        return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
     public Vector3 GetInteractionPosition()

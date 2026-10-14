@@ -327,6 +327,7 @@ public class CustomerWallDoor : MonoBehaviour
             () => SetRole(DoorRole.Exit), out exitButtonImage);
         entranceButton.navigation = new Navigation { mode = Navigation.Mode.None };
         exitButton.navigation = new Navigation { mode = Navigation.Mode.None };
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     static TextMeshProUGUI CreatePopupText(Transform parent, string objectName,
