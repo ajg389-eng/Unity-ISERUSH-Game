@@ -1015,7 +1015,7 @@ public static class WorkflowAnalysis
 
         if (products.Count == 0)
         {
-            result.summary = "Cycle " + cycleLabel + " — no cookable menu item detected on this route.";
+            result.summary = "Cycle " + cycleLabel + " — No cookable menu item detected on this route.";
             return result;
         }
 

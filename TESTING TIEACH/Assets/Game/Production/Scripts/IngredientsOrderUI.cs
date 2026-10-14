@@ -613,7 +613,9 @@ public class IngredientsOrderUI : MonoBehaviour
         close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
 
         recipeZoomLabel = CreateAbsoluteText(panel.transform, "Zoom", "100%", 13f, FontStyles.Bold,
-            new Vector2(-210f, -50f), new Vector2(-78f, -18f), TextAlignmentOptions.Center);
+            new Vector2(390f, -46f), new Vector2(470f, -2f), TextAlignmentOptions.Top);
+        recipeZoomLabel.rectTransform.anchorMin = recipeZoomLabel.rectTransform.anchorMax = new Vector2(0f, 1f);
+        recipeZoomLabel.rectTransform.pivot = new Vector2(0f, 1f);
 
         var tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         tabs.transform.SetParent(panel.transform, false);
@@ -902,12 +904,23 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void BuildShakeTree(CustomerOrderConfig menu)
     {
-        AssemblyRecipeDefinition recipe = menu.GetAssemblyRecipe(menu.drinkItem);
+        AssemblyRecipeDefinition recipe = FindConfiguredAssemblyRecipe(menu, menu.drinkItem);
         var milk = AddGraphNode(recipe != null ? recipe.processedInput : null, "MILK", "FREEZER", new Vector2(-230f, 260f));
         var cup = AddGraphNode(recipe != null ? recipe.pantryInput : null, "EMPTY CUP", "PANTRY", new Vector2(230f, 260f));
         var shake = AddGraphNode(menu.drinkItem, "SHAKE", "SHAKE STATION", new Vector2(0f, -20f), true);
         ConnectGraphNodes(milk, shake);
         ConnectGraphNodes(cup, shake, "COMBINE");
+    }
+
+    static AssemblyRecipeDefinition FindConfiguredAssemblyRecipe(CustomerOrderConfig menu, ItemDefinition output)
+    {
+        if (menu == null || output == null || menu.assemblyRecipes == null) return null;
+        for (int i = 0; i < menu.assemblyRecipes.Count; i++)
+        {
+            AssemblyRecipeDefinition recipe = menu.assemblyRecipes[i];
+            if (recipe != null && recipe.Produces(output)) return recipe;
+        }
+        return null;
     }
 
     ItemDefinition FindRecipeInput(CustomerOrderConfig menu, ItemDefinition output, bool processed)
@@ -1040,13 +1053,17 @@ public class IngredientsOrderUI : MonoBehaviour
         CreateGraphArrow(end, from, to);
         if (!string.IsNullOrWhiteSpace(action))
         {
+            Vector2 labelPosition;
+            if (!TryFindGraphActionLabelPosition(start, end, middleY, from, to, out labelPosition))
+                return;
+
             var labelGo = new GameObject("Edge_" + action, typeof(RectTransform), typeof(Image));
             labelGo.transform.SetParent(recipeChartRoot, false);
             RectTransform rt = (RectTransform)labelGo.transform;
             rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.sizeDelta = new Vector2(72f, 18f);
-            rt.anchoredPosition = new Vector2((start.x + end.x) * 0.5f, middleY);
+            rt.anchoredPosition = labelPosition;
             Image backing = labelGo.GetComponent<Image>();
             backing.color = GameUITheme.Charcoal;
             backing.raycastTarget = false;
@@ -1074,6 +1091,49 @@ public class IngredientsOrderUI : MonoBehaviour
             recipeGraphEdges.Add(edge);
             rt.SetAsLastSibling();
         }
+    }
+
+    bool TryFindGraphActionLabelPosition(Vector2 start, Vector2 end, float middleY,
+        RectTransform from, RectTransform to, out Vector2 position)
+    {
+        const float labelWidth = 72f;
+        const float labelHeight = 18f;
+        // Try several points on the horizontal connector, starting near the
+        // midpoint. Skip the label if every candidate would cover a recipe node.
+        float[] offsets = { 0f, -0.15f, 0.15f, -0.3f, 0.3f, -0.45f, 0.45f };
+        float centerX = (start.x + end.x) * 0.5f;
+        float span = end.x - start.x;
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            float horizontalOffset = Mathf.Abs(span) < labelWidth
+                ? offsets[i] * (labelWidth + 24f)
+                : span * offsets[i];
+            Vector2 candidate = new Vector2(centerX + horizontalOffset, middleY);
+            Rect labelBounds = Rect.MinMaxRect(candidate.x - labelWidth * 0.5f,
+                candidate.y - labelHeight * 0.5f, candidate.x + labelWidth * 0.5f,
+                candidate.y + labelHeight * 0.5f);
+            bool overlapsNode = false;
+            for (int nodeIndex = 0; nodeIndex < recipeGraphNodes.Count; nodeIndex++)
+            {
+                RectTransform node = recipeGraphNodes[nodeIndex] != null
+                    ? recipeGraphNodes[nodeIndex].transform as RectTransform : null;
+                if (node == null) continue;
+                Vector2 nodeCenter = node.anchoredPosition;
+                Rect nodeBounds = Rect.MinMaxRect(nodeCenter.x - node.sizeDelta.x * 0.5f,
+                    nodeCenter.y - node.sizeDelta.y * 0.5f, nodeCenter.x + node.sizeDelta.x * 0.5f,
+                    nodeCenter.y + node.sizeDelta.y * 0.5f);
+                if (labelBounds.Overlaps(nodeBounds))
+                {
+                    overlapsNode = true;
+                    break;
+                }
+            }
+            if (overlapsNode) continue;
+            position = candidate;
+            return true;
+        }
+        position = Vector2.zero;
+        return false;
     }
 
     void CreateGraphLine(Vector2 a, Vector2 b, RectTransform from, RectTransform to)
@@ -1407,15 +1467,18 @@ public class IngredientsOrderUI : MonoBehaviour
         nameLe.minHeight = 44f;
         nameLe.preferredHeight = 44f;
         var nameText = nameGo.GetComponent<TextMeshProUGUI>();
-        nameText.text = inventory.GetDisplayName(item);
+        nameText.text = itemUnlocked ? inventory.GetDisplayName(item) : string.Empty;
         nameText.fontSize = 14;
         nameText.fontStyle = FontStyles.Bold;
         nameText.color = GameUITheme.TextPrimary;
         row.GetComponent<Image>().color = GameUITheme.Surface;
-        preview.color = Color.white;
+        preview.color = itemUnlocked ? Color.white : Color.clear;
         nameText.alignment = TextAlignmentOptions.MidlineLeft;
-        nameText.textWrappingMode = TextWrappingModes.Normal;
-        nameText.overflowMode = TextOverflowModes.Overflow;
+        nameText.textWrappingMode = TextWrappingModes.NoWrap;
+        nameText.overflowMode = TextOverflowModes.Ellipsis;
+        nameText.enableAutoSizing = true;
+        nameText.fontSizeMin = 11f;
+        nameText.fontSizeMax = 14f;
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
@@ -2105,17 +2168,19 @@ public class IngredientsOrderUI : MonoBehaviour
             bool unlocked = inventory.orderConfig.IsMenuItemUnlocked(row.item);
             if (row.label != null)
             {
-                row.label.text = inventory.GetDisplayName(row.item);
+                row.label.text = unlocked ? inventory.GetDisplayName(row.item) : string.Empty;
                 row.label.color = GameUITheme.TextPrimary;
             }
             if (row.rowBackground != null)
                 row.rowBackground.color = GameUITheme.Surface;
             if (row.preview != null)
-                row.preview.color = Color.white;
+                row.preview.color = unlocked ? Color.white : Color.clear;
             if (row.lockVisual != null) row.lockVisual.alpha = 0f;
             if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!unlocked);
             if (row.workflowText != null)
-                row.workflowText.text = GetWorkflowDescription(inventory.orderConfig, row.item);
+                row.workflowText.text = unlocked
+                    ? GetWorkflowDescription(inventory.orderConfig, row.item)
+                    : string.Empty;
             if (row.toggle != null) row.toggle.interactable = unlocked;
             if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
                 toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
@@ -2144,7 +2209,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
             if (row.infoText != null)
             {
-                row.infoText.text = name + "\nPack of " + pack + "  |  $" + price;
+                row.infoText.text = itemUnlocked ? name + "\nPack of " + pack + "  |  $" + price : string.Empty;
                 row.infoText.color = GameUITheme.TextPrimary;
             }
             Image rowImage = child.GetComponent<Image>();
@@ -2154,7 +2219,7 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!itemUnlocked);
             if (row.stockText != null)
             {
-                row.stockText.text = incoming > 0
+                row.stockText.text = !itemUnlocked ? string.Empty : incoming > 0
                     ? "Stock\n" + stock + "\n+" + incoming + " incoming"
                     : "Stock\n" + stock;
                 row.stockText.color = GameUITheme.TextSecondary;
@@ -2163,7 +2228,7 @@ public class IngredientsOrderUI : MonoBehaviour
             int selected = itemUnlocked ? GetCartPacks(row.item) : 0;
             cartPackCount += selected;
             cartTotal += selected * price;
-            if (row.cartCountText != null) row.cartCountText.text = "x" + selected;
+            if (row.cartCountText != null) row.cartCountText.text = itemUnlocked ? "x" + selected : string.Empty;
             SetButtonState(row.removeButton, !deliveryActive && itemUnlocked && selected > 0, GameUITheme.Danger);
             SetButtonState(row.addButton, !deliveryActive && itemUnlocked, GameUITheme.Positive);
         }
@@ -2461,6 +2526,6 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
     public void RefreshZoomLabel()
     {
         if (zoomLabel != null && content != null)
-            zoomLabel.text = Mathf.RoundToInt(content.localScale.x * 100f) + "%";
+            zoomLabel.text = "(" + Mathf.RoundToInt(content.localScale.x * 100f) + "%)";
     }
 }

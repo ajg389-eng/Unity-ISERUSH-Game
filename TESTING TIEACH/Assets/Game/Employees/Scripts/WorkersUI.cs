@@ -409,7 +409,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV7") == null)
+        if (existing != null && existing.Find("LayoutV8") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -454,7 +454,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV7", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV8", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -1106,7 +1106,7 @@ public class WorkersUI : MonoBehaviour
 
             if (flow.stations.Count == 0 && (flow.stepIds == null || flow.stepIds.Count == 0))
             {
-                flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n"
+                flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
                     + "Add stations to analyze this flow.\n"
                     + "<b>Resources Required:</b> None";
                 LayoutFlowPanel();
@@ -1139,7 +1139,7 @@ public class WorkersUI : MonoBehaviour
             if (sb.Length > 0) sb.Append('\n');
             int stationCount = flow.stations != null ? flow.stations.Count : 0;
             int workerCount = flow.workers != null ? flow.workers.Count : 0;
-            sb.Append("<b>Process metrics:</b> ")
+            sb.Append("<b>Process Metrics:</b> ")
                 .Append(stationCount).Append(" stations | ")
                 .Append(workerCount).Append(" workers | Load ")
                 .Append(stationCount + workerCount);
@@ -1159,7 +1159,8 @@ public class WorkersUI : MonoBehaviour
             {
                 sb.Append("None");
             }
-            flowStatus.text = "<size=14><b><color=#F1C66D>Economics</color></b></size>\n" + sb;
+            flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
+                + "<color=#59616D>──────────────────────────────</color>\n" + sb;
             LayoutFlowPanel();
         }
         finally
