@@ -118,7 +118,7 @@ public static class GuidebookPages
             "Food",
             "The Food tab (called Ingredients in the tutorial) shows kitchen stock and lets you buy packs with cash. Toggle which menu items new customers may order.\n\n" +
             "Stations cannot cook what you do not have. If a flow looks assigned but nothing moves, check this list before you rebuild the layout.\n\n" +
-            "Order a little ahead of the rush so the freezer and fryer do not starve. Huge unused piles are wasted money, the same idea as Pickup Station waste earlier in the chain.\n\n" +
+            "Order ahead for the steady customer demand so the freezer and fryer do not starve. Huge unused piles are wasted money, the same idea as Pickup Station waste earlier in the chain.\n\n" +
             "Undo works here if you ordered the wrong pack."),
         new Page(
             "Management",
@@ -140,8 +140,8 @@ public static class GuidebookPages
             "Customers",
             "Customers arrive by <b>car</b>, park in an open stall, and walk through a placed door to queue at the <b>register</b>. The car leaves once that customer is done. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
             "They only have so much patience in line. If they wait too long they leave and you lose the sale.\n\n" +
-            "The time between customers is random, but the first one arrives in the opening hour and later gaps stay short, so the morning does not sit empty. The average rate is lowest on <b>Milestone 1</b> and rises with each later milestone.\n\n" +
-            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). Complete <b>Queue Analytics</b> research to enable lunch (12–2) and dinner (5–7) rushes, when the arrival rate jumps. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
+            "Customers arrive at evenly spaced intervals. Each enabled menu item has a fixed demand rate based on its assembler recipe output, so you can plan production before the shift starts.\n\n" +
+            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). Demand stays consistent through the shift. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
         new Page(
             "Progress",
             "Tasks and milestones",
@@ -149,7 +149,7 @@ public static class GuidebookPages
             "Progression stays locked until you finish or skip the first-run kitchen tutorial.\n\n" +
             "<b>Tutorial: Restaurant Basics</b> completes on its own when its work is done — there is no quiz on that chapter.\n\n" +
             "Later milestones still work the same way: finish every task, then pass the quiz (every answer correct) to advance the chapter. The new chapter makes more research projects available. Completing a research project grants its listed unlocks.\n\n" +
-            "For example, Milestone 2 makes research available for extra station copies, a fourth hire, a second worker on a flow, express ordering, rush hours, and queue analytics. Those features activate when their research is completed."),
+            "For example, Milestone 2 makes research available for extra station copies, a fourth hire, a second worker on a flow, express ordering, and queue analytics. Those features activate when their research is completed."),
         new Page(
             "Guide",
             "A good first shift",

@@ -15,6 +15,7 @@ public class CustomersUI : MonoBehaviour
 
     TextMeshProUGUI graphTitle;
     TextMeshProUGUI demandTitle;
+    TextMeshProUGUI demandHelp;
     TextMeshProUGUI[] demandHeader;
     readonly List<TextMeshProUGUI> metricValues = new List<TextMeshProUGUI>();
     RectTransform graphBarsRoot;
@@ -29,7 +30,7 @@ public class CustomersUI : MonoBehaviour
     readonly List<TextMeshProUGUI> barLabels = new List<TextMeshProUGUI>();
     readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
-    static readonly float[] demandColumnMinimumWidths = { 120f, 76f, 56f, 45f, 53f, 68f, 74f };
+    static readonly float[] demandColumnMinimumWidths = { 120f, 76f, 56f, 45f, 53f, 68f, 86f, 110f, 74f };
     readonly float[] demandColumnWidths = (float[])demandColumnMinimumWidths.Clone();
 
     void OnEnable()
@@ -127,13 +128,25 @@ public class CustomersUI : MonoBehaviour
         demandTitle.fontSizeMax = 18f;
         demandTitle.overflowMode = TextOverflowModes.Overflow;
 
+        demandHelp = CreateLabel(transform, "DemandHelp",
+            new Vector2(0, 1), new Vector2(1, 1),
+            new Vector2(0, -434), new Vector2(-28, 20),
+            11, TextAlignmentOptions.MidlineLeft);
+        demandHelp.text = "Target = scheduled demand/min. Ordered = actual register rate over the last 60 sim seconds (normalized while warming up). Reputation adjusts next shift.";
+        demandHelp.enableAutoSizing = true;
+        demandHelp.fontSizeMin = 9f;
+        demandHelp.fontSizeMax = 11f;
+        demandHelp.textWrappingMode = TextWrappingModes.NoWrap;
+        demandHelp.overflowMode = TextOverflowModes.Ellipsis;
+        demandHelp.color = new Color(0.72f, 0.77f, 0.86f, 1f);
+
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
         var scrollRt = (RectTransform)scrollGo.transform;
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(12, 12);
-        scrollRt.offsetMax = new Vector2(-12, -448);
+        scrollRt.offsetMax = new Vector2(-12, -466);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         demandScroll = scroll;
@@ -189,7 +202,7 @@ public class CustomersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         demandHeader = CreateDemandTableRow("Header", 42f, out _);
-        string[] headings = { "Item", "Status", "Open\nOrders", "Ready", "Cooking", "Demand /\nMin", "Completed\nLast Min" };
+        string[] headings = { "Item", "Status", "Open\nDemand", "Ready", "Cooking", "Target /\nMin", "Items Ordered /\nMin", "Reputation /\nNext Shift", "Completed\nLast Min" };
         for (int i = 0; i < headings.Length; i++)
         {
             demandHeader[i].text = headings[i];
@@ -246,7 +259,7 @@ public class CustomersUI : MonoBehaviour
 
         CreateMetricCard(row.transform, "In System", new Color(0.58f, 0.47f, 0.93f, 1f));
         CreateMetricCard(row.transform, "Avg Wait", new Color(0.29f, 0.72f, 0.95f, 1f));
-        CreateMetricCard(row.transform, "Orders / Min", new Color(0.25f, 0.78f, 0.62f, 1f));
+        CreateMetricCard(row.transform, "Orders Served / Min", new Color(0.25f, 0.78f, 0.62f, 1f));
         CreateMetricCard(row.transform, "Service Rate", new Color(0.98f, 0.68f, 0.30f, 1f));
     }
 
@@ -523,8 +536,8 @@ public class CustomersUI : MonoBehaviour
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
         demandTitle.text = needs.Count == 1
-            ? "Current Demand by Item (1 Item)"
-            : $"Current Demand by Item ({needs.Count} Items)";
+            ? "Demand vs Orders by Item (1 Item)"
+            : $"Demand vs Orders by Item ({needs.Count} Items)";
         UpdateDemandTableLayout();
 
         // Hide entire rows so inactive items leave no backgrounds or layout gaps.
@@ -572,7 +585,22 @@ public class CustomersUI : MonoBehaviour
             cells[3].text = row.ready.ToString();
             cells[4].text = row.cooking.ToString();
             cells[5].text = Mathf.RoundToInt(row.requiredPerMinute).ToString();
-            cells[6].text = row.completedLastMinute.ToString();
+            cells[6].text = row.orderedPerMinute.ToString("F1");
+            CustomerOrderConfig config = pm != null ? pm.orderConfig : null;
+            int reputation = config != null ? config.GetItemReputation(row.item) : 0;
+            int pendingChange = config != null ? config.GetPendingItemDemandChangePerMinute(row.item) : 0;
+            int nextThreshold = Mathf.Min(CustomerOrderConfig.MaxItemReputation,
+                (reputation / CustomerOrderConfig.ReputationPerDemandTier + 1)
+                    * CustomerOrderConfig.ReputationPerDemandTier);
+            string reputationDetail = pendingChange > 0
+                ? $"+{pendingChange}/min next shift"
+                : pendingChange < 0
+                    ? $"{pendingChange}/min next shift"
+                    : reputation >= CustomerOrderConfig.MaxItemReputation
+                        ? "MAX DEMAND"
+                        : $"+5/min at {nextThreshold}";
+            cells[7].text = $"{reputation}/{CustomerOrderConfig.MaxItemReputation}\n{reputationDetail}";
+            cells[8].text = row.completedLastMinute.ToString();
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
                 rowImage.color = Color.clear;

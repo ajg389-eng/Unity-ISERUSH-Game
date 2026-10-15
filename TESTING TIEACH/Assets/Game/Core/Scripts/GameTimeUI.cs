@@ -168,11 +168,6 @@ public class GameTimeUI : MonoBehaviour
         speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
         speedMultiplierText.gameObject.SetActive(false);
 
-        rushText = CreateLabel(row.transform, "RushText", "RUSH", 16, 56f);
-        rushText.fontStyle = FontStyles.Bold;
-        rushText.color = new Color(1f, 0.58f, 0.22f, 1f);
-        rushText.overflowMode = TextOverflowModes.Truncate;
-        rushText.enableWordWrapping = false;
     }
 
     const string SpeedStripName = "SpeedControls";
@@ -402,7 +397,6 @@ public class GameTimeUI : MonoBehaviour
     {
         if (timeManager == null) return;
         EnsureSpeedMultiplierLabel();
-        EnsureRushLabel();
 
         if (clockText != null)
         {
@@ -424,19 +418,7 @@ public class GameTimeUI : MonoBehaviour
         }
 
         if (rushText != null)
-        {
-            if (!rushText.gameObject.activeSelf)
-                rushText.gameObject.SetActive(true);
-            bool rush = timeManager.IsRushHour;
-            rushText.text = rush ? "RUSH" : "";
-            rushText.color = new Color(1f, 0.58f, 0.22f, 1f);
-            rushText.overflowMode = TextOverflowModes.Truncate;
-            rushText.enableWordWrapping = false;
-            var rushLayout = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
-            rushLayout.minWidth = 56f;
-            rushLayout.preferredWidth = 56f;
-            rushLayout.flexibleWidth = 0f;
-        }
+            rushText.gameObject.SetActive(false);
     }
 
     void TuneTimeRow()
@@ -483,15 +465,7 @@ public class GameTimeUI : MonoBehaviour
             PositionTimeLabel(speedMultiplierText.rectTransform, 82f, 38f);
         }
         if (rushText != null)
-        {
-            var le = rushText.GetComponent<LayoutElement>() ?? rushText.gameObject.AddComponent<LayoutElement>();
-            le.ignoreLayout = true;
-            le.minWidth = 56f;
-            le.preferredWidth = 56f;
-            le.flexibleWidth = 0f;
-            rushText.gameObject.SetActive(true);
-            PositionTimeLabel(rushText.rectTransform, 135f, 56f);
-        }
+            rushText.gameObject.SetActive(false);
     }
 
     static void PositionTimeLabel(RectTransform label, float centerX, float width)
@@ -526,20 +500,6 @@ public class GameTimeUI : MonoBehaviour
         speedMultiplierText.color = new Color(0.45f, 0.82f, 1f, 1f);
         if (clockText != null)
             speedMultiplierText.transform.SetSiblingIndex(clockText.transform.GetSiblingIndex() + 1);
-    }
-
-    void EnsureRushLabel()
-    {
-        if (rushText != null) return;
-        Transform parent = clockText != null ? clockText.transform.parent : transform;
-        if (parent == null) return;
-
-        rushText = CreateLabel(parent, "RushText", "RUSH", 16, 56f);
-        rushText.fontStyle = FontStyles.Bold;
-        rushText.overflowMode = TextOverflowModes.Truncate;
-        rushText.enableWordWrapping = false;
-        if (clockText != null)
-            rushText.transform.SetSiblingIndex(clockText.transform.GetSiblingIndex() + 1);
     }
 
     static void SetHighlight(Image img, bool on)

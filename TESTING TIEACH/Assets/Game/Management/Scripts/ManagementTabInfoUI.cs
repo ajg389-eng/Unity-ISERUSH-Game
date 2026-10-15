@@ -384,8 +384,8 @@ public class ManagementTabInfoUI : MonoBehaviour
             body =
                 "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
                 "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows actual arrivals during one hour. The highlighted bar is the current hour. The exact plan shows scheduled arrivals for that hour. Customers arrive at evenly spaced intervals; research-unlocked lunch and dinner rushes use a fixed multiplier.\n\n" +
-                "<b>Demand and throughput by item</b>\nDemand / Min is the exact scheduled request rate for each enabled menu recipe. Its baseline starts from that assembler recipe's 100% MK1 output, rounded to the nearest multiple of five. A researched rush applies the fixed multiplier while keeping rates on five-item increments. Outstanding is the number of items customers still need. Ready and cooking are live counts; completed is the measured total from the trailing 60 simulation seconds.\n\n" +
+                "<b>Visit trend</b>\nEach bar shows actual arrivals during one hour. The highlighted bar is the current hour. The exact plan shows scheduled arrivals for that hour. Customer arrivals are evenly spaced and stay at the same rate throughout the shift.\n\n" +
+                "<b>Demand and throughput by item</b>\nTarget / Min is the scheduled request rate for each enabled menu recipe. Items Ordered / Min is the actual register accepted rate over the trailing 60 simulation seconds, normalized over the elapsed time during its first minute. Requests waiting for register capacity remain in Open Demand and are included in production planning. Ready and cooking are live counts; completed is output delivered during the same trailing minute.\n\n" +
                 "<color=#73BFF2><b>ISE idea:</b></color> Compare each fixed demand rate with the production line's output and add or split stations to balance capacity.";
             return;
         }

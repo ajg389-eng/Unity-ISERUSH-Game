@@ -120,6 +120,9 @@ public class GameTimeManager : MonoBehaviour
         CurrentDay++;
         ResetDayClock();
         SetSpeed(SpeedMode.Play);
+        ProductionManager production = ProductionManager.Instance;
+        if (production != null && production.orderConfig != null)
+            production.orderConfig.ApplyItemReputationForNewShift();
         OnDayStarted?.Invoke();
     }
 
@@ -189,26 +192,9 @@ public class GameTimeManager : MonoBehaviour
 
     public int CurrentHour24 => Mathf.FloorToInt(CurrentMinutes / 60f) % 24;
 
-    /// <summary>Lunch 12–2 and dinner 5–7, once Queue Analytics research is complete.</summary>
-    public bool IsRushHour
-    {
-        get
-        {
-            if (!MilestoneFeatures.RushHourUnlocked || IsShiftOver) return false;
-            int hour = CurrentHour24;
-            return (hour >= 12 && hour < 14) || (hour >= 17 && hour < 19);
-        }
-    }
-
-    public string RushHourLabel
-    {
-        get
-        {
-            if (!IsRushHour) return "";
-            int hour = CurrentHour24;
-            return hour >= 17 ? "Dinner rush" : "Lunch rush";
-        }
-    }
+    /// <summary>Customer rush periods are disabled; kept for older UI integrations.</summary>
+    public bool IsRushHour => false;
+    public string RushHourLabel => string.Empty;
 
     public string GetClockText()
     {

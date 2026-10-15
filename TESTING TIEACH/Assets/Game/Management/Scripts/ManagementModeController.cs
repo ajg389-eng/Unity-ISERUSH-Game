@@ -1105,6 +1105,18 @@ public class ManagementModeController : MonoBehaviour
                 + "  |  reserved in " + incoming + ", out " + outgoing;
         }
 
+        CuttingStation cutting = node.GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            string product = recipe != null ? DisplayItemName(recipe.output) : "no recipe";
+            return "Shared slots: " + cutting.BufferedUnitCount + "/" + cutting.SlotCapacity
+                + "  |  raw " + (recipe != null ? cutting.GetInputCount(recipe.input) : 0)
+                + "  |  " + product + " " + (recipe != null ? cutting.GetOutputCount(recipe.output) : 0)
+                + (cutting.IsProcessing ? "  |  processing" : string.Empty)
+                + "  |  reserved in " + incoming + ", out " + outgoing;
+        }
+
         HeatLampStation pickup = node.GetComponent<HeatLampStation>();
         if (pickup != null)
             return "Buffer: " + pickup.Count + "/" + pickup.maxCapacity
@@ -3813,6 +3825,7 @@ public class ManagementModeController : MonoBehaviour
         GridManager grid = GridManager.Instance;
         if (footprint != null && grid != null)
         {
+            footprint.EnsureMatchesPlacedItem();
             int sizeX = Mathf.Max(1, footprint.sizeX);
             int sizeY = Mathf.Max(1, footprint.sizeY);
             int yaw = Mathf.RoundToInt(station.transform.eulerAngles.y / 90f) & 3;

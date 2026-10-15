@@ -21,7 +21,7 @@ public class CustomerAI : MonoBehaviour
     public float arrivalDistance = 0.15f;
 
     [Header("Patience")]
-    [Tooltip("Seconds a customer will wait in line before leaving (starts after reaching their queue slot).")]
+    [Tooltip("Seconds a customer will wait for their order after ordering at the register.")]
     public float patienceDuration = 50f;
 
     [Header("Components")]
@@ -40,7 +40,10 @@ public class CustomerAI : MonoBehaviour
     CustomerOrder order;
     int salePrice;
     bool orderRevealed;
-    bool waitingInQueue;
+    bool includeInOrderRate = true;
+    bool orderPlacementRecorded;
+    bool abandonedReputationRecorded;
+    bool patienceActive;
     bool waitingForPickup;
     HeatLampStation pickupStation;
     bool leaving;
@@ -55,6 +58,9 @@ public class CustomerAI : MonoBehaviour
     int routeIndex;
     readonly List<Vector3> gridPath = new List<Vector3>();
     Vector3 gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
+    const float QueueTravelStuckTimeout = 12f;
+    float queueTravelStuckSeconds;
+    Vector3 lastQueueTravelPosition;
     Renderer customerFloorRenderer;
     Phase phase = Phase.GoingToSlot;
     bool patienceStarted;
@@ -136,6 +142,15 @@ public class CustomerAI : MonoBehaviour
     void OnDisable()
     {
         ActiveCustomers.Remove(this);
+        StopPatienceMeter();
+        Register attachedRegister = reg;
+        reg = null;
+        if (attachedRegister != null)
+            attachedRegister.LeaveQueue(this);
+        HeatLampStation attachedPickup = pickupStation;
+        pickupStation = null;
+        if (attachedPickup != null)
+            attachedPickup.LeavePickupQueue(this);
     }
 
     void Awake()
@@ -208,6 +223,7 @@ public class CustomerAI : MonoBehaviour
         route.Clear();
         routeIndex = 0;
         gridPath.Clear();
+        ResetQueueTravelWatchdog();
         hasTarget = false;
 
         if (worldPoints != null)
@@ -235,16 +251,17 @@ public class CustomerAI : MonoBehaviour
         hasReturnSpawnPoint = true;
     }
 
-    public void SetOrder(CustomerOrder o)
+    public void SetOrder(CustomerOrder o, bool includeInOrderRate = true)
     {
         order = o != null ? o.Clone() : new CustomerOrder();
         OriginalOrder = order.Clone();
         orderCompletionReported = false;
+        this.includeInOrderRate = includeInOrderRate;
+        orderPlacementRecorded = false;
+        abandonedReputationRecorded = false;
         OrderNumber = ++nextOrderNumber;
         CustomerDisplayName = orderNames[customerNameRandom.Next(orderNames.Length)] + " " + (char)('A' + customerNameRandom.Next(26)) + ".";
         salePrice = GetGenericOrderBasePrice(order);
-        if (ProductionManager.Instance != null)
-            ProductionManager.Instance.RecordCustomerOrder(order);
         RefreshOrderLabel();
     }
 
@@ -261,8 +278,14 @@ public class CustomerAI : MonoBehaviour
     public void ClearOrder()
     {
         order = null;
+        OriginalOrder = null;
         salePrice = 0;
         orderRevealed = false;
+        orderCompletionReported = false;
+        includeInOrderRate = true;
+        orderPlacementRecorded = false;
+        abandonedReputationRecorded = false;
+        StopPatienceMeter();
         if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
         if (orderLabel != null)
         {
@@ -276,8 +299,17 @@ public class CustomerAI : MonoBehaviour
     {
         if (item == null || order == null) return false;
         if (!order.TryRemoveOne(item)) return false;
+        RecordItemReputationServed(item);
         RefreshOrderLabel();
         return true;
+    }
+
+    void RecordItemReputationServed(ItemDefinition item)
+    {
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config != null)
+            config.RecordItemServed(item);
     }
 
     /// <summary>
@@ -350,11 +382,11 @@ public class CustomerAI : MonoBehaviour
         queueJoinTime = time;
     }
 
-    public void BeginQueueWait()
+    void BeginPostOrderPatience()
     {
-        if (waitingInQueue || patienceStarted) return;
-        waitingInQueue = true;
+        if (patienceStarted) return;
         patienceStarted = true;
+        patienceActive = true;
 
         if (patienceMeter == null)
             patienceMeter = GetComponent<CustomerPatienceMeter>();
@@ -365,24 +397,26 @@ public class CustomerAI : MonoBehaviour
 
     void StopPatienceMeter()
     {
-        waitingInQueue = false;
+        patienceActive = false;
         if (patienceMeter != null)
             patienceMeter.Stop();
     }
 
     void OnPatienceExpired()
     {
-        if (!waitingInQueue || leaving || leavingImpatient) return;
+        if (!patienceActive || leaving || leavingImpatient) return;
 
         Transform exit = reg != null ? reg.storeExit : null;
-        if (reg != null)
-            reg.LeaveQueue(this);
-
         LeaveImpatient(exit);
     }
 
     public void LeaveImpatient(Transform exit)
     {
+        if (leaving) return;
+        RecordUnservedItemReputation();
+        Register currentRegister = reg;
+        if (currentRegister != null)
+            currentRegister.LeaveQueue(this);
         StopPatienceMeter();
         reg = null;
         hasTarget = false;
@@ -396,6 +430,19 @@ public class CustomerAI : MonoBehaviour
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.RecordCustomerLost();
+    }
+
+    void RecordUnservedItemReputation()
+    {
+        if (abandonedReputationRecorded || !orderRevealed || order == null || order.lines == null)
+            return;
+        abandonedReputationRecorded = true;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config == null) return;
+        foreach (CustomerOrder.OrderLine line in order.lines)
+            if (line.item != null && line.quantity > 0)
+                config.RecordItemLeftUnserved(line.item, line.quantity);
     }
 
     public void SetTargetRegister(Register r)
@@ -429,6 +476,7 @@ public class CustomerAI : MonoBehaviour
         hasQueueSlot = true;
         isFront = front;
         waitingForPickup = true;
+        ResetQueueTravelWatchdog();
         if (phase != Phase.Entering)
             ApplyQueueSlotMovement();
     }
@@ -436,6 +484,21 @@ public class CustomerAI : MonoBehaviour
     public void BeginPickupJourney()
     {
         JoinNextPickupStation();
+    }
+
+    /// <summary>Called when the register hands the customer their order.</summary>
+    public void OnOrderPlacedAtRegister()
+    {
+        if (leaving) return;
+        if (includeInOrderRate && !orderPlacementRecorded && order != null
+            && order.GetTotalQuantity() > 0 && ProductionManager.Instance != null)
+        {
+            ProductionManager.Instance.RecordCustomerOrder(order);
+            orderPlacementRecorded = true;
+        }
+        RevealOrder();
+        BeginPostOrderPatience();
+        BeginPickupJourney();
     }
 
     void JoinNextPickupStation()
@@ -482,6 +545,7 @@ public class CustomerAI : MonoBehaviour
         hasQueueSlot = true;
         isFront = front;
         waitingForPickup = pickup;
+        ResetQueueTravelWatchdog();
 
         if (phase == Phase.Entering)
             return;
@@ -525,6 +589,8 @@ public class CustomerAI : MonoBehaviour
         StopPatienceMeter();
         if (pickupStation != null) pickupStation.LeavePickupQueue(this);
         pickupStation = null;
+        reg = null;
+        hasQueueSlot = false;
         Destroy(gameObject);
     }
 
@@ -627,7 +693,12 @@ public class CustomerAI : MonoBehaviour
         // Door waypoints already provide panel clearance. Re-snapping each one
         // onto the grid can send the customer backwards between waypoints.
         if (MoveStraightTo(route[routeIndex]))
+        {
             routeIndex++;
+            ResetQueueTravelWatchdog();
+            return;
+        }
+        if (RecoverIfQueueTravelStuck()) return;
     }
 
     void UpdateGoingToSlot()
@@ -636,8 +707,9 @@ public class CustomerAI : MonoBehaviour
         {
             if (hasQueueSlot)
                 ApplyQueueSlotMovement();
-            else if (reg != null)
-                reg.RefreshQueueTargets();
+            else
+                RefreshQueueAssignment();
+            RecoverIfQueueTravelStuck();
             return;
         }
 
@@ -647,11 +719,45 @@ public class CustomerAI : MonoBehaviour
         if (leaving) return;
         if (MoveOnCustomerGrid(targetPos))
         {
+            ResetQueueTravelWatchdog();
             phase = Phase.Waiting;
-            BeginQueueWait();
             if (waitingForPickup)
                 TrySelfServeFromHeatLamp();
+            return;
         }
+        RecoverIfQueueTravelStuck();
+    }
+
+    void ResetQueueTravelWatchdog()
+    {
+        queueTravelStuckSeconds = 0f;
+        lastQueueTravelPosition = transform.position;
+    }
+
+    bool RecoverIfQueueTravelStuck()
+    {
+        if (phase == Phase.Leaving || (!hasQueueSlot && reg == null)) return false;
+        if (HorizontalDist(transform.position, lastQueueTravelPosition) > 0.04f)
+        {
+            ResetQueueTravelWatchdog();
+            return false;
+        }
+
+        queueTravelStuckSeconds += Time.deltaTime;
+        if (queueTravelStuckSeconds < QueueTravelStuckTimeout) return false;
+
+        // Being unable to reach the reserved tile is a movement problem, not
+        // customer impatience. Retry the route and let the normal patience meter
+        // control when the customer leaves.
+        if (phase == Phase.Entering)
+            routeIndex = Mathf.Min(routeIndex + 1, route.Count);
+        else
+        {
+            gridPath.Clear();
+            gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
+        }
+        ResetQueueTravelWatchdog();
+        return true;
     }
 
     void UpdateWaiting()
@@ -667,7 +773,11 @@ public class CustomerAI : MonoBehaviour
             JoinNextPickupStation();
             return;
         }
-        if (!hasQueueSlot) return;
+        if (!hasQueueSlot)
+        {
+            RefreshQueueAssignment();
+            return;
+        }
 
         // Keep locked to the current queue slot if the line shifts forward.
         targetPos = queuedSlotPos;
@@ -683,15 +793,27 @@ public class CustomerAI : MonoBehaviour
 
         FaceLineFront();
 
-        if (!patienceStarted)
-            BeginQueueWait();
-
         // Stay in the register order line until the register finishes taking the order.
         // (Register / cashier moves them to the heat-lamp pickup line.)
 
         // Self-serve: grab matching food from the pass when at the front of pickup.
         if (waitingForPickup)
             TrySelfServeFromHeatLamp();
+    }
+
+    void RefreshQueueAssignment()
+    {
+        if (waitingForPickup)
+        {
+            if (pickupStation != null)
+                pickupStation.TryJoinPickupQueue(this);
+            else
+                BeginPickupJourney();
+        }
+        else if (reg != null)
+        {
+            reg.RefreshQueueTargets();
+        }
     }
 
     void FaceLineFront()
@@ -729,6 +851,7 @@ public class CustomerAI : MonoBehaviour
                 this, pickupStation, order, out ItemDefinition item,
                 out int adjustedSaleValue)) return;
         if (!order.TryRemoveOne(item)) return;
+        RecordItemReputationServed(item);
         ApplyPickupSaleValue(item, adjustedSaleValue);
 
         RefreshOrderLabel();
@@ -974,26 +1097,13 @@ public class CustomerAI : MonoBehaviour
         // Leaving customers have to clear the door. Holding them for the person
         // ahead piles the whole group in the corner.
         if (phase == Phase.Leaving) return false;
-        // Register and pickup slots are one tile apart in a straight file.
-        // Always finish the walk onto your own tile. Only refuse a step that
-        // would land on someone who is already standing on a different tile.
-        if (hasQueueSlot && StepApproachesOwnSlot(dest))
-        {
-            for (int i = 0; i < ActiveCustomers.Count; i++)
-            {
-                CustomerAI other = ActiveCustomers[i];
-                if (other == null || other == this || !other.hasQueueSlot) continue;
-                // The order line stands between the register and the pickup.
-                // Walking to the pickup station has to pass those people.
-                if (waitingForPickup && !other.waitingForPickup) continue;
-                if (HorizontalDist(other.queuedSlotPos, queuedSlotPos) < 0.35f) continue;
-                bool otherHome = HorizontalDist(other.transform.position, other.queuedSlotPos) <= 0.3f;
-                if (!otherHome) continue;
-                if (HorizontalDist(dest, other.transform.position) < 0.45f)
-                    return true;
-            }
+        // Queue customers have unique reserved tiles. The queue owns movement
+        // priority from the entry path through each reflow, so another customer
+        // must not block a reserved queue movement. Otherwise a served customer
+        // crossing the aisle, or two customers shifting forward together, can
+        // leave the whole line stuck.
+        if (hasQueueSlot)
             return false;
-        }
 
         const float followDistance = 0.82f;
         Vector3 move = dest - transform.position;
@@ -1004,8 +1114,9 @@ public class CustomerAI : MonoBehaviour
         for (int i = 0; i < ActiveCustomers.Count; i++)
         {
             CustomerAI other = ActiveCustomers[i];
-            if (other == null || other == this) continue;
-            if (waitingForPickup && !other.waitingForPickup) continue;
+            if (other == null || other == this || other.IsLeaving || other.phase == Phase.Entering)
+                continue;
+            if (other.waitingForPickup != waitingForPickup) continue;
 
             Vector3 toOther = other.transform.position - transform.position;
             toOther.y = 0f;
@@ -1019,13 +1130,6 @@ public class CustomerAI : MonoBehaviour
         }
 
         return false;
-    }
-
-    bool StepApproachesOwnSlot(Vector3 dest)
-    {
-        float now = HorizontalDist(transform.position, queuedSlotPos);
-        float next = HorizontalDist(dest, queuedSlotPos);
-        return next <= 0.25f || next < now - 0.02f;
     }
 
     void SnapXZ(Vector3 world)

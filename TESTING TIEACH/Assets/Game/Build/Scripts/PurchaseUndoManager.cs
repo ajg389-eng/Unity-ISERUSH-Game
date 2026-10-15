@@ -422,6 +422,7 @@ public class PurchaseUndoManager : MonoBehaviour
         if (grid != null && go.GetComponent<CustomerWallDoor>() == null)
         {
             var fp = go.GetComponent<BuildFootprint>();
+            if (fp != null) fp.EnsureMatchesPlacedItem();
             int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);
             int sizeY = Mathf.Max(1, fp != null ? fp.sizeY : 1);
             float ay = go.transform.eulerAngles.y;

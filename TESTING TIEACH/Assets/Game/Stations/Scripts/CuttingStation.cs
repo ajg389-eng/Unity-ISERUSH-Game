@@ -2,9 +2,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>Processes raw burger toppings into slices ready for assembly.</summary>
-public class CuttingStation : MonoBehaviour, IStationBuffer
+public partial class CuttingStation : MonoBehaviour, IStationBuffer
 {
-    const int DefaultBufferCapacity = 2;
+    const int Mk1SlotCapacity = 4;
+    const int Mk2SlotCapacity = 8;
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
@@ -21,8 +22,10 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     Transform itemDisplayRoot;
     readonly List<Transform> inputMarkers = new List<Transform>();
     readonly List<Transform> outputMarkers = new List<Transform>();
+    readonly List<Transform> slotMarkers = new List<Transform>();
     int displayedInput = -1;
     int displayedOutput = -1;
+    int displayedProcessing = -1;
     ItemDefinition displayedRecipeOutput;
     StationProcessProgressIndicator processProgressIndicator;
 
@@ -42,8 +45,12 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     public float ProcessRemainingSeconds => IsProcessing
         ? Mathf.Max(0f, EffectiveProcessTimeSeconds - processingTimer) : 0f;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
-    public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
-    public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
+    public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
+    // The legacy buffer interface exposes separate limits, but both directions
+    // now use this same shared physical slot pool.
+    public int InputSlotCapacity => SlotCapacity;
+    public int OutputSlotCapacity => SlotCapacity;
+    public int BufferedUnitCount => inputUnits + outputUnits + processingUnits;
     public int AuthoredInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }
     public int AuthoredOutputSlotCount { get { EnsureBufferMarkers(); return outputMarkers.Count; } }
 
@@ -52,8 +59,10 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         FindBufferMarkers();
-        inputUnits = Mathf.Clamp(inputUnits, 0, InputSlotCapacity);
-        outputUnits = Mathf.Clamp(outputUnits, 0, OutputSlotCapacity);
+        // Collapse legacy separate input/output pools into the new shared slots.
+        outputUnits = Mathf.Clamp(outputUnits, 0, SlotCapacity);
+        processingUnits = Mathf.Clamp(processingUnits, 0, SlotCapacity - outputUnits);
+        inputUnits = Mathf.Clamp(inputUnits, 0, SlotCapacity - outputUnits - processingUnits);
         RefreshItemDisplay(true);
     }
 
@@ -70,6 +79,8 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         {
             inputUnits = 0;
             outputUnits = 0;
+            processingUnits = 0;
+            processingTimer = 0f;
             bufferedOrder = null;
         }
         selectedProduct = recipe != null ? recipe.output : null;
@@ -86,6 +97,8 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         selectedProduct = product;
         inputUnits = 0;
         outputUnits = 0;
+        processingUnits = 0;
+        processingTimer = 0f;
         bufferedOrder = null;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
         RefreshItemDisplay(true);
@@ -107,7 +120,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         return recipe != null && item == recipe.input && amount > 0
-            && inputUnits + amount <= InputSlotCapacity;
+            && BufferedUnitCount + amount <= SlotCapacity;
     }
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
@@ -125,18 +138,18 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         if (recipe == null || item != recipe.output || amount <= 0) return 0;
         int taken = Mathf.Min(amount, outputUnits);
         outputUnits -= taken;
-        if (inputUnits == 0 && outputUnits == 0) bufferedOrder = null;
+        if (BufferedUnitCount == 0) bufferedOrder = null;
         RefreshItemDisplay(true);
         return taken;
     }
 
     public bool IsHoldingOrder(CustomerOrder order) =>
-        inputUnits + outputUnits == 0 || bufferedOrder == null || order == null || bufferedOrder == order;
+        BufferedUnitCount == 0 || bufferedOrder == null || order == null || bufferedOrder == order;
 
     public int ProcessBuffered(int amount)
     {
         // One call represents one item cycle, regardless of older batch callers.
-        int processed = Mathf.Min(1, Mathf.Min(inputUnits, OutputSlotCapacity - outputUnits));
+        int processed = Mathf.Min(1, inputUnits);
         if (processed <= 0) return 0;
         inputUnits -= processed;
         outputUnits += processed;
@@ -156,7 +169,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
         {
             if (processingUnits <= 0)
             {
-                if (inputUnits <= 0 || outputUnits >= OutputSlotCapacity) break;
+                if (inputUnits <= 0) break;
                 inputUnits--;
                 processingUnits = 1;
                 processingTimer = 0f;
@@ -170,7 +183,6 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
                 processingUnits--;
                 StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
                 changed = true;
-                if (outputUnits >= OutputSlotCapacity) break;
                 continue;
             }
 
@@ -179,8 +191,6 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
             processingTimer += elapsed;
             remainingTime -= elapsed;
             if (processingTimer + 0.0001f < cycleSeconds) break;
-            if (outputUnits >= OutputSlotCapacity) break;
-
             outputUnits++;
             processingUnits = Mathf.Max(0, processingUnits - 1);
             processingTimer = Mathf.Max(0f, processingTimer - cycleSeconds);
@@ -262,7 +272,7 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        AdvanceAutomaticProcessing(Time.deltaTime);
+        if (!ProductionManager.IsScheduledStation(gameObject)) AdvanceAutomaticProcessing(Time.deltaTime);
         processProgressIndicator?.SetProgress(
             IsProcessing, processingTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(false);
@@ -271,37 +281,46 @@ public class CuttingStation : MonoBehaviour, IStationBuffer
     void FindBufferMarkers()
     {
         StationBufferLayout.FindMarkers(transform, inputMarkers, outputMarkers);
+        slotMarkers.Clear();
+        slotMarkers.AddRange(inputMarkers);
+        slotMarkers.AddRange(outputMarkers);
+        slotMarkers.Sort((a, b) => string.Compare(a != null ? a.name : string.Empty,
+            b != null ? b.name : string.Empty, System.StringComparison.OrdinalIgnoreCase));
     }
 
     void EnsureBufferMarkers()
     {
-        // Re-scan if either side is missing. Previously, finding only input
-        // markers permanently prevented the station from discovering outputs.
-        if (inputMarkers.Count == 0 || outputMarkers.Count == 0) FindBufferMarkers();
+        // Shared-slot prefabs can author only Input* markers. No separate
+        // Output* markers are needed for finished items.
+        if (slotMarkers.Count == 0) FindBufferMarkers();
     }
 
     void RefreshItemDisplay(bool force)
     {
         if (!force && displayedInput == inputUnits && displayedOutput == outputUnits
+            && displayedProcessing == processingUnits
             && displayedRecipeOutput == selectedProduct) return;
-        if (inputMarkers.Count == 0 || outputMarkers.Count == 0) FindBufferMarkers();
+        EnsureBufferMarkers();
         if (itemDisplayRoot == null)
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "CuttingItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
 
         displayedInput = inputUnits;
         displayedOutput = outputUnits;
+        displayedProcessing = processingUnits;
         displayedRecipeOutput = selectedProduct;
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null) return;
 
         GameObject inputPrefab = recipe.input != null ? recipe.input.prefab : null;
         GameObject outputPrefab = recipe.output != null ? recipe.output.prefab : null;
-        for (int i = 0; inputPrefab != null && i < Mathf.Min(inputUnits, inputMarkers.Count); i++)
-            StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[i], itemDisplayRoot,
+        int slot = 0;
+        int rawUnits = inputUnits + processingUnits;
+        for (int i = 0; inputPrefab != null && i < rawUnits && slot < slotMarkers.Count; i++, slot++)
+            StationItemVisualUtility.SpawnAtMarker(inputPrefab, slotMarkers[slot], itemDisplayRoot,
                 "CuttingInput_" + i);
-        for (int i = 0; outputPrefab != null && i < Mathf.Min(outputUnits, outputMarkers.Count); i++)
-            StationItemVisualUtility.SpawnAtMarker(outputPrefab, outputMarkers[i], itemDisplayRoot,
+        for (int i = 0; outputPrefab != null && i < outputUnits && slot < slotMarkers.Count; i++, slot++)
+            StationItemVisualUtility.SpawnAtMarker(outputPrefab, slotMarkers[slot], itemDisplayRoot,
                 "CuttingOutput_" + i);
     }
 }

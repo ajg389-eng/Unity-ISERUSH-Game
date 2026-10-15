@@ -795,7 +795,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         {
             if (cutting.IsProcessing) return StationRuntimeState.Working;
             CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
-            if (recipe != null && cutting.GetOutputCount(recipe.output) >= cutting.OutputSlotCapacity)
+            if (cutting.BufferedUnitCount >= cutting.SlotCapacity)
                 return StationRuntimeState.Blocked;
             if (recipe != null && cutting.GetInputCount(recipe.input) <= 0)
                 return StationRuntimeState.Starved;

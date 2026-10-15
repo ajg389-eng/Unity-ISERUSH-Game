@@ -5,7 +5,7 @@ using UnityEngine.Serialization;
 /// <summary>
 /// Placeable fryer. Worker loads sliced potatoes and produces cooked potato slices for Assembly.
 /// </summary>
-public class FryerStation : MonoBehaviour, IStationBuffer
+public partial class FryerStation : MonoBehaviour, IStationBuffer
 {
     [Header("Product")]
     public ItemDefinition selectedProduct;
@@ -166,6 +166,13 @@ public class FryerStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
+        if (ProductionManager.IsScheduledStation(gameObject))
+        {
+            processProgressIndicator?.SetProgress(
+                IsCooking, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
+            RefreshItemDisplay(false);
+            return;
+        }
         float remainingTime = Mathf.Max(0f, Time.deltaTime);
         while (true)
         {

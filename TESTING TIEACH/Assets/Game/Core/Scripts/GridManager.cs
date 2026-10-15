@@ -760,6 +760,7 @@ public class GridManager : MonoBehaviour
     public void MarkObjectFootprint(GameObject go, BuildFootprint fp)
     {
         if (go == null || Nodes == null) return;
+        if (fp != null) fp.EnsureMatchesPlacedItem();
         int sizeX = Mathf.Max(1, fp != null ? fp.sizeX : 1);
         int sizeY = Mathf.Max(1, fp != null ? fp.sizeY : 1);
 

@@ -50,6 +50,7 @@ public class Register : MonoBehaviour
     public CustomerOrderConfig orderConfig;
 
     float orderTimer;
+    int lastOrderFrontInstanceId;
     MoneyManager moneyManager;
     HeatLampStation cachedHeatLamp;
     static bool raisedFirstOrderServedEvent;
@@ -101,6 +102,7 @@ public class Register : MonoBehaviour
 
     public bool HasSpace()
     {
+        PruneQueues();
         if (!IsPlacedRegister) return false;
         if (!isEnabled) return false;
         return queue.Count < EffectiveMaxQueue;
@@ -109,11 +111,10 @@ public class Register : MonoBehaviour
     public bool TryJoinQueue(CustomerAI customer)
     {
         if (customer == null || !IsPlacedRegister || !isEnabled) return false;
+        PruneQueues();
         if (queue.Contains(customer) || pickup.Contains(customer)) return true;
 
-        // HasSpace selects the least-loaded register for new arrivals. The queue
-        // itself can extend beyond that preferred capacity so a full line does not
-        // alter the scheduled customer request rate.
+        // Scheduled arrivals keep joining the physical line after the preview capacity is reached.
         customer.SetQueueJoinTime(Time.time);
         queue.Add(customer);
         TryUnlockPickup();
@@ -150,6 +151,7 @@ public class Register : MonoBehaviour
 
     public List<CustomerOrder> GetQueuedOrders()
     {
+        PruneQueues();
         var list = new List<CustomerOrder>();
         AddOrders(list, queue);
         AddOrders(list, pickup);
@@ -168,6 +170,7 @@ public class Register : MonoBehaviour
 
     public CustomerAI GetFrontCustomer()
     {
+        PruneQueues();
         if (queue.Count == 0) return null;
         return queue[0];
     }
@@ -183,7 +186,11 @@ public class Register : MonoBehaviour
 
     public bool IsFrontCustomerReady()
     {
-        var front = GetFrontCustomer();
+        return IsFrontCustomerReady(GetFrontCustomer());
+    }
+
+    bool IsFrontCustomerReady(CustomerAI front)
+    {
         if (front == null) return false;
         return HorizontalDistance(front.transform.position, GetQueueSlot(0))
             <= Mathf.Max(0f, serveArrivalRadius);
@@ -191,34 +198,28 @@ public class Register : MonoBehaviour
 
     public void SendCustomerToPickup(CustomerAI customer)
     {
-        if (customer == null || pickup.Contains(customer)) return;
+        if (customer == null) return;
         if (!queue.Contains(customer)) return;
 
         queue.Remove(customer);
-        pickup.Add(customer);
+        if (!pickup.Contains(customer))
+            pickup.Add(customer);
         orderTimer = 0f;
         UpdateQueueTargets();
-        customer.BeginPickupJourney();
+        customer.OnOrderPlacedAtRegister();
         Sfx.Play(SfxId.CustomerArrive);
     }
 
     /// <summary>
     /// Front-of-line order handoff → heat-lamp pickup line.
-    /// Requires a cashier on the stand when one is assigned.
+    /// Enabled registers keep accepting orders while assigned workers make deliveries.
     /// </summary>
     public bool TryTakeFrontOrder()
     {
         if (!isEnabled) return false;
 
         var front = GetFrontCustomer();
-        if (front == null || !IsFrontCustomerReady())
-        {
-            orderTimer = 0f;
-            return false;
-        }
-
-        // If a worker is assigned to this register, they must be on duty to take orders.
-        if (AssignedWorker != null && !HasWorkerOnDuty())
+        if (front == null || !IsFrontCustomerReady(front))
         {
             orderTimer = 0f;
             return false;
@@ -239,20 +240,20 @@ public class Register : MonoBehaviour
         {
             CustomerSpawner spawner = FindObjectOfType<CustomerSpawner>();
             selectedOrder = spawner != null
-                ? spawner.GenerateNextScheduledOrder()
+                ? spawner.GenerateSupplementalOrder()
                 : menu.GenerateScheduledOrder(0);
         }
         if (selectedOrder == null || selectedOrder.lines == null || selectedOrder.lines.Count == 0)
         {
-            orderTimer = 0f;
+            // Invalid or unavailable menu data must not leave a permanent queue head.
+            front.LeaveImpatient(storeExit);
             return false;
         }
 
         // Normal customers receive their deterministic order when they arrive.
         // Only assign here for tutorial orders or legacy customers without one.
         if (needsOrderAssignment)
-            front.SetOrder(selectedOrder);
-        front.RevealOrder();
+            front.SetOrder(selectedOrder, includeInOrderRate: !tutorialOrder);
         SendCustomerToPickup(front);
         return true;
     }
@@ -432,6 +433,9 @@ public class Register : MonoBehaviour
             // A customer can finish through the self-service path after its
             // pickup station has already changed queues. Keep the completion
             // event reliable even if the register list was updated first.
+            // Reassign the register line too, since a prior queue update may
+            // have been skipped while this customer was being handed off.
+            UpdateQueueTargets();
             RaiseOrderCompletionEvents(front, servedOrder);
             if (front != null)
                 front.OnServed(storeExit);
@@ -523,8 +527,54 @@ public class Register : MonoBehaviour
     void Update()
     {
         if (!IsPlacedRegister) return;
+        PruneQueues();
+
+        // A completed or handed-off customer can change the queue head through
+        // several paths. Reassert slot positions and restart the order timer
+        // whenever the customer at the head changes.
+        CustomerAI front = queue.Count > 0 ? queue[0] : null;
+        int frontId = front != null ? front.GetInstanceID() : 0;
+        if (frontId != lastOrderFrontInstanceId)
+        {
+            lastOrderFrontInstanceId = frontId;
+            orderTimer = 0f;
+            UpdateQueueTargets();
+        }
+
         // Line 1: order at register. Line 2: wait at heat lamp for food.
         TryTakeFrontOrder();
+    }
+
+    void PruneQueues()
+    {
+        bool changed = pickup.RemoveAll(IsInvalidQueueCustomer) > 0;
+
+        for (int i = queue.Count - 1; i >= 0; i--)
+        {
+            CustomerAI customer = queue[i];
+            if (IsInvalidQueueCustomer(customer))
+            {
+                queue.RemoveAt(i);
+                changed = true;
+            }
+            else if (customer.IsWaitingForPickup)
+            {
+                // Ordered customers belong to the pickup queue. Repair stale
+                // dual membership instead of letting one block the register.
+                queue.RemoveAt(i);
+                if (!pickup.Contains(customer))
+                    pickup.Add(customer);
+                changed = true;
+            }
+        }
+
+        if (changed)
+            UpdateQueueTargets();
+    }
+
+    static bool IsInvalidQueueCustomer(CustomerAI customer)
+    {
+        return customer == null || !customer.isActiveAndEnabled || customer.IsLeaving;
     }
 
     Vector3 QueueDir
@@ -672,7 +722,7 @@ public class Register : MonoBehaviour
     /// <summary>World position used by build-mode customer queue previews.</summary>
     public Vector3 GetQueuePreviewPosition(int index) => GetQueueSlot(Mathf.Max(0, index));
 
-    public int QueuePreviewCount => EffectiveMaxQueue;
+    public int QueuePreviewCount => Mathf.Max(EffectiveMaxQueue, queue.Count);
 
     /// <summary>
     /// Customer / lobby side of the counter. Uses the register's queueDirection

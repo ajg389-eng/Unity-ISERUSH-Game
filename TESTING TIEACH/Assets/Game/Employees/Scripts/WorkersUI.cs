@@ -1114,6 +1114,16 @@ public class WorkersUI : MonoBehaviour
             }
 
             var layout = WorkflowAnalysis.AnalyzeFlowLayout(flow);
+            if (layout.usesScheduledForecast)
+            {
+                var scheduleText = new System.Text.StringBuilder();
+                AppendDeliveryRateSummary(scheduleText, flow, layout);
+                scheduleText.Append("\n<b>Delivered recently:</b> ")
+                    .Append(FormatItemRate(layout.actualOutputPerMinute)).Append(" items/min");
+                flowStatus.text = "<size=17><b><color=#F1C66D>Flow Capacity</color></b></size>\n" + scheduleText;
+                LayoutFlowPanel();
+                return;
+            }
             var economics = WorkflowAnalysis.AnalyzeFlow(flow);
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(economics.summary))
@@ -1213,6 +1223,18 @@ public class WorkersUI : MonoBehaviour
             return;
         }
 
+        if (selectedMetrics.usesScheduledForecast)
+        {
+            text.Append("<b>Workers:</b> ").Append(selectedMetrics.activeWorkerCount)
+                .Append(" assigned | 4 items/trip")
+                .Append("\n<b>Planned output:</b> ").Append(FormatItemRate(selectedMetrics.effectiveOutputPerMinute))
+                .Append(" items/min (10-min schedule; ingredients & pickup space available)")
+                .Append("\n<b>Next 60 seconds:</b> ").Append(selectedMetrics.next60Output)
+                .Append(" items (current stock & pickup space; updates after collections)");
+            if (!string.IsNullOrEmpty(selectedMetrics.forecastWarning))
+                text.Append("\n").Append(selectedMetrics.forecastWarning);
+            return;
+        }
         bool understaffed = selectedMetrics.transportShortfallPerMinute > 0.01f;
         text.Append("<b>Workers:</b> ")
             .Append(FormatItemRate(selectedMetrics.laborCapacityPerMinute)).Append(" / ")

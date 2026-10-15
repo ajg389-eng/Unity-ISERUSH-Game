@@ -7,6 +7,23 @@ public class BuildFootprint : MonoBehaviour
 {
     public int sizeX = 1;
     public int sizeY = 1;
+
+    public void EnsureAtLeast(ItemDefinition item)
+    {
+        if (item == null) return;
+        BuildFootprint authored = item.prefab != null
+            ? item.prefab.GetComponent<BuildFootprint>() : null;
+        sizeX = Mathf.Max(Mathf.Max(1, sizeX), Mathf.Max(Mathf.Max(1, item.footprintX),
+            authored != null ? Mathf.Max(1, authored.sizeX) : 1));
+        sizeY = Mathf.Max(Mathf.Max(1, sizeY), Mathf.Max(Mathf.Max(1, item.footprintY),
+            authored != null ? Mathf.Max(1, authored.sizeY) : 1));
+    }
+
+    public void EnsureMatchesPlacedItem()
+    {
+        PlacedBuildItem placed = GetComponent<PlacedBuildItem>();
+        EnsureAtLeast(placed != null ? placed.itemDefinition : null);
+    }
 }
 
 /// <summary>

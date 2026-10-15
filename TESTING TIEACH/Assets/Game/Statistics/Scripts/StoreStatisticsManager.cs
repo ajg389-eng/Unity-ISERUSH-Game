@@ -35,6 +35,7 @@ public class StoreStatisticsManager : MonoBehaviour
     // Per-register: busy time (queue not empty) in the current window
     readonly Dictionary<Register, float> stationBusyTime = new Dictionary<Register, float>();
     float windowStartTime;
+    float throughputTrackingStartedAt;
 
     void Awake()
     {
@@ -45,6 +46,7 @@ public class StoreStatisticsManager : MonoBehaviour
         }
         Instance = this;
         windowStartTime = Time.time;
+        throughputTrackingStartedAt = Time.time;
         EnsureHourBuckets();
     }
 
@@ -308,11 +310,14 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         get
         {
-            float cutoff = Time.time - throughputWindowSeconds;
+            float windowSeconds = Mathf.Max(1f, throughputWindowSeconds);
+            float cutoff = Time.time - windowSeconds;
             int count = 0;
             foreach (var (completedAt, _) in completedOrders)
                 if (completedAt >= cutoff) count++;
-            return throughputWindowSeconds > 0 ? (count / throughputWindowSeconds) * 60f : 0f;
+            float observedWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
+                1f, windowSeconds);
+            return count * 60f / observedWindow;
         }
     }
 

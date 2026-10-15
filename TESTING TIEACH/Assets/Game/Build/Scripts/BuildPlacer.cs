@@ -1149,6 +1149,7 @@ public class BuildPlacer : MonoBehaviour
     void GetPlacedFootprint(GameObject root, BuildFootprint fp, out int x, out int y,
         out int sizeX, out int sizeY, out int rotation)
     {
+        if (fp != null) fp.EnsureMatchesPlacedItem();
         rotation = (Mathf.RoundToInt(root.transform.eulerAngles.y / 90f) % 4 + 4) % 4;
         sizeX = Mathf.Max(1, fp.sizeX);
         sizeY = Mathf.Max(1, fp.sizeY);
@@ -1419,6 +1420,7 @@ public class BuildPlacer : MonoBehaviour
 
             GameObject root = fp.gameObject;
             if (root == ghost) continue;
+            fp.EnsureMatchesPlacedItem();
             CounterSurface occupiedCounter = root.GetComponent<CounterSurface>();
             if (occupiedCounter != null && !occupiedCounter.IsAvailable)
             {
@@ -2548,8 +2550,7 @@ public class BuildPlacer : MonoBehaviour
             {
                 footprint = placed.AddComponent<BuildFootprint>();
             }
-            footprint.sizeX = Mathf.Max(Mathf.Max(1, footprint.sizeX), Mathf.Max(1, item.footprintX));
-            footprint.sizeY = Mathf.Max(Mathf.Max(1, footprint.sizeY), Mathf.Max(1, item.footprintY));
+            footprint.EnsureAtLeast(item);
             if (item.prefab != null && item.prefab.GetComponentInChildren<CuttingStation>(true) != null)
             {
                 if (placed.GetComponent<CuttingStation>() == null)

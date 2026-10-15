@@ -825,6 +825,9 @@ public static class WorkflowAnalysis
         public float totalRateNeededPerMinute;
         public float transportShortfallPerMinute;
         public float effectiveOutputPerMinute;
+        public bool usesScheduledForecast;
+        public long next60Output;
+        public string forecastWarning;
         public float effectiveCycleSeconds;
         public bool hasAssignedWorker;
         public int activeWorkerCount;
@@ -1090,6 +1093,16 @@ public static class WorkflowAnalysis
     public static string GetWorkerDecisionSummary(KitchenEmployee employee)
     {
         if (employee == null) return "No worker selected";
+        ProductionManager scheduleManager = ProductionManager.Instance;
+        if (scheduleManager != null && scheduleManager.useScheduledProduction)
+        {
+            ProductionFlowPlan assigned = scheduleManager.GetFlowForWorker(employee);
+            DeterministicProductionController.FlowForecast scheduled = scheduleManager.ScheduledProduction.GetForecast(assigned);
+            if (scheduled != null)
+                return employee.employeeName + " | " + employee.transportItemsPerMinute.ToString("0")
+                    + " items/min transport limit | 4 items/trip\n" + assigned.flowName
+                    + ": " + scheduled.PlannedPerMinute.ToString("0.0") + " planned output/min";
+        }
         int count = employee.OperatedStationCount;
         if (count == 0)
             return employee.employeeName + " | Unassigned: no productive capacity";
@@ -1464,6 +1477,29 @@ public static class WorkflowAnalysis
     {
         var result = new FlowLayoutMetrics();
         if (flow == null) return result;
+        ProductionManager scheduledManager = ProductionManager.Instance;
+        DeterministicProductionController.FlowForecast forecast = scheduledManager != null
+            && scheduledManager.useScheduledProduction && Application.isPlaying
+            ? scheduledManager.ScheduledProduction.GetForecast(flow) : null;
+        if (forecast != null)
+        {
+            result.usesScheduledForecast = true;
+            result.next60Output = forecast.Next60;
+            result.forecastWarning = forecast.Warning;
+            result.activeWorkerCount = forecast.Workers;
+            result.hasAssignedWorker = forecast.Workers > 0;
+            result.effectiveOutputPerMinute = forecast.PlannedPerMinute;
+            result.stationCapacityPerMinute = forecast.PlannedPerMinute;
+            result.effectiveCycleSeconds = forecast.PlannedPerMinute > 0f ? 60f / forecast.PlannedPerMinute : 0f;
+            result.actualOutputPerMinute = scheduledManager.GetFlowCompletedOutputPerMinute(flow);
+            result.minimumCarryCapacity = result.maximumCarryCapacity = 4;
+            result.bottleneck = forecast.Warning ?? "Scheduled station processing and worker trips";
+            foreach (KitchenEmployee worker in flow.workers)
+                if (worker != null) result.laborCapacityPerMinute += worker.transportItemsPerMinute;
+            result.throughputEfficiencyPercent = forecast.PlannedPerMinute > 0f
+                ? Mathf.Clamp(result.actualOutputPerMinute * 100f / forecast.PlannedPerMinute, 0f, 100f) : 0f;
+            return result;
+        }
         flow.Clean();
 
         if (flow.stations == null || flow.stations.Count == 0)

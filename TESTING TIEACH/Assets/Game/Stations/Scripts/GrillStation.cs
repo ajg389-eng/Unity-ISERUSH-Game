@@ -6,7 +6,7 @@ using UnityEngine.Serialization;
 /// Placeable grill. The selected product is the grill's own output, not the
 /// downstream menu item that Assembly will eventually create.
 /// </summary>
-public class GrillStation : MonoBehaviour, IStationBuffer
+public partial class GrillStation : MonoBehaviour, IStationBuffer
 {
     const int Mk1SlotCapacity = 4;
     const int Mk2SlotCapacity = 8;
@@ -288,7 +288,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        UpdateCooking(Time.deltaTime);
+        if (!ProductionManager.IsScheduledStation(gameObject)) UpdateCooking(Time.deltaTime);
         processProgressIndicator?.SetProgress(
             IsCookingPatty, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(force: false);

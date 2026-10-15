@@ -50,7 +50,6 @@ public static class MilestoneFeatures
     public static bool ExtraEquipmentUnlocked => Researched("additional_stations") || Researched("station_capacity_1");
     public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
     public static bool ExpertStaffingUnlocked => Researched("expert_workforce");
-    public static bool RushHourUnlocked => Researched("queue_analytics");
     public static bool QueueAnalyticsUnlocked => Researched("queue_analytics");
     public static bool ExtraFlowStaffingUnlocked => Researched("multi_worker_flows");
     public static int MaxWorkersPerFlow

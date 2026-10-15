@@ -297,7 +297,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        if (customerPickupQueue.RemoveAll(customer => customer == null) > 0)
+        if (PrunePickupQueue())
             RefreshPickupQueueTargets();
         if (Time.unscaledTime >= nextCautionRefresh)
         {
@@ -442,12 +442,37 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void RefreshPickupQueueTargets()
     {
+        PrunePickupQueue();
         for (int i = 0; i < customerPickupQueue.Count; i++)
         {
             CustomerAI customer = customerPickupQueue[i];
-            if (customer == null) continue;
             customer.SetPickupSlot(this, GetCustomerPickupPosition(i), i == 0);
         }
+    }
+
+    bool PrunePickupQueue()
+    {
+        bool changed = false;
+        for (int i = customerPickupQueue.Count - 1; i >= 0; i--)
+        {
+            CustomerAI customer = customerPickupQueue[i];
+            if (customer == null || !customer.isActiveAndEnabled || customer.IsLeaving)
+            {
+                customerPickupQueue.RemoveAt(i);
+                changed = true;
+                continue;
+            }
+
+            // A duplicate reference must not reserve multiple physical places.
+            for (int earlier = i - 1; earlier >= 0; earlier--)
+            {
+                if (customerPickupQueue[earlier] != customer) continue;
+                customerPickupQueue.RemoveAt(i);
+                changed = true;
+                break;
+            }
+        }
+        return changed;
     }
 
     public static HeatLampStation FindBestPickupFor(ItemDefinition item, Vector3 customerPosition)

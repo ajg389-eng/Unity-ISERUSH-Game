@@ -212,7 +212,8 @@ public class ProductionJob
 /// After each station, the worker delivers only to that station's Assign Output
 /// (e.g. Assembly/Fryer → Heat Lamp). Drinks are cashier-served.
 /// </summary>
-public class ProductionManager : MonoBehaviour
+[DefaultExecutionOrder(-200)]
+public partial class ProductionManager : MonoBehaviour
 {
     public static ProductionManager Instance { get; private set; }
 
@@ -409,8 +410,10 @@ public class ProductionManager : MonoBehaviour
         public int requested;
         public int ready;
         public int cooking;
-        /// <summary>Exact number of this item ordered during the trailing simulation minute.</summary>
+        /// <summary>Number of this item in customer orders accepted at registers during the trailing simulation minute.</summary>
         public int orderedLastMinute;
+        /// <summary>Register accepted item rate, normalized to a minute during the first minute of tracking.</summary>
+        public float orderedPerMinute;
         /// <summary>Exact number delivered to pickup stations during the trailing simulation minute.</summary>
         public int completedLastMinute;
         /// <summary>Kitchen units still short of live orders (absolute).</summary>
@@ -422,7 +425,9 @@ public class ProductionManager : MonoBehaviour
     public List<ItemOutputNeed> GetRequiredOutputByItem(bool includeDrinks = true)
     {
         EnsureStationCache();
-        CustomerSpawner demandSpawner = FindObjectOfType<CustomerSpawner>();
+        CustomerSpawner demandSpawner = CustomerSpawner.Instance != null
+            ? CustomerSpawner.Instance
+            : FindObjectOfType<CustomerSpawner>();
         CustomerOrderConfig demandConfig = demandSpawner != null && demandSpawner.orderConfig != null
             ? demandSpawner.orderConfig
             : orderConfig;
@@ -468,6 +473,8 @@ public class ProductionManager : MonoBehaviour
         PruneThroughputHistory();
         var orderedLastMinute = SumHistory(orderedHistory);
         var completedLastMinute = SumHistory(completedHistory);
+        float observedDemandWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
+            1f, ThroughputWindowSeconds);
 
         var items = new HashSet<ItemDefinition>();
         foreach (var kv in requested) items.Add(kv.Key);
@@ -505,6 +512,7 @@ public class ProductionManager : MonoBehaviour
                 ready = readyCount,
                 cooking = cookingCount,
                 orderedLastMinute = orderedRate,
+                orderedPerMinute = orderedRate * 60f / observedDemandWindow,
                 completedLastMinute = completedRate,
                 requiredOutput = shortfall,
                 requiredPerMinute = demandSpawner != null
@@ -526,6 +534,7 @@ public class ProductionManager : MonoBehaviour
         return list;
     }
 
+    /// <summary>Records item quantities only after the register accepts the customer's order.</summary>
     public void RecordCustomerOrder(CustomerOrder order)
     {
         RecordHistory(orderedHistory, order);
@@ -1369,6 +1378,7 @@ public class ProductionManager : MonoBehaviour
 
     void OnDestroy()
     {
+        scheduledProduction?.Dispose();
         if (Instance == this)
             Instance = null;
     }
@@ -1377,6 +1387,11 @@ public class ProductionManager : MonoBehaviour
 
     void Update()
     {
+        if (useScheduledProduction)
+        {
+            ScheduledProduction.Tick();
+            return;
+        }
         if (Time.timeScale <= 0f)
             return;
         float now = Time.unscaledTime;
@@ -1413,6 +1428,7 @@ public class ProductionManager : MonoBehaviour
     /// </summary>
     public void NotifyProductionStateChanged(float debounceSeconds = 0.05f)
     {
+        scheduledProduction?.RequestConfigurationCheck();
         planningDirty = true;
         float due = Time.unscaledTime + Mathf.Max(0f, debounceSeconds);
         if (nextDirtyPlanningTime <= Time.unscaledTime || due < nextDirtyPlanningTime)
@@ -1905,6 +1921,9 @@ public class ProductionManager : MonoBehaviour
 
     public string GetFlowQueueStatus(KitchenEmployee employee)
     {
+        if (useScheduledProduction)
+            return employee != null && employee.IsHoldingAnything
+                ? "Carrying " + employee.HeldPreviewCount + ": " + employee.GetHeldInventoryDisplay() : "Carrying: none";
         ProductionFlowPlan flow = GetFlowForWorker(employee);
         if (flow?.stations == null) return "No assigned flow";
         var lines = new List<string>();
@@ -2395,6 +2414,16 @@ public class ProductionManager : MonoBehaviour
             if (order != null && order.GetTotalQuantity() > 0)
                 list.Add(order);
         }
+
+        CustomerSpawner spawner = CustomerSpawner.Instance != null
+            ? CustomerSpawner.Instance
+            : FindObjectOfType<CustomerSpawner>();
+        CustomerOrder scheduledDemand = spawner != null
+            ? spawner.GetPendingScheduledDemand()
+            : null;
+        if (scheduledDemand != null && scheduledDemand.GetTotalQuantity() > 0)
+            list.Add(scheduledDemand);
+
         return list;
     }
 
@@ -2497,6 +2526,7 @@ public class ProductionManager : MonoBehaviour
     /// <summary>Assigns ready final output first, then fills the emptiest receiver.</summary>
     public bool TryAssignHighestPriorityTask(KitchenEmployee employee)
     {
+        if (useScheduledProduction) return false;
         if (employee == null || employee.HasJob || !employee.CanTakeJobs) return false;
         if (employee.IsWaitingToReevaluateTasks || employee.ShouldDeliverInsteadOfCook()) return false;
 
@@ -2773,7 +2803,7 @@ public class ProductionManager : MonoBehaviour
             CuttingStation cutting = stationObject.GetComponent<CuttingStation>();
             if (cutting != null)
             {
-                limit = Mathf.Min(limit, Mathf.Min(cutting.InputSlotCapacity, cutting.OutputSlotCapacity));
+                limit = Mathf.Min(limit, cutting.SlotCapacity);
                 continue;
             }
             AssemblyStation assemblyStation = stationObject.GetComponent<AssemblyStation>();
@@ -3243,6 +3273,8 @@ public class ProductionManager : MonoBehaviour
     /// <summary>Discard runtime-only production work before rebuilding a saved kitchen.</summary>
     public void ResetTransientProductionState()
     {
+        scheduledProduction?.Dispose();
+        scheduledProduction = null;
         foreach (ProductionJob job in new List<ProductionJob>(jobsWithReservations))
             ReleaseReservations(job);
         stationWorkReservations.Clear();
@@ -3662,6 +3694,8 @@ public class ProductionManager : MonoBehaviour
             if (ReservedInputCount(station, item, except) > 0) return 0;
             occupied = fryerStation.GetInputCount(item);
         }
+        else if (station.GetComponent<CuttingStation>() is CuttingStation cuttingStation)
+            occupied = cuttingStation.BufferedUnitCount;
         else if (station.GetComponent<AssemblyStation>() is AssemblyStation assembly)
             return Mathf.Max(0, GetAssemblyInputCapacity(assembly, item) - buffer.GetInputCount(item)
                 - ReservedInputCount(station, item, except));

@@ -4,6 +4,51 @@ using UnityEngine;
 public class CustomerSpawner : MonoBehaviour
 {
     const int MaxScheduledSpawnsPerFrame = 32;
+    const float PendingDispatchRetrySeconds = 0.25f;
+
+    public static CustomerSpawner Instance { get; private set; }
+
+    sealed class PendingDemandBatch
+    {
+        readonly CustomerOrder[] orderCycle;
+        int nextScheduleIndex;
+        int firstPendingIndex;
+
+        public long pendingCount { get; private set; }
+        public bool isQueued;
+        public bool HasCycle => orderCycle != null && orderCycle.Length > 0;
+
+        public PendingDemandBatch(CustomerOrder[] cycle)
+        {
+            orderCycle = cycle ?? System.Array.Empty<CustomerOrder>();
+        }
+
+        public CustomerOrder ScheduleNext()
+        {
+            if (!HasCycle) return null;
+            int index = nextScheduleIndex;
+            if (pendingCount == 0) firstPendingIndex = index;
+            nextScheduleIndex = (nextScheduleIndex + 1) % orderCycle.Length;
+            pendingCount++;
+            return orderCycle[index];
+        }
+
+        public CustomerOrder PeekNext()
+        {
+            if (pendingCount <= 0 || !HasCycle) return null;
+            CustomerOrder order = orderCycle[firstPendingIndex];
+            return order != null ? order.Clone() : new CustomerOrder();
+        }
+
+        public CustomerOrder ConsumeNext()
+        {
+            if (pendingCount <= 0 || !HasCycle) return null;
+            CustomerOrder order = orderCycle[firstPendingIndex];
+            firstPendingIndex = (firstPendingIndex + 1) % orderCycle.Length;
+            pendingCount--;
+            return order != null ? order.Clone() : new CustomerOrder();
+        }
+    }
 
     public GameObject customerPrefab;
     [Tooltip("Fallback spawn position if no entry path / waypoints are set.")]
@@ -22,8 +67,6 @@ public class CustomerSpawner : MonoBehaviour
     [Header("Predictable demand")]
     [Tooltip("Enabled menu recipes define exact repeating item requests per minute and customer arrival spacing.")]
     public CustomerOrderConfig orderConfig;
-    [Tooltip("Fixed demand multiplier during research-unlocked lunch and dinner rush hours. Item rates remain rounded to multiples of five.")]
-    [Min(1f)] public float rushArrivalMultiplier = 2.2f;
 
     public List<Register> registers = new List<Register>();
 
@@ -31,7 +74,14 @@ public class CustomerSpawner : MonoBehaviour
     float secondsBetweenArrivals;
     bool arrivalScheduled;
     int scheduledDemandRevision = -1;
-    int demandOrderIndex;
+    int supplementalOrderIndex;
+    PendingDemandBatch activeDemandBatch;
+    readonly Queue<PendingDemandBatch> pendingDemandBatches = new Queue<PendingDemandBatch>();
+    readonly Dictionary<ItemDefinition, long> pendingItemCounts = new Dictionary<ItemDefinition, long>();
+    long pendingScheduledRequestCount;
+    CustomerOrder pendingDemandSummary;
+    bool pendingDemandSummaryDirty = true;
+    float nextDispatchRetryTime;
     bool clockHooked;
     readonly List<Vector3> entryPointsBuffer = new List<Vector3>();
     readonly List<Transform> customerSpawnPoints = new List<Transform>();
@@ -44,7 +94,7 @@ public class CustomerSpawner : MonoBehaviour
         {
             CustomerOrderConfig config = ResolveOrderConfig();
             if (config == null) return 0f;
-            return config.GetDemandCustomersPerMinute(CurrentDemandMultiplier);
+            return config.DemandCustomersPerMinute;
         }
     }
 
@@ -53,7 +103,7 @@ public class CustomerSpawner : MonoBehaviour
     {
         CustomerOrderConfig config = ResolveOrderConfig();
         return config != null
-            ? config.CalculateDemandCustomersPerMinute(DemandMultiplierForHour(hour24))
+            ? config.CalculateDemandCustomersPerMinute()
             : 0f;
     }
 
@@ -61,40 +111,44 @@ public class CustomerSpawner : MonoBehaviour
     {
         CustomerOrderConfig config = ResolveOrderConfig();
         return config != null
-            ? config.GetCustomerDemandPerMinute(item, CurrentDemandMultiplier)
+            ? config.GetCustomerDemandPerMinute(item)
             : 0;
     }
 
-    public CustomerOrder GenerateNextScheduledOrder()
+    public CustomerOrder GenerateSupplementalOrder()
     {
         CustomerOrderConfig config = ResolveOrderConfig();
         if (config == null) return new CustomerOrder();
-        float demandMultiplier = CurrentDemandMultiplier;
-        int customersPerMinute = config.GetDemandCustomersPerMinute(demandMultiplier);
+        int customersPerMinute = config.DemandCustomersPerMinute;
         if (customersPerMinute <= 0) return new CustomerOrder();
 
-        CustomerOrder order = config.GenerateScheduledOrder(demandOrderIndex, demandMultiplier);
-        demandOrderIndex = (demandOrderIndex + 1) % customersPerMinute;
+        CustomerOrder order = config.GenerateScheduledOrder(supplementalOrderIndex);
+        supplementalOrderIndex = (supplementalOrderIndex + 1) % customersPerMinute;
         return order;
     }
 
-    float CurrentDemandMultiplier
-    {
-        get
-        {
-            GameTimeManager clock = GameTimeManager.Instance;
-            return clock != null && clock.IsRushHour
-                ? Mathf.Max(1f, rushArrivalMultiplier)
-                : 1f;
-        }
-    }
+    public long PendingScheduledRequestCount => pendingScheduledRequestCount;
 
-    float DemandMultiplierForHour(int hour24)
+    /// <summary>Aggregated unsent scheduled demand for production planning. One summary order avoids per-arrival allocations.</summary>
+    internal CustomerOrder GetPendingScheduledDemand()
     {
-        hour24 = ((hour24 % 24) + 24) % 24;
-        bool rush = MilestoneFeatures.RushHourUnlocked
-            && ((hour24 >= 12 && hour24 < 14) || (hour24 >= 17 && hour24 < 19));
-        return rush ? Mathf.Max(1f, rushArrivalMultiplier) : 1f;
+        if (!pendingDemandSummaryDirty) return pendingDemandSummary;
+
+        pendingDemandSummary = null;
+        if (pendingItemCounts.Count > 0)
+        {
+            var summary = new CustomerOrder();
+            foreach (KeyValuePair<ItemDefinition, long> pair in pendingItemCounts)
+            {
+                if (pair.Key == null || pair.Value <= 0) continue;
+                summary.lines.Add(new CustomerOrder.OrderLine(pair.Key,
+                    (int)System.Math.Min(int.MaxValue, pair.Value)));
+            }
+            if (summary.lines.Count > 0) pendingDemandSummary = summary;
+        }
+
+        pendingDemandSummaryDirty = false;
+        return pendingDemandSummary;
     }
 
     CustomerOrderConfig ResolveOrderConfig()
@@ -108,7 +162,14 @@ public class CustomerSpawner : MonoBehaviour
     {
         arrivalScheduled = false;
         scheduledDemandRevision = -1;
-        demandOrderIndex = 0;
+        supplementalOrderIndex = 0;
+        activeDemandBatch = null;
+        pendingDemandBatches.Clear();
+        pendingItemCounts.Clear();
+        pendingScheduledRequestCount = 0;
+        pendingDemandSummary = null;
+        pendingDemandSummaryDirty = false;
+        LastSpawnError = null;
     }
 
     void EnsureDayHook()
@@ -122,6 +183,7 @@ public class CustomerSpawner : MonoBehaviour
 
     void Awake()
     {
+        if (Instance == null) Instance = this;
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         ResolveEntryPathIfNeeded();
@@ -163,9 +225,17 @@ public class CustomerSpawner : MonoBehaviour
 
     void OnDisable()
     {
-        if (!clockHooked || GameTimeManager.Instance == null) return;
-        GameTimeManager.Instance.OnDayStarted -= HandleDayStarted;
-        clockHooked = false;
+        if (clockHooked && GameTimeManager.Instance != null)
+        {
+            GameTimeManager.Instance.OnDayStarted -= HandleDayStarted;
+            clockHooked = false;
+        }
+        if (Instance == this) Instance = null;
+    }
+
+    void OnEnable()
+    {
+        if (Instance == null) Instance = this;
     }
 
     void Update()
@@ -178,44 +248,38 @@ public class CustomerSpawner : MonoBehaviour
         }
 
         CustomerOrderConfig config = ResolveOrderConfig();
-        float demandMultiplier = CurrentDemandMultiplier;
-        int customersPerMinute = config != null
-            ? config.GetDemandCustomersPerMinute(demandMultiplier)
-            : 0;
+        int customersPerMinute = config != null ? config.DemandCustomersPerMinute : 0;
         if (customersPerMinute <= 0)
         {
             arrivalScheduled = false;
-            scheduledDemandRevision = -1;
-            demandOrderIndex = 0;
-            return;
         }
-
-        int revision = config.GetDemandScheduleRevision(demandMultiplier);
-        if (!arrivalScheduled || revision != scheduledDemandRevision)
+        else
         {
-            secondsBetweenArrivals = 60f / customersPerMinute;
-            waitRemaining = secondsBetweenArrivals;
-            scheduledDemandRevision = revision;
-            demandOrderIndex = 0;
-            arrivalScheduled = true;
-        }
-
-        waitRemaining -= Time.deltaTime;
-        int spawnedThisFrame = 0;
-        while (waitRemaining <= 0f && spawnedThisFrame < MaxScheduledSpawnsPerFrame)
-        {
-            if (!TrySpawn(false))
+            int revision = config.DemandScheduleRevision;
+            if (!arrivalScheduled || revision != scheduledDemandRevision)
             {
-                // A missing or disabled register pauses arrivals until service can resume.
-                // Full queues do not pause demand because they can continue to grow.
-                waitRemaining = 0.5f;
-                arrivalScheduled = true;
-                break;
+                secondsBetweenArrivals = 60f / customersPerMinute;
+                waitRemaining = secondsBetweenArrivals;
+                scheduledDemandRevision = revision;
+                supplementalOrderIndex = 0;
+                activeDemandBatch = new PendingDemandBatch(config.GetScheduledOrderCycleSnapshot());
+                arrivalScheduled = activeDemandBatch.HasCycle;
             }
-
-            waitRemaining += secondsBetweenArrivals;
-            spawnedThisFrame++;
         }
+
+        if (arrivalScheduled)
+        {
+            waitRemaining -= Time.deltaTime;
+            int scheduledThisFrame = 0;
+            while (waitRemaining <= 0f && scheduledThisFrame < MaxScheduledSpawnsPerFrame)
+            {
+                ScheduleNextDemand();
+                waitRemaining += secondsBetweenArrivals;
+                scheduledThisFrame++;
+            }
+        }
+
+        DispatchPendingScheduledCustomers();
     }
 
     public string LastSpawnError { get; private set; }
@@ -233,7 +297,7 @@ public class CustomerSpawner : MonoBehaviour
     {
         arrivalScheduled = false;
         scheduledDemandRevision = -1;
-        demandOrderIndex = 0;
+        supplementalOrderIndex = 0;
     }
 
     public bool SpawnTutorialCustomer()
@@ -263,15 +327,18 @@ public class CustomerSpawner : MonoBehaviour
         ResolveEntryPathIfNeeded();
 
         Register r = GetBestRegister();
-        if (r == null)
+        if (r == null && force)
             r = GetAnyRegister();
         if (r == null && !force)
         {
-            LastSpawnError = "Need an open register";
+            LastSpawnError = GetAnyRegister() != null
+                ? "All register queues are full"
+                : "Need an open register";
             return false;
         }
 
-        return SpawnOnFoot(r, false, Vector3.zero, null);
+        CustomerOrder manualOrder = tutorialPractice ? null : GenerateSupplementalOrder();
+        return SpawnOnFoot(r, false, Vector3.zero, null, manualOrder);
     }
 
     /// <summary>
@@ -285,16 +352,135 @@ public class CustomerSpawner : MonoBehaviour
         CustomerOrderConfig config = ResolveOrderConfig();
         if (config == null || !config.HasEnabledItems) return false;
 
-        Register r = GetBestRegister();
+        Register r = GetLeastLoadedRegister();
         if (r == null)
-            r = GetAnyRegister();
-        if (r == null) return false;
+        {
+            LastSpawnError = "Need an open register";
+            return false;
+        }
 
-        return SpawnOnFoot(r, true, doorWorld, rideHome);
+        PendingDemandBatch batch = GetOldestPendingBatch();
+        if (batch == null) return false;
+        CustomerOrder scheduledOrder = batch.PeekNext();
+        if (!SpawnOnFoot(r, true, doorWorld, rideHome, scheduledOrder)) return false;
+        ConsumePendingDemand(batch, scheduledOrder);
+        return true;
     }
 
-    bool SpawnOnFoot(Register r, bool fromVehicle, Vector3 doorWorld, LotArrivalVehicle rideHome)
+    void ScheduleNextDemand()
     {
+        if (activeDemandBatch == null || !activeDemandBatch.HasCycle) return;
+        if (activeDemandBatch.pendingCount == 0 && !activeDemandBatch.isQueued)
+        {
+            pendingDemandBatches.Enqueue(activeDemandBatch);
+            activeDemandBatch.isQueued = true;
+        }
+
+        CustomerOrder scheduled = activeDemandBatch.ScheduleNext();
+        if (scheduled == null) return;
+        pendingScheduledRequestCount++;
+        AddPendingItems(scheduled, 1);
+    }
+
+    void DispatchPendingScheduledCustomers()
+    {
+        if (Time.time < nextDispatchRetryTime) return;
+        if (GetOldestPendingBatch() == null) return;
+
+        RefreshPlacedRegisters();
+        int spawnedThisFrame = 0;
+        while (spawnedThisFrame < MaxScheduledSpawnsPerFrame)
+        {
+            PendingDemandBatch batch = GetOldestPendingBatch();
+            if (batch == null) break;
+
+            // Arrival cadence represents customer demand. A busy register still
+            // accepts the next customer into the growing physical queue.
+            Register register = GetLeastLoadedRegisterFromCurrentList();
+            if (register == null)
+            {
+                LastSpawnError = "Waiting for an enabled register";
+                nextDispatchRetryTime = Time.time + PendingDispatchRetrySeconds;
+                break;
+            }
+            if (customerPrefab == null || customerPrefab.GetComponent<CustomerAI>() == null)
+            {
+                LastSpawnError = customerPrefab == null
+                    ? "No customer prefab on CustomerSpawner"
+                    : "Customer prefab needs a CustomerAI component on its root";
+                nextDispatchRetryTime = Time.time + PendingDispatchRetrySeconds;
+                break;
+            }
+
+            ResolveEntryPathIfNeeded();
+            CustomerOrder order = batch.PeekNext();
+            if (!SpawnOnFoot(register, false, Vector3.zero, null, order)) break;
+            ConsumePendingDemand(batch, order);
+            LastSpawnError = null;
+            spawnedThisFrame++;
+        }
+    }
+
+    PendingDemandBatch GetOldestPendingBatch()
+    {
+        while (pendingDemandBatches.Count > 0)
+        {
+            PendingDemandBatch batch = pendingDemandBatches.Peek();
+            if (batch != null && batch.pendingCount > 0) return batch;
+            pendingDemandBatches.Dequeue();
+            if (batch != null) batch.isQueued = false;
+        }
+        return null;
+    }
+
+    void ConsumePendingDemand(PendingDemandBatch batch, CustomerOrder expectedOrder)
+    {
+        if (batch == null || batch.pendingCount <= 0) return;
+        CustomerOrder consumed = batch.ConsumeNext();
+        if (consumed == null) consumed = expectedOrder;
+        AddPendingItems(consumed, -1);
+        pendingScheduledRequestCount = System.Math.Max(0, pendingScheduledRequestCount - 1);
+
+        if (batch.pendingCount == 0 && pendingDemandBatches.Count > 0
+            && ReferenceEquals(pendingDemandBatches.Peek(), batch))
+        {
+            pendingDemandBatches.Dequeue();
+            batch.isQueued = false;
+        }
+    }
+
+    void AddPendingItems(CustomerOrder order, int direction)
+    {
+        if (order?.lines == null) return;
+        foreach (CustomerOrder.OrderLine line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            long amount = (long)line.quantity * direction;
+            long updated = pendingItemCounts.TryGetValue(line.item, out long current)
+                ? current + amount
+                : amount;
+            if (updated <= 0) pendingItemCounts.Remove(line.item);
+            else pendingItemCounts[line.item] = updated;
+            pendingDemandSummaryDirty = true;
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
+    bool SpawnOnFoot(Register r, bool fromVehicle, Vector3 doorWorld, LotArrivalVehicle rideHome,
+        CustomerOrder assignedOrder)
+    {
+        if (customerPrefab == null || customerPrefab.GetComponent<CustomerAI>() == null)
+        {
+            LastSpawnError = customerPrefab == null
+                ? "No customer prefab on CustomerSpawner"
+                : "Customer prefab needs a CustomerAI component on its root";
+            return false;
+        }
+
         BuildEntryPoints(entryPointsBuffer, r, !fromVehicle);
         Vector3 spawnPos;
         if (fromVehicle)
@@ -322,11 +508,16 @@ public class CustomerSpawner : MonoBehaviour
 
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.FirstCustomerArrived);
         var ai = c.GetComponent<CustomerAI>();
-        if (ai == null) return true;
+        if (ai == null)
+        {
+            Destroy(c);
+            LastSpawnError = "Customer prefab needs a CustomerAI component on its root";
+            return false;
+        }
 
         ai.ClearOrder();
-        if (!OnboardingTutorial.IsActive)
-            ai.SetOrder(GenerateNextScheduledOrder());
+        if (!OnboardingTutorial.IsActive && assignedOrder != null)
+            ai.SetOrder(assignedOrder);
         ai.BeginEntryRoute(entryPointsBuffer, grid, exitPath);
         if (!fromVehicle)
             ai.SetReturnSpawnPoint(spawnPos);
@@ -452,8 +643,32 @@ public class CustomerSpawner : MonoBehaviour
 
         foreach (var r in registers)
         {
-            if (r == null) continue;
-            if (!r.HasSpace()) continue;
+            if (r == null || !r.HasSpace()) continue;
+            int count = r.QueueCount;
+            if (count < bestCount)
+            {
+                bestCount = count;
+                best = r;
+            }
+        }
+
+        return best;
+    }
+
+    Register GetLeastLoadedRegister()
+    {
+        RefreshPlacedRegisters();
+        return GetLeastLoadedRegisterFromCurrentList();
+    }
+
+    Register GetLeastLoadedRegisterFromCurrentList()
+    {
+        Register best = null;
+        int bestCount = int.MaxValue;
+
+        foreach (var r in registers)
+        {
+            if (r == null || !r.IsPlacedRegister || !r.isEnabled) continue;
 
             int count = r.QueueCount;
             if (count < bestCount)

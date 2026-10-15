@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 15;
+    public const int CurrentVersion = 17;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -22,18 +22,21 @@ public class KitchenSaveSnapshot
     public List<string> completedMilestoneIds = new List<string>();
     public List<string> completedResearchIds = new List<string>();
     public List<string> enabledMenuItemNames = new List<string>();
+    public List<CustomerOrderConfig.SavedItemReputation> itemReputation = new List<CustomerOrderConfig.SavedItemReputation>();
     public string activeResearchId;
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; }
-    [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; public ProductionStationCheckpoint productionState; }
+    [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); public ProductionWorkerCheckpoint productionState; }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; public string fromGuid, toGuid; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<string> stationGuids = new List<string>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
     public static KitchenSaveSnapshot Capture()
     {
+        ProductionManager scheduleManager = ProductionManager.Instance;
+        if (scheduleManager != null && scheduleManager.useScheduledProduction) scheduleManager.ScheduledProduction.Tick();
         var s = new KitchenSaveSnapshot();
         foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
             s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.PlacementPosition });
@@ -60,7 +63,10 @@ public class KitchenSaveSnapshot
         }
         ProductionManager productionForMenu = ProductionManager.Instance;
         if (productionForMenu != null && productionForMenu.orderConfig != null)
+        {
             s.enabledMenuItemNames.AddRange(productionForMenu.orderConfig.CaptureEnabledMenuItemNames());
+            s.itemReputation.AddRange(productionForMenu.orderConfig.CaptureItemReputation());
+        }
         var appearance = StoreAppearanceController.Instance;
         if (appearance != null)
         {
@@ -132,7 +138,9 @@ public class KitchenSaveSnapshot
                         assemblyProcessingUnits=assembly != null ? assembly.ProcessingUnitCount : 0,
                         assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f,
                         productionRatePercent=stationNode != null ? stationNode.ProductionRatePercent : 100f,
-                        stationGuid=stationNode != null ? stationNode.StableStationId : "" });
+                        stationGuid=stationNode != null ? stationNode.StableStationId : "",
+                        productionState=scheduleManager != null && scheduleManager.useScheduledProduction
+                            ? scheduleManager.ScheduledProduction.CaptureStation(go) : null });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -146,6 +154,7 @@ public class KitchenSaveSnapshot
                 staff.Add(employee);
                 PartyCharacterRandomizer look = employee.GetComponent<PartyCharacterRandomizer>();
                 var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel,priority=(int)employee.taskPriority,
+                    productionState=pm.useScheduledProduction ? pm.ScheduledProduction.CaptureWorker(employee) : null,
                     bodyIndex=look != null ? look.bodyIndex : 0,
                     faceIndex=look != null ? look.faceIndex : 0,
                     hatIndex=look != null ? look.hatIndex : -1};
@@ -255,6 +264,7 @@ public class KitchenSaveSnapshot
             // assignment. Skipping null previously left whatever default happened to
             // be serialized on the prefab, which made load results station-dependent.
             var grill=go.GetComponent<GrillStation>(); if(grill!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress,e.secondaryInputs);
+            if (pm.useScheduledProduction && e.productionState != null) pm.ScheduledProduction.RestoreStation(go,e.productionState);
             var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
             var fryer=go.GetComponent<FryerStation>(); if(fryer!=null) fryer.SetRecipeOutput(product);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
@@ -337,6 +347,7 @@ public class KitchenSaveSnapshot
                 look.ApplyCurrent();
             }
             employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); employee.taskPriority=(KitchenEmployee.TaskPriority)Mathf.Clamp(w.priority,0,System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length-1); pm.RegisterEmployee(employee); staff.Add(employee);
+            if (pm.useScheduledProduction && w.productionState != null) pm.ScheduledProduction.RestoreWorker(employee,w.productionState);
             foreach(int i in w.stations) if(i>=0 && i<objects.Count) { employee.AddOperatedStation(objects[i]); StationNode.EnsureOn(objects[i]).AddWorker(employee); }
             employee.SyncFromOperatedStations();
         }
@@ -407,7 +418,10 @@ public class KitchenSaveSnapshot
             if (flow != null)
                 WorkerFlowAssigner.ApplyBalancedTeam(flow);
         if (pm.orderConfig != null)
+        {
             pm.orderConfig.RestoreEnabledMenuItems(enabledMenuItemNames);
+            pm.orderConfig.RestoreItemReputation(version >= 17 ? itemReputation : null);
+        }
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var appearance = StoreAppearanceController.Ensure();
         if (version >= 4)

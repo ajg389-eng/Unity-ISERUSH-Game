@@ -32,7 +32,7 @@ MonoBehaviour:
     - Employee names only
     correctChoiceIndex: 2
   - prompt: A catering contract is highly profitable but would use most kitchen capacity
-      during the lunch rush. What should the player consider?
+      alongside regular demand. What should the player consider?
     choices:
     - Catering revenue only
     - Effects on regular customers, capacity, costs, and total profit

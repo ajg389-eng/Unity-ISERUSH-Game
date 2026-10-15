@@ -6,7 +6,7 @@ using UnityEngine.Serialization;
 /// Recipe-driven assembly station. Recipes may create final menu items or intermediates
 /// that feed a later assembly station.
 /// </summary>
-public class AssemblyStation : MonoBehaviour, IStationBuffer
+public partial class AssemblyStation : MonoBehaviour, IStationBuffer
 {
     const int Mk1InputCapacityPerType = 4;
     const int Mk1OutputCapacity = 4;
@@ -369,7 +369,7 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        AdvanceAutomaticProcessing(Time.deltaTime);
+        if (!ProductionManager.IsScheduledStation(gameObject)) AdvanceAutomaticProcessing(Time.deltaTime);
         processProgressIndicator?.SetProgress(
             IsProcessing, processingTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
     }

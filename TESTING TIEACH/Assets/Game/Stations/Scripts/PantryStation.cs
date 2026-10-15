@@ -7,7 +7,7 @@ using UnityEngine.Serialization;
 /// Placeable station. Holds which ingredients can be grabbed here.
 /// Actual counts come from KitchenInventory (ordered via Management).
 /// </summary>
-public class PantryStation : MonoBehaviour
+public partial class PantryStation : MonoBehaviour
 {
     [Header("Stored ingredients (up to two)")]
     [Tooltip("First ingredient this pantry can dispense. Choose ingredients in Management mode.")]
@@ -234,7 +234,7 @@ public class PantryStation : MonoBehaviour
 
 /// <summary>
 /// Displays the same overlay caution icon used by pickup stations whenever a
-/// configurable station has no selection, or a pantry's assigned stock is low.
+/// configurable station has no selection, or its assigned stock is low.
 /// </summary>
 internal sealed class StationConfigurationCaution : MonoBehaviour
 {
@@ -316,14 +316,12 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
             details = "NOT CONFIGURED\nSelect a recipe or ingredient.";
             return true;
         }
-        if (HasLowPantryStock())
+        if (TryGetLowStockItem(out ItemDefinition lowItem, out int stock))
         {
-            PantryStation pantry = GetComponent<PantryStation>();
-            string item = pantry != null && pantry.selectedItem != null
-                ? (!string.IsNullOrEmpty(pantry.selectedItem.itemName)
-                    ? pantry.selectedItem.itemName : pantry.selectedItem.name)
-                : "Ingredient";
-            details = item.ToUpperInvariant() + " LOW\nOrder more stock.";
+            string item = !string.IsNullOrEmpty(lowItem.itemName) ? lowItem.itemName : lowItem.name;
+            details = stock <= 0
+                ? item.ToUpperInvariant() + " OUT OF STOCK\nOrder more stock."
+                : item.ToUpperInvariant() + " LOW (" + stock + " LEFT)\nOrder more stock.";
             return true;
         }
         return TryGetBottleneckDetails(out details);
@@ -383,14 +381,47 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         return true;
     }
 
-    bool HasLowPantryStock()
+    bool TryGetLowStockItem(out ItemDefinition item, out int stock)
     {
-        var pantry = GetComponent<PantryStation>();
-        if (pantry == null || !pantry.HasItemSelected || !pantry.IsAssignedIngredientLow)
+        item = null;
+        stock = 0;
+        KitchenInventory inventory = KitchenInventory.Instance;
+        if (inventory == null) return false;
+
+        PantryStation pantry = GetComponent<PantryStation>();
+        if (pantry != null)
+        {
+            int threshold = Mathf.Max(0, pantry.lowStockWarningThreshold);
+            if (IsLow(pantry.selectedItem, threshold, inventory, out stock))
+            {
+                item = pantry.selectedItem;
+                return !OnboardingTutorial.BlocksProgression;
+            }
+            if (IsLow(pantry.secondItem, threshold, inventory, out stock))
+            {
+                item = pantry.secondItem;
+                return !OnboardingTutorial.BlocksProgression;
+            }
             return false;
+        }
+
+        FreezerStation freezer = GetComponent<FreezerStation>();
+        if (freezer == null || !IsLow(freezer.selectedItem,
+                Mathf.Max(0, freezer.lowStockWarningThreshold), inventory, out stock))
+            return false;
+        item = freezer.selectedItem;
         // During onboarding, stock is empty until the later buy-ingredients step.
         // Keep the yellow icon for missing selections only.
         return !OnboardingTutorial.BlocksProgression;
+    }
+
+    static bool IsLow(ItemDefinition candidate, int threshold, KitchenInventory inventory,
+        out int stock)
+    {
+        stock = 0;
+        if (candidate == null) return false;
+        stock = inventory.GetCount(candidate);
+        return stock <= threshold;
     }
 
     GameObject CreateIndicator()

@@ -31,8 +31,8 @@ MonoBehaviour:
     - Increase inventory
     - Reduce employee wages
     correctChoiceIndex: 1
-  - prompt: A grill frequently fails during rush periods. Which information would
-      be most useful when evaluating the problem?
+  - prompt: A grill frequently fails after heavy use. Which information would be
+      most useful when evaluating the problem?
     choices:
     - Failure frequency and repair time
     - Customer menu preferences only

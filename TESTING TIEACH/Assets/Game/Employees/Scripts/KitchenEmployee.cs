@@ -15,7 +15,7 @@ public class AssignmentRow
 /// Pipelines define work order (burger: Freezer→Grill→Assembly). Delivery is always via Assign Output.
 /// Cashiers fetch drinks + heat-lamp food for customers.
 /// </summary>
-public class KitchenEmployee : MonoBehaviour
+public partial class KitchenEmployee : MonoBehaviour
 {
     public enum TaskPriority
     {
@@ -118,7 +118,7 @@ public class KitchenEmployee : MonoBehaviour
     readonly List<GameObject> stationCandidates = new List<GameObject>();
 
     public bool IsIdle => currentJob == null && !returningToFlowStart;
-    public bool HasJob => currentJob != null;
+    public bool HasJob => currentJob != null || (scheduledPresentation && scheduledBusy);
     public ProductionJob ActiveJob => currentJob;
     public ItemDefinition CurrentWorkProduct => currentJob != null ? currentJob.CurrentWorkProduct : null;
     public bool IsWorkingOn(ProductionJob job) => job != null && currentJob == job;
@@ -129,6 +129,7 @@ public class KitchenEmployee : MonoBehaviour
     {
         get
         {
+            if (scheduledPresentation) return scheduledActivity;
             if (!CanTakeJobs) return WorkerActivityState.Unassigned;
             if (GetRegisterStation() != null) return WorkerActivityState.Cashier;
             if (IsCurrentlyBlocked()) return WorkerActivityState.Blocked;
@@ -329,6 +330,7 @@ public class KitchenEmployee : MonoBehaviour
     /// <summary>Human-readable description of what this worker is doing right now.</summary>
     public string GetCurrentTaskDescription()
     {
+        if (scheduledPresentation) return scheduledDescription;
         string product = GetActiveProductLabel();
         string blockedReason = GetBlockedReason();
         string stationName = GetCurrentTaskStationName();
@@ -2505,6 +2507,9 @@ public class KitchenEmployee : MonoBehaviour
 
     void Update()
     {
+        if (ProductionManager.Instance != null && ProductionManager.Instance.useScheduledProduction
+            && ProductionManager.Instance.ScheduledProduction.PresentWorker(this)) return;
+        ClearScheduledPresentation();
         SnapToGround();
         TrackWorkerEfficiencyTravel();
         if (manager == null)
@@ -3663,8 +3668,8 @@ public class KitchenEmployee : MonoBehaviour
                         if (recipe != null && carriedAmount > 0
                             && cutting.HasCarriedSupply(manager.orderConfig, ingredientsHeld, carriedAmount))
                         {
-                            int openSlots = Mathf.Max(0, cutting.InputSlotCapacity
-                                - cutting.GetInputCount(recipe.input));
+                            int openSlots = Mathf.Max(0, cutting.SlotCapacity
+                                - cutting.BufferedUnitCount);
                             int storeAmount = Mathf.Min(carriedAmount, openSlots);
                             int reserved = manager.GetReservedInputUnits(currentJob);
                             if (reserved > 0) storeAmount = Mathf.Min(storeAmount, reserved);
