@@ -168,16 +168,17 @@ public class IngredientCourier : MonoBehaviour
 
     Register NearestRegister()
     {
-        Register[] registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
         Register best = null;
         float bestDist = float.MaxValue;
-        for (int i = 0; i < registers.Length; i++)
+        for (int i = 0; i < registers.Count; i++)
         {
-            if (registers[i] == null) continue;
-            float d = HorizontalDist(registers[i].transform.position, transform.position);
+            Register register = registers[i];
+            if (register == null) continue;
+            float d = HorizontalDist(register.transform.position, transform.position);
             if (d >= bestDist) continue;
             bestDist = d;
-            best = registers[i];
+            best = register;
         }
         return best;
     }

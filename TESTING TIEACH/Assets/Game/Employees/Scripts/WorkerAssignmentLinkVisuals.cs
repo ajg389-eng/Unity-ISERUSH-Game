@@ -276,7 +276,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             GameObject station = flow.stations[i];
             if (station == null) continue;
 
-            Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
+            Vector3 position = KitchenEmployee.GetInteractionPosition(station);
             position.y = grid.Origin.y + floorOffset;
             bool root = !incoming.Contains(station);
             bool end = !outgoing.Contains(station);
@@ -292,8 +292,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         {
             if (connection == null || connection.from == null || connection.to == null) continue;
             var points = new List<Vector3>();
-            Vector3 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.from));
-            Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
+            Vector3 from = KitchenEmployee.GetInteractionPosition(connection.from);
+            Vector3 to = KitchenEmployee.GetInteractionPosition(connection.to);
             AppendGridLeg(points, grid, from, to);
             if (points.Count >= 2) edgePaths.Add(points);
         }

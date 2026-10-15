@@ -6,7 +6,8 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public int version = 13, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public const int CurrentVersion = 14;
+    public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
@@ -26,7 +27,7 @@ public class KitchenSaveSnapshot
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress; public Vector3 counterPosition; public bool registerEnabled = true; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
@@ -96,6 +97,7 @@ public class KitchenSaveSnapshot
                     var pantry = go.GetComponent<PantryStation>();
                     var cutting = go.GetComponent<CuttingStation>();
                     var fryer = go.GetComponent<FryerStation>();
+                    var stationNode = go.GetComponent<StationNode>();
                     // Persist the station's resolved assignment, not just its backing
                     // field. Several station types normalize or derive their active
                     // recipe, so the raw field can be null or stale while the UI and
@@ -125,7 +127,8 @@ public class KitchenSaveSnapshot
                         secondaryInputs=grill != null ? grill.SecondaryInputUnitCount : 0,
                         processProgress=grill != null ? grill.CookProgressSeconds : 0f,
                         assemblyProcessingUnits=assembly != null ? assembly.ProcessingUnitCount : 0,
-                        assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f });
+                        assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f,
+                        productionRatePercent=stationNode != null ? stationNode.ProductionRatePercent : 100f });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -161,7 +164,7 @@ public class KitchenSaveSnapshot
     {
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
-        if(version<1 || version>13 || inv==null || pm==null) return false;
+        if(version<1 || version>CurrentVersion || inv==null || pm==null) return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -241,6 +244,10 @@ public class KitchenSaveSnapshot
                 pantry.SetStoredItems(product,second);
             }
             var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.RestoreSelectedProduct(product);
+            StationNode restoredStationNode = StationNode.EnsureOn(go);
+            if (restoredStationNode != null)
+                restoredStationNode.SetProductionRatePercent(e.productionRatePercent > 0f
+                    ? e.productionRatePercent : 100f);
             if (item.stationFamily == "Pickup Station"
                 && item.placementSurface == ItemDefinition.PlacementSurface.Floor)
             {
@@ -318,7 +325,6 @@ public class KitchenSaveSnapshot
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
-        foreach(var flow in pm.productionFlows) if(flow!=null) WorkerFlowAssigner.ApplyBalancedTeam(flow);
         // Version 1 checkpoints included the removed door lesson at index 2.
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1
@@ -335,6 +341,11 @@ public class KitchenSaveSnapshot
                 version >= 13 ? completedResearchIds : null,
                 version >= 13 ? activeResearchId : null,
                 version >= 13 ? activeResearchMinutesRemaining : 0f);
+        // Recipe availability depends on both milestone and research state.
+        // Balance only after restoring both so connected recipes can be resolved.
+        foreach (var flow in pm.productionFlows)
+            if (flow != null)
+                WorkerFlowAssigner.ApplyBalancedTeam(flow);
         if (pm.orderConfig != null)
             pm.orderConfig.RestoreEnabledMenuItems(enabledMenuItemNames);
         if(grid!=null) grid.ResyncOccupancyFromScene();

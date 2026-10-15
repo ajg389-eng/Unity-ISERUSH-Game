@@ -1113,6 +1113,7 @@ public class WorkersUI : MonoBehaviour
                 return;
             }
 
+            var layout = WorkflowAnalysis.AnalyzeFlowLayout(flow);
             var economics = WorkflowAnalysis.AnalyzeFlow(flow);
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(economics.summary))
@@ -1159,6 +1160,8 @@ public class WorkersUI : MonoBehaviour
             {
                 sb.Append("None");
             }
+            sb.Append("\n");
+            AppendDeliveryRateSummary(sb, flow, layout);
             flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
                 + "<color=#59616D>──────────────────────────────</color>\n" + sb;
             LayoutFlowPanel();
@@ -1169,22 +1172,49 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
-    string GetRawResourceName(ItemDefinition resource)
+    static void AppendDeliveryRateSummary(System.Text.StringBuilder text,
+        ProductionFlowPlan selectedFlow, WorkflowAnalysis.FlowLayoutMetrics selectedMetrics)
     {
-        if (resource == null) return "Unknown";
+        if (text == null) return;
 
-        CustomerOrderConfig config = production != null ? production.orderConfig : null;
-        if (config != null)
+        if (selectedMetrics == null || selectedFlow == null
+            || selectedFlow.stations == null || selectedFlow.stations.Count == 0)
         {
-            if (config.IsBurger(resource)) return "Patty";
-            if (resource == config.friesIngredient) return "Potatoes";
-            if (config.IsFries(resource)) return "Potatoes";
-            if (config.IsDrink(resource)) return "Shake";
+            text.Append("Add stations to see this flow capacity.");
+            return;
         }
 
-        return KitchenInventory.Instance != null
-            ? KitchenInventory.Instance.GetDisplayName(resource)
-            : (!string.IsNullOrEmpty(resource.itemName) ? resource.itemName : resource.name);
+        bool understaffed = selectedMetrics.transportShortfallPerMinute > 0.01f;
+        text.Append("<b>Workers:</b> ")
+            .Append(FormatItemRate(selectedMetrics.laborCapacityPerMinute)).Append(" / ")
+            .Append(FormatItemRate(selectedMetrics.totalRateNeededPerMinute))
+            .Append(" items/min load incl. station time and travel")
+            .Append(" (").Append(selectedMetrics.activeWorkerCount).Append(" assigned");
+        if (understaffed)
+        {
+            int extraWorkers = WorkflowAnalysis.GetBaseWorkersNeeded(selectedMetrics.transportShortfallPerMinute);
+            text.Append("; short ").Append(FormatItemRate(selectedMetrics.transportShortfallPerMinute))
+                .Append("; add ").Append(extraWorkers)
+                .Append(extraWorkers == 1 ? " worker" : " workers")
+                .Append(" at ")
+                .Append(FormatItemRate(KitchenEmployee.GetTransportItemsPerMinuteForLevel(0)))
+                .Append("/min");
+        }
+        else
+        {
+            text.Append("; covered");
+        }
+        text.Append(")")
+            .Append("\n<b>Output:</b> ")
+            .Append(FormatItemRate(selectedMetrics.effectiveOutputPerMinute)).Append(" estimated / ")
+            .Append(FormatItemRate(selectedMetrics.stationCapacityPerMinute)).Append(" items/min max");
+        if (!string.IsNullOrEmpty(selectedMetrics.stationBottleneckName))
+            text.Append(" (").Append(selectedMetrics.stationBottleneckName).Append(" limit)");
+    }
+
+    static string FormatItemRate(float rate)
+    {
+        return rate.ToString("0.0");
     }
 
     public void RefreshFlowOnly()

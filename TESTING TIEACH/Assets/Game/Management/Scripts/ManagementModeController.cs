@@ -78,6 +78,12 @@ public class ManagementModeController : MonoBehaviour
     TextMeshProUGUI productionCycleText;
     TextMeshProUGUI productionEfficiencyText;
     TextMeshProUGUI productionArrowText;
+    GameObject productionRateControlRoot;
+    TMP_InputField productionTargetRateInput;
+    Slider productionRateSlider;
+    TextMeshProUGUI productionRatePercentText;
+    TextMeshProUGUI productionRateRangeText;
+    bool syncingProductionRateControls;
     GameObject stationDiagnosticsRoot;
     TextMeshProUGUI stationDiagnosticsText;
     GameObject pickupInventoryRoot;
@@ -995,6 +1001,7 @@ public class ManagementModeController : MonoBehaviour
             if (workerInfoText != null) workerInfoText.gameObject.SetActive(false);
             if (outputInfoText != null) outputInfoText.gameObject.SetActive(false);
             if (productionDiagramRoot != null) productionDiagramRoot.SetActive(false);
+            if (productionRateControlRoot != null) productionRateControlRoot.SetActive(false);
         }
         else
         {
@@ -1050,7 +1057,7 @@ public class ManagementModeController : MonoBehaviour
         StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(selectedStation.gameObject);
         string state = metrics != null ? metrics.CurrentState.ToString() : "Idle";
         if (productionEfficiencyText != null)
-            productionEfficiencyText.text = metrics != null && metrics.DemandSeconds >= 1f
+            productionEfficiencyText.text = metrics != null && metrics.ObservedSeconds >= 1f
                 ? metrics.EfficiencyPercent.ToString("0") + "%" : "0%";
         string utilization = metrics != null && metrics.TotalSeconds >= 1f
             ? "Working " + metrics.WorkingPercent.ToString("0") + "%  |  Blocked "
@@ -1108,8 +1115,14 @@ public class ManagementModeController : MonoBehaviour
         {
             int stock = freezer.selectedItem != null
                 ? freezer.GetOutputCount(freezer.selectedItem) : 0;
-            return "Output stock: " + stock + "  |  reserved out " + outgoing;
+            return "Output stock: " + stock + "  |  max dispense "
+                + FormatPerMinute(freezer.EffectiveMaxOutputPerMinute) + "/min  |  reserved out " + outgoing;
         }
+
+        PantryStation pantry = node.GetComponent<PantryStation>();
+        if (pantry != null)
+            return "Shared inventory  |  max dispense "
+                + FormatPerMinute(pantry.EffectiveMaxOutputPerMinute) + "/min combined  |  reserved out " + outgoing;
 
         IStationBuffer stationBuffer = node.GetComponent<IStationBuffer>();
         if (stationBuffer != null)
@@ -1222,6 +1235,171 @@ public class ManagementModeController : MonoBehaviour
             out productionSecondOutputName, out productionSecondOutputRate);
         productionSecondOutputCard.SetActive(false);
         productionDiagramRoot.SetActive(false);
+        EnsureProductionRateControls();
+    }
+
+    void EnsureProductionRateControls()
+    {
+        if (stationPopup == null || productionRateControlRoot != null) return;
+
+        productionRateControlRoot = new GameObject("ProductionRateControls", typeof(RectTransform),
+            typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        productionRateControlRoot.transform.SetParent(stationPopup.transform, false);
+        productionRateControlRoot.transform.SetSiblingIndex(2);
+        productionRateControlRoot.GetComponent<Image>().color = GameUITheme.Surface;
+        var rootLayout = productionRateControlRoot.GetComponent<VerticalLayoutGroup>();
+        rootLayout.padding = new RectOffset(7, 7, 4, 4);
+        rootLayout.spacing = 2f;
+        rootLayout.childAlignment = TextAnchor.MiddleCenter;
+        rootLayout.childControlWidth = true;
+        rootLayout.childControlHeight = true;
+        rootLayout.childForceExpandWidth = true;
+        rootLayout.childForceExpandHeight = false;
+        var rootSize = productionRateControlRoot.GetComponent<LayoutElement>();
+        rootSize.minHeight = 54f;
+        rootSize.preferredHeight = 54f;
+        rootSize.flexibleHeight = 0f;
+
+        GameObject row = new GameObject("RateControlRow", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(productionRateControlRoot.transform, false);
+        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 6f;
+        rowLayout.childAlignment = TextAnchor.MiddleCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = false;
+        rowLayout.childForceExpandHeight = true;
+        var rowSize = row.GetComponent<LayoutElement>();
+        rowSize.minHeight = 26f;
+        rowSize.preferredHeight = 26f;
+        rowSize.flexibleHeight = 0f;
+
+        TextMeshProUGUI targetLabel = CreateDiagramText(row.transform, "TargetLabel",
+            "TARGET / MIN", 11f, 24f);
+        targetLabel.fontStyle = FontStyles.Bold;
+        targetLabel.color = GameUITheme.Accent;
+        var targetLabelSize = targetLabel.GetComponent<LayoutElement>();
+        targetLabelSize.minWidth = 80f;
+        targetLabelSize.preferredWidth = 80f;
+        targetLabelSize.flexibleWidth = 0f;
+
+        productionTargetRateInput = CreateProductionRateInput(row.transform);
+        var targetInputSize = productionTargetRateInput.GetComponent<LayoutElement>();
+        targetInputSize.minWidth = 62f;
+        targetInputSize.preferredWidth = 70f;
+        targetInputSize.flexibleWidth = 0f;
+
+        productionRateSlider = CreateProductionRateSlider(row.transform);
+
+        productionRatePercentText = CreateDiagramText(row.transform, "ClockSpeed", "100%", 11f, 24f);
+        productionRatePercentText.fontStyle = FontStyles.Bold;
+        productionRatePercentText.color = GameUITheme.TextPrimary;
+        var percentSize = productionRatePercentText.GetComponent<LayoutElement>();
+        percentSize.minWidth = 44f;
+        percentSize.preferredWidth = 48f;
+        percentSize.flexibleWidth = 0f;
+
+        productionRateRangeText = CreateDiagramText(productionRateControlRoot.transform,
+            "RateRange", "1% to 100% clock speed", 9f, 15f);
+        productionRateRangeText.alignment = TextAlignmentOptions.Left;
+        productionRateRangeText.color = GameUITheme.TextSecondary;
+
+        productionTargetRateInput.onEndEdit.AddListener(HandleTargetRateSubmitted);
+        productionRateSlider.onValueChanged.AddListener(HandleProductionRateSliderChanged);
+    }
+
+    TMP_InputField CreateProductionRateInput(Transform parent)
+    {
+        var fieldObject = new GameObject("TargetRateInput", typeof(RectTransform),
+            typeof(Image), typeof(TMP_InputField), typeof(LayoutElement));
+        fieldObject.transform.SetParent(parent, false);
+        Image background = fieldObject.GetComponent<Image>();
+        background.color = GameUITheme.Charcoal;
+        background.raycastTarget = true;
+
+        var textArea = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
+        textArea.transform.SetParent(fieldObject.transform, false);
+        RectTransform areaRect = (RectTransform)textArea.transform;
+        areaRect.anchorMin = Vector2.zero;
+        areaRect.anchorMax = Vector2.one;
+        areaRect.offsetMin = new Vector2(4f, 2f);
+        areaRect.offsetMax = new Vector2(-4f, -2f);
+
+        var textObject = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(textArea.transform, false);
+        RectTransform textRect = (RectTransform)textObject.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.fontSize = 12f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = GameUITheme.TextPrimary;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+
+        var placeholderObject = new GameObject("Placeholder", typeof(RectTransform), typeof(TextMeshProUGUI));
+        placeholderObject.transform.SetParent(textArea.transform, false);
+        RectTransform placeholderRect = (RectTransform)placeholderObject.transform;
+        placeholderRect.anchorMin = Vector2.zero;
+        placeholderRect.anchorMax = Vector2.one;
+        placeholderRect.offsetMin = Vector2.zero;
+        placeholderRect.offsetMax = Vector2.zero;
+        TextMeshProUGUI placeholder = placeholderObject.GetComponent<TextMeshProUGUI>();
+        placeholder.text = "items/min";
+        placeholder.fontSize = 10f;
+        placeholder.alignment = TextAlignmentOptions.Center;
+        placeholder.color = GameUITheme.TextSecondary;
+        placeholder.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) placeholder.font = TMP_Settings.defaultFontAsset;
+
+        TMP_InputField field = fieldObject.GetComponent<TMP_InputField>();
+        field.textViewport = areaRect;
+        field.textComponent = text;
+        field.placeholder = placeholder;
+        field.targetGraphic = background;
+        field.contentType = TMP_InputField.ContentType.DecimalNumber;
+        field.lineType = TMP_InputField.LineType.SingleLine;
+        field.SetTextWithoutNotify("15");
+        return field;
+    }
+
+    Slider CreateProductionRateSlider(Transform parent)
+    {
+        var sliderObject = new GameObject("ClockSpeedSlider", typeof(RectTransform),
+            typeof(Image), typeof(Slider), typeof(LayoutElement));
+        sliderObject.transform.SetParent(parent, false);
+        sliderObject.GetComponent<Image>().color = GameUITheme.Charcoal;
+        var size = sliderObject.GetComponent<LayoutElement>();
+        size.minWidth = 70f;
+        size.preferredWidth = 110f;
+        size.flexibleWidth = 1f;
+        size.minHeight = 16f;
+        size.preferredHeight = 18f;
+        size.flexibleHeight = 0f;
+
+        var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handleObject.transform.SetParent(sliderObject.transform, false);
+        RectTransform handleRect = (RectTransform)handleObject.transform;
+        handleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        handleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        handleRect.pivot = new Vector2(0.5f, 0.5f);
+        handleRect.sizeDelta = new Vector2(14f, 20f);
+        Image handleImage = handleObject.GetComponent<Image>();
+        handleImage.color = GameUITheme.PositiveAccent;
+        handleImage.raycastTarget = true;
+
+        Slider slider = sliderObject.GetComponent<Slider>();
+        slider.minValue = StationNode.MinimumProductionRatePercent;
+        slider.maxValue = StationNode.MaximumProductionRatePercent;
+        slider.wholeNumbers = false;
+        slider.direction = Slider.Direction.LeftToRight;
+        slider.handleRect = handleRect;
+        slider.targetGraphic = handleImage;
+        slider.SetValueWithoutNotify(100f);
+        return slider;
     }
 
     GameObject CreateProductionCard(Transform parent, string heading, out RawImage preview,
@@ -1375,6 +1553,8 @@ public class ManagementModeController : MonoBehaviour
         float inputRate = node.HasInputAmount ? node.inputAmountPerMinute : node.outputAmountPerMinute;
         float secondInputRate = inputRate;
         float thirdInputRate = inputRate;
+        bool hasTwoInputs = false;
+        bool hasThreeInputs = false;
         float cycleSeconds = 0f;
 
         var freezer = node.GetComponent<FreezerStation>();
@@ -1399,7 +1579,7 @@ public class ManagementModeController : MonoBehaviour
             ItemDefinition stored = freezer.selectedItem;
             outputPrefab = stored != null && stored.prefab != null ? stored.prefab : rawPattyModel;
             outputName = stored != null ? DisplayItemName(stored) : "Select ingredient";
-            cycleSeconds = freezer.processTimeSeconds;
+            cycleSeconds = StationOutputRateLimiter.SecondsPerItem(node.outputAmountPerMinute);
             outputOnly = true;
         }
         else if (grill != null)
@@ -1418,29 +1598,52 @@ public class ManagementModeController : MonoBehaviour
                 secondInputRate = node.outputAmountPerMinute;
             }
             outputName = grillOutput != null ? DisplayItemName(grillOutput) : "Select recipe";
-            cycleSeconds = grill.processTimeSeconds;
+            cycleSeconds = grill.EffectiveProcessTimeSeconds;
         }
         else if (assembly != null)
         {
             AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-            inputPrefab = recipe != null && recipe.processedInput != null
-                ? recipe.processedInput.prefab : cookedPattyModel;
+            inputPrefab = null;
+            secondInputPrefab = null;
+            thirdInputPrefab = null;
+            inputRate = 0f;
+            secondInputRate = 0f;
+            thirdInputRate = 0f;
+            inputName = "Select recipe";
+            secondInputName = string.Empty;
+            thirdInputName = string.Empty;
+
+            if (recipe != null)
+            {
+                int inputIndex = 0;
+                if (recipe.RequiresProcessedInput)
+                    AddAssemblyDiagramInput(recipe.processedInput, recipe.processedInputName,
+                        recipe.processedInputAmount, node.outputAmountPerMinute, ref inputIndex,
+                        ref inputPrefab, ref inputName, ref inputRate, ref secondInputPrefab,
+                        ref secondInputName, ref secondInputRate, ref thirdInputPrefab,
+                        ref thirdInputName, ref thirdInputRate);
+                if (recipe.pantryInput != null)
+                    AddAssemblyDiagramInput(recipe.pantryInput, null, recipe.pantryInputAmount,
+                        node.outputAmountPerMinute, ref inputIndex, ref inputPrefab, ref inputName,
+                        ref inputRate, ref secondInputPrefab, ref secondInputName,
+                        ref secondInputRate, ref thirdInputPrefab, ref thirdInputName,
+                        ref thirdInputRate);
+                if (recipe.thirdInput != null)
+                    AddAssemblyDiagramInput(recipe.thirdInput, null, recipe.thirdInputAmount,
+                        node.outputAmountPerMinute, ref inputIndex, ref inputPrefab, ref inputName,
+                        ref inputRate, ref secondInputPrefab, ref secondInputName,
+                        ref secondInputRate, ref thirdInputPrefab, ref thirdInputName,
+                        ref thirdInputRate);
+                hasTwoInputs = inputIndex >= 2;
+                hasThreeInputs = inputIndex >= 3;
+            }
+
             outputPrefab = recipe != null && recipe.output != null
                 ? (recipe.output.prefab ?? GetPickupPreviewPrefab(recipe.output))
                 : burgerPreviewPrefab;
-            inputName = recipe != null ? recipe.processedInputName : "Cooked patty";
-            secondInputPrefab = recipe != null && recipe.pantryInput != null ? recipe.pantryInput.prefab : null;
-            secondInputName = recipe != null && recipe.pantryInput != null
-                ? DisplayItemName(recipe.pantryInput) : "Bun";
-            inputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.processedInputAmount) : 1);
-            secondInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.pantryInputAmount) : 1);
-            thirdInputPrefab = recipe != null && recipe.thirdInput != null ? recipe.thirdInput.prefab : null;
-            thirdInputName = recipe != null && recipe.thirdInput != null
-                ? DisplayItemName(recipe.thirdInput) : string.Empty;
-            thirdInputRate = node.outputAmountPerMinute * (recipe != null ? Mathf.Max(1, recipe.thirdInputAmount) : 1);
             outputName = recipe != null ? recipe.DisplayName
                 : (assembly.selectedProduct != null ? DisplayItemName(assembly.selectedProduct) : "Burger");
-            cycleSeconds = assembly.processTimeSeconds;
+            cycleSeconds = assembly.EffectiveProcessTimeSeconds;
         }
         else if (cutting != null)
         {
@@ -1449,7 +1652,7 @@ public class ManagementModeController : MonoBehaviour
             outputPrefab = recipe != null && recipe.output != null ? recipe.output.prefab : null;
             inputName = recipe != null ? DisplayItemName(recipe.input) : "Select ingredient";
             outputName = recipe != null ? recipe.DisplayName : "Select recipe";
-            cycleSeconds = cutting.processTimeSeconds;
+            cycleSeconds = cutting.EffectiveProcessTimeSeconds;
         }
         else if (fryer != null)
         {
@@ -1463,13 +1666,13 @@ public class ManagementModeController : MonoBehaviour
                 ? fryerOutput.prefab : cookedFriesPreviewPrefab;
             inputName = fryerInput != null ? DisplayItemName(fryerInput) : "Potato slices";
             outputName = fryerOutput != null ? DisplayItemName(fryerOutput) : "Cooked Potato Slices";
-            cycleSeconds = fryer.processTimeSeconds;
+            cycleSeconds = fryer.EffectiveProcessTimeSeconds;
         }
         else if (drink != null)
         {
             outputPrefab = drinkPreviewPrefab;
             outputName = "Drinks";
-            cycleSeconds = drink.processTimeSeconds;
+            cycleSeconds = StationNode.GetEffectiveCycleSeconds(drink, drink.processTimeSeconds);
             outputOnly = true;
         }
         else if (pantry != null)
@@ -1477,7 +1680,7 @@ public class ManagementModeController : MonoBehaviour
             ItemDefinition stored = pantry.selectedItem;
             outputPrefab = stored != null ? stored.prefab : null;
             outputName = stored != null ? DisplayItemName(stored) : "Not selected";
-            cycleSeconds = pantry.processTimeSeconds;
+            cycleSeconds = StationOutputRateLimiter.SecondsPerItem(node.outputAmountPerMinute);
             outputOnly = true;
         }
         else
@@ -1518,22 +1721,103 @@ public class ManagementModeController : MonoBehaviour
         }
         productionOutputName.text = outputName;
         ApplyProductionNameColor(productionOutputName, outputName);
-        float maximumRate = node.outputAmountPerMinute;
+        float targetRate = node.outputAmountPerMinute;
+        float baseRate = node.BaseOutputAmountPerMinute;
         StationRuntimeMetrics runtimeMetrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
         float actualRate = runtimeMetrics != null ? runtimeMetrics.ActualOutputPerMinute : 0f;
         productionOutputRate.text = "<color=#B7BEC5>ACTUAL</color> " + FormatPerMinute(actualRate) + "/min\n"
-            + "<color=#B7BEC5>MAX</color> " + FormatPerMinute(maximumRate) + "/min";
+            + "<color=#B7BEC5>TARGET</color> " + FormatPerMinute(targetRate) + "/min"
+            + (pantry != null && pantry.secondItem != null ? " total" : string.Empty);
         if (pantry != null)
         {
             ItemDefinition second = pantry.secondItem;
             string secondName = second != null ? DisplayItemName(second) : "Not selected";
             SetDiagramPreview(productionSecondOutputPreview, second != null ? second.prefab : null, secondName);
             productionSecondOutputName.text = secondName;
-            productionSecondOutputRate.text = second != null ? FormatPerMinute(node.outputAmountPerMinute) + "/min" : "—";
+            productionSecondOutputRate.text = second != null
+                ? (pantry.selectedItem != null ? "Shares total cap"
+                    : "<color=#B7BEC5>ACTUAL</color> " + FormatPerMinute(actualRate) + "/min\n"
+                        + "<color=#B7BEC5>TARGET</color> " + FormatPerMinute(targetRate) + "/min")
+                : "—";
             ApplyProductionNameColor(productionSecondOutputName, secondName);
             if (pantry.selectedItem == null) productionOutputRate.text = "—";
         }
+        RefreshProductionRateControls(node, baseRate);
         productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
+    }
+
+    void RefreshProductionRateControls(StationNode node, float baseRate)
+    {
+        if (productionRateControlRoot == null) return;
+        bool show = node != null && node.SupportsProductionRateControl && baseRate > 0.001f;
+        productionRateControlRoot.SetActive(show);
+        if (!show) return;
+
+        // CollapseInactiveLayout zeros hidden elements. Restore this row's
+        // measured height whenever a station makes it visible again.
+        LayoutElement rootSize = productionRateControlRoot.GetComponent<LayoutElement>();
+        if (rootSize != null)
+        {
+            rootSize.minHeight = 54f;
+            rootSize.preferredHeight = 54f;
+            rootSize.flexibleHeight = 0f;
+        }
+
+        syncingProductionRateControls = true;
+        productionRateSlider.SetValueWithoutNotify(node.ProductionRatePercent);
+        productionRatePercentText.text = node.ProductionRatePercent.ToString("0.#") + "%";
+        if (productionTargetRateInput != null && !productionTargetRateInput.isFocused)
+            productionTargetRateInput.SetTextWithoutNotify(node.outputAmountPerMinute.ToString("0.##"));
+        float maxRate = baseRate * StationNode.MaximumProductionRatePercent / 100f;
+        productionRateRangeText.text = "Base " + FormatPerMinute(baseRate) + "/min  |  Max "
+            + FormatPerMinute(maxRate) + "/min  |  Clock 1-100%";
+        syncingProductionRateControls = false;
+    }
+
+    void HandleProductionRateSliderChanged(float percent)
+    {
+        if (syncingProductionRateControls || selectedStation == null) return;
+        selectedStation.SetProductionRatePercent(percent);
+        RefreshRecipeStationRatesLive();
+        RefreshStationDiagnostics();
+    }
+
+    void HandleTargetRateSubmitted(string text)
+    {
+        if (selectedStation == null || !selectedStation.SupportsProductionRateControl) return;
+        if (float.TryParse(text, out float targetRate))
+            selectedStation.SetTargetOutputPerMinute(targetRate);
+        RefreshRecipeStationRatesLive();
+        RefreshStationDiagnostics();
+    }
+
+    static void AddAssemblyDiagramInput(ItemDefinition item, string configuredName, int amountPerOutput,
+        float outputRate, ref int inputIndex, ref GameObject firstPrefab, ref string firstName,
+        ref float firstRate, ref GameObject secondPrefab, ref string secondName, ref float secondRate,
+        ref GameObject thirdPrefab, ref string thirdName, ref float thirdRate)
+    {
+        if (item == null || inputIndex >= 3) return;
+        string name = !string.IsNullOrWhiteSpace(configuredName)
+            ? configuredName : DisplayItemName(item);
+        float rate = outputRate * Mathf.Max(1, amountPerOutput);
+        switch (inputIndex++)
+        {
+            case 0:
+                firstPrefab = item.prefab;
+                firstName = name;
+                firstRate = rate;
+                break;
+            case 1:
+                secondPrefab = item.prefab;
+                secondName = name;
+                secondRate = rate;
+                break;
+            case 2:
+                thirdPrefab = item.prefab;
+                thirdName = name;
+                thirdRate = rate;
+                break;
+        }
     }
 
     static void ApplyProductionNameColor(TextMeshProUGUI label, string value)
@@ -1629,10 +1913,10 @@ public class ManagementModeController : MonoBehaviour
     void ApplyPopupLayout(RectTransform rt, float width, float height)
     {
         if (rt == null) return;
-        rt.anchorMin = popupAnchor;
-        rt.anchorMax = popupAnchor;
-        rt.pivot = popupPivot;
-        rt.anchoredPosition = popupAnchoredPosition;
+        rt.anchorMin = new Vector2(popupAnchor.x, 0.5f);
+        rt.anchorMax = new Vector2(popupAnchor.x, 0.5f);
+        rt.pivot = new Vector2(popupPivot.x, 0.5f);
+        rt.anchoredPosition = new Vector2(popupAnchoredPosition.x, popupAnchoredPosition.y);
         rt.sizeDelta = new Vector2(width, height);
     }
 
@@ -1644,6 +1928,8 @@ public class ManagementModeController : MonoBehaviour
             && productListContainer.gameObject.activeSelf;
 
         var rt = (RectTransform)stationPopup.transform;
+        rt.localScale = Vector3.one;
+        CenterPopupVertically(rt);
         var vlg = stationPopup.GetComponent<VerticalLayoutGroup>();
         if (vlg != null)
         {
@@ -1667,6 +1953,7 @@ public class ManagementModeController : MonoBehaviour
         CollapseInactiveLayout(productListContainer != null ? productListContainer.gameObject : null);
         CollapseInactiveLayout(inventoryInfoText != null ? inventoryInfoText.gameObject : null);
         CollapseInactiveLayout(productionDiagramRoot);
+        CollapseInactiveLayout(productionRateControlRoot);
         CollapseInactiveLayout(pickupInventoryRoot);
         CollapseInactiveLayout(stationDiagnosticsRoot);
 
@@ -1718,10 +2005,11 @@ public class ManagementModeController : MonoBehaviour
         else
         {
             if (productionDiagramRoot != null) productionDiagramRoot.transform.SetSiblingIndex(1);
-            if (productInfoText != null) productInfoText.transform.SetSiblingIndex(2);
-            if (productListContainer != null) productListContainer.SetSiblingIndex(3);
-            if (stationDiagnosticsRoot != null) stationDiagnosticsRoot.transform.SetSiblingIndex(4);
-            if (statusText != null) statusText.transform.SetSiblingIndex(5);
+            if (productionRateControlRoot != null) productionRateControlRoot.transform.SetSiblingIndex(2);
+            if (productInfoText != null) productInfoText.transform.SetSiblingIndex(3);
+            if (productListContainer != null) productListContainer.SetSiblingIndex(4);
+            if (stationDiagnosticsRoot != null) stationDiagnosticsRoot.transform.SetSiblingIndex(5);
+            if (statusText != null) statusText.transform.SetSiblingIndex(6);
         }
 
         // Resolve child layout groups from the inside out before measuring the
@@ -1729,35 +2017,66 @@ public class ManagementModeController : MonoBehaviour
         // and visibly snaps into its final arrangement one frame later.
         if (productionDiagramRoot != null && productionDiagramRoot.activeSelf)
             LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productionDiagramRoot.transform);
+        if (productionRateControlRoot != null && productionRateControlRoot.activeSelf)
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productionRateControlRoot.transform);
         if (productListContainer != null && productListContainer.gameObject.activeSelf)
             LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productListContainer);
         if (pickupInventoryRoot != null && pickupInventoryRoot.activeSelf)
             LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)pickupInventoryRoot.transform);
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
-
-        float minimumHeight = heatLampCompact ? 246f : 310f;
-        float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
-        float height = Mathf.Max(minimumHeight, preferredHeight);
         AssemblyStation selectedAssembly = selectedStation != null
             ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool hasThreeInputRecipe = selectedAssembly != null
             && selectedAssembly.GetSelectedRecipe()?.thirdInput != null;
         float width = hasRecipeControls ? 500f : 360f;
-
         if (!usingScenePopup)
-            ApplyPopupLayout(rt, width, height);
+            ApplyPopupLayout(rt, width, rt.sizeDelta.y);
         else
         {
             float currentWidth = rt.sizeDelta.x;
             float resolvedWidth = hasThreeInputRecipe
                 ? Mathf.Max(500f, currentWidth)
                 : (currentWidth >= 499f ? width : Mathf.Max(width, currentWidth));
-            rt.sizeDelta = new Vector2(resolvedWidth, height);
+            rt.sizeDelta = new Vector2(resolvedWidth, rt.sizeDelta.y);
         }
 
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+
+        float minimumHeight = heatLampCompact ? 246f : 310f;
+        float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
+        float height = Mathf.Max(minimumHeight, preferredHeight);
+        rt.sizeDelta = new Vector2(rt.sizeDelta.x, height);
+
+        // Keep the complete station panel in view at shorter resolutions while
+        // preserving its layout proportions and centered vertical position.
+        RectTransform canvasRect = rt.parent as RectTransform;
+        float availableHeight = canvasRect != null
+            ? Mathf.Max(1f, canvasRect.rect.height - 24f)
+            : Mathf.Max(1f, Screen.height - 24f);
+        float scale = height > availableHeight ? availableHeight / height : 1f;
+        rt.localScale = Vector3.one * scale;
+        CenterPopupVertically(rt);
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+    }
+
+    void CenterPopupVertically(RectTransform rt)
+    {
+        if (rt == null) return;
+        Vector2 min = rt.anchorMin;
+        Vector2 max = rt.anchorMax;
+        min.y = 0.5f;
+        max.y = 0.5f;
+        rt.anchorMin = min;
+        rt.anchorMax = max;
+
+        Vector2 pivot = rt.pivot;
+        pivot.y = 0.5f;
+        rt.pivot = pivot;
+
+        Vector2 position = rt.anchoredPosition;
+        position.y = popupAnchoredPosition.y;
+        rt.anchoredPosition = position;
     }
 
     static void CollapseInactiveLayout(GameObject go)

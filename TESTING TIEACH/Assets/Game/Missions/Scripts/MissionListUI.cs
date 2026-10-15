@@ -397,6 +397,7 @@ public class MissionListUI : MonoBehaviour
 
     void EnsureUI()
     {
+        bool applyTheme = !built;
         TryFindScenePanel();
 
         if (targetCanvas == null)
@@ -475,6 +476,8 @@ public class MissionListUI : MonoBehaviour
         ApplyLayout();
         WireTabs();
         EnsureTopTabs();
+        if (applyTheme && panelRoot != null)
+            GameUITheme.ApplyTo(panelRoot.transform);
     }
 
     void TryFindScenePanel()

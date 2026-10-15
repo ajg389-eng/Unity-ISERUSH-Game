@@ -10,8 +10,8 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     [Header("Product")]
     public ItemDefinition selectedProduct;
     [FormerlySerializedAs("cookTimeSeconds")]
-    [Tooltip("Total time for one fryer operation. Loading, cooking, and unloading are included.")]
-    [Min(0f)] public float processTimeSeconds = 8f;
+    [Tooltip("Time to fry one item at 100% rate.")]
+    [Min(0f)] public float processTimeSeconds = 4f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -59,6 +59,20 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     }
 
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
+    public float BaseProcessCycleSeconds
+    {
+        get
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            StationProcessingRecipeDefinition recipe = config != null
+                ? config.GetFryerRecipe(CookedItem) : null;
+            return recipe != null
+                ? StationNode.GetTierAdjustedCycleSeconds(this, recipe.baseCycleSeconds)
+                : processTimeSeconds;
+        }
+    }
+    public float EffectiveProcessTimeSeconds => StationNode.GetEffectiveCycleSeconds(this, BaseProcessCycleSeconds);
     public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
     public int BufferedUnitCount => waitingInputUnits + basketUnits + cookedOutputUnits;
@@ -101,9 +115,9 @@ public class FryerStation : MonoBehaviour, IStationBuffer
 
     public bool CanLoad() => CanAcceptInput(RawItem, 1);
 
-    public bool IsCooking => basketUnits > 0 && cookTimer < processTimeSeconds;
+    public bool IsCooking => basketUnits > 0 && cookTimer < EffectiveProcessTimeSeconds;
     public float ProcessRemainingSeconds => IsCooking
-        ? Mathf.Max(0f, processTimeSeconds - cookTimer) : 0f;
+        ? Mathf.Max(0f, EffectiveProcessTimeSeconds - cookTimer) : 0f;
 
     public bool IsCooked() => cookedOutputUnits > 0;
 
@@ -150,19 +164,36 @@ public class FryerStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        if (basketUnits > 0 && cookTimer < processTimeSeconds)
-            cookTimer += Time.deltaTime;
-        if (basketUnits > 0 && cookTimer >= processTimeSeconds
-            && cookedOutputUnits + basketUnits <= OutputSlotCapacity)
+        float remainingTime = Mathf.Max(0f, Time.deltaTime);
+        while (true)
         {
-            cookedOutputUnits += basketUnits;
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(basketUnits);
-            basketUnits = 0;
-            cookTimer = 0f;
-            StartNextBatchIfPossible();
+            if (basketUnits <= 0)
+                StartNextBatchIfPossible();
+            if (basketUnits <= 0 || cookedOutputUnits >= OutputSlotCapacity) break;
+
+            float cycleSeconds = EffectiveProcessTimeSeconds;
+            if (cycleSeconds <= 0.001f)
+            {
+                basketUnits--;
+                cookedOutputUnits++;
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                continue;
+            }
+
+            float untilOutput = Mathf.Max(0f, cycleSeconds - cookTimer);
+            float elapsed = Mathf.Min(remainingTime, untilOutput);
+            cookTimer += elapsed;
+            remainingTime -= elapsed;
+            if (cookTimer + 0.0001f < cycleSeconds) break;
+
+            basketUnits--;
+            cookedOutputUnits++;
+            cookTimer = Mathf.Max(0f, cookTimer - cycleSeconds);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            if (basketUnits <= 0) cookTimer = 0f;
         }
         processProgressIndicator?.SetProgress(
-            IsCooking, cookTimer / Mathf.Max(0.01f, processTimeSeconds));
+            IsCooking, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(false);
     }
 
@@ -170,10 +201,11 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     {
         if (basketUnits > 0 || waitingInputUnits <= 0) return;
         int outputRoom = OutputSlotCapacity - cookedOutputUnits;
-        int batch = Mathf.Min(waitingInputUnits, InputSlotCapacity, outputRoom);
-        if (batch <= 0) return;
-        waitingInputUnits -= batch;
-        basketUnits = batch;
+        int availableItems = Mathf.Min(waitingInputUnits, InputSlotCapacity, outputRoom);
+        if (availableItems <= 0) return;
+        waitingInputUnits -= availableItems;
+        // The fryer can queue several items, but it produces one per cycle.
+        basketUnits = availableItems;
         cookTimer = 0f;
     }
 

@@ -51,7 +51,6 @@ public class GameUITheme : MonoBehaviour
     const float MinimumBodyTextSize = 16f;
     const float MinimumCompactTextSize = 13f;
     static TMP_FontAsset titleScreenFont;
-    float nextCanvasScanTime;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -62,30 +61,25 @@ public class GameUITheme : MonoBehaviour
 
     void OnEnable() => ApplyToAllCanvases();
 
-    void Update()
-    {
-        // Some management screens build their Canvas only when first opened.
-        // Reapply at a low rate so those late panels inherit the same theme.
-        if (Time.unscaledTime < nextCanvasScanTime) return;
-        nextCanvasScanTime = Time.unscaledTime + 1f;
-        ApplyToAllCanvases();
-    }
-
     public static void ApplyToAllCanvases()
     {
         var canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (var canvas in canvases)
-        {
-            if (canvas == null) continue;
+            ApplyToCanvas(canvas);
+    }
 
-            // Font choice is global, including world-space order and worker labels.
-            // Only the color and chrome pass is limited to screen-space UI.
-            foreach (var text in canvas.GetComponentsInChildren<TextMeshProUGUI>(true))
-                ApplyTitleScreenFont(text);
+    /// <summary>Styles a runtime-created Canvas once its UI hierarchy is complete.</summary>
+    public static void ApplyToCanvas(Canvas canvas)
+    {
+        if (canvas == null) return;
 
-            if (canvas.renderMode == RenderMode.WorldSpace) continue;
-            ApplyCanvas(canvas);
-        }
+        // Font choice is global, including world-space order and worker labels.
+        // Only the color and chrome pass is limited to screen-space UI.
+        foreach (var text in canvas.GetComponentsInChildren<TextMeshProUGUI>(true))
+            ApplyTitleScreenFont(text);
+
+        if (canvas.renderMode == RenderMode.WorldSpace) return;
+        ApplyCanvas(canvas);
     }
 
     /// <summary>Styles a runtime-built UI branch immediately, before its first rendered frame.</summary>
@@ -145,8 +139,7 @@ public class GameUITheme : MonoBehaviour
     }
 
     // ResearchTreeUI owns its branch colors and card states. Exclude it from
-    // the periodic generic theme pass so those colors cannot change one second
-    // after the screen opens.
+    // the generic theme pass so those colors stay authoritative.
     static bool IsResearchTreeElement(Transform target)
     {
         return target != null && target.GetComponentInParent<ResearchTreeUI>(true) != null;

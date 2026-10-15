@@ -385,6 +385,7 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateButton(panel.transform, "Close", () => SetVisible(false));
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     void ClearAllEquipment()

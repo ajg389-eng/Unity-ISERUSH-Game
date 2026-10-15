@@ -814,7 +814,7 @@ public class IngredientDeliveryService : MonoBehaviour
 
     static Register FindNearestRegister()
     {
-        Register[] registers = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
         Register bestEnabled = null;
         Register bestAny = null;
         float bestEnabledDist = float.MaxValue;
@@ -823,19 +823,20 @@ public class IngredientDeliveryService : MonoBehaviour
         GameObject floor = GameObject.Find("CustomerFloor");
         if (floor != null)
             hint = floor.transform.position;
-        for (int i = 0; i < registers.Length; i++)
+        for (int i = 0; i < registers.Count; i++)
         {
-            if (registers[i] == null) continue;
-            float d = (registers[i].transform.position - hint).sqrMagnitude;
+            Register register = registers[i];
+            if (register == null) continue;
+            float d = (register.transform.position - hint).sqrMagnitude;
             if (d < bestAnyDist)
             {
                 bestAnyDist = d;
-                bestAny = registers[i];
+                bestAny = register;
             }
-            if (!registers[i].isEnabled) continue;
+            if (!register.isEnabled) continue;
             if (d >= bestEnabledDist) continue;
             bestEnabledDist = d;
-            bestEnabled = registers[i];
+            bestEnabled = register;
         }
         return bestEnabled != null ? bestEnabled : bestAny;
     }

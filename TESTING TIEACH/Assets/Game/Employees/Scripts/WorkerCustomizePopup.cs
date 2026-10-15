@@ -73,6 +73,7 @@ public class WorkerCustomizePopup : MonoBehaviour
 
         var popup = root.AddComponent<WorkerCustomizePopup>();
         popup.BuildUi(root.transform);
+        GameUITheme.ApplyTo(root.transform);
         return popup;
     }
 

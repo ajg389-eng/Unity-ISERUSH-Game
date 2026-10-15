@@ -63,6 +63,7 @@ public class FloatingMoneyText : MonoBehaviour
         // Soft outline for readability
         label.outlineWidth = 0.2f;
         label.outlineColor = new Color(0f, 0.25f, 0.1f, 0.85f);
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     void LateUpdate()

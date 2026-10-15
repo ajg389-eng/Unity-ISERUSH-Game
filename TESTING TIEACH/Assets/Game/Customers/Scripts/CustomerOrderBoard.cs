@@ -41,6 +41,7 @@ public class CustomerOrderBoard : MonoBehaviour
         wallText = MakeText(background, 38);
         wallText.alignment = TextAlignmentOptions.Center;
         wallText.margin = new Vector4(20, 20, 20, 20);
+        GameUITheme.ApplyToCanvas(face.GetComponent<Canvas>());
     }
 
     void OpenOrderView()
@@ -234,6 +235,7 @@ public class CustomerOrderBoard : MonoBehaviour
         content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(.5f, 1);
         scroll.viewport = viewport; scroll.content = content; scroll.horizontal = false;
         scroll.scrollSensitivity = 60f;
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     static RectTransform MakeRect(string name, Transform parent, Vector2 size)

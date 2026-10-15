@@ -16,9 +16,25 @@ public class PantryStation : MonoBehaviour
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one pantry operation.")]
     [Min(0f)] public float processTimeSeconds = 0f;
+    [Tooltip("Maximum combined amount this pantry can dispense per minute across both selected ingredients.")]
+    [Min(0.1f)] public float maxOutputPerMinute = 30f;
     [Tooltip("Show a caution sign when the assigned ingredient reaches this stock level or lower.")]
     [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
+
+    [System.NonSerialized] float outputTokens;
+    [System.NonSerialized] float outputTokensUpdatedAt;
+    [System.NonSerialized] bool outputTokensInitialized;
+
+    public float EffectiveMaxOutputPerMinute
+    {
+        get
+        {
+            StationNode node = GetComponent<StationNode>();
+            return Mathf.Max(0f, maxOutputPerMinute)
+                * (node != null ? node.ProductionRateMultiplier : 1f);
+        }
+    }
 
     Transform itemDisplayRoot;
     readonly List<Transform> itemSpawnMarkers = new List<Transform>();
@@ -57,32 +73,58 @@ public class PantryStation : MonoBehaviour
     {
         if (item == null || amount <= 0) return false;
         if (!CanDispense(item)) return false;
+        return GetReadyOutputCount(item) >= amount;
+    }
+
+    public int GetReadyOutputCount(ItemDefinition item)
+    {
+        if (item == null || !CanDispense(item)) return 0;
         var inv = KitchenInventory.Instance;
-        if (inv == null) return true; // legacy infinite if no inventory system
-        return inv.Has(item, amount);
+        int stock = inv != null ? inv.GetCount(item) : int.MaxValue;
+        int ready = StationOutputRateLimiter.GetAvailableUnits(EffectiveMaxOutputPerMinute,
+            ref outputTokens, ref outputTokensUpdatedAt, ref outputTokensInitialized);
+        return Mathf.Min(stock, ready);
     }
 
     public bool TakeItem(ItemDefinition item)
     {
-        if (item == null || !CanDispense(item)) return false;
-        var inv = KitchenInventory.Instance;
-        bool taken = inv == null || inv.TryConsume(item, 1);
-        if (taken) StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
-        return taken;
+        return TakeItems(item, 1);
     }
 
     public bool TakeItems(ItemDefinition item, int amount)
     {
         if (item == null || amount <= 0 || !CanDispense(item)) return false;
         var inv = KitchenInventory.Instance;
-        bool taken = inv == null || inv.TryConsume(item, amount);
-        if (taken) StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(amount);
-        return taken;
+        int ready = GetReadyOutputCount(item);
+        int requested = Mathf.Min(amount, ready);
+        if (requested <= 0) return false;
+        if (requested < amount || ready < amount) return false;
+        int limited = StationOutputRateLimiter.TakeUnits(requested, EffectiveMaxOutputPerMinute,
+            ref outputTokens, ref outputTokensUpdatedAt, ref outputTokensInitialized);
+        if (limited != amount)
+        {
+            StationOutputRateLimiter.RefundUnits(limited, ref outputTokens);
+            return false;
+        }
+        if (inv != null && !inv.TryConsume(item, limited))
+        {
+            StationOutputRateLimiter.RefundUnits(limited, ref outputTokens);
+            return false;
+        }
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(limited);
+        return true;
     }
 
     public bool HasItemSelected => selectedItem != null || secondItem != null;
-    public bool HasAnyStock => (selectedItem != null && HasItem(selectedItem))
-        || (secondItem != null && HasItem(secondItem));
+    public bool HasAnyStock => (selectedItem != null && HasStoredItem(selectedItem))
+        || (secondItem != null && HasStoredItem(secondItem));
+
+    bool HasStoredItem(ItemDefinition item)
+    {
+        KitchenInventory inventory = KitchenInventory.Instance;
+        return inventory == null || inventory.GetCount(item) > 0;
+    }
+
     public string StoredItemsLabel => selectedItem == null
         ? ItemName(secondItem)
         : secondItem == null ? ItemName(selectedItem) : ItemName(selectedItem) + " / " + ItemName(secondItem);
@@ -291,9 +333,8 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     {
         details = "";
         ProductionManager production = ProductionManager.Instance;
-        StationRuntimeMetrics ownMetrics = GetComponent<StationRuntimeMetrics>();
         StationNode ownNode = GetComponent<StationNode>();
-        if (production == null || ownMetrics == null || ownNode == null
+        if (production == null || ownNode == null
             || production.productionFlows == null) return false;
 
         foreach (ProductionFlowPlan flow in production.productionFlows)
@@ -313,25 +354,11 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
                 return true;
             }
 
-            float ownRate = ownNode.outputAmountPerMinute;
-            if (ownRate <= 0.01f || ownMetrics.CurrentState != StationRuntimeState.Working) continue;
-            float requiredBusySeconds = Mathf.Max(6f,
-                WorkflowAnalysis.GetStationWorkSeconds(gameObject) * 2f);
-            if (ownMetrics.CurrentStateSeconds < requiredBusySeconds) continue;
-
-            float minimumRate = float.MaxValue;
-            foreach (GameObject station in flow.stations)
-            {
-                if (station == null || station.GetComponent<HeatLampStation>() != null) continue;
-                StationNode node = StationNode.EnsureOn(station);
-                if (node != null && node.outputAmountPerMinute > 0.01f)
-                    minimumRate = Mathf.Min(minimumRate, node.outputAmountPerMinute);
-            }
-            if (minimumRate == float.MaxValue || ownRate > minimumRate + 0.01f) continue;
-
-            details = "BOTTLENECK: " + ownNode.DisplayName.ToUpperInvariant() + "\n"
-                + ownRate.ToString("0.0") + "/min. Upgrade or add another.";
-            return true;
+            // Capacity is determined by connected, recipe-compatible supply.
+            // A low-rate parallel station can still contribute to a merge, so
+            // comparing this station against the lowest rate in the whole flow
+            // produces false bottleneck warnings. Runtime input-blocked states
+            // above remain the reliable local warning for this overlay.
         }
         return false;
     }
@@ -441,6 +468,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         explanation.textWrappingMode = TextWrappingModes.Normal;
         explanation.raycastTarget = false;
         panel.SetActive(false);
+        GameUITheme.ApplyToCanvas(canvas);
         return root;
     }
 

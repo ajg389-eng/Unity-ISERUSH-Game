@@ -119,6 +119,7 @@ public class CustomerOrderLabel : MonoBehaviour
             labelText.font = TMP_Settings.defaultFontAsset;
 
         EnsureIconsRow();
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     public void SetOrder(CustomerOrder order, bool isComplete)

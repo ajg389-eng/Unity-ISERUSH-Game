@@ -3,6 +3,8 @@ using UnityEngine;
 
 public class CustomerSpawner : MonoBehaviour
 {
+    const int MaxScheduledSpawnsPerFrame = 32;
+
     public GameObject customerPrefab;
     [Tooltip("Fallback spawn position if no entry path / waypoints are set.")]
     public Transform spawnPoint;
@@ -17,110 +19,96 @@ public class CustomerSpawner : MonoBehaviour
     public CustomerPath exitPath;
     public GridManager grid;
 
-    [Header("Arrivals (Poisson process)")]
-    [Tooltip("Mean customers per real minute on Milestone 1. A shift is 12 real minutes, so 2.4 is about 29 expected arrivals. Later milestones add to this. Gaps stay random, but they are capped so the morning is not empty.")]
-    [Min(0.05f)]
-    public float milestoneOneCustomersPerMinute = 2.4f;
-
-    [Tooltip("Added to the mean arrival rate for each numbered milestone after the first.")]
-    [Min(0f)]
-    public float extraCustomersPerMinutePerMilestone = 0.85f;
-
-    [Tooltip("After Queue Analytics research, lunch and dinner rush hours multiply the mean arrival rate.")]
-    [Min(1f)]
-    public float rushArrivalMultiplier = 2.2f;
-
-    [Header("Demand-aware pacing")]
-    [Tooltip("Soft cap for customers already in the store. New arrivals are slowed above this number, but never stopped.")]
-    [Min(1)] public int comfortableActiveCustomerCount = 8;
-    [Tooltip("Minimum arrival-rate multiplier when the store is congested.")]
-    [Range(0.1f, 1f)] public float congestedArrivalFloor = 0.35f;
-
-    [Tooltip("Assign to give customers random burger / fries / drink combos")]
+    [Header("Predictable demand")]
+    [Tooltip("Enabled menu recipes define exact repeating item requests per minute and customer arrival spacing.")]
     public CustomerOrderConfig orderConfig;
+    [Tooltip("Fixed demand multiplier during research-unlocked lunch and dinner rush hours. Item rates remain rounded to multiples of five.")]
+    [Min(1f)] public float rushArrivalMultiplier = 2.2f;
 
     public List<Register> registers = new List<Register>();
 
     float waitRemaining;
-    float scheduledRatePerSecond;
+    float secondsBetweenArrivals;
     bool arrivalScheduled;
-    bool waitingForOpening = true;
+    int scheduledDemandRevision = -1;
+    int demandOrderIndex;
     bool clockHooked;
     readonly List<Vector3> entryPointsBuffer = new List<Vector3>();
     readonly List<Transform> customerSpawnPoints = new List<Transform>();
     int lastCustomerSpawnPoint = -1;
 
-    /// <summary>
-    /// Expected arrivals per real minute. Milestone 1 uses the base rate;
-    /// each later numbered milestone adds to it. Rush hours scale the mean.
-    /// </summary>
-    public float CustomersPerMinute => MeanCustomersPerMinute();
+    /// <summary>Exact scheduled arrivals per minute from enabled menu recipe demand.</summary>
+    public float CustomersPerMinute
+    {
+        get
+        {
+            CustomerOrderConfig config = ResolveOrderConfig();
+            if (config == null) return 0f;
+            return config.GetDemandCustomersPerMinute(CurrentDemandMultiplier);
+        }
+    }
 
-    /// <summary>Configured mean arrivals for a one-game-hour bucket at the supplied hour.</summary>
+    /// <summary>Exact scheduled arrivals in one game-hour bucket at the current rate.</summary>
     public float ExpectedCustomersPerGameHour(int hour24)
     {
-        int stage = MilestoneFeatures.HighestReachedNumberedStage();
-        int stepsPastFirst = Mathf.Max(0, stage - 1);
-        float rate = milestoneOneCustomersPerMinute + stepsPastFirst * extraCustomersPerMinutePerMilestone;
+        CustomerOrderConfig config = ResolveOrderConfig();
+        return config != null
+            ? config.CalculateDemandCustomersPerMinute(DemandMultiplierForHour(hour24))
+            : 0f;
+    }
+
+    public int GetCustomerDemandPerMinute(ItemDefinition item)
+    {
+        CustomerOrderConfig config = ResolveOrderConfig();
+        return config != null
+            ? config.GetCustomerDemandPerMinute(item, CurrentDemandMultiplier)
+            : 0;
+    }
+
+    public CustomerOrder GenerateNextScheduledOrder()
+    {
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (config == null) return new CustomerOrder();
+        float demandMultiplier = CurrentDemandMultiplier;
+        int customersPerMinute = config.GetDemandCustomersPerMinute(demandMultiplier);
+        if (customersPerMinute <= 0) return new CustomerOrder();
+
+        CustomerOrder order = config.GenerateScheduledOrder(demandOrderIndex, demandMultiplier);
+        demandOrderIndex = (demandOrderIndex + 1) % customersPerMinute;
+        return order;
+    }
+
+    float CurrentDemandMultiplier
+    {
+        get
+        {
+            GameTimeManager clock = GameTimeManager.Instance;
+            return clock != null && clock.IsRushHour
+                ? Mathf.Max(1f, rushArrivalMultiplier)
+                : 1f;
+        }
+    }
+
+    float DemandMultiplierForHour(int hour24)
+    {
         hour24 = ((hour24 % 24) + 24) % 24;
         bool rush = MilestoneFeatures.RushHourUnlocked
             && ((hour24 >= 12 && hour24 < 14) || (hour24 >= 17 && hour24 < 19));
-        if (rush) rate *= rushArrivalMultiplier;
-        return Mathf.Max(0.05f, rate);
+        return rush ? Mathf.Max(1f, rushArrivalMultiplier) : 1f;
     }
 
-    float MeanCustomersPerMinute()
+    CustomerOrderConfig ResolveOrderConfig()
     {
-        int stage = MilestoneFeatures.HighestReachedNumberedStage();
-        int stepsPastFirst = Mathf.Max(0, stage - 1);
-        float rate = milestoneOneCustomersPerMinute + stepsPastFirst * extraCustomersPerMinutePerMilestone;
-        var clock = GameTimeManager.Instance;
-        if (clock != null && clock.IsRushHour)
-            rate *= rushArrivalMultiplier;
-        return Mathf.Max(0.05f, rate);
-    }
-
-    float DemandAdjustedCustomersPerMinute()
-    {
-        float rate = MeanCustomersPerMinute();
-        int active = 0;
-        var customers = CustomerAI.OrderBoardCustomers;
-        if (customers != null)
-            for (int i = 0; i < customers.Count; i++)
-            {
-                CustomerAI customer = customers[i];
-                if (customer != null && !customer.IsLeaving) active++;
-            }
-        int overCapacity = Mathf.Max(0, active - Mathf.Max(1, comfortableActiveCustomerCount));
-        float congestion = Mathf.Clamp01(overCapacity / (float)Mathf.Max(1, comfortableActiveCustomerCount));
-        return rate * Mathf.Lerp(1f, Mathf.Clamp(congestedArrivalFloor, 0.1f, 1f), congestion);
-    }
-
-    void ScheduleNextArrival(float customersPerSecond)
-    {
-        float rate = Mathf.Max(0.0001f, customersPerSecond);
-        if (waitingForOpening)
-        {
-            // First customer of the shift: always during the opening hour
-            // (about 10:12–10:40), never a multi-hour empty morning.
-            waitRemaining = UnityEngine.Random.Range(12f, 38f);
-        }
-        else
-        {
-            // Trimmed exponential. Mean stays near 1/λ, but a single gap
-            // cannot run from open until early afternoon.
-            float u = UnityEngine.Random.Range(0.14f, 0.86f);
-            float gap = -Mathf.Log(u) / rate;
-            waitRemaining = Mathf.Clamp(gap, 20f, 65f);
-        }
-        scheduledRatePerSecond = rate;
-        arrivalScheduled = true;
+        if (orderConfig == null && ProductionManager.Instance != null)
+            orderConfig = ProductionManager.Instance.orderConfig;
+        return orderConfig;
     }
 
     void HandleDayStarted()
     {
-        waitingForOpening = true;
         arrivalScheduled = false;
+        scheduledDemandRevision = -1;
+        demandOrderIndex = 0;
     }
 
     void EnsureDayHook()
@@ -189,31 +177,45 @@ public class CustomerSpawner : MonoBehaviour
             return;
         }
 
-        float rate = DemandAdjustedCustomersPerMinute() / 60f;
-        if (!arrivalScheduled || scheduledRatePerSecond <= 0f)
-            ScheduleNextArrival(rate);
-        else if (!waitingForOpening && Mathf.Abs(rate - scheduledRatePerSecond) > 0.0001f)
+        CustomerOrderConfig config = ResolveOrderConfig();
+        float demandMultiplier = CurrentDemandMultiplier;
+        int customersPerMinute = config != null
+            ? config.GetDemandCustomersPerMinute(demandMultiplier)
+            : 0;
+        if (customersPerMinute <= 0)
         {
-            // Piecewise-constant Poisson process: stretch or compress the
-            // remaining wait when the rate changes (rush hour, new milestone).
-            waitRemaining *= scheduledRatePerSecond / rate;
-            waitRemaining = Mathf.Clamp(waitRemaining, 8f, 65f);
-            scheduledRatePerSecond = rate;
-        }
-
-        waitRemaining -= Time.deltaTime;
-        if (waitRemaining > 0f) return;
-
-        if (!TrySpawn(false))
-        {
-            // A missing register should retry soon, not skip the rest of the morning.
-            waitRemaining = 5f;
-            arrivalScheduled = true;
+            arrivalScheduled = false;
+            scheduledDemandRevision = -1;
+            demandOrderIndex = 0;
             return;
         }
 
-        waitingForOpening = false;
-        ScheduleNextArrival(DemandAdjustedCustomersPerMinute() / 60f);
+        int revision = config.GetDemandScheduleRevision(demandMultiplier);
+        if (!arrivalScheduled || revision != scheduledDemandRevision)
+        {
+            secondsBetweenArrivals = 60f / customersPerMinute;
+            waitRemaining = secondsBetweenArrivals;
+            scheduledDemandRevision = revision;
+            demandOrderIndex = 0;
+            arrivalScheduled = true;
+        }
+
+        waitRemaining -= Time.deltaTime;
+        int spawnedThisFrame = 0;
+        while (waitRemaining <= 0f && spawnedThisFrame < MaxScheduledSpawnsPerFrame)
+        {
+            if (!TrySpawn(false))
+            {
+                // A missing or disabled register pauses arrivals until service can resume.
+                // Full queues do not pause demand because they can continue to grow.
+                waitRemaining = 0.5f;
+                arrivalScheduled = true;
+                break;
+            }
+
+            waitRemaining += secondsBetweenArrivals;
+            spawnedThisFrame++;
+        }
     }
 
     public string LastSpawnError { get; private set; }
@@ -221,19 +223,17 @@ public class CustomerSpawner : MonoBehaviour
     public bool SpawnNow(bool force = false)
     {
         if (!TrySpawn(force)) return false;
-        ScheduleNextArrival(DemandAdjustedCustomersPerMinute() / 60f);
         return true;
     }
 
     /// <summary>
-    /// Clears the tutorial arrival block and schedules a visible customer promptly.
+    /// Clears the tutorial arrival block and restarts the deterministic demand cycle.
     /// </summary>
     public void ResumeAfterTutorial()
     {
-        waitingForOpening = false;
-        scheduledRatePerSecond = DemandAdjustedCustomersPerMinute() / 60f;
-        waitRemaining = 3f;
-        arrivalScheduled = true;
+        arrivalScheduled = false;
+        scheduledDemandRevision = -1;
+        demandOrderIndex = 0;
     }
 
     public bool SpawnTutorialCustomer()
@@ -254,7 +254,8 @@ public class CustomerSpawner : MonoBehaviour
             LastSpawnError = "No customer prefab on CustomerSpawner";
             return false;
         }
-        if (!force && orderConfig != null && !orderConfig.HasEnabledItems)
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (!force && (config == null || !config.HasEnabledItems))
         {
             LastSpawnError = "No menu items enabled";
             return false;
@@ -262,7 +263,7 @@ public class CustomerSpawner : MonoBehaviour
         ResolveEntryPathIfNeeded();
 
         Register r = GetBestRegister();
-        if (r == null && force)
+        if (r == null)
             r = GetAnyRegister();
         if (r == null && !force)
         {
@@ -281,7 +282,8 @@ public class CustomerSpawner : MonoBehaviour
     {
         if (OnboardingTutorial.BlocksAutoCustomers) return false;
         if (customerPrefab == null) return false;
-        if (orderConfig != null && !orderConfig.HasEnabledItems) return false;
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (config == null || !config.HasEnabledItems) return false;
 
         Register r = GetBestRegister();
         if (r == null)
@@ -323,6 +325,8 @@ public class CustomerSpawner : MonoBehaviour
         if (ai == null) return true;
 
         ai.ClearOrder();
+        if (!OnboardingTutorial.IsActive)
+            ai.SetOrder(GenerateNextScheduledOrder());
         ai.BeginEntryRoute(entryPointsBuffer, grid, exitPath);
         if (!fromVehicle)
             ai.SetReturnSpawnPoint(spawnPos);
@@ -465,21 +469,28 @@ public class CustomerSpawner : MonoBehaviour
     Register GetAnyRegister()
     {
         RefreshPlacedRegisters();
+        Register leastLoaded = null;
+        int smallestQueue = int.MaxValue;
         foreach (var r in registers)
         {
-            if (r != null && r.IsPlacedRegister)
-                return r;
+            if (r == null || !r.IsPlacedRegister || !r.isEnabled) continue;
+            if (r.QueueCount >= smallestQueue) continue;
+            leastLoaded = r;
+            smallestQueue = r.QueueCount;
         }
-        return null;
+        return leastLoaded;
     }
 
     void RefreshPlacedRegisters()
     {
         registers.RemoveAll(r => r == null || !r.IsPlacedRegister);
-        Register[] placed = FindObjectsByType<Register>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        foreach (Register register in placed)
+        IReadOnlyList<Register> placed = Register.ActiveRegisters;
+        for (int i = 0; i < placed.Count; i++)
+        {
+            Register register = placed[i];
             if (register != null && register.IsPlacedRegister && !registers.Contains(register))
                 registers.Add(register);
+        }
     }
 }
 

@@ -237,6 +237,7 @@ public class DeliveryArrivedNotice : MonoBehaviour
         bodyLe.minHeight = 24f;
         bodyLe.preferredHeight = 32f;
         bodyLe.flexibleHeight = 1f;
+        GameUITheme.ApplyTo(transform);
     }
 
     void Update()

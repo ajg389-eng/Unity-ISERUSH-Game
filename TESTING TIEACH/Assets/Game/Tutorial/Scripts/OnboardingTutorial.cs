@@ -421,7 +421,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
 
         "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
-        "A worker can carry up to four items after upgrades, but anyone you do not assign to a flow will remain idle.",
+        "Transport upgrades raise a worker's trained limit up to 120 items per minute. Route travel lowers their delivery rate, and workers not assigned to a flow remain idle.",
 
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +
         "In ONE flow, drag Freezer to Grill, Grill to Assembly, Pantry to Assembly, and Assembly to Pickup Station. Release on each destination and click Finish. The pantry supplies buns to the same assembly station.",
@@ -2385,6 +2385,7 @@ public class OnboardingTutorial : MonoBehaviour
         nextLayout.preferredHeight = 46f;
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
+        GameUITheme.ApplyToCanvas(canvas);
     }
 
     static RectTransform CreateCalloutArrow(Transform parent)
