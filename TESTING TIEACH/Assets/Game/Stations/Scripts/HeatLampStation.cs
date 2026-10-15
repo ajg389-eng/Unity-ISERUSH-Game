@@ -379,7 +379,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             origin.x + (firstX + 0.5f) * cell,
             transform.position.y,
             origin.z + (rowZ + 0.5f) * cell);
-        return SnapPickupToGround(CustomerStandLine.Place(slot, index, cell));
+        return SnapPickupToGround(CustomerStandLine.Place(
+            slot, index, Mathf.Max(cell, customerPickupSpacing)));
     }
 
     public static HeatLampStation FindNearest(Vector3 worldPosition)
@@ -594,7 +595,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             ? Mathf.Max(0.01f, GridManager.Instance.cellSize)
             : customerPickupSpacing;
         Vector3 pos = origin + alongCounter * lateral;
-        return SnapPickupToGround(CustomerStandLine.Place(pos, index, queueStep));
+        return SnapPickupToGround(CustomerStandLine.Place(
+            pos, index, Mathf.Max(queueStep, customerPickupSpacing)));
     }
 
     float GetCustomerStandDistance()

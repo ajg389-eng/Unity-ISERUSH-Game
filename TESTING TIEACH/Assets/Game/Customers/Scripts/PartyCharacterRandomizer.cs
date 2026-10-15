@@ -126,6 +126,20 @@ public class PartyCharacterRandomizer : MonoBehaviour
         return CleanName(faceMats[index].name);
     }
 
+    public static int FindFaceIndex(string faceName)
+    {
+        EnsureCatalog();
+        if (string.IsNullOrEmpty(faceName) || faceMats == null)
+            return -1;
+
+        for (int i = 0; i < faceMats.Length; i++)
+            if (faceMats[i] != null && string.Equals(
+                    faceMats[i].name, faceName, System.StringComparison.OrdinalIgnoreCase))
+                return i;
+
+        return -1;
+    }
+
     public static string GetHatName(int index)
     {
         if (index < 0) return "None";

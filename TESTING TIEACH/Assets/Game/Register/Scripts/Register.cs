@@ -252,6 +252,7 @@ public class Register : MonoBehaviour
         // Only assign here for tutorial orders or legacy customers without one.
         if (needsOrderAssignment)
             front.SetOrder(selectedOrder);
+        front.RevealOrder();
         SendCustomerToPickup(front);
         return true;
     }
@@ -708,7 +709,7 @@ public class Register : MonoBehaviour
             origin.x + (firstX + 0.5f) * cell,
             transform.position.y,
             origin.z + (rowZ + 0.5f) * cell);
-        return SlotHeight(CustomerStandLine.Place(first, index, cell));
+        return SlotHeight(CustomerStandLine.Place(first, index, Mathf.Max(cell, spacing)));
     }
 
     /// <summary>
@@ -741,7 +742,7 @@ public class Register : MonoBehaviour
         }
 
         float cell = GridManager.Instance != null ? Mathf.Max(0.01f, GridManager.Instance.cellSize) : 1f;
-        return SlotHeight(CustomerStandLine.Place(anchor, index, cell));
+        return SlotHeight(CustomerStandLine.Place(anchor, index, Mathf.Max(cell, spacing)));
     }
 
     void UpdateQueueTargets()

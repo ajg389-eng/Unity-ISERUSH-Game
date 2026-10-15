@@ -39,12 +39,17 @@ public class CustomerAI : MonoBehaviour
 
     CustomerOrder order;
     int salePrice;
+    bool orderRevealed;
     bool waitingInQueue;
     bool waitingForPickup;
     HeatLampStation pickupStation;
     bool leaving;
     bool leavingImpatient;
     bool orderCompletionReported;
+    PartyCharacterRandomizer characterLook;
+    int smilingFaceIndex = -1;
+    int frowningFaceIndex = -1;
+    int angryFaceIndex = -1;
 
     readonly List<Vector3> route = new List<Vector3>();
     int routeIndex;
@@ -141,8 +146,18 @@ public class CustomerAI : MonoBehaviour
             orderLabel = GetComponent<CustomerOrderLabel>();
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
+        if (orderLabel != null)
+        {
+            orderLabel.EnsureHierarchy();
+            orderLabel.ClearDisplay();
+            if (orderLabel.labelRoot != null)
+                orderLabel.labelRoot.SetActive(false);
+        }
         PartyCharacterAnimator.EnsureOn(gameObject);
-        PartyCharacterRandomizer.EnsureOn(gameObject);
+        characterLook = PartyCharacterRandomizer.EnsureOn(gameObject);
+        smilingFaceIndex = PartyCharacterRandomizer.FindFaceIndex("face 1");
+        frowningFaceIndex = PartyCharacterRandomizer.FindFaceIndex("face 3");
+        angryFaceIndex = PartyCharacterRandomizer.FindFaceIndex("face 2");
         HideRootCapsule();
         SnapFeetToFloor();
     }
@@ -150,6 +165,36 @@ public class CustomerAI : MonoBehaviour
     void Start()
     {
         SnapFeetToFloor();
+    }
+
+    void LateUpdate()
+    {
+        UpdatePatienceExpression();
+    }
+
+    void UpdatePatienceExpression()
+    {
+        if (characterLook == null || smilingFaceIndex < 0)
+            return;
+
+        int desiredFace = smilingFaceIndex;
+        if (leavingImpatient)
+        {
+            if (angryFaceIndex >= 0)
+                desiredFace = angryFaceIndex;
+        }
+        else if (patienceMeter != null && patienceMeter.IsActive)
+        {
+            float patience = patienceMeter.Normalized;
+            if (patience <= 0.25f && angryFaceIndex >= 0)
+                desiredFace = angryFaceIndex;
+            else if (patience <= 0.65f && frowningFaceIndex >= 0)
+                desiredFace = frowningFaceIndex;
+        }
+
+        // RandomizeOnStart runs after Awake, so reapply when the look changes.
+        if (characterLook.faceIndex != desiredFace)
+            characterLook.SetFaceIndex(desiredFace);
     }
 
     public void BeginEntryRoute(IList<Vector3> worldPoints, GridManager gridOverride = null, CustomerPath exit = null)
@@ -200,11 +245,16 @@ public class CustomerAI : MonoBehaviour
         salePrice = GetGenericOrderBasePrice(order);
         if (ProductionManager.Instance != null)
             ProductionManager.Instance.RecordCustomerOrder(order);
-        if (orderLabel != null)
-        {
-            orderLabel.EnsureHierarchy();
-            if (orderLabel.labelRoot != null) orderLabel.labelRoot.SetActive(true);
-        }
+        RefreshOrderLabel();
+    }
+
+    /// <summary>Shows the order once the customer has finished ordering at the register.</summary>
+    public void RevealOrder()
+    {
+        if (order == null || order.lines == null || order.lines.Count == 0)
+            return;
+
+        orderRevealed = true;
         RefreshOrderLabel();
     }
 
@@ -212,6 +262,7 @@ public class CustomerAI : MonoBehaviour
     {
         order = null;
         salePrice = 0;
+        orderRevealed = false;
         if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
         if (orderLabel != null)
         {
@@ -279,8 +330,19 @@ public class CustomerAI : MonoBehaviour
         if (orderLabel == null)
             orderLabel = GetComponent<CustomerOrderLabel>();
 
-        if (orderLabel != null)
-            orderLabel.SetOrder(order, IsOrderFullyDelivered);
+        if (orderLabel == null) return;
+
+        if (!orderRevealed)
+        {
+            orderLabel.ClearDisplay();
+            if (orderLabel.labelRoot != null)
+                orderLabel.labelRoot.SetActive(false);
+            return;
+        }
+
+        if (orderLabel.labelRoot != null)
+            orderLabel.labelRoot.SetActive(true);
+        orderLabel.SetOrder(order, IsOrderFullyDelivered);
     }
 
     public void SetQueueJoinTime(float time)
@@ -468,6 +530,7 @@ public class CustomerAI : MonoBehaviour
 
     void BeginLeaveRoute(Transform fallbackExit)
     {
+        HideOrderVisual();
         phase = Phase.Leaving;
         route.Clear();
         routeIndex = 0;
@@ -486,6 +549,18 @@ public class CustomerAI : MonoBehaviour
         AppendReturnToSpawn(route);
         AppendCarReturn(route);
         DetourAroundBus(route);
+    }
+
+    void HideOrderVisual()
+    {
+        orderRevealed = false;
+        if (orderLabel == null)
+            orderLabel = GetComponent<CustomerOrderLabel>();
+        if (orderLabel == null) return;
+
+        orderLabel.ClearDisplay();
+        if (orderLabel.labelRoot != null)
+            orderLabel.labelRoot.SetActive(false);
     }
 
     void AppendReturnToSpawn(List<Vector3> into)
