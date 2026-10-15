@@ -644,6 +644,20 @@ public class StationInteractionTiles : MonoBehaviour
         interactionStandCenterCacheValid = false;
     }
 
+    void AddReachableFootprintStandCenter(List<Vector3> centers, int x, int y)
+    {
+        // Keep route candidates limited to free grid cells and unique centers.
+        if (centers == null || grid == null || !grid.IsWalkable(x, y))
+            return;
+
+        Vector3 center = grid.CellToWorld(x, y);
+        center.y = grid.Origin.y;
+        for (int i = 0; i < centers.Count; i++)
+            if ((centers[i] - center).sqrMagnitude < 0.001f)
+                return;
+        centers.Add(center);
+    }
+
     void AddNearbyPickupStandCenters(List<Vector3> centers, int centerX, int centerY)
     {
         for (int radius = 1; radius <= 4; radius++)

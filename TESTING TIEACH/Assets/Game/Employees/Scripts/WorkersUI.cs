@@ -1172,6 +1172,24 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
+    string GetRawResourceName(ItemDefinition resource)
+    {
+        if (resource == null) return "Unknown";
+
+        CustomerOrderConfig config = production != null ? production.orderConfig : null;
+        if (config != null)
+        {
+            if (config.IsBurger(resource)) return "Patty";
+            if (resource == config.friesIngredient) return "Potatoes";
+            if (config.IsFries(resource)) return "Potatoes";
+            if (config.IsDrink(resource)) return "Shake";
+        }
+
+        return KitchenInventory.Instance != null
+            ? KitchenInventory.Instance.GetDisplayName(resource)
+            : (!string.IsNullOrEmpty(resource.itemName) ? resource.itemName : resource.name);
+    }
+
     static void AppendDeliveryRateSummary(System.Text.StringBuilder text,
         ProductionFlowPlan selectedFlow, WorkflowAnalysis.FlowLayoutMetrics selectedMetrics)
     {

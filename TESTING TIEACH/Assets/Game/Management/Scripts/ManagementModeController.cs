@@ -1690,9 +1690,10 @@ public class ManagementModeController : MonoBehaviour
         }
 
         productionDiagramRoot.SetActive(true);
-        bool hasTwoInputs = assembly != null
+        hasTwoInputs = hasTwoInputs
             || (grill != null && grill.GetSelectedSecondaryInput() != null);
-        bool hasThreeInputs = assembly != null && assembly.GetSelectedRecipe()?.thirdInput != null;
+        hasThreeInputs = hasThreeInputs
+            || (assembly != null && assembly.GetSelectedRecipe()?.thirdInput != null);
         SetProductionDiagramMode(outputOnly, hasTwoInputs, pantry != null, hasThreeInputs);
         if (!outputOnly)
             SetDiagramPreview(productionInputPreview, inputPrefab, inputName);
