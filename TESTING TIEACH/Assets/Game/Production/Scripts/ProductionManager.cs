@@ -57,11 +57,15 @@ public class ProductionJob
     public int currentStepIndex;
     /// <summary>The small, claimable action currently available on the shared flow.</summary>
     public ProductionTaskPhase taskPhase;
+    // Exact physical flow node for collection or a station-specific task.
+    // StationType and recipe alone are not unique when a flow has duplicates.
     [System.NonSerialized] public GameObject taskSourceStation;
     public KitchenEmployee assignedTo;
     public bool hasPatty;
-    /// <summary>Batch size carried between stations (upgraded workers hold more).</summary>
+    /// <summary>Item count currently carried between stations.</summary>
     public int heldUnits;
+    /// <summary>One-item assembly cycles completed for the current job step.</summary>
+    [System.NonSerialized] public int completedUnitsAtCurrentStep;
     public readonly List<ItemDefinition> ingredientsHeld = new List<ItemDefinition>();
     /// <summary>Parallel supply task that stocks a station with a recipe input.</summary>
     public bool isAssemblySupply;
@@ -76,22 +80,50 @@ public class ProductionJob
     /// <summary>Heat lamp this job must deliver to (from the last station's Assign Output link).</summary>
     public HeatLampStation deliveryHeatLamp;
     /// <summary>Runtime-only claims that prevent two workers targeting the same station inventory.</summary>
+    // Exact physical instance claimed by this task, not just its station type.
     [System.NonSerialized] public GameObject reservedWorkStation;
     [System.NonSerialized] public ItemDefinition reservedPantryIngredient;
-    [System.NonSerialized] public GameObject reservedSourceStation;
-    [System.NonSerialized] public GameObject reservedDestinationStation;
-    [System.NonSerialized] public ItemDefinition reservedItem;
-    [System.NonSerialized] public int reservedOutputUnits;
-    [System.NonSerialized] public int reservedInputUnits;
+    /// <summary>The current exact source-to-destination handoff reserved by the planner.</summary>
+    [System.NonSerialized] public FlowTransferOrder activeTransfer;
+    public GameObject reservedSourceStation => activeTransfer != null ? activeTransfer.source : null;
+    public GameObject reservedDestinationStation => activeTransfer != null ? activeTransfer.destination : null;
+    public ItemDefinition reservedItem => activeTransfer != null ? activeTransfer.item : null;
+    public int reservedOutputUnits => activeTransfer != null ? activeTransfer.reservedOutputUnits : 0;
+    public int reservedInputUnits => activeTransfer != null ? activeTransfer.reservedInputUnits : 0;
     [System.NonSerialized] public ProductionTaskState taskState;
     [System.NonSerialized] public float createdAt;
     [System.NonSerialized] public float stateChangedAt;
     [System.NonSerialized] public float claimHeartbeatAt;
     [System.NonSerialized] public int claimVersion;
     [System.NonSerialized] public string blockedReason;
+    [System.NonSerialized] public ProductionFlowPlan blockedFlow;
     [System.NonSerialized] public float retryAfter;
     [System.NonSerialized] public GameObject blockedStation;
     public string TaskKey => taskId + ":" + currentStepIndex + ":" + taskPhase;
+
+    public void SetTransferReservation(GameObject source, GameObject destination,
+        ItemDefinition item, int outputUnits, int inputUnits)
+    {
+        FlowTransferPurpose purpose = isAssemblySupply
+            ? FlowTransferPurpose.SupplyIngredient
+            : destination != null && destination.GetComponent<HeatLampStation>() != null
+                ? FlowTransferPurpose.DeliverFinishedProduct
+                : FlowTransferPurpose.FeedStation;
+        activeTransfer = new FlowTransferOrder(taskId, purpose, source, destination,
+            item, outputUnits, inputUnits);
+    }
+
+    public void SetDestinationReservation(GameObject destination, ItemDefinition item, int inputUnits)
+    {
+        bool sameItem = reservedItem == item;
+        GameObject source = sameItem && reservedSourceStation != null
+            ? reservedSourceStation
+            : reservedWorkStation != null ? reservedWorkStation : taskSourceStation;
+        int outputUnits = sameItem ? reservedOutputUnits : 0;
+        SetTransferReservation(source, destination, item, outputUnits, inputUnits);
+    }
+
+    public void ClearTransferReservation() => activeTransfer = null;
 
     public bool IsHeatLampStep =>
         pipeline != null && currentStepIndex >= pipeline.Length;
@@ -175,7 +207,7 @@ public class ProductionJob
 }
 
 /// <summary>
-/// Fast-food production: one job per menu item (burger / fries / drink).
+/// Fast-food production: one job may batch up to four identical menu items.
 /// Work order: Burger = Freezer → Grill → Assembly; Fries = Pantry → Cutting → Fryer → Assembly.
 /// After each station, the worker delivers only to that station's Assign Output
 /// (e.g. Assembly/Fryer → Heat Lamp). Drinks are cashier-served.
@@ -216,8 +248,6 @@ public class ProductionManager : MonoBehaviour
     readonly Dictionary<(GameObject station, ItemDefinition ingredient), ProductionJob> pantryWorkReservations =
         new Dictionary<(GameObject station, ItemDefinition ingredient), ProductionJob>();
     readonly HashSet<ProductionJob> jobsWithReservations = new HashSet<ProductionJob>();
-    readonly Dictionary<(KitchenEmployee worker, GameObject station), (int frame, float distance)>
-        routeDistanceCache = new Dictionary<(KitchenEmployee, GameObject), (int, float)>();
     readonly HashSet<GameObject> activeDemandStations = new HashSet<GameObject>();
     float activeDemandStationsBuiltAt = -999f;
     sealed class TimedItemCount
@@ -236,14 +266,44 @@ public class ProductionManager : MonoBehaviour
         public float time;
     }
     readonly List<TimedFlowOutput> completedFlowHistory = new List<TimedFlowOutput>();
+    sealed class TimedWorkerTrip
+    {
+        public ProductionFlowPlan flow;
+        public int deliveredUnits;
+        public float travelSeconds;
+        public float travelTiles;
+        public float time;
+        public bool empty;
+    }
+    sealed class TimedWorkerWait
+    {
+        public ProductionFlowPlan flow;
+        public string reason;
+        public float time;
+    }
+    readonly List<TimedWorkerTrip> workerTripHistory = new List<TimedWorkerTrip>();
+    readonly List<TimedWorkerWait> workerWaitHistory = new List<TimedWorkerWait>();
     const float ThroughputWindowSeconds = 60f;
+    float throughputTrackingStartedAt;
     MoneyManager moneyManager;
     [Header("Production scheduling")]
-    [Tooltip("How often the manager rescans stations and plans new work. Active workers still update every frame.")]
-    [Min(0.05f)] public float planningInterval = 0.15f;
+    [Tooltip("Safety interval for a full planning scan. Production changes also wake the planner immediately.")]
+    [Min(0.25f)] public float planningInterval = 1f;
     [Tooltip("How long an abandoned claim may survive without an active worker.")]
     [Min(3f)] public float abandonedClaimTimeout = 30f;
     float nextPlanningTime;
+    float nextDirtyPlanningTime;
+    bool planningDirty = true;
+
+    public struct WorkerEfficiencySnapshot
+    {
+        public float actualOutputPerMinute;
+        public float averageBatchSize;
+        public float averageTravelSeconds;
+        public int deliveryTrips;
+        public int emptyTrips;
+        public string mostCommonWaitReason;
+    }
 
     FreezerStation freezer;
     GrillStation grill;
@@ -400,7 +460,8 @@ public class ProductionManager : MonoBehaviour
             if (job == null || job.isAssemblySupply) continue;
             ItemDefinition item = job?.product;
             if (item == null) continue;
-            int units = Mathf.Max(1, job.heldUnits);
+            int units = Mathf.Max(1, job.order != null
+                ? job.order.CountQuantityOf(item) : job.heldUnits);
             cooking[item] = cooking.TryGetValue(item, out int c) ? c + units : units;
         }
 
@@ -488,6 +549,111 @@ public class ProductionManager : MonoBehaviour
             time = Time.time
         });
         PruneThroughputHistory();
+        NotifyProductionStateChanged();
+    }
+
+    public void RecordWorkerDeliveryTrip(KitchenEmployee worker, int deliveredUnits,
+        float travelSeconds, float travelTiles)
+    {
+        if (worker == null || deliveredUnits <= 0) return;
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        if (flow == null) return;
+        workerTripHistory.Add(new TimedWorkerTrip
+        {
+            flow = flow,
+            deliveredUnits = deliveredUnits,
+            travelSeconds = Mathf.Max(0f, travelSeconds),
+            travelTiles = Mathf.Max(0f, travelTiles),
+            time = Time.time
+        });
+        PruneWorkerEfficiencyHistory();
+    }
+
+    public void RecordWorkerEmptyTrip(KitchenEmployee worker, float travelSeconds,
+        float travelTiles)
+    {
+        if (worker == null || travelTiles < 0.5f) return;
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        if (flow == null) return;
+        workerTripHistory.Add(new TimedWorkerTrip
+        {
+            flow = flow,
+            travelSeconds = Mathf.Max(0f, travelSeconds),
+            travelTiles = Mathf.Max(0f, travelTiles),
+            time = Time.time,
+            empty = true
+        });
+        PruneWorkerEfficiencyHistory();
+    }
+
+    void RecordWorkerWait(KitchenEmployee worker, string reason)
+    {
+        if (worker == null || string.IsNullOrWhiteSpace(reason)) return;
+        ProductionFlowPlan flow = GetFlowForWorker(worker);
+        RecordWorkerWait(flow, reason);
+    }
+
+    void RecordWorkerWait(ProductionFlowPlan flow, string reason)
+    {
+        if (flow == null) return;
+        if (string.IsNullOrWhiteSpace(reason)) return;
+        workerWaitHistory.Add(new TimedWorkerWait
+        {
+            flow = flow,
+            reason = reason.Trim(),
+            time = Time.time
+        });
+        PruneWorkerEfficiencyHistory();
+    }
+
+    public WorkerEfficiencySnapshot GetWorkerEfficiencySnapshot(ProductionFlowPlan flow)
+    {
+        var snapshot = new WorkerEfficiencySnapshot
+        {
+            actualOutputPerMinute = GetFlowCompletedOutputPerMinute(flow),
+            mostCommonWaitReason = string.Empty
+        };
+        if (flow == null) return snapshot;
+
+        int deliveredUnits = 0;
+        float travelSeconds = 0f;
+        int deliveryTrips = 0;
+        int emptyTrips = 0;
+        var waitCounts = new Dictionary<string, int>();
+        foreach (TimedWorkerTrip trip in workerTripHistory)
+        {
+            if (trip == null || trip.flow != flow) continue;
+            if (trip.empty)
+            {
+                emptyTrips++;
+                continue;
+            }
+            deliveryTrips++;
+            deliveredUnits += trip.deliveredUnits;
+            travelSeconds += trip.travelSeconds;
+        }
+        snapshot.deliveryTrips = deliveryTrips;
+        snapshot.emptyTrips = emptyTrips;
+        snapshot.averageBatchSize = deliveryTrips > 0
+            ? (float)deliveredUnits / deliveryTrips : 0f;
+        snapshot.averageTravelSeconds = deliveryTrips > 0
+            ? travelSeconds / deliveryTrips : 0f;
+
+        for (int i = 0; i < workerWaitHistory.Count; i++)
+        {
+            TimedWorkerWait wait = workerWaitHistory[i];
+            if (wait == null || wait.flow != flow || string.IsNullOrEmpty(wait.reason)) continue;
+            waitCounts[wait.reason] = waitCounts.TryGetValue(wait.reason, out int count)
+                ? count + 1 : 1;
+        }
+        int mostFrequent = 0;
+        foreach (KeyValuePair<string, int> pair in waitCounts)
+        {
+            if (pair.Value <= mostFrequent) continue;
+            mostFrequent = pair.Value;
+            snapshot.mostCommonWaitReason = pair.Key;
+        }
+        return snapshot;
     }
 
     public float GetFlowCompletedOutputPerMinute(ProductionFlowPlan flow)
@@ -498,7 +664,9 @@ public class ProductionManager : MonoBehaviour
         foreach (TimedFlowOutput entry in completedFlowHistory)
             if (entry != null && entry.flow == flow)
                 total += entry.count;
-        return total;
+        float observedWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
+            1f, ThroughputWindowSeconds);
+        return total * 60f / observedWindow;
     }
 
     void RecordHistory(List<TimedItemCount> history, CustomerOrder order)
@@ -519,6 +687,18 @@ public class ProductionManager : MonoBehaviour
         orderedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
         completedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
         completedFlowHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+        PruneWorkerEfficiencyHistory(cutoff);
+    }
+
+    void PruneWorkerEfficiencyHistory()
+    {
+        PruneWorkerEfficiencyHistory(Time.time - ThroughputWindowSeconds);
+    }
+
+    void PruneWorkerEfficiencyHistory(float cutoff)
+    {
+        workerTripHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+        workerWaitHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
     }
 
     static Dictionary<ItemDefinition, int> SumHistory(List<TimedItemCount> history)
@@ -598,6 +778,7 @@ public class ProductionManager : MonoBehaviour
         }
         Instance = this;
         moneyManager = FindObjectOfType<MoneyManager>();
+        throughputTrackingStartedAt = Time.time;
         EnsureProductionFlows();
     }
 
@@ -650,6 +831,7 @@ public class ProductionManager : MonoBehaviour
         selectedFlowIndex = productionFlows.Count - 1;
         lastFlowBalance = null;
         SyncLegacyFlowSelection();
+        NotifyProductionStateChanged(0f);
         return flow;
     }
 
@@ -679,6 +861,7 @@ public class ProductionManager : MonoBehaviour
             if (employee == null || IsWorkerOnAnyFlow(employee)) continue;
             flow.workers.Add(employee);
             lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(flow);
+            NotifyProductionStateChanged(0f);
             return employee;
         }
         return null;
@@ -692,6 +875,7 @@ public class ProductionManager : MonoBehaviour
         flow.workers.RemoveAt(flow.workers.Count - 1);
         if (employee != null) employee.ClearAllOperatedStations();
         lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(flow);
+        NotifyProductionStateChanged(0f);
         return employee;
     }
 
@@ -703,6 +887,7 @@ public class ProductionManager : MonoBehaviour
         lastFlowBalance = flow.workers.Count > 0
             ? WorkerFlowAssigner.ApplyBalancedTeam(flow)
             : new TeamBalanceResult { message = "No workers assigned." };
+        NotifyProductionStateChanged(0f);
     }
 
     public void RemoveProductionFlow(ProductionFlowPlan flow)
@@ -719,6 +904,7 @@ public class ProductionManager : MonoBehaviour
         lastFlowBalance = null;
         // Keep an empty flow available when the player deletes their last route.
         EnsureProductionFlows();
+        NotifyProductionStateChanged(0f);
     }
 
     public bool IsWorkerOnAnyFlow(KitchenEmployee employee)
@@ -758,19 +944,29 @@ public class ProductionManager : MonoBehaviour
     {
         ProductionFlowPlan flow = GetFlowForWorker(worker);
         if (flow?.stations == null || station == null || !flow.stations.Contains(station)) return null;
+        if (!flow.graphInitialized) flow.EnsureLegacyConnections();
+        job ??= worker != null ? worker.ActiveJob : null;
+        ItemDefinition plannedTransferItem = producedItem != null
+            ? producedItem : job != null ? GetBranchTransferItem(job) : null;
+        GameObject plannedSource = job != null
+            ? job.reservedWorkStation ?? job.taskSourceStation ?? job.reservedSourceStation
+            : null;
+        if (job != null && plannedSource == station && plannedTransferItem != null
+            && job.reservedItem == plannedTransferItem && job.reservedDestinationStation != null
+            && flow.stations.Contains(job.reservedDestinationStation))
+            return job.reservedDestinationStation;
+
         List<GameObject> outgoing = outgoingCandidateBuffer;
         flow.GetOutgoing(station, outgoing);
         outgoing.RemoveAll(candidate => candidate == null || !flow.stations.Contains(candidate));
-        job ??= worker != null ? worker.ActiveJob : null;
-        // A cutting branch that supplies a Grill's secondary recipe input is
-        // intentionally allowed to merge into that Grill even when the player
-        // has not drawn a separate directed edge. Resolve this explicit supply
-        // destination before the terminal-node check below; otherwise a Cutting
-        // Station shown as END in the flow has nowhere to deliver its cheese.
+        // A supply job has one exact receiver. It still needs a visible edge,
+        // just like every other transfer, so the graph and worker stay in sync.
         GameObject requiredTarget = GetRequiredBranchTarget(job, station);
-        if (requiredTarget != null && flow.stations.Contains(requiredTarget)
-            && CanBranchAcceptItem(requiredTarget, GetBranchTransferItem(job)))
-            return requiredTarget;
+        if (requiredTarget != null)
+            return flow.stations.Contains(requiredTarget)
+                && flow.HasConnection(station, requiredTarget)
+                && CanBranchAcceptItem(requiredTarget, GetBranchTransferItem(job))
+                ? requiredTarget : null;
         bool finalProduct = job != null
             ? !GetRequiredNextStationType(job).HasValue
             : producedItem != null && orderConfig != null
@@ -785,28 +981,6 @@ public class ProductionManager : MonoBehaviour
             || HasWaitingCustomerForItem(finalItem);
         if (outgoing.Count == 0)
         {
-            // A Pickup Station is the terminal sink of a production flow. Players
-            // commonly add it as a separate start node because it has no recipe
-            // input selector. Final products must still be able to leave the last
-            // work station, while intermediate items continue to require explicit
-            // directed links.
-            if (finalProduct && canRouteFinalItem)
-            {
-                GameObject nearestPickup = null;
-                float nearestDistance = float.MaxValue;
-                foreach (GameObject candidate in flow.stations)
-                {
-                    HeatLampStation pickup = candidate != null
-                        ? candidate.GetComponent<HeatLampStation>() : null;
-                    if (pickup == null || !pickup.isActiveAndEnabled) continue;
-                    float distance = Vector3.SqrMagnitude(
-                        candidate.transform.position - station.transform.position);
-                    if (distance >= nearestDistance) continue;
-                    nearestDistance = distance;
-                    nearestPickup = candidate;
-                }
-                return nearestPickup;
-            }
             return null;
         }
 
@@ -814,16 +988,17 @@ public class ProductionManager : MonoBehaviour
         {
             if (producedItem == null) return outgoing[0];
             GameObject itemTarget = null;
-            float itemTargetDistance = float.MaxValue;
+            float bestItemTargetScore = float.MaxValue;
             foreach (GameObject candidate in outgoing)
             {
                 if (!CanBranchAcceptItem(candidate, producedItem)) continue;
                 if (candidate.GetComponent<HeatLampStation>() != null && !canRouteFinalItem)
                     continue;
-                float distance = Vector3.SqrMagnitude(candidate.transform.position - station.transform.position);
-                if (distance < itemTargetDistance)
+                float score = GetReceiverRouteScore(candidate, producedItem, null)
+                    + Vector3.SqrMagnitude(candidate.transform.position - station.transform.position);
+                if (score < bestItemTargetScore)
                 {
-                    itemTargetDistance = distance;
+                    bestItemTargetScore = score;
                     itemTarget = candidate;
                 }
             }
@@ -831,6 +1006,7 @@ public class ProductionManager : MonoBehaviour
         }
         StationType? requiredType = GetRequiredNextStationType(job);
         ItemDefinition requiredAssemblyProduct = GetRequiredNextAssemblyProduct(job);
+        ItemDefinition transferItem = GetBranchTransferItem(job);
         GameObject best = null;
         float bestScore = float.MaxValue;
         foreach (GameObject candidate in outgoing)
@@ -854,11 +1030,8 @@ public class ProductionManager : MonoBehaviour
                 if (assembly == null || !assembly.CanProcess(requiredAssemblyProduct)) continue;
             }
 
-            float score = Vector3.SqrMagnitude(candidate.transform.position - station.transform.position);
-            IStationBuffer buffer = candidate.GetComponent<IStationBuffer>();
-            ItemDefinition transferItem = GetBranchTransferItem(job);
-            if (buffer != null && transferItem != null && !buffer.CanAcceptInput(transferItem, 1))
-                score += 100000f;
+            float score = GetReceiverRouteScore(candidate, transferItem, job)
+                + Vector3.SqrMagnitude(candidate.transform.position - station.transform.position);
             if (score < bestScore)
             {
                 bestScore = score;
@@ -866,37 +1039,81 @@ public class ProductionManager : MonoBehaviour
             }
         }
 
-        // A flow can contain converging branches whose visual edge does not directly
-        // connect every intermediate processing station. Keep the recipe sequence
-        // authoritative and use any compatible station in this flow as a fallback.
-        if (best == null && requiredType.HasValue)
-        {
-            ItemDefinition transferItem = GetBranchTransferItem(job);
-            foreach (GameObject candidate in flow.stations)
-            {
-                if (candidate == null || candidate == station
-                    || KitchenEmployee.GetStationTypeFrom(candidate) != requiredType)
-                    continue;
-                if (requiredType == StationType.Assembly && requiredAssemblyProduct != null)
-                {
-                    AssemblyStation assembly = candidate.GetComponent<AssemblyStation>();
-                    if (assembly == null || !assembly.CanProcess(requiredAssemblyProduct)) continue;
-                }
-                if (!CanBranchAcceptItem(candidate, transferItem)) continue;
+        return best;
+    }
 
-                float score = Vector3.SqrMagnitude(
-                    candidate.transform.position - station.transform.position);
-                IStationBuffer buffer = candidate.GetComponent<IStationBuffer>();
-                if (buffer != null && transferItem != null
-                    && !buffer.CanAcceptInput(transferItem, 1))
-                    score += 100000f;
-                if (score >= bestScore) continue;
-                bestScore = score;
-                best = candidate;
-            }
+    bool IsValidFlowHandoff(KitchenEmployee worker, ProductionFlowPlan flow,
+        GameObject source, GameObject destination, ItemDefinition item)
+    {
+        if (worker == null || flow?.stations == null || source == null || destination == null
+            || item == null)
+            return false;
+        if (!flow.graphInitialized) flow.EnsureLegacyConnections();
+        return flow.stations.Contains(source) && flow.stations.Contains(destination)
+            && flow.HasConnection(source, destination)
+            && CanBranchAcceptItem(destination, item);
+    }
+
+    float GetReceiverRouteScore(GameObject receiverObject, ItemDefinition item,
+        ProductionJob job)
+    {
+        IStationBuffer receiver = receiverObject != null
+            ? receiverObject.GetComponent<IStationBuffer>() : null;
+        if (receiver == null || item == null) return 0f;
+
+        int freeSlots = GetAvailableInputCapacity(receiver, receiverObject, item, job);
+        if (freeSlots <= 0) return 100000000f;
+
+        int occupiedForItem = receiver.GetInputCount(item)
+            + ReservedInputCount(receiverObject, item, job);
+        // Compare buffered seconds at each receiver's configured target rate.
+        // This keeps parallel branches fed in proportion to their recipe demand
+        // instead of splitting items by raw buffer count.
+        float requiredInputRate = GetReceiverRequiredInputRatePerMinute(receiverObject, item);
+        float bufferedMinutes = requiredInputRate > 0.01f
+            ? occupiedForItem / requiredInputRate
+            : occupiedForItem;
+        return occupiedForItem <= 0 ? 0f : 100000f + bufferedMinutes * 60000f;
+    }
+
+    float GetReceiverRequiredInputRatePerMinute(GameObject receiverObject, ItemDefinition item)
+    {
+        if (receiverObject == null || item == null) return 0f;
+        StationNode node = receiverObject.GetComponent<StationNode>();
+        float outputRate = node != null ? Mathf.Max(0f, node.outputAmountPerMinute) : 0f;
+        if (outputRate <= 0.01f) return 0f;
+
+        GrillStation grill = receiverObject.GetComponent<GrillStation>();
+        if (grill != null)
+            return item == grill.GetSelectedInput() || item == grill.GetSelectedSecondaryInput()
+                ? outputRate : 0f;
+
+        FryerStation fryer = receiverObject.GetComponent<FryerStation>();
+        if (fryer != null)
+        {
+            StationProcessingRecipeDefinition recipe = orderConfig != null
+                ? orderConfig.GetFryerRecipe(fryer.GetSelectedOutput()) : null;
+            return recipe != null && recipe.input == item ? outputRate : 0f;
         }
 
-        return best;
+        CuttingStation cutting = receiverObject.GetComponent<CuttingStation>();
+        if (cutting != null)
+        {
+            CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
+            return recipe != null && recipe.input == item ? outputRate : 0f;
+        }
+
+        AssemblyStation assembly = receiverObject.GetComponent<AssemblyStation>();
+        AssemblyRecipeDefinition assemblyRecipe = assembly != null
+            ? assembly.GetSelectedRecipe() : null;
+        if (assemblyRecipe == null) return 0f;
+        if (assemblyRecipe.RequiresProcessedInput && item == assemblyRecipe.processedInput)
+            return outputRate * Mathf.Max(1, assemblyRecipe.processedInputAmount);
+        if (item == assemblyRecipe.pantryInput)
+            return outputRate * Mathf.Max(1, assemblyRecipe.pantryInputAmount);
+        if (item == assemblyRecipe.thirdInput && assembly.IsMk2)
+            return outputRate * Mathf.Max(1, assemblyRecipe.thirdInputAmount);
+        return 0f;
     }
 
     GameObject GetRequiredBranchTarget(ProductionJob job, GameObject source)
@@ -960,27 +1177,35 @@ public class ProductionManager : MonoBehaviour
 
     bool CanBranchAcceptItem(GameObject target, ItemDefinition item)
     {
-        if (target == null || item == null || orderConfig == null) return false;
-        if (target.GetComponent<HeatLampStation>() != null)
+        return CanFlowStationReceiveItem(target, item);
+    }
+
+    public bool CanFlowStationReceiveItem(GameObject destination, ItemDefinition item)
+    {
+        if (destination == null || item == null || orderConfig == null) return false;
+        if (destination.GetComponent<HeatLampStation>() != null)
             return orderConfig.IsBurger(item) || orderConfig.IsFries(item) || orderConfig.IsDrink(item);
-        GrillStation grill = target.GetComponent<GrillStation>();
-        if (grill != null) return grill.CanAcceptInput(item, 1);
-        CuttingStation cutting = target.GetComponent<CuttingStation>();
+
+        GrillStation grill = destination.GetComponent<GrillStation>();
+        if (grill != null)
+            return item == grill.GetSelectedInput() || item == grill.GetSelectedSecondaryInput();
+
+        CuttingStation cutting = destination.GetComponent<CuttingStation>();
         if (cutting != null) return cutting.CanProcess(item);
-        FryerStation fryer = target.GetComponent<FryerStation>();
+
+        FryerStation fryer = destination.GetComponent<FryerStation>();
         if (fryer != null)
         {
-            StationProcessingRecipeDefinition fryerRecipe = orderConfig.GetFryerRecipe(fryer.GetSelectedOutput());
-            return fryerRecipe != null && item == fryerRecipe.input;
+            StationProcessingRecipeDefinition recipe = orderConfig.GetFryerRecipe(fryer.GetSelectedOutput());
+            return recipe != null && recipe.input == item;
         }
-        AssemblyStation assembly = target.GetComponent<AssemblyStation>();
-        if (assembly == null) return false;
-        AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
-        if (recipe == null) return false;
-        ItemDefinition processed = recipe.processedInput != null
-            ? recipe.processedInput : orderConfig.cookedPattyIngredient;
-        return item == processed || item == recipe.pantryInput
-            || (assembly.IsMk2 && item == recipe.thirdInput);
+
+        AssemblyStation assembly = destination.GetComponent<AssemblyStation>();
+        AssemblyRecipeDefinition assemblyRecipe = assembly != null ? assembly.GetSelectedRecipe() : null;
+        if (assemblyRecipe == null) return false;
+        return (assemblyRecipe.RequiresProcessedInput && item == assemblyRecipe.processedInput)
+            || item == assemblyRecipe.pantryInput
+            || (assembly.IsMk2 && item == assemblyRecipe.thirdInput);
     }
 
     public void AddWorkerToSelectedFlow(KitchenEmployee employee)
@@ -1014,6 +1239,7 @@ public class ProductionManager : MonoBehaviour
                 WorkerFlowAssigner.ApplyBalancedTeam(affected);
         targetFlow.workers.Add(employee);
         lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
+        NotifyProductionStateChanged(0f);
     }
 
     /// <summary>Hire without spending money (debug).</summary>
@@ -1153,9 +1379,13 @@ public class ProductionManager : MonoBehaviour
     {
         if (Time.timeScale <= 0f)
             return;
-        if (Time.unscaledTime < nextPlanningTime)
+        float now = Time.unscaledTime;
+        bool fallbackDue = now >= nextPlanningTime;
+        bool changeDue = planningDirty && now >= nextDirtyPlanningTime;
+        if (!fallbackDue && !changeDue)
             return;
-        nextPlanningTime = Time.unscaledTime + Mathf.Max(0.25f, planningInterval);
+        planningDirty = false;
+        nextPlanningTime = now + Mathf.Max(1f, planningInterval);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
@@ -1174,6 +1404,19 @@ public class ProductionManager : MonoBehaviour
             Debug.Log($"[Performance] Production planning: {elapsed:F1} ms; workers={employees.Count}, pending jobs={pendingJobs.Count}.");
         }
 #endif
+    }
+
+    /// <summary>
+    /// Wakes the planner after inventory, station, worker, or flow changes.
+    /// Several same-frame changes collapse into one scan; a slower periodic scan
+    /// remains as a recovery path for state changes without an explicit signal.
+    /// </summary>
+    public void NotifyProductionStateChanged(float debounceSeconds = 0.05f)
+    {
+        planningDirty = true;
+        float due = Time.unscaledTime + Mathf.Max(0f, debounceSeconds);
+        if (nextDirtyPlanningTime <= Time.unscaledTime || due < nextDirtyPlanningTime)
+            nextDirtyPlanningTime = due;
     }
 
     void EnsureAssemblySupplyJobs()
@@ -1249,6 +1492,7 @@ public class ProductionManager : MonoBehaviour
                     && queued.assemblySupplyOutputItem == secondary) { alreadyQueued = true; break; }
             if (alreadyQueued || grill.GetInputCount(secondary) > 0) continue;
 
+            int grillSupplyBatch = Mathf.Min(4, grill.InputSlotCapacity);
             var supply = new ProductionJob(CustomerOrder.FromItem(parentDemand.product, 1),
                 new[] { StationType.Pantry, StationType.Cutting }, null, parentDemand.rootDemandId)
             {
@@ -1257,7 +1501,7 @@ public class ProductionManager : MonoBehaviour
                 assemblySupplySourceItem = cuttingRecipe.input,
                 assemblySupplyOutputItem = secondary,
                 assemblySupplyStageItems = new[] { cuttingRecipe.input, secondary },
-                requestedSupplyUnits = 1
+                requestedSupplyUnits = grillSupplyBatch
             };
             if (!CanAnyWorkerContinue(supply)) continue;
             pendingJobs.Add(supply);
@@ -1327,7 +1571,7 @@ public class ProductionManager : MonoBehaviour
         int count = 0;
         foreach (ProductionJob job in pendingJobs)
             if (job != null && !job.isAssemblySupply && ClaimsPickupCapacity(job))
-                count++;
+                count += Mathf.Max(1, job.order != null ? job.order.GetTotalQuantity() : job.heldUnits);
         return count;
     }
 
@@ -1399,6 +1643,7 @@ public class ProductionManager : MonoBehaviour
     {
         RefreshStations();
         CollectProductionJobs();
+        NotifyProductionStateChanged(0f);
     }
 
     void RefreshStations()
@@ -1431,6 +1676,7 @@ public class ProductionManager : MonoBehaviour
     public void InvalidateStationCache()
     {
         stationCacheDirty = true;
+        NotifyProductionStateChanged(0f);
     }
 
     void RefreshStationCache()
@@ -1519,17 +1765,17 @@ public class ProductionManager : MonoBehaviour
                 for (int q = 0; q < line.quantity; q++)
                 {
                     if (openSlots <= 0) return;
-                    var single = CustomerOrder.FromItem(line.item, 1);
-                    int matchIdx = FindMatchingIndex(available, single);
+                    int matchIdx = FindMatchingUnitIndex(available, line.item);
                     if (matchIdx >= 0)
                     {
-                        available.RemoveAt(matchIdx);
+                        if (available[matchIdx].GetTotalQuantity() <= 0)
+                            available.RemoveAt(matchIdx);
                         continue;
                     }
-                    var job = CreateJob(single);
+                    var job = CreateJob(CustomerOrder.FromItem(line.item, 1));
                     if (job == null) continue;
                     pendingJobs.Add(job);
-                    available.Add(single.Clone());
+                    available.Add(CustomerOrder.FromItem(line.item, 1));
                     openSlots--;
                 }
             }
@@ -1712,38 +1958,140 @@ public class ProductionManager : MonoBehaviour
     public string GetIdleFlowSupplyWarning(KitchenEmployee employee)
     {
         ProductionFlowPlan flow = GetFlowForWorker(employee);
-        if (flow?.stations == null || orderConfig == null || FriesItem == null) return string.Empty;
-        foreach (GameObject station in flow.stations)
+        if (flow?.stations == null || orderConfig == null) return string.Empty;
+        if (!flow.graphInitialized) flow.EnsureLegacyConnections();
+        foreach (ProductionJob queuedJob in pendingJobs)
+            if (queuedJob != null && queuedJob.assignedTo == null
+                && queuedJob.blockedFlow == flow
+                && !string.IsNullOrEmpty(queuedJob.blockedReason))
+                return queuedJob.blockedReason;
+
+        if (FriesItem != null)
         {
-            AssemblyStation assemblyStation = station != null ? station.GetComponent<AssemblyStation>() : null;
-            AssemblyRecipeDefinition recipe = assemblyStation != null ? assemblyStation.GetSelectedRecipe() : null;
-            if (recipe == null || !recipe.Produces(FriesItem) || recipe.pantryInput == null) continue;
-            bool hasSupply = false;
-            bool hasSupplyStock = false;
-            foreach (GameObject source in flow.stations)
+            foreach (GameObject station in flow.stations)
             {
-                PantryStation pantryStation = source != null ? source.GetComponent<PantryStation>() : null;
-                if (pantryStation != null && pantryStation.CanDispense(recipe.pantryInput)
-                    && flow.GetOutgoing(source).Contains(station))
+                AssemblyStation assemblyStation = station != null ? station.GetComponent<AssemblyStation>() : null;
+                AssemblyRecipeDefinition recipe = assemblyStation != null ? assemblyStation.GetSelectedRecipe() : null;
+                if (recipe == null || !recipe.Produces(FriesItem) || recipe.pantryInput == null) continue;
+                bool hasSupply = false;
+                bool hasSupplyStock = false;
+                foreach (GameObject source in flow.stations)
                 {
-                    hasSupply = true;
-                    if (pantryStation.HasItem(recipe.pantryInput)) hasSupplyStock = true;
+                    PantryStation pantryStation = source != null ? source.GetComponent<PantryStation>() : null;
+                    if (pantryStation != null && pantryStation.CanDispense(recipe.pantryInput)
+                        && flow.GetOutgoing(source).Contains(station))
+                    {
+                        hasSupply = true;
+                        if (pantryStation.HasItem(recipe.pantryInput)) hasSupplyStock = true;
+                    }
+                }
+                if (!hasSupply)
+                {
+                    string ingredient = string.IsNullOrEmpty(recipe.pantryInput.itemName)
+                        ? recipe.pantryInput.name : recipe.pantryInput.itemName;
+                    return "Fries need " + ingredient + ": select it at a Pantry and connect that Pantry to Assembly";
+                }
+                if (!hasSupplyStock && assemblyStation.GetInputCount(recipe.pantryInput) == 0)
+                {
+                    string ingredient = string.IsNullOrEmpty(recipe.pantryInput.itemName)
+                        ? recipe.pantryInput.name : recipe.pantryInput.itemName;
+                    return ingredient + " is out of stock — order more ingredients";
                 }
             }
-            if (!hasSupply)
+        }
+
+        return string.Empty;
+    }
+
+    string GetMissingFlowConnectionWarning(ProductionFlowPlan flow, GameObject source,
+        ProductionJob job, ItemDefinition item)
+    {
+        string sourceName = GetFlowStationDisplayName(source);
+        string itemName = string.IsNullOrEmpty(item.itemName) ? item.name : item.itemName;
+        GameObject requiredTarget = GetRequiredBranchTarget(job, source);
+        if (requiredTarget != null)
+        {
+            if (!flow.stations.Contains(requiredTarget))
+                return "Add " + GetFlowStationDisplayName(requiredTarget)
+                    + " to this flow to receive " + itemName;
+            return "Connect " + sourceName + " to " + GetFlowStationDisplayName(requiredTarget)
+                + " to deliver " + itemName;
+        }
+
+        StationType? requiredType = GetRequiredNextStationType(job);
+        if (requiredType.HasValue)
+        {
+            GameObject compatibleTarget = null;
+            foreach (GameObject candidate in flow.stations)
             {
-                string ingredient = string.IsNullOrEmpty(recipe.pantryInput.itemName)
-                    ? recipe.pantryInput.name : recipe.pantryInput.itemName;
-                return "Fries need " + ingredient + ": select it at a Pantry and connect that Pantry to Assembly";
+                if (candidate == null || candidate == source
+                    || KitchenEmployee.GetStationTypeFrom(candidate) != requiredType
+                    || !CanBranchAcceptItem(candidate, item))
+                    continue;
+                if (requiredType == StationType.Assembly)
+                {
+                    ItemDefinition requiredProduct = GetRequiredNextAssemblyProduct(job);
+                    AssemblyStation assembly = candidate.GetComponent<AssemblyStation>();
+                    if (requiredProduct != null && (assembly == null || !assembly.CanProcess(requiredProduct)))
+                        continue;
+                }
+                compatibleTarget = candidate;
+                break;
             }
-            if (!hasSupplyStock && assemblyStation.GetInputCount(recipe.pantryInput) == 0)
+
+            if (compatibleTarget != null)
+                return "Connect " + sourceName + " to " + GetFlowStationDisplayName(compatibleTarget)
+                    + " to move " + itemName;
+            return "Add a compatible " + requiredType.Value + " station after " + sourceName
+                + " for " + itemName;
+        }
+
+        GameObject pickupTarget = null;
+        foreach (GameObject candidate in flow.stations)
+        {
+            if (candidate != null && candidate.GetComponent<HeatLampStation>() != null
+                && CanBranchAcceptItem(candidate, item))
             {
-                string ingredient = string.IsNullOrEmpty(recipe.pantryInput.itemName)
-                    ? recipe.pantryInput.name : recipe.pantryInput.itemName;
-                return ingredient + " is out of stock — order more ingredients";
+                pickupTarget = candidate;
+                break;
             }
         }
-        return string.Empty;
+        return pickupTarget != null
+            ? "Connect " + sourceName + " to " + GetFlowStationDisplayName(pickupTarget)
+                + " to send " + itemName + " to pickup"
+            : "Add a Pickup Station after " + sourceName + " for " + itemName;
+    }
+
+    string GetMissingRequiredFlowHandoffReason(KitchenEmployee worker,
+        ProductionFlowPlan flow, ProductionJob job, GameObject source)
+    {
+        if (worker == null || flow == null || job == null || source == null)
+            return string.Empty;
+        ItemDefinition item = GetBranchTransferItem(job);
+        if (item == null || GetFlowOutput(worker, source, job) != null)
+            return string.Empty;
+
+        bool hasNextStation = GetRequiredNextStationType(job).HasValue;
+        bool finalAssembly = source.GetComponent<AssemblyStation>() != null && !hasNextStation;
+        bool finalProductHasDemand = !hasNextStation && HasWaitingCustomerForItem(item);
+        if (GetRequiredBranchTarget(job, source) == null && !hasNextStation
+            && !finalAssembly && !finalProductHasDemand)
+            return string.Empty;
+
+        AssemblyStation assembly = finalAssembly ? source.GetComponent<AssemblyStation>() : null;
+        if (assembly != null && job.taskPhase == ProductionTaskPhase.Work
+            && assembly.CanStoreOutput(GetProcessOutputBatch(job, worker, source)))
+            return string.Empty;
+
+        return GetMissingFlowConnectionWarning(flow, source, job, item);
+    }
+
+    static string GetFlowStationDisplayName(GameObject station)
+    {
+        if (station == null) return "station";
+        StationNode node = station.GetComponent<StationNode>();
+        return node != null && !string.IsNullOrEmpty(node.DisplayName)
+            ? node.DisplayName : station.name;
     }
 
     bool HasAssemblyPantrySupplies(ItemDefinition product, bool useFlows)
@@ -1998,7 +2346,9 @@ public class ProductionManager : MonoBehaviour
             if (job == null || job.isAssemblySupply) continue;
             ItemDefinition item = job?.product;
             if (item == null) continue;
-            counts[item] = counts.TryGetValue(item, out int c) ? c + 1 : 1;
+            int units = Mathf.Max(1, job.order != null
+                ? job.order.CountQuantityOf(item) : job.heldUnits);
+            counts[item] = counts.TryGetValue(item, out int c) ? c + units : units;
         }
         return counts;
     }
@@ -2048,12 +2398,13 @@ public class ProductionManager : MonoBehaviour
         return list;
     }
 
-    static int FindMatchingIndex(List<CustomerOrder> pool, CustomerOrder needed)
+    static int FindMatchingUnitIndex(List<CustomerOrder> pool, ItemDefinition item)
     {
-        if (pool == null || needed == null) return -1;
+        if (pool == null || item == null) return -1;
         for (int i = 0; i < pool.Count; i++)
         {
-            if (pool[i] != null && needed.Matches(pool[i]))
+            if (pool[i] != null && pool[i].CountQuantityOf(item) > 0
+                && pool[i].TryRemoveOne(item))
                 return i;
         }
         return -1;
@@ -2070,17 +2421,28 @@ public class ProductionManager : MonoBehaviour
                 e.QueueRecoverableFlowTasks();
         }
 
-        // Match the best worker/task pair globally. Repeating after each atomic
-        // claim lets reservations immediately influence the next assignment.
-        while (TryAssignBestGlobalPair()) { }
+        // Build and sort the global candidate set once per planning pass. Each
+        // claim still rechecks station and buffer reservations, so stale
+        // candidates are skipped without rescanning every worker/job/station
+        // combination after each successful assignment.
+        TryAssignBestGlobalCandidates();
+
+        // A worker can still be idle when its flow has no queued runnable job,
+        // even though a source station already has stock ready to process.
+        // Give each remaining idle worker one normal scheduling pass. This may
+        // create a stock job only when the flow is ready and pickup has space.
+        foreach (KitchenEmployee employee in employees)
+        {
+            if (employee == null || employee.HasJob || !employee.CanTakeJobs
+                || employee.IsWaitingToReevaluateTasks || employee.ShouldDeliverInsteadOfCook())
+                continue;
+            TryAssignHighestPriorityTask(employee);
+        }
     }
 
-    bool TryAssignBestGlobalPair()
+    void TryAssignBestGlobalCandidates()
     {
-        KitchenEmployee bestEmployee = null;
-        ProductionJob bestJob = null;
-        GameObject bestStation = null;
-        float bestScore = float.NegativeInfinity;
+        var candidates = new List<ScheduledCandidate>();
 
         foreach (KitchenEmployee employee in employees)
         {
@@ -2093,25 +2455,46 @@ public class ProductionManager : MonoBehaviour
             foreach (ProductionJob job in pendingJobs)
             {
                 if (job == null || job.assignedTo != null || Time.time < job.retryAfter) continue;
-                GameObject station = employee.FindStationForJob(job, true, true);
-                if (station == null || !flow.stations.Contains(station)) continue;
-                float score = ScoreTaskForWorker(employee, job, station);
-                if (score <= bestScore) continue;
-                bestScore = score;
-                bestEmployee = employee;
-                bestJob = job;
-                bestStation = station;
+                foreach (GameObject flowStation in flow.stations)
+                {
+                    if (flowStation == null) continue;
+                    GameObject station = employee.FindStationForJob(
+                        job, true, true, flowStation);
+                    if (station == null || !flow.stations.Contains(station)) continue;
+                    if (!CanStartTaskNow(job, station))
+                    {
+                        MarkTaskWaitingForDependencies(job, flow,
+                            GetTaskWaitReason(job, station));
+                        continue;
+                    }
+                    float score = ScoreTaskForWorker(employee, job, station);
+                    candidates.Add(new ScheduledCandidate
+                    {
+                        job = job,
+                        station = station,
+                        score = score,
+                        employee = employee
+                    });
+                }
             }
         }
 
-        if (bestEmployee == null || bestJob == null || bestStation == null) return false;
-        return TryClaimAndAssign(bestEmployee, bestJob);
+        candidates.Sort((a, b) => b.score.CompareTo(a.score));
+        foreach (ScheduledCandidate candidate in candidates)
+        {
+            KitchenEmployee employee = candidate.employee;
+            ProductionJob job = candidate.job;
+            if (employee == null || employee.HasJob || !employee.CanTakeJobs
+                || employee.IsWaitingToReevaluateTasks || employee.ShouldDeliverInsteadOfCook()
+                || job == null || !pendingJobs.Contains(job) || job.assignedTo != null
+                || Time.time < job.retryAfter || !CanStartTaskNow(job, candidate.station))
+                continue;
+
+            TryClaimAndAssign(employee, job, candidate.station);
+        }
     }
 
-    /// <summary>
-    /// Scores every runnable task in the worker's flow. Preference is a bonus, not
-    /// a hard filter, so a worker never idles while useful non-preferred work exists.
-    /// </summary>
+    /// <summary>Assigns ready final output first, then fills the emptiest receiver.</summary>
     public bool TryAssignHighestPriorityTask(KitchenEmployee employee)
     {
         if (employee == null || employee.HasJob || !employee.CanTakeJobs) return false;
@@ -2133,10 +2516,27 @@ public class ProductionManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Immediately assigns an already queued runnable task from this worker's
+    /// flow. Unlike the normal idle scheduler, this does not create speculative
+    /// stock jobs while the worker is yielding a blocked task.
+    /// </summary>
+    public bool TryAssignNextRunnableFlowTask(KitchenEmployee employee)
+    {
+        if (employee == null || employee.HasJob || !employee.CanTakeJobs
+            || employee.ShouldDeliverInsteadOfCook())
+            return false;
+
+        ProductionFlowPlan flow = GetFlowForWorker(employee);
+        return flow?.stations != null && flow.stations.Count > 0
+            && TryAssignBestRunnableFlowStep(employee, flow);
+    }
+
     sealed class ScheduledCandidate
     {
         public ProductionJob job;
         public GameObject station;
+        public KitchenEmployee employee;
         public float score;
     }
 
@@ -2146,35 +2546,121 @@ public class ProductionManager : MonoBehaviour
         foreach (ProductionJob job in pendingJobs)
         {
             if (job == null || job.assignedTo != null || Time.time < job.retryAfter) continue;
-            GameObject station = employee.FindStationForJob(job, true, true);
-            if (station == null || !flow.stations.Contains(station))
+            bool foundStation = false;
+            bool foundRunnableStation = false;
+            string waitReason = "Required input, station, or output capacity is unavailable";
+            foreach (GameObject flowStation in flow.stations)
             {
-                SetTaskState(job, ProductionTaskState.WaitingForDependencies,
-                    "Required input, station, or output capacity is unavailable");
-                continue;
+                if (flowStation == null) continue;
+                GameObject station = employee.FindStationForJob(
+                    job, true, true, flowStation);
+                if (station == null || !flow.stations.Contains(station)) continue;
+                foundStation = true;
+
+                if (!CanStartTaskNow(job, station))
+                {
+                    waitReason = GetTaskWaitReason(job, station);
+                    continue;
+                }
+
+                foundRunnableStation = true;
+                SetTaskState(job, ProductionTaskState.Runnable);
+                candidates.Add(new ScheduledCandidate
+                {
+                    job = job,
+                    station = station,
+                    score = ScoreTaskForWorker(employee, job, station)
+                });
             }
 
-            SetTaskState(job, ProductionTaskState.Runnable);
-            candidates.Add(new ScheduledCandidate
-            {
-                job = job,
-                station = station,
-                score = ScoreTaskForWorker(employee, job, station)
-            });
+            if (!foundRunnableStation)
+                MarkTaskWaitingForDependencies(job, flow,
+                    foundStation ? waitReason : "Required input, station, or output capacity is unavailable");
         }
 
         candidates.Sort((a, b) => b.score.CompareTo(a.score));
         foreach (ScheduledCandidate candidate in candidates)
         {
-            if (TryClaimAndAssign(employee, candidate.job)) return true;
+            if (TryClaimAndAssign(employee, candidate.job, candidate.station)) return true;
         }
         return false;
     }
 
-    bool TryClaimAndAssign(KitchenEmployee employee, ProductionJob job)
+    void MarkTaskWaitingForDependencies(ProductionJob job, ProductionFlowPlan flow, string reason)
     {
-        if (employee == null || job == null || employee.HasJob || job.assignedTo != null
-            || !TryReserveCurrentStation(job, employee, true)) return false;
+        if (job == null) return;
+        bool flowRouteBlocked = false;
+        if (flow?.workers != null)
+        {
+            foreach (KitchenEmployee worker in flow.workers)
+            {
+                if (worker == null || !worker.CanTakeJobs) continue;
+                GameObject source = worker.FindStationForJob(job, true, false);
+                string routeReason = source != null
+                    ? GetMissingRequiredFlowHandoffReason(worker, flow, job, source)
+                    : string.Empty;
+                if (string.IsNullOrEmpty(routeReason)) continue;
+                reason = routeReason;
+                flowRouteBlocked = true;
+                break;
+            }
+        }
+        if (job.taskState != ProductionTaskState.WaitingForDependencies
+            || job.blockedReason != reason)
+            RecordWorkerWait(flow, reason);
+        SetTaskState(job, ProductionTaskState.WaitingForDependencies, reason);
+        if (flowRouteBlocked) job.blockedFlow = flow;
+    }
+
+    bool CanStartTaskNow(ProductionJob job, GameObject station)
+    {
+        if (job == null || station == null) return false;
+        ItemDefinition item = GetBranchTransferItem(job);
+        StationType? type = job.CurrentStationType;
+
+        if (job.taskPhase == ProductionTaskPhase.CollectOutput)
+        {
+            GameObject source = job.taskSourceStation != null
+                ? job.taskSourceStation : station;
+            IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
+            int available = sourceBuffer != null && item != null
+                ? sourceBuffer.GetOutputCount(item) - GetReservedOutputCount(source, item)
+                : 0;
+            return available > 0;
+        }
+
+        if (type == StationType.Freezer)
+        {
+            FreezerStation freezerSource = station.GetComponent<FreezerStation>();
+            return freezerSource != null && item != null
+                && freezerSource.GetReadyOutputCount(item) > 0;
+        }
+        if (type == StationType.Pantry)
+        {
+            PantryStation pantrySource = station.GetComponent<PantryStation>();
+            return pantrySource != null && item != null
+                && pantrySource.GetReadyOutputCount(item) > 0;
+        }
+        return true;
+    }
+
+    static string GetTaskWaitReason(ProductionJob job, GameObject station)
+    {
+        if (job != null && job.taskPhase == ProductionTaskPhase.CollectOutput)
+            return "Waiting for station output";
+        StationType? type = job != null ? job.CurrentStationType : null;
+        if (type == StationType.Freezer || type == StationType.Pantry)
+            return "Waiting for stock or output rate";
+        return "Waiting for station input or capacity";
+    }
+
+    bool TryClaimAndAssign(KitchenEmployee employee, ProductionJob job, GameObject station)
+    {
+        if (employee == null || job == null || employee.HasJob || job.assignedTo != null)
+            return false;
+        MergeQueuedSameItemJobs(job, employee, station);
+        if (job.assignedTo != null
+            || !TryReserveCurrentStation(job, employee, true, station)) return false;
         if (job.assignedTo != null)
         {
             ReleaseReservations(job);
@@ -2196,160 +2682,208 @@ public class ProductionManager : MonoBehaviour
         return false;
     }
 
+    void MergeQueuedSameItemJobs(ProductionJob primary, KitchenEmployee employee,
+        GameObject preferredSource)
+    {
+        if (primary == null || employee == null || primary.isAssemblySupply || primary.assignedTo != null
+            || primary.taskPhase != ProductionTaskPhase.Work || primary.currentStepIndex != 0
+            || primary.heldUnits > 0 || primary.ingredientsHeld.Count > 0
+            || primary.reservedWorkStation != null || primary.reservedDestinationStation != null
+            || primary.order == null || primary.order.lines == null || primary.order.lines.Count != 1)
+            return;
+
+        ItemDefinition item = primary.product;
+        int units = primary.order.CountQuantityOf(item);
+        int limit = GetJobBatchLimit(primary, employee);
+        if (item == null || units <= 0 || units >= limit) return;
+        GameObject primarySource = preferredSource != null
+            ? preferredSource : employee.FindStationForJob(primary, true, true);
+        if (primarySource == null) return;
+        limit = GetAvailableTaskBatchLimit(primary, employee, primarySource, limit);
+        if (units >= limit) return;
+
+        for (int i = pendingJobs.Count - 1; i >= 0 && units < limit; i--)
+        {
+            ProductionJob candidate = pendingJobs[i];
+            if (candidate == null || candidate == primary || candidate.assignedTo != null
+                || Time.time < candidate.retryAfter
+                || candidate.isAssemblySupply || candidate.taskPhase != ProductionTaskPhase.Work
+                || candidate.currentStepIndex != 0 || candidate.heldUnits > 0
+                || candidate.ingredientsHeld.Count > 0 || candidate.reservedWorkStation != null
+                || candidate.reservedDestinationStation != null || candidate.reservedSourceStation != null
+                || candidate.product != item || candidate.order == null
+                || candidate.order.lines == null || candidate.order.lines.Count != 1
+                || !SamePipeline(primary, candidate))
+                continue;
+            if (employee.FindStationForJob(candidate, true, true, primarySource) != primarySource)
+                continue;
+
+            int candidateUnits = candidate.order.CountQuantityOf(item);
+            if (candidateUnits <= 0 || units + candidateUnits > limit) continue;
+
+            CustomerOrder.OrderLine line = primary.order.lines[0];
+            line.quantity += candidateUnits;
+            primary.order.lines[0] = line;
+            units += candidateUnits;
+            pendingJobs.RemoveAt(i);
+            SetTaskState(candidate, ProductionTaskState.Complete);
+        }
+    }
+
+    static bool SamePipeline(ProductionJob a, ProductionJob b)
+    {
+        if (a == null || b == null || a.pipeline == null || b.pipeline == null
+            || a.pipeline.Length != b.pipeline.Length
+            || a.assemblyStageProducts == null || b.assemblyStageProducts == null
+            || a.assemblyStageProducts.Length != b.assemblyStageProducts.Length)
+            return false;
+
+        for (int i = 0; i < a.pipeline.Length; i++)
+            if (a.pipeline[i] != b.pipeline[i]) return false;
+        for (int i = 0; i < a.assemblyStageProducts.Length; i++)
+            if (a.assemblyStageProducts[i] != b.assemblyStageProducts[i]) return false;
+        return true;
+    }
+
+    int GetJobBatchLimit(ProductionJob job, KitchenEmployee employee)
+    {
+        int limit = Mathf.Clamp(employee != null ? employee.CarryCapacity : 1, 1, 4);
+        ProductionFlowPlan flow = employee != null ? GetFlowForWorker(employee) : null;
+        if (job?.pipeline == null || flow?.stations == null) return limit;
+
+        for (int i = 0; i < flow.stations.Count; i++)
+        {
+            GameObject stationObject = flow.stations[i];
+            if (stationObject == null) continue;
+            StationType? type = KitchenEmployee.GetStationTypeFrom(stationObject);
+            if (!type.HasValue || System.Array.IndexOf(job.pipeline, type.Value) < 0) continue;
+
+            GrillStation grill = stationObject.GetComponent<GrillStation>();
+            if (grill != null)
+            {
+                limit = Mathf.Min(limit, Mathf.Min(grill.InputSlotCapacity, grill.OutputSlotCapacity));
+                continue;
+            }
+            FryerStation fryer = stationObject.GetComponent<FryerStation>();
+            if (fryer != null)
+            {
+                limit = Mathf.Min(limit, Mathf.Min(fryer.InputSlotCapacity, fryer.OutputSlotCapacity));
+                continue;
+            }
+            CuttingStation cutting = stationObject.GetComponent<CuttingStation>();
+            if (cutting != null)
+            {
+                limit = Mathf.Min(limit, Mathf.Min(cutting.InputSlotCapacity, cutting.OutputSlotCapacity));
+                continue;
+            }
+            AssemblyStation assemblyStation = stationObject.GetComponent<AssemblyStation>();
+            if (assemblyStation != null && job.assemblyStageProducts != null)
+            {
+                for (int stage = 0; stage < job.assemblyStageProducts.Length; stage++)
+                {
+                    if (!assemblyStation.CanProcess(job.assemblyStageProducts[stage])) continue;
+                    int assemblyLimit = assemblyStation.MaxProcessBatch;
+                    if (assemblyLimit > 0) limit = Mathf.Min(limit, assemblyLimit);
+                    break;
+                }
+            }
+        }
+
+        return Mathf.Clamp(limit, 1, 4);
+    }
+
+    int GetAvailableTaskBatchLimit(ProductionJob job, KitchenEmployee employee,
+        GameObject source, int requestedUnits)
+    {
+        if (job == null || employee == null || source == null) return 1;
+        int limit = Mathf.Clamp(Mathf.Min(requestedUnits,
+            GetJobBatchLimit(job, employee)), 1, 4);
+        ItemDefinition item = GetBranchTransferItem(job);
+
+        if (item != null && job.taskPhase == ProductionTaskPhase.CollectOutput)
+        {
+            IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
+            int available = sourceBuffer != null
+                ? sourceBuffer.GetOutputCount(item) - GetReservedOutputCount(source, item)
+                : 0;
+            limit = Mathf.Min(limit, Mathf.Max(1, available));
+        }
+        else if (item != null && job.CurrentStationType == StationType.Freezer)
+        {
+            FreezerStation freezerSource = source.GetComponent<FreezerStation>();
+            int available = freezerSource != null
+                ? freezerSource.GetReadyOutputCount(item) - GetReservedOutputCount(source, item)
+                : 0;
+            limit = Mathf.Min(limit, Mathf.Max(1, available));
+        }
+        else if (item != null && job.CurrentStationType == StationType.Pantry)
+        {
+            PantryStation pantrySource = source.GetComponent<PantryStation>();
+            int available = pantrySource != null
+                ? pantrySource.GetReadyOutputCount(item) - GetReservedOutputCount(source, item)
+                : 0;
+            limit = Mathf.Min(limit, Mathf.Max(1, available));
+        }
+
+        GameObject destination = GetFlowOutput(employee, source, job);
+        IStationBuffer destinationBuffer = destination != null
+            ? destination.GetComponent<IStationBuffer>() : null;
+        if (destinationBuffer != null && item != null)
+        {
+            int availableSpace = GetAvailableInputCapacity(
+                destinationBuffer, destination, item, job);
+            limit = Mathf.Min(limit, Mathf.Max(1, availableSpace));
+        }
+        return Mathf.Clamp(limit, 1, 4);
+    }
+
     float ScoreTaskForWorker(KitchenEmployee employee, ProductionJob job, GameObject station)
     {
-        int stepCount = job.pipeline != null ? Mathf.Max(1, job.pipeline.Length) : 1;
-        float progress = Mathf.Clamp01((float)job.currentStepIndex / stepCount);
-        float score = progress * 120f;
+        if (employee == null || job == null || station == null) return float.MinValue;
 
-        // Completing downstream work frees upstream buffers and moves the final
-        // product closer to pickup, so it outranks speculative ingredient work.
-        if (job.taskPhase == ProductionTaskPhase.CollectOutput) score += 130f;
-        if (job.currentStepIndex >= stepCount - 1) score += 90f;
-        if (!job.isAssemblySupply) score += 35f;
-        if (job.CurrentStationType == StationType.Assembly) score += 45f;
-        if (employee.PrefersJob(job)) score += 160f;
+        GameObject source = job.taskPhase == ProductionTaskPhase.CollectOutput
+            ? (job.taskSourceStation != null ? job.taskSourceStation : station)
+            : station;
+        ItemDefinition item = GetBranchTransferItem(job);
+        GameObject destination = GetFlowOutput(employee, source, job);
+        HeatLampStation pickup = destination != null
+            ? destination.GetComponent<HeatLampStation>() : null;
 
-        // A burger base is a hard dependency for every later assembly stage.
-        // Once the first assembly has its side ingredient but no processed patty,
-        // prioritize the main Freezer -> Grill branch over further buffer filling.
-        if (IsBurgerBaseBlockingAssembly(employee, job)) score += 400f;
+        // Finished products always leave for pickup before workers service any
+        // other part of the flow.
+        if (pickup != null)
+            return 1000000f - Vector3.Distance(employee.transform.position, source.transform.position);
 
-        // Starved assembly inputs are the useful exception to downstream-first.
-        // Supplying an empty input unblocks an already selected final recipe.
-        if (job.isAssemblySupply && (job.assemblySupplyTarget != null || job.grillSupplyTarget != null))
+        // Otherwise fill the emptiest compatible receiver first. For recipes
+        // with multiple inputs, emptiness is measured for the exact item this
+        // transfer supplies, so a missing side ingredient can still be filled.
+        float score = 100000f;
+        IStationBuffer receiver = destination != null
+            ? destination.GetComponent<IStationBuffer>() : null;
+        if (receiver != null && item != null)
         {
-            ItemDefinition supplied = GetAssemblySupplyOutput(job);
-            IStationBuffer buffer = job.assemblySupplyTarget != null
-                ? job.assemblySupplyTarget.GetComponent<IStationBuffer>()
-                : job.grillSupplyTarget.GetComponent<IStationBuffer>();
-            if (buffer != null && supplied != null && buffer.GetInputCount(supplied) == 0)
-                score += 110f;
+            int freeSlots = GetAvailableInputCapacity(receiver, destination, item, job);
+            AssemblyStation assembly = destination.GetComponent<AssemblyStation>();
+            int itemCapacity = assembly != null
+                ? GetAssemblyInputCapacity(assembly, item)
+                : receiver.InputSlotCapacity;
+            int occupiedSlots = receiver.GetInputCount(item)
+                + GetReservedInputCount(destination, item);
+
+            if (freeSlots > 0)
+            {
+                if (occupiedSlots == 0) score += 10000f;
+                score += itemCapacity > 0
+                    ? 1000f * freeSlots / itemCapacity
+                    : freeSlots * 100f;
+            }
         }
 
-        score += Mathf.Min(45f, Mathf.Max(0f, Time.time - job.createdAt) * 2f);
-        score += CountTasksBlockedBy(station) * 55f;
-
-        // Compare the worker's predicted arrival with the time at which this
-        // station will starve or block. Lateness dominates proximity and task
-        // preference, while an on-time worker still benefits from a short route.
-        GameObject serviceStation = ResolveTaskServiceStation(employee, job, station);
-        float completionSeconds = EstimateTaskCompletionSeconds(employee, job, station, serviceStation);
-        float deadlineSeconds = GetStationServiceDeadlineSeconds(job, serviceStation);
-        float slackSeconds = deadlineSeconds - completionSeconds;
-        score += GetStationContinuityBonus(job, serviceStation);
-        if (deadlineSeconds < 999f)
-        {
-            // Missing a service deadline makes the task more urgent, not less.
-            // The completion-time penalty below still selects the worker who can
-            // reach the same urgent task soonest.
-            if (slackSeconds >= 0f)
-                score += 260f + Mathf.Clamp(120f - slackSeconds * 18f, 0f, 120f);
-            else
-                score += 520f;
-        }
-        score -= completionSeconds * 8f;
-
-        int nearbyWorkers = 0;
-        foreach (KitchenEmployee other in employees)
-            if (other != null && other != employee && other.HasJob
-                && Vector3.SqrMagnitude(other.transform.position - station.transform.position) < 9f)
-                nearbyWorkers++;
-        score -= nearbyWorkers * 18f;
+        // Use distance only to break ties between equivalent delivery choices.
+        score -= Vector3.Distance(employee.transform.position, source.transform.position);
+        if (destination != null)
+            score -= Vector3.Distance(source.transform.position, destination.transform.position) * 0.1f;
         return score;
-    }
-
-    /// <summary>
-    /// Prioritizes the atomic task that keeps a demanded flow station cycling.
-    /// This remains a score rather than a hard lock, so blocked outputs and final
-    /// product delivery can still outrank unnecessary input filling.
-    /// </summary>
-    float GetStationContinuityBonus(ProductionJob job, GameObject serviceStation)
-    {
-        if (job == null || serviceStation == null || !HasActiveDemandForStation(serviceStation))
-            return 0f;
-
-        StationRuntimeMetrics metrics = serviceStation.GetComponent<StationRuntimeMetrics>();
-        if (metrics == null) return 0f;
-
-        switch (metrics.CurrentState)
-        {
-            case StationRuntimeState.Starved:
-                return job.taskPhase == ProductionTaskPhase.Work ? 480f : 0f;
-            case StationRuntimeState.Blocked:
-                return job.taskPhase == ProductionTaskPhase.CollectOutput ? 480f : 0f;
-            case StationRuntimeState.Working:
-                return 180f;
-            case StationRuntimeState.Idle:
-                return job.taskPhase == ProductionTaskPhase.Work ? 300f : 0f;
-            default:
-                return 0f;
-        }
-    }
-
-    GameObject ResolveTaskServiceStation(KitchenEmployee employee, ProductionJob job,
-        GameObject workStation)
-    {
-        if (job == null || workStation == null) return workStation;
-        if (job.taskPhase == ProductionTaskPhase.CollectOutput) return workStation;
-        StationType? type = KitchenEmployee.GetStationTypeFrom(workStation);
-        if (type == StationType.Freezer || type == StationType.Pantry)
-            return GetFlowOutput(employee, workStation, job) ?? workStation;
-        return workStation;
-    }
-
-    float EstimateTaskCompletionSeconds(KitchenEmployee employee, ProductionJob job,
-        GameObject workStation, GameObject serviceStation)
-    {
-        if (employee == null || workStation == null) return 999f;
-        float speed = Mathf.Max(0.1f, employee.moveSpeed);
-        float seconds = GetRouteDistance(employee, workStation) / speed + 0.45f;
-        if (serviceStation != null && serviceStation != workStation)
-        {
-            Vector3 delta = serviceStation.transform.position - workStation.transform.position;
-            float gridDistance = Mathf.Max(Mathf.Abs(delta.x), Mathf.Abs(delta.z));
-            seconds += gridDistance / speed + 0.45f;
-        }
-
-        // Include station cycle time when this atomic task must transform an
-        // ingredient before the threatened destination receives it.
-        if (job != null && job.taskPhase == ProductionTaskPhase.Work)
-        {
-            GrillStation grill = workStation.GetComponent<GrillStation>();
-            FryerStation fryer = workStation.GetComponent<FryerStation>();
-            CuttingStation cutting = workStation.GetComponent<CuttingStation>();
-            AssemblyStation assembly = workStation.GetComponent<AssemblyStation>();
-            if (grill != null) seconds += grill.EffectiveProcessTimeSeconds;
-            else if (fryer != null) seconds += fryer.EffectiveProcessTimeSeconds;
-            else if (cutting != null) seconds += cutting.EffectiveProcessTimeSeconds;
-            else if (assembly != null) seconds += assembly.EffectiveProcessTimeSeconds;
-        }
-        return seconds;
-    }
-
-    float GetStationServiceDeadlineSeconds(ProductionJob job, GameObject serviceStation)
-    {
-        if (job == null || serviceStation == null) return 999f;
-
-        StationRuntimeMetrics metrics = serviceStation.GetComponent<StationRuntimeMetrics>();
-        if (metrics != null && (metrics.CurrentState == StationRuntimeState.Blocked
-            || metrics.CurrentState == StationRuntimeState.Starved))
-            return 0f;
-
-        GrillStation grill = serviceStation.GetComponent<GrillStation>();
-        if (grill != null)
-            return grill.IsCookingPatty ? grill.ProcessRemainingSeconds : 0f;
-        FryerStation fryer = serviceStation.GetComponent<FryerStation>();
-        if (fryer != null)
-            return fryer.IsCooking ? fryer.ProcessRemainingSeconds : 0f;
-        CuttingStation cutting = serviceStation.GetComponent<CuttingStation>();
-        if (cutting != null)
-            return cutting.IsProcessing ? cutting.ProcessRemainingSeconds : 0f;
-        AssemblyStation assembly = serviceStation.GetComponent<AssemblyStation>();
-        if (assembly != null)
-            return assembly.IsProcessing ? assembly.ProcessRemainingSeconds : 0f;
-
-        return job.taskPhase == ProductionTaskPhase.CollectOutput ? 0f : 999f;
     }
 
     /// <summary>True when this physical station belongs to an unfinished demanded route.</summary>
@@ -2412,63 +2946,13 @@ public class ProductionManager : MonoBehaviour
         return capacity;
     }
 
-    bool IsBurgerBaseBlockingAssembly(KitchenEmployee employee, ProductionJob job)
-    {
-        if (employee == null || job == null || job.isAssemblySupply || orderConfig == null
-            || !orderConfig.IsBurger(job.product)
-            || (job.CurrentStationType != StationType.Freezer
-                && job.CurrentStationType != StationType.Grill))
-            return false;
-
-        ProductionFlowPlan flow = GetFlowForWorker(employee);
-        if (flow?.stations == null || job.assemblyStageProducts == null
-            || job.assemblyStageProducts.Length == 0)
-            return false;
-
-        ItemDefinition firstAssemblyProduct = job.assemblyStageProducts[0];
-        foreach (GameObject stationObject in flow.stations)
-        {
-            AssemblyStation station = stationObject != null
-                ? stationObject.GetComponent<AssemblyStation>() : null;
-            if (station == null || !station.CanProcess(firstAssemblyProduct)) continue;
-            AssemblyRecipeDefinition recipe = station.GetSelectedRecipe();
-            if (recipe == null || recipe.processedInput == null) continue;
-            bool missingPatty = station.GetInputCount(recipe.processedInput) <= 0;
-            bool otherInputWaiting = recipe.pantryInput == null
-                || station.GetInputCount(recipe.pantryInput) > 0;
-            if (missingPatty && otherInputWaiting) return true;
-        }
-        return false;
-    }
-
-    float GetRouteDistance(KitchenEmployee employee, GameObject station)
-    {
-        var key = (employee, station);
-        if (routeDistanceCache.TryGetValue(key, out var cached) && cached.frame == Time.frameCount)
-            return cached.distance;
-        float distance = employee.EstimateRouteDistance(station);
-        routeDistanceCache[key] = (Time.frameCount, distance);
-        if (routeDistanceCache.Count > 256) routeDistanceCache.Clear();
-        return distance;
-    }
-
-    int CountTasksBlockedBy(GameObject station)
-    {
-        if (station == null) return 0;
-        int count = 0;
-        foreach (ProductionJob job in pendingJobs)
-            if (job != null && job.assignedTo == null && job.blockedStation == station
-                && Time.time < job.retryAfter)
-                count++;
-        return count;
-    }
-
     static void SetTaskState(ProductionJob job, ProductionTaskState state, string reason = null)
     {
         if (job == null) return;
         if (job.taskState != state) job.stateChangedAt = Time.time;
         job.taskState = state;
         job.blockedReason = reason;
+        job.blockedFlow = null;
     }
 
     public void TouchTask(ProductionJob job, ProductionTaskState state)
@@ -2519,6 +3003,8 @@ public class ProductionManager : MonoBehaviour
         job.retryAfter = Mathf.Max(job.retryAfter, Time.time + Mathf.Max(0.05f, delaySeconds));
         job.blockedStation = station;
         SetTaskState(job, ProductionTaskState.Blocked, reason);
+        RecordWorkerWait(job.assignedTo, reason);
+        NotifyProductionStateChanged(Mathf.Max(0.05f, delaySeconds));
     }
 
     /// <summary>Compatibility wrapper for older callers.</summary>
@@ -2555,7 +3041,13 @@ public class ProductionManager : MonoBehaviour
         if (item == null) return null;
         if (stockCounts.TryGetValue(item, out int queued) && queued >= capacity) return null;
 
-        ProductionJob job = CreateJob(CustomerOrder.FromItem(item, 1));
+        int freeSlots = Mathf.Max(1, capacity - heldCount - MenuJobCount());
+        ProductionJob probe = CreateJob(CustomerOrder.FromItem(item, 1));
+        GameObject source = probe != null
+            ? employee.FindStationForJob(probe, searchEntireFlow, true) : null;
+        int batch = GetAvailableTaskBatchLimit(probe, employee, source,
+            Mathf.Clamp(Mathf.Min(4, freeSlots), 1, 4));
+        ProductionJob job = CreateJob(CustomerOrder.FromItem(item, batch));
         if (job == null || !employee.CanTakeJobStep(job, searchEntireFlow)) return null;
         pendingJobs.Add(job);
         return job;
@@ -2568,33 +3060,26 @@ public class ProductionManager : MonoBehaviour
         job.assignedTo = null;
         if (Time.time >= job.retryAfter)
             SetTaskState(job, ProductionTaskState.WaitingForDependencies);
+        NotifyProductionStateChanged();
     }
 
     /// <summary>
-    /// Atomically moves an owned job from its completed station step to its next
-    /// station. The job must never become publicly claimable between releasing
-    /// the old station and reserving the new one, otherwise another worker can
-    /// claim it while the original worker still holds it locally.
+    /// Releases a completed handoff so any available worker can claim the next
+    /// station step once its input or output is ready.
     /// </summary>
-    public bool TryContinueJobAtNextStation(ProductionJob job, KitchenEmployee employee)
+    public void ReleaseJobAfterHandoff(ProductionJob job, KitchenEmployee employee)
     {
         if (job == null || employee == null || job.assignedTo != employee
             || !employee.IsWorkingOn(job))
-            return false;
+            return;
 
         ReleaseReservations(job);
-        if (!TryReserveCurrentStation(job, employee, true))
-        {
-            job.assignedTo = null;
-            SetTaskState(job, ProductionTaskState.WaitingForDependencies);
-            return false;
-        }
-
-        job.claimHeartbeatAt = Time.time;
+        job.assignedTo = null;
+        job.claimVersion++;
         job.retryAfter = 0f;
         job.blockedStation = null;
-        SetTaskState(job, ProductionTaskState.Claimed);
-        return true;
+        SetTaskState(job, ProductionTaskState.WaitingForDependencies);
+        NotifyProductionStateChanged(0f);
     }
 
     bool HasAssemblyProducer(ItemDefinition product, bool useFlows)
@@ -2676,6 +3161,25 @@ public class ProductionManager : MonoBehaviour
         return false;
     }
 
+    public bool HasPendingCuttingTask(GameObject cuttingStation)
+    {
+        if (cuttingStation == null) return false;
+        foreach (ProductionJob job in pendingJobs)
+        {
+            if (job == null || job.CurrentStationType != StationType.Cutting)
+                continue;
+            if (job.taskSourceStation == cuttingStation
+                || job.reservedWorkStation == cuttingStation
+                || job.assignedTo != null && job.assignedTo.IsWorkingOn(job))
+                return true;
+
+            // A queued recipe step without a physical source can collect from
+            // any compatible cutter, so let that job own the next output.
+            if (job.taskSourceStation == null) return true;
+        }
+        return false;
+    }
+
     public bool HasPendingGrillTask(GameObject grillStation)
     {
         if (grillStation == null) return false;
@@ -2733,6 +3237,7 @@ public class ProductionManager : MonoBehaviour
 
         SetTaskState(job, ProductionTaskState.WaitingForDependencies);
         pendingJobs.Add(job);
+        NotifyProductionStateChanged();
     }
 
     /// <summary>Discard runtime-only production work before rebuilding a saved kitchen.</summary>
@@ -2747,6 +3252,9 @@ public class ProductionManager : MonoBehaviour
         orderedHistory.Clear();
         completedHistory.Clear();
         completedFlowHistory.Clear();
+        workerTripHistory.Clear();
+        workerWaitHistory.Clear();
+        throughputTrackingStartedAt = Time.time;
     }
 
     public void CompleteJob(ProductionJob job)
@@ -2756,14 +3264,27 @@ public class ProductionManager : MonoBehaviour
         job.assignedTo = null;
         SetTaskState(job, ProductionTaskState.Complete);
         pendingJobs.Remove(job);
+        NotifyProductionStateChanged();
     }
 
     public bool TryReserveCurrentStation(ProductionJob job, KitchenEmployee employee,
-        bool searchEntireFlow = false)
+        bool searchEntireFlow = false, GameObject preferredStation = null)
     {
         if (job == null || employee == null || !job.CurrentStationType.HasValue) return false;
-        GameObject station = employee.FindStationForJob(job, searchEntireFlow, true);
+        GameObject station = employee.FindStationForJob(
+            job, searchEntireFlow, true, preferredStation);
         if (station == null || !IsStationInWorkerFlow(employee, station)) return false;
+
+        string missingHandoffReason = GetMissingRequiredFlowHandoffReason(
+            employee, GetFlowForWorker(employee), job, station);
+        if (!string.IsNullOrEmpty(missingHandoffReason))
+        {
+            ProductionFlowPlan flow = GetFlowForWorker(employee);
+            SetTaskState(job, ProductionTaskState.WaitingForDependencies, missingHandoffReason);
+            job.blockedFlow = flow;
+            return false;
+        }
+
         if (job.CurrentStationType.Value == StationType.Freezer && !job.isAssemblySupply)
         {
             GameObject destination = GetFlowOutput(employee, station, job);
@@ -2778,22 +3299,27 @@ public class ProductionManager : MonoBehaviour
         job.reservedWorkStation = station;
         jobsWithReservations.Add(job);
 
-        // A source worker must claim the next buffer before taking physical stock.
-        // Reserving one slot is sufficient to make the single-buffer Grill exclusive;
-        // the claim is expanded to the worker's actual batch during handoff.
+        // A source worker reserves as many currently open downstream input
+        // slots as it can carry before taking physical stock.
         if (job.CurrentStationType.Value == StationType.Freezer)
         {
             GameObject destination = GetFlowOutput(employee, station, job);
             ItemDefinition freezerOutput = GetBranchTransferItem(job);
-            int desiredBatch = Mathf.Clamp(employee.CarryCapacity, 1, 4);
+            int requested = job.isAssemblySupply
+                ? job.requestedSupplyUnits : employee.CarryCapacity;
+            int desiredBatch = Mathf.Clamp(requested, 1, employee.CarryCapacity);
+            if (!job.isAssemblySupply)
+                desiredBatch = Mathf.Min(desiredBatch, GetJobBatchLimit(job, employee));
             AssemblyStation destinationAssembly = destination != null
                 ? destination.GetComponent<AssemblyStation>() : null;
             if (destinationAssembly != null)
                 desiredBatch = Mathf.Min(desiredBatch, destinationAssembly.IngredientCapacity);
-            if (destination == null || !IsStationInWorkerFlow(employee, destination) || freezerOutput == null
-                || !TryReserveDestination(job, destination, freezerOutput, desiredBatch))
+            bool reserved = destination != null && IsStationInWorkerFlow(employee, destination)
+                && freezerOutput != null
+                && TryReserveDestination(job, destination, freezerOutput, desiredBatch, employee);
+            if (!reserved)
             {
-                ReleaseWorkReservation(job);
+                ReleaseReservations(job);
                 return false;
             }
         }
@@ -2803,17 +3329,17 @@ public class ProductionManager : MonoBehaviour
             // buffer first so a worker never ends up idling with undeliverable stock.
             GameObject destination = GetFlowOutput(employee, station, job);
             ItemDefinition pantryOutput = GetBranchTransferItem(job);
-            int desiredBatch = Mathf.Clamp(
-                job.requestedSupplyUnits > 0 ? job.requestedSupplyUnits : employee.CarryCapacity,
-                1, employee.CarryCapacity);
+            int requested = job.isAssemblySupply
+                ? job.requestedSupplyUnits : employee.CarryCapacity;
+            int desiredBatch = Mathf.Clamp(requested, 1, employee.CarryCapacity);
             bool validDestination = destination != null
                 && IsStationInWorkerFlow(employee, destination)
                 && pantryOutput != null;
             bool destinationReady = validDestination
-                && TryReserveDestination(job, destination, pantryOutput, desiredBatch);
+                && TryReserveDestination(job, destination, pantryOutput, desiredBatch, employee);
             if (!validDestination || !destinationReady)
             {
-                ReleaseWorkReservation(job);
+                ReleaseReservations(job);
                 return false;
             }
         }
@@ -2824,17 +3350,18 @@ public class ProductionManager : MonoBehaviour
             // worker cannot slice stock that has nowhere to go.
             GameObject destination = GetFlowOutput(employee, station, job);
             ItemDefinition cuttingOutput = GetBranchTransferItem(job);
-            int desiredBatch = Mathf.Clamp(
-                job.heldUnits > 0 ? job.heldUnits : employee.CarryCapacity,
-                1, employee.CarryCapacity);
+            int requested = job.isAssemblySupply
+                ? (job.heldUnits > 0 ? job.heldUnits : job.requestedSupplyUnits)
+                : employee.CarryCapacity;
+            int desiredBatch = Mathf.Clamp(requested, 1, employee.CarryCapacity);
             bool validDestination = destination != null
                 && IsStationInWorkerFlow(employee, destination)
                 && cuttingOutput != null;
             bool destinationReady = validDestination
-                && TryReserveDestination(job, destination, cuttingOutput, desiredBatch);
+                && TryReserveDestination(job, destination, cuttingOutput, desiredBatch, employee);
             if (!validDestination || !destinationReady)
             {
-                ReleaseWorkReservation(job);
+                ReleaseReservations(job);
                 return false;
             }
         }
@@ -2864,12 +3391,13 @@ public class ProductionManager : MonoBehaviour
                 && IsStationInWorkerFlow(employee, destination)
                 && output != null;
             bool destinationReserved = validDestination
-                && TryReserveDestination(job, destination, output, desiredBatch);
-            if (!destinationReserved && canBufferFinalAssemblyOutput)
+                && TryReserveDestination(job, destination, output, desiredBatch, employee);
+            if (!destinationReserved && canBufferFinalAssemblyOutput
+                && job.taskPhase == ProductionTaskPhase.Work)
                 return true;
             if (!destinationReserved)
             {
-                ReleaseWorkReservation(job);
+                ReleaseReservations(job);
                 return false;
             }
         }
@@ -2880,19 +3408,33 @@ public class ProductionManager : MonoBehaviour
     {
         int capacity = Mathf.Max(1, employee != null ? employee.CarryCapacity : 1);
         if (station == null || job == null) return 1;
+        int requestedUnits;
+        if (job.isAssemblySupply)
+            requestedUnits = Mathf.Max(1, job.requestedSupplyUnits);
+        else if (GetRequiredNextStationType(job).HasValue)
+            // Intermediate stock should fill the receiver's currently open
+            // input slots. TryReserveDestination clamps this to the exact free
+            // room, including inputs already buffered at that station.
+            requestedUnits = capacity;
+        else
+            requestedUnits = Mathf.Max(1, job.order != null
+                ? job.order.CountQuantityOf(job.product) : job.heldUnits);
         GrillStation grillStation = station.GetComponent<GrillStation>();
         if (grillStation != null)
-            return Mathf.Clamp(grillStation.GetOutputCount(grillStation.GetSelectedOutput()), 1, capacity);
+            return Mathf.Min(requestedUnits,
+                Mathf.Min(capacity, grillStation.OutputSlotCapacity));
         FryerStation fryerStation = station.GetComponent<FryerStation>();
         if (fryerStation != null)
-            return Mathf.Clamp(fryerStation.GetOutputCount(fryerStation.GetSelectedOutput()), 1, capacity);
+            return Mathf.Min(requestedUnits,
+                Mathf.Min(capacity, fryerStation.OutputSlotCapacity));
         AssemblyStation assemblyStation = station.GetComponent<AssemblyStation>();
         if (assemblyStation != null)
         {
-            int requested = job.heldUnits > 0 ? job.heldUnits : 1;
-            return Mathf.Clamp(requested, 1,
+            return Mathf.Clamp(requestedUnits, 1,
                 Mathf.Min(capacity, assemblyStation.MaxProcessBatch));
         }
+        if (station.GetComponent<DrinkStation>() != null)
+            return Mathf.Min(capacity, requestedUnits);
         return 1;
     }
 
@@ -2969,9 +3511,12 @@ public class ProductionManager : MonoBehaviour
     }
 
     public bool TryReserveTransfer(ProductionJob job, GameObject source, GameObject destination,
-        ItemDefinition item, int requestedUnits)
+        ItemDefinition item, int requestedUnits, KitchenEmployee worker = null)
     {
         if (job == null || source == null || destination == null || item == null || requestedUnits <= 0)
+            return false;
+        worker ??= job.assignedTo;
+        if (!IsValidFlowHandoff(worker, GetFlowForWorker(worker), source, destination, item))
             return false;
 
         IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
@@ -2984,19 +3529,19 @@ public class ProductionManager : MonoBehaviour
         if (units <= 0 || !destinationBuffer.CanAcceptInput(item, units)) return false;
 
         ReleaseTransferReservations(job);
-        job.reservedSourceStation = source;
-        job.reservedDestinationStation = destination;
-        job.reservedItem = item;
-        job.reservedOutputUnits = units;
-        job.reservedInputUnits = units;
+        job.SetTransferReservation(source, destination, item, units, units);
         jobsWithReservations.Add(job);
         return true;
     }
 
     public bool CanTransferAvailable(ProductionJob job, GameObject source, GameObject destination,
-        ItemDefinition item, int requestedUnits = 1)
+        ItemDefinition item, int requestedUnits = 1, KitchenEmployee worker = null)
     {
         if (source == null || destination == null || item == null || requestedUnits <= 0)
+            return false;
+        worker ??= job != null ? job.assignedTo : null;
+        if (worker != null
+            && !IsValidFlowHandoff(worker, GetFlowForWorker(worker), source, destination, item))
             return false;
 
         IStationBuffer sourceBuffer = source.GetComponent<IStationBuffer>();
@@ -3012,10 +3557,15 @@ public class ProductionManager : MonoBehaviour
     }
 
     public bool TryReserveDestination(ProductionJob job, GameObject destination,
-        ItemDefinition item, int requestedUnits)
+        ItemDefinition item, int requestedUnits, KitchenEmployee worker = null)
     {
         if (job == null || destination == null || item == null || requestedUnits <= 0)
             return false;
+        worker ??= job.assignedTo;
+        GameObject source = job.reservedWorkStation ?? job.taskSourceStation ?? job.reservedSourceStation;
+        if (!IsValidFlowHandoff(worker, GetFlowForWorker(worker), source, destination, item))
+            return false;
+
         IStationBuffer destinationBuffer = destination.GetComponent<IStationBuffer>();
         if (destinationBuffer == null) return false;
 
@@ -3023,9 +3573,9 @@ public class ProductionManager : MonoBehaviour
         int units = Mathf.Min(requestedUnits, available);
         if (units <= 0 || !destinationBuffer.CanAcceptInput(item, units)) return false;
 
-        job.reservedDestinationStation = destination;
-        job.reservedItem = item;
-        job.reservedInputUnits = units;
+        bool sameSource = job.reservedSourceStation == source && job.reservedItem == item;
+        int outputUnits = sameSource ? job.reservedOutputUnits : 0;
+        job.SetTransferReservation(source, destination, item, outputUnits, units);
         jobsWithReservations.Add(job);
         return true;
     }
@@ -3060,18 +3610,18 @@ public class ProductionManager : MonoBehaviour
 
     public void ConsumeOutputReservation(ProductionJob job, int amount)
     {
-        if (job == null || amount <= 0) return;
-        job.reservedOutputUnits = Mathf.Max(0, job.reservedOutputUnits - amount);
-        if (job.reservedOutputUnits == 0) job.reservedSourceStation = null;
+        if (job == null || amount <= 0 || job.activeTransfer == null) return;
+        job.activeTransfer.ConsumeOutput(amount);
         RemoveReservationTrackingIfEmpty(job);
+        NotifyProductionStateChanged();
     }
 
     public void ConsumeInputReservation(ProductionJob job, int amount)
     {
-        if (job == null || amount <= 0) return;
-        job.reservedInputUnits = Mathf.Max(0, job.reservedInputUnits - amount);
-        if (job.reservedInputUnits == 0) job.reservedDestinationStation = null;
+        if (job == null || amount <= 0 || job.activeTransfer == null) return;
+        job.activeTransfer.ConsumeInput(amount);
         RemoveReservationTrackingIfEmpty(job);
+        NotifyProductionStateChanged();
     }
 
     int ReservedOutputCount(GameObject station, ItemDefinition item, ProductionJob except)
@@ -3100,7 +3650,8 @@ public class ProductionManager : MonoBehaviour
         int occupied;
         HeatLampStation lamp = station.GetComponent<HeatLampStation>();
         if (lamp != null)
-            occupied = lamp.Count;
+            return Mathf.Max(0, buffer.InputSlotCapacity - lamp.Count
+                - ReservedInputCount(station, null, except));
         else if (station.GetComponent<GrillStation>() is GrillStation grillStation)
         {
             if (ReservedInputCount(station, item, except) > 0) return 0;
@@ -3135,11 +3686,7 @@ public class ProductionManager : MonoBehaviour
     public void ReleaseTransferReservations(ProductionJob job)
     {
         if (job == null) return;
-        job.reservedSourceStation = null;
-        job.reservedDestinationStation = null;
-        job.reservedItem = null;
-        job.reservedOutputUnits = 0;
-        job.reservedInputUnits = 0;
+        job.ClearTransferReservation();
         RemoveReservationTrackingIfEmpty(job);
     }
 
@@ -3153,8 +3700,8 @@ public class ProductionManager : MonoBehaviour
 
     void RemoveReservationTrackingIfEmpty(ProductionJob job)
     {
-        if (job != null && job.reservedWorkStation == null && job.reservedSourceStation == null
-            && job.reservedDestinationStation == null)
+        if (job != null && job.reservedWorkStation == null
+            && job.reservedOutputUnits <= 0 && job.reservedInputUnits <= 0)
             jobsWithReservations.Remove(job);
     }
 
@@ -3162,6 +3709,7 @@ public class ProductionManager : MonoBehaviour
     {
         if (emp != null && !employees.Contains(emp))
             employees.Add(emp);
+        NotifyProductionStateChanged();
     }
 
     public void UnregisterEmployee(KitchenEmployee emp)
@@ -3173,6 +3721,7 @@ public class ProductionManager : MonoBehaviour
                 if (flow != null && flow.workers != null)
                     flow.workers.Remove(emp);
         }
+        NotifyProductionStateChanged();
     }
 
     public Vector3 GetHeatLampPosition(HeatLampStation lamp = null)
@@ -3195,7 +3744,8 @@ public class ProductionManager : MonoBehaviour
         ItemDefinition item = order != null ? order.PrimaryItem : null;
         if (item == null) return false;
         IStationBuffer buffer = l;
-        return buffer != null && buffer.StoreInput(item, 1, order) == 1;
+        return buffer != null
+            && buffer.StoreInput(item, 1, CustomerOrder.FromItem(item, 1)) == 1;
     }
 
     public Vector3 GetFreezerPosition(KitchenEmployee forEmployee = null)

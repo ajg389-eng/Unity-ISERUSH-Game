@@ -185,6 +185,7 @@ public class KitchenInventory : MonoBehaviour
         var entry = EnsureEntry(item);
         if (entry.quantity < amount) return false;
         entry.quantity -= amount;
+        ProductionManager.Instance?.NotifyProductionStateChanged();
         return true;
     }
 
@@ -193,6 +194,7 @@ public class KitchenInventory : MonoBehaviour
         if (item == null || amount <= 0) return;
         var entry = EnsureEntry(item);
         entry.quantity += amount;
+        ProductionManager.Instance?.NotifyProductionStateChanged();
     }
 
     /// <summary>Debug: add amount to every catalog item.</summary>
@@ -212,6 +214,7 @@ public class KitchenInventory : MonoBehaviour
             if (e != null)
                 e.quantity = 0;
         }
+        ProductionManager.Instance?.NotifyProductionStateChanged(0f);
     }
 
     /// <summary>Reset catalog items to their starting quantities.</summary>
@@ -224,6 +227,7 @@ public class KitchenInventory : MonoBehaviour
             int start = item != null && item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
             entry.quantity = Mathf.Max(0, start);
         }
+        ProductionManager.Instance?.NotifyProductionStateChanged(0f);
     }
 
     public int GetPackSize(ItemDefinition item)

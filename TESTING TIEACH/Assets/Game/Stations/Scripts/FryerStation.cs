@@ -15,7 +15,8 @@ public class FryerStation : MonoBehaviour, IStationBuffer
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
-    const int DefaultBufferCapacity = 2;
+    const int Mk1BufferCapacity = 4;
+    const int Mk2BufferCapacity = 8;
     [SerializeField, Min(0)] int basketUnits;
     [SerializeField, Min(0)] int waitingInputUnits;
     [SerializeField, Min(0)] int cookedOutputUnits;
@@ -73,8 +74,9 @@ public class FryerStation : MonoBehaviour, IStationBuffer
         }
     }
     public float EffectiveProcessTimeSeconds => StationNode.GetEffectiveCycleSeconds(this, BaseProcessCycleSeconds);
-    public int InputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
-    public int OutputSlotCapacity => stationMark >= 2 ? 4 : DefaultBufferCapacity;
+    int BufferCapacity => stationMark >= 2 ? Mk2BufferCapacity : Mk1BufferCapacity;
+    public int InputSlotCapacity => BufferCapacity;
+    public int OutputSlotCapacity => BufferCapacity;
     public int BufferedUnitCount => waitingInputUnits + basketUnits + cookedOutputUnits;
     public int GetInputCount(ItemDefinition item) => item == RawItem ? waitingInputUnits : 0;
     public int GetOutputCount(ItemDefinition item) => item == CookedItem ? cookedOutputUnits : 0;

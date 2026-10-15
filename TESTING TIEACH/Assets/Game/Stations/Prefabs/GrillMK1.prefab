@@ -459,6 +459,7 @@ MonoBehaviour:
   interactionOffset: {x: 0, y: 0, z: 0}
   pattyUnits: 0
   waitingInputUnits: 0
+  secondaryInputUnits: 0
   cookedOutputUnits: 0
 --- !u!114 &-3850870227712596159
 MonoBehaviour:
@@ -493,6 +494,7 @@ MonoBehaviour:
   - {x: 1, y: -1}
   buildModeHighlight: {fileID: 8939223708076402897}
   interactionRadius: 0
+  employeeClearance: 0.4
 --- !u!1 &5267635494250597331
 GameObject:
   m_ObjectHideFlags: 0

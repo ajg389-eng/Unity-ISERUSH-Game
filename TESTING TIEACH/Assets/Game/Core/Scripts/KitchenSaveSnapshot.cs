@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 14;
+    public const int CurrentVersion = 15;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -27,10 +27,10 @@ public class KitchenSaveSnapshot
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
     [Serializable] public class Stock { public string item; public int count, acquired; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); }
-    [Serializable] public class FlowEdge { public int from = -1, to = -1; }
-    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
+    [Serializable] public class FlowEdge { public int from = -1, to = -1; public string fromGuid, toGuid; }
+    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<string> stationGuids = new List<string>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
     public static KitchenSaveSnapshot Capture()
     {
@@ -98,6 +98,9 @@ public class KitchenSaveSnapshot
                     var cutting = go.GetComponent<CuttingStation>();
                     var fryer = go.GetComponent<FryerStation>();
                     var stationNode = go.GetComponent<StationNode>();
+                    if (stationNode == null
+                        && (go.GetComponent<IStationBuffer>() != null || go.GetComponent<Register>() != null))
+                        stationNode = StationNode.EnsureOn(go);
                     // Persist the station's resolved assignment, not just its backing
                     // field. Several station types normalize or derive their active
                     // recipe, so the raw field can be null or stale while the UI and
@@ -128,7 +131,8 @@ public class KitchenSaveSnapshot
                         processProgress=grill != null ? grill.CookProgressSeconds : 0f,
                         assemblyProcessingUnits=assembly != null ? assembly.ProcessingUnitCount : 0,
                         assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f,
-                        productionRatePercent=stationNode != null ? stationNode.ProductionRatePercent : 100f });
+                        productionRatePercent=stationNode != null ? stationNode.ProductionRatePercent : 100f,
+                        stationGuid=stationNode != null ? stationNode.StableStationId : "" });
                 }
             }
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
@@ -151,9 +155,25 @@ public class KitchenSaveSnapshot
             foreach(var flow in pm.productionFlows) if(flow!=null) {
                 flow.EnsureLegacyConnections();
                 var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized};
-                foreach(var station in flow.stations) f.stations.Add(objects.IndexOf(station));
+                foreach(var station in flow.stations)
+                {
+                    f.stations.Add(objects.IndexOf(station));
+                    StationNode node = station != null ? StationNode.EnsureOn(station) : null;
+                    f.stationGuids.Add(node != null ? node.StableStationId : "");
+                }
                 foreach(var worker in flow.workers) f.workers.Add(staff.IndexOf(worker));
-                foreach(var edge in flow.connections) if(edge!=null) f.edges.Add(new FlowEdge {from=objects.IndexOf(edge.from),to=objects.IndexOf(edge.to)});
+                foreach(var edge in flow.connections) if(edge!=null)
+                {
+                    StationNode fromNode = edge.from != null ? StationNode.EnsureOn(edge.from) : null;
+                    StationNode toNode = edge.to != null ? StationNode.EnsureOn(edge.to) : null;
+                    f.edges.Add(new FlowEdge
+                    {
+                        from=objects.IndexOf(edge.from),
+                        to=objects.IndexOf(edge.to),
+                        fromGuid=fromNode != null ? fromNode.StableStationId : "",
+                        toGuid=toNode != null ? toNode.StableStationId : ""
+                    });
+                }
                 s.flows.Add(f);
             }
         }
@@ -246,8 +266,11 @@ public class KitchenSaveSnapshot
             var cutting=go.GetComponent<CuttingStation>(); if(cutting!=null) cutting.RestoreSelectedProduct(product);
             StationNode restoredStationNode = StationNode.EnsureOn(go);
             if (restoredStationNode != null)
+            {
+                restoredStationNode.RestoreStableStationId(e.stationGuid);
                 restoredStationNode.SetProductionRatePercent(e.productionRatePercent > 0f
                     ? e.productionRatePercent : 100f);
+            }
             if (item.stationFamily == "Pickup Station"
                 && item.placementSurface == ItemDefinition.PlacementSurface.Floor)
             {
@@ -317,10 +340,47 @@ public class KitchenSaveSnapshot
             foreach(int i in w.stations) if(i>=0 && i<objects.Count) { employee.AddOperatedStation(objects[i]); StationNode.EnsureOn(objects[i]).AddWorker(employee); }
             employee.SyncFromOperatedStations();
         }
+        var stationObjectsByGuid = new Dictionary<string, GameObject>(System.StringComparer.Ordinal);
+        foreach (GameObject stationObject in objects)
+        {
+            StationNode node = stationObject != null ? stationObject.GetComponent<StationNode>() : null;
+            if (node == null) continue;
+            string guid = node.StableStationId;
+            if (!string.IsNullOrEmpty(guid) && !stationObjectsByGuid.ContainsKey(guid))
+                stationObjectsByGuid.Add(guid, stationObject);
+        }
         foreach(var f in flows) {
             var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps,graphInitialized=version>=6 && f.graphInitialized};
-            foreach(int i in f.stations) if(i>=0 && i<objects.Count) flow.stations.Add(objects[i]);
-            if(f.edges!=null) foreach(var edge in f.edges) if(edge!=null && edge.from>=0 && edge.from<objects.Count && edge.to>=0 && edge.to<objects.Count) flow.connections.Add(new ProductionFlowConnection(objects[edge.from],objects[edge.to]));
+            int stationCount = Mathf.Max(f.stations != null ? f.stations.Count : 0,
+                f.stationGuids != null ? f.stationGuids.Count : 0);
+            for (int i = 0; i < stationCount; i++)
+            {
+                GameObject stationObject = null;
+                if (f.stationGuids != null && i < f.stationGuids.Count
+                    && !string.IsNullOrEmpty(f.stationGuids[i]))
+                    stationObjectsByGuid.TryGetValue(f.stationGuids[i], out stationObject);
+                if (stationObject == null && f.stations != null && i < f.stations.Count
+                    && f.stations[i] >= 0 && f.stations[i] < objects.Count)
+                    stationObject = objects[f.stations[i]];
+                if (stationObject != null && !flow.stations.Contains(stationObject))
+                    flow.stations.Add(stationObject);
+            }
+            if(f.edges!=null) foreach(var edge in f.edges)
+            {
+                if (edge == null) continue;
+                GameObject from = null;
+                GameObject to = null;
+                if (!string.IsNullOrEmpty(edge.fromGuid))
+                    stationObjectsByGuid.TryGetValue(edge.fromGuid, out from);
+                if (!string.IsNullOrEmpty(edge.toGuid))
+                    stationObjectsByGuid.TryGetValue(edge.toGuid, out to);
+                if (from == null && edge.from >= 0 && edge.from < objects.Count)
+                    from = objects[edge.from];
+                if (to == null && edge.to >= 0 && edge.to < objects.Count)
+                    to = objects[edge.to];
+                if (from != null && to != null)
+                    flow.connections.Add(new ProductionFlowConnection(from, to));
+            }
             flow.EnsureLegacyConnections();
             foreach(int i in f.workers) if(i>=0 && i<staff.Count) flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);

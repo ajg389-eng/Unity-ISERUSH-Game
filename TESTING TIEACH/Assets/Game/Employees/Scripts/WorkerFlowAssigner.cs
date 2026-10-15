@@ -21,6 +21,8 @@ public class ProductionFlowPlan
 
     public string flowName = "Flow";
     public KitchenFlowKind kind = KitchenFlowKind.Custom;
+    // Type codes are intentionally allowed to repeat. The station GameObject
+    // list and graph connections hold the unique identity of each machine.
     public List<string> stepIds = new List<string>();
     public List<GameObject> stations = new List<GameObject>();
     public List<ProductionFlowConnection> connections = new List<ProductionFlowConnection>();
@@ -33,6 +35,18 @@ public class ProductionFlowPlan
         if (stepIds == null) stepIds = new List<string>();
         if (stations == null) stations = new List<GameObject>();
         stations.RemoveAll(station => station == null);
+        // A flow may contain multiple instances of the same station type and
+        // recipe. Keep those distinct GameObjects, while removing repeated
+        // references to the very same physical station.
+        for (int i = stations.Count - 1; i >= 0; i--)
+        {
+            for (int previous = 0; previous < i; previous++)
+            {
+                if (stations[previous] != stations[i]) continue;
+                stations.RemoveAt(i);
+                break;
+            }
+        }
         if (connections == null) connections = new List<ProductionFlowConnection>();
         connections.RemoveAll(connection => connection == null || connection.from == null || connection.to == null
             || connection.from == connection.to || !stations.Contains(connection.from) || !stations.Contains(connection.to));
@@ -1689,14 +1703,31 @@ public static class WorkflowAnalysis
 
         if (nodes.Count == 0) return 0f;
 
-        flow?.EnsureLegacyConnections();
+        if (flow != null && !flow.graphInitialized)
+            flow.EnsureLegacyConnections();
         if (flow?.connections != null)
         {
+            ProductionManager production = ProductionManager.Instance;
             foreach (ProductionFlowConnection connection in flow.connections)
             {
                 if (connection?.from == null || connection.to == null
                     || !byStation.TryGetValue(connection.from, out StationRateNode from))
                     continue;
+
+                bool canTransferAnyOutput = false;
+                if (production != null)
+                {
+                    foreach (ItemDefinition outputItem in from.outputs)
+                    {
+                        if (outputItem == null
+                            || !production.CanFlowStationReceiveItem(connection.to, outputItem))
+                            continue;
+                        canTransferAnyOutput = true;
+                        break;
+                    }
+                }
+                if (!canTransferAnyOutput) continue;
+
                 if (connection.to.GetComponent<HeatLampStation>() != null)
                 {
                     from.outputsToPickup = true;
@@ -2073,6 +2104,7 @@ public static class WorkflowAnalysis
         {
             requiresInput = true;
             AddRateInput(inputs, grill.GetSelectedInput(), 1f);
+            AddRateInput(inputs, grill.GetSelectedSecondaryInput(), 1f);
         }
         else if (fryer != null)
         {

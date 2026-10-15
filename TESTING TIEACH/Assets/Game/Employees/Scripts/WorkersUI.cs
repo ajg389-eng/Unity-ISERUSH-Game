@@ -1162,6 +1162,17 @@ public class WorkersUI : MonoBehaviour
             }
             sb.Append("\n");
             AppendDeliveryRateSummary(sb, flow, layout);
+            if (production != null && flow != null)
+            {
+                ProductionManager.WorkerEfficiencySnapshot efficiency =
+                    production.GetWorkerEfficiencySnapshot(flow);
+                sb.Append("\n<b>Recent:</b> ")
+                    .Append(FormatItemRate(efficiency.actualOutputPerMinute)).Append(" output/min | ")
+                    .Append(FormatItemRate(efficiency.averageBatchSize)).Append(" items/trip | ")
+                    .Append(efficiency.emptyTrips).Append(" empty trips");
+                if (!string.IsNullOrEmpty(efficiency.mostCommonWaitReason))
+                    sb.Append(" | waiting: ").Append(efficiency.mostCommonWaitReason);
+            }
             flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
                 + "<color=#59616D>──────────────────────────────</color>\n" + sb;
             LayoutFlowPanel();

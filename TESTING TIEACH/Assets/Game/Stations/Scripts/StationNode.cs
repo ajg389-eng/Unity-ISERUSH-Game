@@ -77,6 +77,23 @@ public class StationNode : MonoBehaviour
 {
     public const float MinimumProductionRatePercent = 1f;
     public const float MaximumProductionRatePercent = 100f;
+    static readonly Dictionary<string, StationNode> activeStationsById =
+        new Dictionary<string, StationNode>(System.StringComparer.Ordinal);
+    static readonly Dictionary<StationNode, string> displayNameCache =
+        new Dictionary<StationNode, string>();
+    static bool displayNameCacheDirty = true;
+
+    [SerializeField, HideInInspector] string stableStationId;
+
+    /// <summary>Persistent identity for this physical station instance.</summary>
+    public string StableStationId
+    {
+        get
+        {
+            EnsureStableStationId();
+            return stableStationId;
+        }
+    }
 
     [Tooltip("Worker currently assigned to operate this station")]
     public KitchenEmployee assignedWorker;
@@ -115,6 +132,7 @@ public class StationNode : MonoBehaviour
 
     void Awake()
     {
+        EnsureStableStationId();
         productionRatePercent = Mathf.Clamp(productionRatePercent,
             MinimumProductionRatePercent, MaximumProductionRatePercent);
         SyncAssignedWorkers();
@@ -126,12 +144,49 @@ public class StationNode : MonoBehaviour
 
     void OnEnable()
     {
+        EnsureStableStationId();
+        displayNameCacheDirty = true;
         ProductionManager.Instance?.InvalidateStationCache();
     }
 
     void OnDisable()
     {
+        if (!string.IsNullOrEmpty(stableStationId)
+            && activeStationsById.TryGetValue(stableStationId, out StationNode active)
+            && active == this)
+            activeStationsById.Remove(stableStationId);
+        displayNameCacheDirty = true;
         ProductionManager.Instance?.InvalidateStationCache();
+    }
+
+    void EnsureStableStationId()
+    {
+        if (string.IsNullOrWhiteSpace(stableStationId))
+            stableStationId = System.Guid.NewGuid().ToString("N");
+
+        if (activeStationsById.TryGetValue(stableStationId, out StationNode existing)
+            && existing != null && existing != this)
+            stableStationId = System.Guid.NewGuid().ToString("N");
+
+        if (isActiveAndEnabled)
+            activeStationsById[stableStationId] = this;
+    }
+
+    /// <summary>Restores the saved identity before saved flow links are used.</summary>
+    public void RestoreStableStationId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            EnsureStableStationId();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(stableStationId)
+            && activeStationsById.TryGetValue(stableStationId, out StationNode active)
+            && active == this)
+            activeStationsById.Remove(stableStationId);
+        stableStationId = value.Trim();
+        EnsureStableStationId();
     }
 
     void Reset()
@@ -296,16 +351,66 @@ public class StationNode : MonoBehaviour
     {
         get
         {
-            var t = KitchenEmployee.GetStationTypeFrom(gameObject);
-            if (GetComponent<ShakeStation>() != null) return "Shake Station MK" + StationMark;
-            if (GetComponent<AssemblyStation>() != null) return "Assembly Station MK" + StationMark;
-            if (GetComponent<CuttingStation>() != null) return "Cutting Station MK" + StationMark;
-            if (GetComponent<GrillStation>() != null) return "Grill MK" + StationMark;
-            if (GetComponent<FryerStation>() != null) return "Fryer MK" + StationMark;
-            if (GetComponent<HeatLampStation>() != null) return "Pickup Station MK" + StationMark;
-            if (t.HasValue) return t.Value.ToString();
-            return gameObject.name;
+            if (displayNameCacheDirty) RebuildDisplayNameCache();
+            return displayNameCache.TryGetValue(this, out string label)
+                ? label : BuildBaseDisplayName();
         }
+    }
+
+    string BuildBaseDisplayName()
+    {
+        var t = KitchenEmployee.GetStationTypeFrom(gameObject);
+        if (GetComponent<ShakeStation>() != null) return "Shake Station MK" + StationMark;
+        if (GetComponent<AssemblyStation>() != null) return "Assembly Station MK" + StationMark;
+        if (GetComponent<CuttingStation>() != null) return "Cutting Station MK" + StationMark;
+        if (GetComponent<GrillStation>() != null) return "Grill MK" + StationMark;
+        if (GetComponent<FryerStation>() != null) return "Fryer MK" + StationMark;
+        if (GetComponent<HeatLampStation>() != null) return "Pickup Station MK" + StationMark;
+        if (t.HasValue) return t.Value.ToString();
+        return gameObject.name;
+    }
+
+    static void RebuildDisplayNameCache()
+    {
+        displayNameCache.Clear();
+        StationNode[] nodes = FindObjectsByType<StationNode>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        var groups = new Dictionary<string, List<StationNode>>();
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            StationNode node = nodes[i];
+            if (node == null) continue;
+            string baseName = node.BuildBaseDisplayName();
+            if (!groups.TryGetValue(baseName, out List<StationNode> group))
+            {
+                group = new List<StationNode>();
+                groups.Add(baseName, group);
+            }
+            group.Add(node);
+        }
+
+        foreach (KeyValuePair<string, List<StationNode>> pair in groups)
+        {
+            List<StationNode> group = pair.Value;
+            if (group.Count == 1)
+            {
+                displayNameCache[group[0]] = pair.Key;
+                continue;
+            }
+
+            // Position-based order makes the labels easy to match to the layout.
+            group.Sort((a, b) =>
+            {
+                int order = a.transform.position.x.CompareTo(b.transform.position.x);
+                if (order != 0) return order;
+                order = a.transform.position.z.CompareTo(b.transform.position.z);
+                return order != 0 ? order : a.GetInstanceID().CompareTo(b.GetInstanceID());
+            });
+            for (int i = 0; i < group.Count; i++)
+                displayNameCache[group[i]] = pair.Key + " #" + (i + 1);
+        }
+
+        displayNameCacheDirty = false;
     }
 
     public int StationMark
@@ -455,6 +560,7 @@ public class StationNode : MonoBehaviour
         if (go == null) return null;
         var node = go.GetComponent<StationNode>();
         if (node == null) node = go.AddComponent<StationNode>();
+        node.EnsureStableStationId();
         StationRuntimeMetrics.EnsureOn(go);
         StationConfigurationCaution.Ensure(go);
         return node;
@@ -566,6 +672,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         if (units <= 0) return;
         outputSamples.Enqueue(new OutputSample { time = Time.time, units = units });
         PruneOutputSamples();
+        ProductionManager.Instance?.NotifyProductionStateChanged();
     }
 
     void PruneOutputSamples()
@@ -580,9 +687,8 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         stateSampleElapsed += Time.deltaTime;
         if (stateSampleElapsed < StateSampleIntervalSeconds) return;
 
-        // Station state feeds analytics and the worker planner, which evaluates
-        // on a 0.25s cadence. Sampling at 10 Hz keeps those displays responsive
-        // without rechecking every station's buffers on every rendered frame.
+        // Station state feeds analytics. Sampling at 10 Hz keeps the display
+        // responsive without rechecking buffers on every rendered frame.
         float elapsed = stateSampleElapsed;
         stateSampleElapsed = 0f;
         if (node == null) node = GetComponent<StationNode>();
@@ -593,6 +699,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         {
             previousState = CurrentState;
             CurrentStateSeconds = 0f;
+            ProductionManager.Instance?.NotifyProductionStateChanged();
         }
         switch (CurrentState)
         {

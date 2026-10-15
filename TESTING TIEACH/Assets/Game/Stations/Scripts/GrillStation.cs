@@ -31,7 +31,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
     readonly List<Transform> outputMarkers = new List<Transform>();
     readonly List<Transform> slotMarkers = new List<Transform>();
     int displayedUnits = -1;
-    bool displayedCooked;
+    int displayedCookedOutputUnits = -1;
     ItemDefinition displayedProduct;
     StationProcessProgressIndicator processProgressIndicator;
 
@@ -296,8 +296,8 @@ public class GrillStation : MonoBehaviour, IStationBuffer
 
     void RefreshItemDisplay(bool force)
     {
-        bool cooked = IsCooked();
-        if (!force && displayedUnits == BufferedPattyCount && displayedCooked == cooked
+        if (!force && displayedUnits == BufferedPattyCount
+            && displayedCookedOutputUnits == cookedOutputUnits
             && displayedProduct == selectedProduct) return;
 
         EnsureBufferMarkers();
@@ -306,7 +306,7 @@ public class GrillStation : MonoBehaviour, IStationBuffer
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
 
         displayedUnits = BufferedPattyCount;
-        displayedCooked = cooked;
+        displayedCookedOutputUnits = cookedOutputUnits;
         displayedProduct = selectedProduct;
         if (BufferedPattyCount <= 0) return;
 

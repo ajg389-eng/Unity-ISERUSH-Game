@@ -1,12 +1,13 @@
 using UnityEngine;
 
 /// <summary>
-/// Runtime output budget for stocked source stations. Tokens allow one item at a
-/// time while keeping the station's sustained output at its items/min cap.
+/// Runtime output budget for stocked source stations. Tokens allow workers to
+/// collect a four-item batch while keeping sustained output at the station's
+/// items/min cap.
 /// </summary>
 public static class StationOutputRateLimiter
 {
-    const int MaximumBurstUnits = 1;
+    const int MaximumBurstUnits = 4;
 
     public static int GetAvailableUnits(float itemsPerMinute, ref float tokens,
         ref float lastUpdatedAt, ref bool initialized)
@@ -23,7 +24,7 @@ public static class StationOutputRateLimiter
 
         if (!initialized || now < lastUpdatedAt)
         {
-            // Allow one immediate item, then replenish strictly at the rate cap.
+            // Start with one full worker batch, then replenish strictly at the rate cap.
             tokens = rate > 0f ? MaximumBurstUnits : 0f;
             lastUpdatedAt = now;
             initialized = true;

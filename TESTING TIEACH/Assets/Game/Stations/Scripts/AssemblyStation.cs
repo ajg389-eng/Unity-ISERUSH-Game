@@ -245,6 +245,17 @@ public class AssemblyStation : MonoBehaviour, IStationBuffer
         return amount > 0 && bufferedOutputs + amount <= OutputSlotCapacity;
     }
 
+    public int StoreOutput(ItemDefinition item, int amount)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null || item == null || !recipe.Produces(item) || amount <= 0)
+            return 0;
+        int stored = Mathf.Min(amount, Mathf.Max(0, OutputSlotCapacity - bufferedOutputs));
+        bufferedOutputs += stored;
+        if (stored > 0) RefreshTableDisplay();
+        return stored;
+    }
+
     public bool HasRequiredInputs(ItemDefinition product, IReadOnlyList<ItemDefinition> pantryMaterials, int units)
     {
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
