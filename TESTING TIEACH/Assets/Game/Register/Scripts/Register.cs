@@ -451,7 +451,7 @@ public class Register : MonoBehaviour
         }
 
         if (StoreStatisticsManager.Instance != null)
-            StoreStatisticsManager.Instance.RecordOrderCompleted(front.QueueJoinTime, this, sale);
+            StoreStatisticsManager.Instance.RecordOrderCompleted(front.OrderPlacedTime, this, sale);
         if (front != null) front.OnServed(storeExit);
         UpdateQueueTargets();
 

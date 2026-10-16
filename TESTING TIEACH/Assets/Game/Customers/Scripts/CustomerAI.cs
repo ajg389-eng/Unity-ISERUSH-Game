@@ -36,6 +36,9 @@ public class CustomerAI : MonoBehaviour
 
     float queueJoinTime;
     public float QueueJoinTime => queueJoinTime;
+    float orderPlacedTime;
+    bool hasOrderPlacedTime;
+    public float OrderPlacedTime => hasOrderPlacedTime ? orderPlacedTime : queueJoinTime;
 
     CustomerOrder order;
     int salePrice;
@@ -490,6 +493,11 @@ public class CustomerAI : MonoBehaviour
     public void OnOrderPlacedAtRegister()
     {
         if (leaving) return;
+        if (!hasOrderPlacedTime)
+        {
+            orderPlacedTime = Time.time;
+            hasOrderPlacedTime = true;
+        }
         if (includeInOrderRate && !orderPlacementRecorded && order != null
             && order.GetTotalQuantity() > 0 && ProductionManager.Instance != null)
         {

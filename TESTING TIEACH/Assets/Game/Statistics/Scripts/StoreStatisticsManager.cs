@@ -13,8 +13,8 @@ public class StoreStatisticsManager : MonoBehaviour
     [Tooltip("Window in seconds for throughput (orders/min) and utilization")]
     public float throughputWindowSeconds = 60f;
 
-    // Completed orders: (gameTime when completed, wait duration)
-    readonly List<(float completedAt, float waitSeconds)> completedOrders = new List<(float, float)>();
+    // Simulation timestamps for orders completed in the rolling throughput window.
+    readonly List<float> completedOrderTimes = new List<float>();
     const int MaxCompletedOrders = 500;
     int mealsWasted;
     int revenueEarned;
@@ -62,13 +62,13 @@ public class StoreStatisticsManager : MonoBehaviour
             Instance = null;
     }
 
-    public void RecordOrderCompleted(float queueJoinTime, Register station, int saleAmount = 0)
+    public void RecordOrderCompleted(float orderPlacedTime, Register station, int saleAmount = 0)
     {
         float now = Time.time;
-        float wait = Mathf.Max(0f, now - queueJoinTime);
-        completedOrders.Add((now, wait));
-        if (completedOrders.Count > MaxCompletedOrders)
-            completedOrders.RemoveAt(0);
+        float wait = Mathf.Max(0f, now - orderPlacedTime);
+        completedOrderTimes.Add(now);
+        if (completedOrderTimes.Count > MaxCompletedOrders)
+            completedOrderTimes.RemoveAt(0);
         if (saleAmount > 0)
             revenueEarned += saleAmount;
 
@@ -292,17 +292,10 @@ public class StoreStatisticsManager : MonoBehaviour
         }
     }
 
-    /// <summary>Average wait time (queue join to served) in seconds – service performance.</summary>
+    /// <summary>Average order wait (order placed to full pickup) today, in simulation seconds.</summary>
     public float AverageWaitTimeSeconds
     {
-        get
-        {
-            if (completedOrders.Count == 0) return 0f;
-            float sum = 0f;
-            foreach (var (_, wait) in completedOrders)
-                sum += wait;
-            return sum / completedOrders.Count;
-        }
+        get => AverageWaitTimeTodaySeconds;
     }
 
     /// <summary>Orders completed in the last throughputWindowSeconds – system output.</summary>
@@ -313,7 +306,7 @@ public class StoreStatisticsManager : MonoBehaviour
             float windowSeconds = Mathf.Max(1f, throughputWindowSeconds);
             float cutoff = Time.time - windowSeconds;
             int count = 0;
-            foreach (var (completedAt, _) in completedOrders)
+            foreach (float completedAt in completedOrderTimes)
                 if (completedAt >= cutoff) count++;
             float observedWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
                 1f, windowSeconds);
@@ -352,6 +345,6 @@ public class StoreStatisticsManager : MonoBehaviour
         }
     }
 
-    /// <summary>Order completion time (cycle time) – same as average wait.</summary>
+    /// <summary>Order completion time (order placed to full pickup) – same as average wait.</summary>
     public float OrderCompletionTimeSeconds => AverageWaitTimeSeconds;
 }

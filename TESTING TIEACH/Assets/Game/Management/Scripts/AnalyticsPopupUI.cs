@@ -12,6 +12,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
 
     static AnalyticsPopupUI instance;
     GameObject panel;
+    public static bool IsOpen => instance != null && instance.gameObject.activeInHierarchy;
 
     public static void Open(Transform canvas)
     {

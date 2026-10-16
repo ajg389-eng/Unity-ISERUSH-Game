@@ -132,6 +132,7 @@ public class OnboardingTutorial : MonoBehaviour
     int autoAdvanceStep = -1;
     float autoAdvanceAt;
     bool flowEditCompleted;
+    bool flowCreateCompleted;
     bool recipeBusinessOpened;
     bool researchScreenOpened;
     bool recipeScreenOpened;
@@ -398,7 +399,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true, requireOrderServed: true),
         new Step(
             "Review analytics",
-            "You have seen the complete service loop. Click the highlighted <b>Analytics</b> button on the HUD to inspect demand, queues, throughput, and utilization after the first order.",
+            "Before you open Analytics: <b>In System</b> counts customers waiting or being served. <b>Avg Order Wait</b> is order placement to full pickup. <b>Orders Served / Min</b> counts customer orders completed per minute. <b>Service Rate</b> is served ÷ (served + lost). In the item table, <b>Completed Last Min</b> counts item units, not orders. Open Analytics, review it, close it, then click Finish.",
             "Finish", Highlight.None, requireAnalyticsScreen: true),
     };
 
@@ -466,7 +467,7 @@ public class OnboardingTutorial : MonoBehaviour
         "I am opening the doors for one test customer. They will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
         "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then continue to Analytics.",
 
-        "You have completed the first service loop. Click the highlighted <b>Analytics</b> button on the HUD to read demand, queues, throughput, and utilization."
+        "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Completed Last Min in the item table counts item units, not orders. Open Analytics, review it, close it, then Finish."
     };
 
     static readonly string[] CompactTutorialText =
@@ -492,7 +493,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
         "Customers request a burger and pay when the ordered burger reaches the Pickup Station. Workers keep the line moving, but only stage food that a waiting customer ordered.",
         "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave.",
-        "Open <b>Analytics</b> to review demand, queues, throughput, and utilization, then click Finish."
+        "In <b>Analytics</b>, In System means customers waiting or being served; Avg Order Wait is order to full pickup; Orders Served / Min counts customer orders; Service Rate is served divided by served plus lost. Completed Last Min counts item units. Review Analytics, close it, then Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -567,6 +568,7 @@ public class OnboardingTutorial : MonoBehaviour
         running = true;
         pendingStart = false;
         flowEditCompleted = false;
+        flowCreateCompleted = false;
         liveCustomerSpawned = false;
         EnsureUI();
         ShowStep();
@@ -1120,7 +1122,7 @@ public class OnboardingTutorial : MonoBehaviour
             return false;
         if (step.requireHiredWorker && !HasHiredWorker())
             return false;
-        if (step.requireFlow && !HasTutorialFlow())
+        if (step.requireFlow && (!flowCreateCompleted || !HasTutorialFlow()))
             return false;
         if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
             return false;
@@ -1284,8 +1286,14 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
     {
-        if (IsActive && wasEdit && flow != null && flow.stations != null && flow.stations.Count >= 2)
+        if (!IsActive || flow == null || flow.stations == null || flow.stations.Count < 2)
+            return;
+
+        if (wasEdit)
             Instance.flowEditCompleted = true;
+        else if (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
+            && Steps[Instance.stepIndex].requireFlow && IsBurgerTutorialFlow(flow))
+            Instance.flowCreateCompleted = true;
     }
 
     bool AllTutorialStationsPlaced()
@@ -1776,7 +1784,8 @@ public class OnboardingTutorial : MonoBehaviour
             foreach (var button in workers.GetComponentsInChildren<Button>())
             {
                 if (step.requireEditedFlow && !flowEditCompleted && button.name == "EditFlow"
-                    || step.requireFlow && !step.requireEditedFlow && !HasTutorialFlow() && button.name == "CreateFlow"
+                    || step.requireFlow && !step.requireEditedFlow
+                        && !(flowCreateCompleted && HasTutorialFlow()) && button.name == "CreateFlow"
                     || step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
                     HighlightControl(button);
                 if (step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
@@ -1844,6 +1853,9 @@ public class OnboardingTutorial : MonoBehaviour
                 TryBegin();
             return;
         }
+        if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireAnalyticsScreen
+            && panel != null)
+            panel.SetActive(!AnalyticsPopupUI.IsOpen);
         TrackCameraTutorialInputs();
         RefreshCameraPromptStatus();
         RefreshAdvanceGate();
@@ -2079,6 +2091,13 @@ public class OnboardingTutorial : MonoBehaviour
             if (manager == null) return;
             if (!manager.IsCapturingFlow)
             {
+                if (flowCreateCompleted && HasTutorialFlow())
+                {
+                    tutorialFocusText = "Burger flow saved. Moving to the next tutorial step.";
+                    if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                    return;
+                }
+
                 var workers = FindFirstObjectByType<WorkersUI>();
                 tutorialFocusText = "Flow tabs select a saved workflow. <b>Edit</b> changes the selected route, <b>+ Flow</b> creates a new one, and <b>Delete</b> removes the selected flow. Click <b>+ Flow</b> to continue.";
                 if (workers != null)

@@ -437,7 +437,7 @@ public class CustomersUI : MonoBehaviour
         if (metricValues.Count < 4) return;
         var stats = StoreStatisticsManager.Instance;
         metricValues[0].text = stats != null ? stats.CustomersInSystem.ToString() : "—";
-        metricValues[1].text = stats != null ? stats.AverageWaitTimeSeconds.ToString("F1") + " s" : "—";
+        metricValues[1].text = stats != null ? stats.AverageWaitTimeTodaySeconds.ToString("F1") + " s" : "—";
         metricValues[2].text = stats != null ? stats.ThroughputOrdersPerMinute.ToString("F1") : "—";
         int servedOrLost = stats != null ? stats.OrdersCompletedToday + stats.CustomersLostToday : 0;
         metricValues[3].text = stats == null || servedOrLost == 0
