@@ -172,6 +172,18 @@ public class CustomerSpawner : MonoBehaviour
         LastSpawnError = null;
     }
 
+    void ClearPendingDemandForMenuChange()
+    {
+        // Unsent arrivals were generated from the previous menu. Keep customers
+        // who have already spawned, but let future customers use the new menu now.
+        pendingDemandBatches.Clear();
+        pendingItemCounts.Clear();
+        pendingScheduledRequestCount = 0;
+        pendingDemandSummary = null;
+        pendingDemandSummaryDirty = true;
+        activeDemandBatch = null;
+    }
+
     void EnsureDayHook()
     {
         if (clockHooked) return;
@@ -252,12 +264,24 @@ public class CustomerSpawner : MonoBehaviour
         if (customersPerMinute <= 0)
         {
             arrivalScheduled = false;
+            if (scheduledDemandRevision != -1 || pendingScheduledRequestCount > 0)
+            {
+                // Do not keep spawning customers from a backlog after every menu
+                // item has been disabled. Re-enabling a menu item starts a fresh
+                // demand cycle from that menu's selected products.
+                ClearPendingDemandForMenuChange();
+                scheduledDemandRevision = -1;
+                supplementalOrderIndex = 0;
+            }
         }
         else
         {
             int revision = config.DemandScheduleRevision;
             if (!arrivalScheduled || revision != scheduledDemandRevision)
             {
+                if (revision != scheduledDemandRevision)
+                    ClearPendingDemandForMenuChange();
+
                 secondsBetweenArrivals = 60f / customersPerMinute;
                 waitRemaining = secondsBetweenArrivals;
                 scheduledDemandRevision = revision;

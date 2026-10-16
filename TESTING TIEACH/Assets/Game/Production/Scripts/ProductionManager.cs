@@ -1033,6 +1033,12 @@ public partial class ProductionManager : MonoBehaviour
                 continue;
             }
 
+            // A flow can contain more than one station of the required type.
+            // Only route an ingredient to one that is configured to accept it;
+            // otherwise a cheese-supply job can be sent to a potato cutter and
+            // remain blocked even when a compatible cutter is connected.
+            if (!CanBranchAcceptItem(candidate, transferItem)) continue;
+
             if (requiredType == StationType.Assembly && requiredAssemblyProduct != null)
             {
                 AssemblyStation assembly = candidate.GetComponent<AssemblyStation>();

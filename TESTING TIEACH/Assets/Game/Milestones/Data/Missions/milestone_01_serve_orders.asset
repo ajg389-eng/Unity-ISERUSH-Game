@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: milestone_01_serve_orders
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_serve_orders
-  title: Serve 25 customers
-  description: Serve 25 customers with your burger and fries menu.
+  title: Serve 100 customers
+  description: Serve 100 customers with your burger and fries menu.
   completionEventId: order_served
-  requiredCount: 25
+  requiredCount: 100
   showBeforeComplete: 1
   showAfterComplete: 1

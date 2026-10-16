@@ -230,7 +230,9 @@ public class MissionProgressManager : MonoBehaviour
                 MissionDefinition mission = database.missions.Find(m => m != null && m.missionId == entry.missionId);
                 if (mission == null) continue;
                 int progress = Mathf.Clamp(entry.progress, 0, Mathf.Max(1, mission.requiredCount));
-                bool complete = entry.complete || progress >= Mathf.Max(1, mission.requiredCount);
+                // Re-evaluate completion against the current requirement so an increased
+                // target (for example, 25 to 100 orders) is reflected in existing saves.
+                bool complete = progress >= Mathf.Max(1, mission.requiredCount);
                 progressByMissionId[entry.missionId] = complete
                     ? Mathf.Max(1, mission.requiredCount) : progress;
                 if (complete)

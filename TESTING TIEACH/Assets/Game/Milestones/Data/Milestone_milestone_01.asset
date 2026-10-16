@@ -18,7 +18,6 @@ MonoBehaviour:
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: 7a8ccd56baa7476eb83291c1650c9c38, type: 2}
-  - {fileID: 11400000, guid: d1486712a5db494ea3b04884fbde2522, type: 2}
   - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   missionDatabase: {fileID: 0}

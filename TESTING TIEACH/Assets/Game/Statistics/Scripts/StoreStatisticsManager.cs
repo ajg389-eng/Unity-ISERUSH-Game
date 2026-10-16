@@ -8,6 +8,7 @@ using UnityEngine;
 public class StoreStatisticsManager : MonoBehaviour
 {
     public static StoreStatisticsManager Instance { get; private set; }
+    public event System.Action OnStatisticsChanged;
 
     [Header("Sampling")]
     [Tooltip("Window in seconds for throughput (orders/min) and utilization")]
@@ -76,6 +77,7 @@ public class StoreStatisticsManager : MonoBehaviour
         dayWaitSum += wait;
         if (saleAmount > 0)
             dayRevenue += saleAmount;
+        OnStatisticsChanged?.Invoke();
     }
 
     public void RecordMealWasted()
@@ -115,6 +117,16 @@ public class StoreStatisticsManager : MonoBehaviour
         dayMoneyStart = GetCurrentMoney();
         dayTrackingStarted = true;
         EnsureHourBuckets(forceReset: true);
+        OnStatisticsChanged?.Invoke();
+    }
+
+    public void RestoreDailyTaskProgress(int completedOrders, int revenue, float waitTotalSeconds)
+    {
+        dayOrdersCompleted = Mathf.Max(0, completedOrders);
+        dayRevenue = Mathf.Max(0, revenue);
+        dayWaitSum = Mathf.Max(0f, waitTotalSeconds);
+        dayTrackingStarted = true;
+        OnStatisticsChanged?.Invoke();
     }
 
     public int MealsWasted => mealsWasted;

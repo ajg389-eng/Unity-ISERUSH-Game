@@ -6,12 +6,14 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 17;
+    public const int CurrentVersion = 18;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
+    public int dailyCompletedOrders, dailyRevenue;
+    public float dailyWaitTotalSeconds;
     public bool tutorialComplete;
     public bool tutorialOrderServed;
     public List<Equipment> equipment = new List<Equipment>();
@@ -55,6 +57,13 @@ public class KitchenSaveSnapshot
         }
         if (MissionProgressManager.Instance != null)
             s.missionProgress = MissionProgressManager.Instance.CaptureProgress();
+        var statistics = StoreStatisticsManager.Instance;
+        if (statistics != null)
+        {
+            s.dailyCompletedOrders = statistics.OrdersCompletedToday;
+            s.dailyRevenue = statistics.RevenueToday;
+            s.dailyWaitTotalSeconds = statistics.AverageWaitTimeTodaySeconds * statistics.OrdersCompletedToday;
+        }
         if (ResearchProgressManager.Instance != null)
         {
             s.completedResearchIds = ResearchProgressManager.Instance.CaptureCompleted();
@@ -430,6 +439,14 @@ public class KitchenSaveSnapshot
             appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
         if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
+        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+        if (statistics != null)
+        {
+            if (version >= 18)
+                statistics.RestoreDailyTaskProgress(dailyCompletedOrders, dailyRevenue, dailyWaitTotalSeconds);
+            else
+                statistics.BeginDay();
+        }
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
         if (placer != null)

@@ -775,9 +775,6 @@ public class TitleScreenController : MonoBehaviour
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.ShiftStarted);
         Sfx.Play(SfxId.UiOpen);
 
-        if (StoreStatisticsManager.Instance != null)
-            StoreStatisticsManager.Instance.BeginDay();
-
         var onboarding = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance
             : FindFirstObjectByType<OnboardingTutorial>();

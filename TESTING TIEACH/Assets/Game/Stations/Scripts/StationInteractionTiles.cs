@@ -790,7 +790,7 @@ public class StationInteractionTiles : MonoBehaviour
         return 0.35f;
     }
 
-    /// <summary>True only when the employee is at the station's flow-node interaction tile.</summary>
+    /// <summary>True when the employee is at any authored station interaction tile.</summary>
     public bool IsEmployeeOnInteractionTile(Vector3 worldPosition)
     {
         var centers = GetInteractionStandCenters();
@@ -799,9 +799,13 @@ public class StationInteractionTiles : MonoBehaviour
 
         float tol = GetStandTolerance();
         float tolSq = tol * tol;
-        Vector3 center = GetFlowNodeInteractionPosition();
-        float dx = worldPosition.x - center.x;
-        float dz = worldPosition.z - center.z;
-        return dx * dx + dz * dz <= tolSq;
+        for (int i = 0; i < centers.Count; i++)
+        {
+            float dx = worldPosition.x - centers[i].x;
+            float dz = worldPosition.z - centers[i].z;
+            if (dx * dx + dz * dz <= tolSq)
+                return true;
+        }
+        return false;
     }
 }

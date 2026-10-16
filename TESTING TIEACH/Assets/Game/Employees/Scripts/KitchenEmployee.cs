@@ -2111,6 +2111,20 @@ public partial class KitchenEmployee : MonoBehaviour
         GameObject processingStation = currentJob.reservedWorkStation;
         if (processingStation == null && currentJob.CurrentStationType.HasValue)
             processingStation = GetOperatedStationObject(currentJob.CurrentStationType.Value);
+        // Assembly-supply jobs hand raw ingredients into an intermediate station
+        // directly (Pantry -> Cutting, for example) instead of delivering them
+        // through CompleteOutputDelivery. Advance the pipeline here so the later
+        // CollectOutput task is bound to the station that now owns the ingredient.
+        if (currentJob.isAssemblySupply && processingStation != null)
+        {
+            StationType? processingType = GetStationTypeFrom(processingStation);
+            if (processingType.HasValue)
+            {
+                int nextStep = currentJob.FindNextPipelineIndex(processingType.Value);
+                if (nextStep >= 0)
+                    currentJob.currentStepIndex = nextStep;
+            }
+        }
         currentJob.hasPatty = false;
         currentJob.heldUnits = 0;
         currentJob.ingredientsHeld.Clear();
@@ -4498,15 +4512,43 @@ public partial class KitchenEmployee : MonoBehaviour
         if (tiles == null || grid == null || grid.Nodes == null)
             return requestedTarget;
 
-        // Flow nodes are drawn at the first interaction tile. Workers must path
-        // to that same tile instead of selecting an easier station side.
-        Vector3 candidate = tiles.GetFlowNodeInteractionPosition();
-        candidate.y = GroundY;
         float radius = GetMovementFootprintRadius();
-        if (TryGetInteractionRoute(candidate, radius, out resolvedPath))
+        Vector3 flowNodeTarget = tiles.GetFlowNodeInteractionPosition();
+        flowNodeTarget.y = GroundY;
+        if (TryGetInteractionRoute(flowNodeTarget, radius, out resolvedPath))
         {
             foundReachableTarget = true;
-            return candidate;
+            return flowNodeTarget;
+        }
+
+        // A station can expose several valid stand tiles. Keep the flow-node
+        // tile as the preferred point, but don't strand a worker when that one
+        // side is blocked by a wall, counter, or another station.
+        List<Vector3> standCenters = tiles.GetInteractionStandCenters();
+        float bestDistance = float.PositiveInfinity;
+        Vector3 bestTarget = requestedTarget;
+        List<Vector3> bestRoute = null;
+        bool foundAlternate = false;
+        for (int i = 0; i < standCenters.Count; i++)
+        {
+            Vector3 candidate = standCenters[i];
+            candidate.y = GroundY;
+            if (HorizontalDistSq(candidate, flowNodeTarget) < 0.001f
+                || !TryGetInteractionRoute(candidate, radius, out List<Vector3> route))
+                continue;
+
+            float distance = GetRouteDistance(route, candidate);
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            bestTarget = candidate;
+            bestRoute = route;
+            foundAlternate = true;
+        }
+        if (foundAlternate)
+        {
+            foundReachableTarget = true;
+            resolvedPath = bestRoute;
+            return bestTarget;
         }
 
         if (IsPickupDeliveryTarget())
@@ -4514,9 +4556,9 @@ public partial class KitchenEmployee : MonoBehaviour
             var fallbackCenters = new List<Vector3>();
             tiles.AddPickupRouteFallbackCenters(fallbackCenters);
             float handoffRangeSq = GetPickupHandoffRange() * GetPickupHandoffRange();
-            float bestDistance = float.PositiveInfinity;
-            Vector3 bestTarget = requestedTarget;
-            List<Vector3> bestRoute = null;
+            bestDistance = float.PositiveInfinity;
+            bestTarget = requestedTarget;
+            bestRoute = null;
             bool foundFallback = false;
             for (int i = 0; i < fallbackCenters.Count; i++)
             {

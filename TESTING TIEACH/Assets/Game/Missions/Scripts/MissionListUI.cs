@@ -13,6 +13,7 @@ public class MissionListUI : MonoBehaviour
     const string TopTabsObjectName = "TasksProgressionTabs";
     const float TopTabsWidth = 210f;
     const float TopTabsHeight = 60f;
+    const int MinimumOrdersForWaitGoal = 5;
 
     public enum SideTab
     {
@@ -47,12 +48,18 @@ public class MissionListUI : MonoBehaviour
     public Color panelColor = new Color(0.08f, 0.1f, 0.14f, 0.88f);
     public Color tabActiveColor = new Color(0.28f, 0.36f, 0.48f, 1f);
     public Color tabIdleColor = new Color(0.16f, 0.18f, 0.24f, 1f);
-    public Color currentMissionColor = new Color(1f, 0.92f, 0.55f, 1f);
-    public Color completeMissionColor = new Color(0.55f, 0.85f, 0.6f, 1f);
-    public Color pendingMissionColor = new Color(0.78f, 0.82f, 0.88f, 1f);
+    public Color recipeTaskColor = new Color(1f, 0.82f, 0.32f, 1f);
+    public Color workflowTaskColor = new Color(0.45f, 0.72f, 0.96f, 1f);
+    public Color serviceTaskColor = new Color(0.44f, 0.82f, 0.58f, 1f);
+    public Color financeTaskColor = new Color(0.35f, 0.78f, 0.76f, 1f);
+    public Color layoutTaskColor = new Color(0.72f, 0.58f, 0.94f, 1f);
+    public Color generalTaskColor = new Color(0.78f, 0.82f, 0.88f, 1f);
+
+    enum TaskType { Recipe, Workflow, Service, Finance, Layout, General }
 
     MissionProgressManager progress;
     MilestoneProgressManager milestones;
+    StoreStatisticsManager statistics;
     SideTab activeTab = SideTab.Tasks;
     bool built;
     ManagementTabInfoUI tabInfoUI;
@@ -77,19 +84,11 @@ public class MissionListUI : MonoBehaviour
 
     void Start()
     {
-        if (progress == null)
-            progress = MissionProgressManager.Instance ?? FindObjectOfType<MissionProgressManager>();
-        if (milestones == null)
-            milestones = MilestoneProgressManager.Instance ?? FindObjectOfType<MilestoneProgressManager>();
+        ResolveDataSources();
 
         EnsureUI();
         EnsureTopTabs();
         SelectTab(SideTab.Tasks, playSound: false);
-
-        if (progress != null)
-            progress.OnMissionsChanged += RefreshTasks;
-        if (milestones != null)
-            milestones.OnMilestonesChanged += RefreshProgression;
 
         RefreshAll();
         if (panelRoot != null)
@@ -103,6 +102,8 @@ public class MissionListUI : MonoBehaviour
         if (Instance == this) Instance = null;
         if (progress != null)
             progress.OnMissionsChanged -= RefreshTasks;
+        if (statistics != null)
+            statistics.OnStatisticsChanged -= RefreshTasks;
         if (milestones != null)
             milestones.OnMilestonesChanged -= RefreshProgression;
     }
@@ -116,9 +117,108 @@ public class MissionListUI : MonoBehaviour
 
     void LateUpdate()
     {
+        if (ResolveDataSources())
+            RefreshAll();
+
         if (topTabsRoot != null)
             topTabsRoot.transform.SetAsLastSibling();
         RefreshTopTabs();
+    }
+
+    bool ResolveDataSources()
+    {
+        // Use Unity's overloaded null check here: a destroyed singleton wrapper can
+        // still be a non-null CLR reference after returning to the game scene.
+        MissionProgressManager nextProgress = MissionProgressManager.Instance;
+        if (nextProgress == null)
+            nextProgress = progress != null ? progress : FindObjectOfType<MissionProgressManager>();
+
+        MilestoneProgressManager nextMilestones = MilestoneProgressManager.Instance;
+        if (nextMilestones == null)
+            nextMilestones = milestones != null ? milestones : FindObjectOfType<MilestoneProgressManager>();
+
+        StoreStatisticsManager nextStatistics = StoreStatisticsManager.Instance;
+        if (nextStatistics == null)
+            nextStatistics = statistics != null ? statistics : FindObjectOfType<StoreStatisticsManager>();
+        bool changed = false;
+
+        if (progress != nextProgress)
+        {
+            if (progress != null) progress.OnMissionsChanged -= RefreshTasks;
+            progress = nextProgress;
+            if (progress != null) progress.OnMissionsChanged += RefreshTasks;
+            changed = true;
+        }
+
+        if (milestones != nextMilestones)
+        {
+            if (milestones != null) milestones.OnMilestonesChanged -= RefreshProgression;
+            milestones = nextMilestones;
+            if (milestones != null) milestones.OnMilestonesChanged += RefreshProgression;
+            changed = true;
+        }
+
+        if (statistics != nextStatistics)
+        {
+            if (statistics != null) statistics.OnStatisticsChanged -= RefreshTasks;
+            statistics = nextStatistics;
+            if (statistics != null) statistics.OnStatisticsChanged += RefreshTasks;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    void Update()
+    {
+        if (!IsOpen) return;
+
+        if (Input.GetKeyDown(KeyCode.Escape) && !UIInputFocusGuard.IsTyping)
+        {
+            SetVisible(false);
+            Sfx.Play(SfxId.UiClose);
+            return;
+        }
+
+        HandleObjectivesScroll();
+    }
+
+    public static bool IsPointerOverObjectivesScrollArea
+    {
+        get
+        {
+            MissionListUI ui = Instance;
+            return ui != null && ui.IsOpen
+                && (ui.GetScrollRectAtPointer(ui.tasksListContent) != null
+                    || ui.GetScrollRectAtPointer(ui.progressionListContent) != null);
+        }
+    }
+
+    void HandleObjectivesScroll()
+    {
+        float scrollDelta = Input.mouseScrollDelta.y;
+        if (Mathf.Approximately(scrollDelta, 0f)) return;
+
+        ScrollRect scroll = GetScrollRectAtPointer(tasksListContent)
+            ?? GetScrollRectAtPointer(progressionListContent);
+        if (scroll != null)
+            scroll.verticalNormalizedPosition = Mathf.Clamp01(scroll.verticalNormalizedPosition + scrollDelta * 0.08f);
+    }
+
+    ScrollRect GetScrollRectAtPointer(Transform content)
+    {
+        if (content == null) return null;
+        ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
+        RectTransform rect = scroll != null ? scroll.transform as RectTransform : null;
+        if (rect == null) return null;
+
+        Canvas canvas = scroll.GetComponentInParent<Canvas>();
+        Camera eventCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+        return RectTransformUtility.RectangleContainsScreenPoint(rect, Input.mousePosition, eventCamera)
+            ? scroll
+            : null;
     }
 
     public bool IsOpen => panelOpen && panelRoot != null && panelRoot.activeSelf;
@@ -225,6 +325,7 @@ public class MissionListUI : MonoBehaviour
 
     void RefreshTasks()
     {
+        ResolveDataSources();
         EnsureUI();
         if (tasksListContent == null) return;
 
@@ -233,7 +334,7 @@ public class MissionListUI : MonoBehaviour
 
         if (progress == null)
         {
-            CreateTaskRow("—", "No mission system", pendingMissionColor, false);
+            CreateTaskRow("—", "No mission system", generalTaskColor, false, false, false);
             UpdatePanelHeight();
             return;
         }
@@ -246,7 +347,7 @@ public class MissionListUI : MonoBehaviour
             string empty = milestones != null && milestones.IsQuizReady
                 ? "All tasks done — take the milestone quiz."
                 : "No tasks yet";
-            CreateTaskRow("—", empty, pendingMissionColor, false);
+            CreateTaskRow("—", empty, generalTaskColor, false, false, false);
             UpdatePanelHeight();
             return;
         }
@@ -256,49 +357,42 @@ public class MissionListUI : MonoBehaviour
             if (mission == null) continue;
             bool done = progress.IsComplete(mission);
             bool isCurrent = !done && mission == current;
-            Color color = done ? completeMissionColor : (isCurrent ? currentMissionColor : pendingMissionColor);
-            string prefix = done ? "✓ " : (isCurrent ? "► " : "○ ");
-            string title = prefix + mission.title;
+            Color color = GetTaskColor(GetMissionTaskType(mission));
             int needed = Mathf.Max(1, mission.requiredCount);
+            string title = mission.title;
             if (!done && needed > 1)
                 title += $" ({progress.GetProgress(mission)}/{needed})";
-            CreateTaskRow(title, mission.description, color, isCurrent);
+            CreateTaskRow(title, mission.description, color, isCurrent, done);
         }
         UpdatePanelHeight();
     }
 
     void CreateDailyGoalRows()
     {
-        var stats = StoreStatisticsManager.Instance;
-        var clock = GameTimeManager.Instance != null
-            ? GameTimeManager.Instance : FindFirstObjectByType<GameTimeManager>();
-        int day = clock != null ? clock.CurrentDay : 1;
-        int orderTarget = Mathf.Clamp(4 + day * 2, 6, 20);
-        int revenueTarget = 100 + day * 50;
-        float waitTarget = Mathf.Max(25f, 50f - day * 2f);
-        int orders = stats != null ? stats.OrdersCompletedToday : 0;
-        int revenue = stats != null ? stats.RevenueToday : 0;
-        float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
+        const int revenueTarget = 500;
+        const float waitTarget = 46f;
+        int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
+        int revenue = statistics != null ? statistics.RevenueToday : 0;
+        float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
 
-        CreateTaskRow((orders >= orderTarget ? "✓ " : "○ ") + "Serve " + orderTarget + " orders",
-            orders + "/" + orderTarget + " orders served", orders >= orderTarget ? completeMissionColor : pendingMissionColor, false);
-        CreateTaskRow((revenue >= revenueTarget ? "✓ " : "○ ") + "Earn $" + revenueTarget,
-            "$" + revenue + "/$" + revenueTarget + " revenue", revenue >= revenueTarget ? completeMissionColor : pendingMissionColor, false);
-        bool waitComplete = orders > 0 && wait <= waitTarget;
-        CreateTaskRow((waitComplete ? "✓ " : "○ ") + "Keep wait under " + waitTarget.ToString("0") + "s",
-            orders > 0 ? wait.ToString("0") + "s average wait" : "No completed orders yet",
-            waitComplete ? completeMissionColor : pendingMissionColor, false);
+        CreateTaskRow("Earn $" + revenueTarget,
+            "$" + Mathf.Min(revenue, revenueTarget) + "/$" + revenueTarget + " revenue",
+            GetTaskColor(TaskType.Finance), false, revenue >= revenueTarget);
+        bool waitComplete = orders >= MinimumOrdersForWaitGoal && wait <= waitTarget;
+        CreateTaskRow("Average wait of " + waitTarget.ToString("0") + "s or less",
+            orders > 0
+                ? wait.ToString("0") + "s average — " + Mathf.Min(orders, MinimumOrdersForWaitGoal) + "/" + MinimumOrdersForWaitGoal + " orders"
+                : "Complete " + MinimumOrdersForWaitGoal + " orders to measure average wait",
+            GetTaskColor(TaskType.Service), false, waitComplete);
     }
 
     void RefreshProgression()
     {
+        ResolveDataSources();
         EnsureUI();
         if (progressionListContent == null) return;
 
         ClearPool(progressionRowPool);
-
-        if (milestones == null)
-            milestones = MilestoneProgressManager.Instance;
 
         var db = milestones != null ? milestones.database : null;
         if (db == null || db.milestones == null || db.milestones.Count == 0)
@@ -321,7 +415,8 @@ public class MissionListUI : MonoBehaviour
         UpdatePanelHeight();
     }
 
-    void CreateTaskRow(string title, string description, Color color, bool emphasize)
+    void CreateTaskRow(string title, string description, Color color, bool emphasize,
+        bool complete, bool showCheckbox = true)
     {
         var rowGo = new GameObject("TaskRow", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
         rowGo.transform.SetParent(tasksListContent, false);
@@ -338,12 +433,102 @@ public class MissionListUI : MonoBehaviour
         rowLayout.childForceExpandWidth = true;
         rowLayout.childForceExpandHeight = false;
 
-        // Keep task titles the same size when the active task changes. Emphasis is
-        // carried by weight and color so refreshing the list cannot resize text.
-        AddText(rowGo.transform, "Title", title, 16, color, emphasize ? FontStyles.Bold : FontStyles.Normal);
+        var titleRow = new GameObject("TitleRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        titleRow.transform.SetParent(rowGo.transform, false);
+        titleRow.GetComponent<LayoutElement>().minHeight = 20f;
+        var titleLayout = titleRow.GetComponent<HorizontalLayoutGroup>();
+        titleLayout.spacing = 6f;
+        titleLayout.childAlignment = TextAnchor.UpperLeft;
+        titleLayout.childControlWidth = true;
+        titleLayout.childControlHeight = true;
+        titleLayout.childForceExpandWidth = false;
+        titleLayout.childForceExpandHeight = false;
 
+        if (showCheckbox)
+            CreateTaskCheckbox(titleRow.transform, color, complete);
+
+        var textColumn = new GameObject("Text", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        textColumn.transform.SetParent(titleRow.transform, false);
+        textColumn.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        var textLayout = textColumn.GetComponent<VerticalLayoutGroup>();
+        textLayout.spacing = 2f;
+        textLayout.childAlignment = TextAnchor.UpperLeft;
+        textLayout.childControlWidth = true;
+        textLayout.childControlHeight = true;
+        textLayout.childForceExpandWidth = true;
+        textLayout.childForceExpandHeight = false;
+
+        // Keep task titles the same size as progress changes; bold marks the current objective.
+        AddText(textColumn.transform, "Title", title, 16, color, emphasize ? FontStyles.Bold : FontStyles.Normal);
         if (!string.IsNullOrEmpty(description))
-            AddText(rowGo.transform, "Description", description, 14, new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+            AddText(textColumn.transform, "Description", description, 14, new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+    }
+
+    static void CreateTaskCheckbox(Transform parent, Color color, bool complete)
+    {
+        var box = new GameObject("TaskCheckbox", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(Outline));
+        box.transform.SetParent(parent, false);
+        var rect = (RectTransform)box.transform;
+        rect.sizeDelta = new Vector2(16f, 16f);
+        var layout = box.GetComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = 16f;
+        layout.minHeight = layout.preferredHeight = 16f;
+        var image = box.GetComponent<Image>();
+        image.color = complete ? color : new Color(color.r, color.g, color.b, 0.12f);
+        image.raycastTarget = false;
+        var outline = box.GetComponent<Outline>();
+        outline.effectColor = color;
+        outline.effectDistance = new Vector2(1f, -1f);
+        outline.useGraphicAlpha = false;
+
+        if (complete)
+        {
+            var check = new GameObject("Check", typeof(RectTransform), typeof(TextMeshProUGUI));
+            check.transform.SetParent(box.transform, false);
+            var checkRect = (RectTransform)check.transform;
+            checkRect.anchorMin = Vector2.zero;
+            checkRect.anchorMax = Vector2.one;
+            checkRect.offsetMin = new Vector2(0f, -1f);
+            checkRect.offsetMax = Vector2.zero;
+            var checkGraphic = check.GetComponent<TextMeshProUGUI>();
+            checkGraphic.text = "✓";
+            checkGraphic.fontSize = 15f;
+            checkGraphic.fontStyle = FontStyles.Bold;
+            checkGraphic.alignment = TextAlignmentOptions.Center;
+            checkGraphic.textWrappingMode = TextWrappingModes.NoWrap;
+            if (TMP_Settings.defaultFontAsset != null)
+                checkGraphic.font = TMP_Settings.defaultFontAsset;
+            checkGraphic.color = new Color(0.06f, 0.08f, 0.1f, 1f);
+            checkGraphic.raycastTarget = false;
+        }
+    }
+
+    TaskType GetMissionTaskType(MissionDefinition mission)
+    {
+        string identity = ((mission != null ? mission.missionId : "") + " "
+            + (mission != null ? mission.title : "") + " "
+            + (mission != null ? mission.description : "") + " "
+            + (mission != null ? mission.completionEventId : "")).ToLowerInvariant();
+        if (identity.Contains("recipe")) return TaskType.Recipe;
+        if (identity.Contains("flow") || identity.Contains("output_link")) return TaskType.Workflow;
+        if (identity.Contains("revenue") || identity.Contains("earn") || identity.Contains("money")) return TaskType.Finance;
+        if (identity.Contains("reposition") || identity.Contains("station") || identity.Contains("layout")) return TaskType.Layout;
+        if (identity.Contains("serve") || identity.Contains("customer") || identity.Contains("queue") || identity.Contains("wait"))
+            return TaskType.Service;
+        return TaskType.General;
+    }
+
+    Color GetTaskColor(TaskType type)
+    {
+        switch (type)
+        {
+            case TaskType.Recipe: return recipeTaskColor;
+            case TaskType.Workflow: return workflowTaskColor;
+            case TaskType.Service: return serviceTaskColor;
+            case TaskType.Finance: return financeTaskColor;
+            case TaskType.Layout: return layoutTaskColor;
+            default: return generalTaskColor;
+        }
     }
 
     void CreateProgressionRow(MilestoneDefinition milestone, MilestoneProgressManager.MilestoneState state, int index)
@@ -353,7 +538,9 @@ public class MissionListUI : MonoBehaviour
         progressionRowPool.Add(go);
 
         go.GetComponent<LayoutElement>().minHeight = 52f;
-        go.GetComponent<Image>().color = ProgressionStateColor(state);
+        var rowImage = go.GetComponent<Image>();
+        rowImage.color = ProgressionStateColor(state);
+        rowImage.raycastTarget = false;
 
         string milestoneLabel = milestones != null
             ? milestones.GetMilestoneDisplayLabel(milestone)
@@ -478,6 +665,17 @@ public class MissionListUI : MonoBehaviour
         EnsureTopTabs();
         if (applyTheme && panelRoot != null)
             GameUITheme.ApplyTo(panelRoot.transform);
+        MakePanelClickThrough();
+    }
+
+    void MakePanelClickThrough()
+    {
+        if (panelRoot == null) return;
+        foreach (Graphic graphic in panelRoot.GetComponentsInChildren<Graphic>(true))
+        {
+            if (graphic.GetComponentInParent<Button>() != null) continue;
+            graphic.raycastTarget = false;
+        }
     }
 
     void TryFindScenePanel()
@@ -564,7 +762,7 @@ public class MissionListUI : MonoBehaviour
 
         var bg = panelRoot.GetComponent<Image>();
         ApplyTopHudBackground(bg);
-        bg.raycastTarget = true;
+        bg.raycastTarget = false;
 
         var layout = panelRoot.GetComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(12, 12, 12, 12);
@@ -733,10 +931,9 @@ public class MissionListUI : MonoBehaviour
         rt.sizeDelta = new Vector2(TopTabsWidth, TopTabsHeight);
 
         var bg = topTabsRoot.GetComponent<Image>() ?? topTabsRoot.AddComponent<Image>();
-        // Use the full-width top-HUD backdrop so this strip visually connects
-        // to the center and left controls without changing its placement.
+        // The child buttons remain clickable; the clear strip between them passes through.
         bg.color = Color.clear;
-        bg.raycastTarget = true;
+        bg.raycastTarget = false;
 
         var layout = topTabsRoot.GetComponent<HorizontalLayoutGroup>() ?? topTabsRoot.AddComponent<HorizontalLayoutGroup>();
         layout.padding = new RectOffset(8, 8, 6, 6);
@@ -866,7 +1063,10 @@ public class MissionListUI : MonoBehaviour
 
         var bg = panelRoot.GetComponent<Image>();
         if (bg != null)
+        {
             ApplyTopHudBackground(bg);
+            bg.raycastTarget = false;
+        }
 
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         if (panelLayout != null)
@@ -1040,7 +1240,7 @@ public class MissionListUI : MonoBehaviour
         le.flexibleHeight = 0f;
         le.minHeight = 0f;
         scrollGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.12f);
-        scrollGo.GetComponent<Image>().raycastTarget = true;
+        scrollGo.GetComponent<Image>().raycastTarget = false;
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
         scroll.horizontal = false;
@@ -1056,6 +1256,7 @@ public class MissionListUI : MonoBehaviour
         vpRt.offsetMin = Vector2.zero;
         vpRt.offsetMax = Vector2.zero;
         viewport.GetComponent<Image>().color = new Color(1, 1, 1, 0.02f);
+        viewport.GetComponent<Image>().raycastTarget = false;
         viewport.GetComponent<Mask>().showMaskGraphic = false;
 
         var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
