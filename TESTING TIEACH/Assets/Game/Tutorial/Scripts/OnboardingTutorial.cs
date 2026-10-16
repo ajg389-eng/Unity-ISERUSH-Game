@@ -108,6 +108,8 @@ public class OnboardingTutorial : MonoBehaviour
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
         furthestStepIndex = stepIndex;
+        if (stepIndex == 0)
+            ResetCameraTutorialInputs();
         orderServed = savedOrderServed;
         if (complete)
         {
@@ -138,10 +140,19 @@ public class OnboardingTutorial : MonoBehaviour
     bool orderServed;
     bool tutorialReviewShown;
     bool cleanedOldWorldCallout;
+    bool tutorialCameraMoved;
+    bool tutorialCameraRotated;
+    bool tutorialCameraZoomed;
     int recipeTutorialStationIndex;
     int ingredientTutorialStep;
     float ingredientExplanationUntil;
     string tutorialFocusText;
+    string tutorialTextBeingRevealed;
+    int tutorialVisibleCharacters;
+    int tutorialTotalCharacters;
+    float tutorialCharacterProgress;
+    float nextTutorialVoiceTime;
+    AudioSource tutorialTypewriterVoiceSource;
     readonly Dictionary<Graphic, GameObject> tutorialBorders = new Dictionary<Graphic, GameObject>();
     float nextControlHighlightRefresh;
     readonly List<GameObject> starterKitchen = new List<GameObject>();
@@ -154,6 +165,10 @@ public class OnboardingTutorial : MonoBehaviour
     Button backButton;
     Button nextButton;
     TextMeshProUGUI nextLabel;
+    GameObject cameraPromptPanel;
+    TextMeshProUGUI cameraMovePromptStatus;
+    TextMeshProUGUI cameraRotatePromptStatus;
+    TextMeshProUGUI cameraZoomPromptStatus;
     RectTransform calloutTarget;
     RectTransform calloutArrow;
     GameObject highlight;
@@ -207,6 +222,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireHamburger;
         public bool requireRegisterEnabled;
         public bool requireOrderServed;
+        public bool requireCameraControls;
 
         public Step(
             string title,
@@ -235,7 +251,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireMenuScreen = false,
             bool requireHamburger = false,
             bool requireOrderServed = false,
-            bool requireRegisterEnabled = false)
+            bool requireRegisterEnabled = false,
+            bool requireCameraControls = false)
         {
             this.title = title;
             this.body = body;
@@ -265,11 +282,16 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireHamburger = requireHamburger;
             this.requireOrderServed = requireOrderServed;
             this.requireRegisterEnabled = requireRegisterEnabled;
+            this.requireCameraControls = requireCameraControls;
         }
     }
 
     static readonly Step[] Steps =
     {
+        new Step(
+            "Move around the kitchen",
+            "Before we start building, get comfortable looking around. Use <b>WASD</b> to move the camera, hold <b>right mouse</b> and drag to turn the view, then use the <b>scroll wheel</b> to zoom. Try each control and I will wait here until you have.",
+            "Next", Highlight.None, requireCameraControls: true),
         new Step(
             "Empty kitchen",
             "This shift starts with an <b>empty kitchen</b>. Let's build it one step at a time.\n\n" +
@@ -383,6 +405,8 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] GusDialogue =
     {
+        "Before we start building, get comfortable looking around. Use WASD to move the camera, hold the right mouse button and drag to turn the view, then use the scroll wheel to zoom. Try each control and I will wait here until you have.",
+
         "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
 
@@ -447,6 +471,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     static readonly string[] CompactTutorialText =
     {
+        "Use <b>WASD</b> to move around. Hold <b>right mouse</b> and drag to turn the camera, then scroll to zoom. Try all three controls before continuing.",
         "Build a small burger line, connect it, and serve one test customer.",
         "Open <b>Build</b>. The highlighted MK1 station is free for this tutorial.",
         "Buy the <b>Register</b>, place it on a lobby counter, then click it and choose <b>Enable</b>.",
@@ -576,6 +601,7 @@ public class OnboardingTutorial : MonoBehaviour
         analyticsScreenOpened = false;
         menuScreenOpened = false;
         orderServed = false;
+        ResetCameraTutorialInputs();
         HideUI();
         ClearHighlight();
         if (GameTimeManager.Instance != null)
@@ -620,6 +646,15 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
+        if (tutorialVisibleCharacters < tutorialTotalCharacters)
+        {
+            tutorialVisibleCharacters = tutorialTotalCharacters;
+            tutorialCharacterProgress = tutorialTotalCharacters;
+            if (bodyText != null)
+                bodyText.maxVisibleCharacters = tutorialVisibleCharacters;
+            return;
+        }
+
         Sfx.Play(SfxId.UiClick);
         if (stepIndex >= Steps.Length - 1)
         {
@@ -648,6 +683,8 @@ public class OnboardingTutorial : MonoBehaviour
             canvasRoot.SetActive(true);
         if (panel != null)
             panel.SetActive(true);
+        if (cameraPromptPanel != null)
+            cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
             titleText.text = step.title;
         if (bodyText != null)
@@ -676,7 +713,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (!step.openAnalytics)
             AnalyticsPopupUI.CloseIfOpen();
 
-        if (stepIndex == 1)
+        if (stepIndex == 2)
         {
             var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
@@ -756,6 +793,8 @@ public class OnboardingTutorial : MonoBehaviour
             SpawnPracticeCustomer();
 
         RebuildTutorialLayout();
+        ResetTutorialTextReveal();
+        RefreshCameraPromptStatus();
         RefreshAdvanceGate();
     }
 
@@ -769,6 +808,56 @@ public class OnboardingTutorial : MonoBehaviour
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)panel.transform);
         UpdateContextualCallout();
+    }
+
+    void ResetTutorialTextReveal()
+    {
+        if (bodyText == null) return;
+
+        tutorialTextBeingRevealed = bodyText.text;
+        bodyText.ForceMeshUpdate();
+        tutorialTotalCharacters = bodyText.textInfo.characterCount;
+        tutorialVisibleCharacters = 0;
+        tutorialCharacterProgress = 0f;
+        nextTutorialVoiceTime = Time.unscaledTime;
+        bodyText.maxVisibleCharacters = 0;
+    }
+
+    void UpdateTutorialTextReveal()
+    {
+        if (!running || bodyText == null || !bodyText.gameObject.activeInHierarchy)
+            return;
+
+        if (tutorialTextBeingRevealed != bodyText.text)
+            ResetTutorialTextReveal();
+
+        if (tutorialVisibleCharacters >= tutorialTotalCharacters)
+            return;
+
+        tutorialCharacterProgress += Time.unscaledDeltaTime
+            * IntroCutsceneUI.TypewriterCharactersPerSecond;
+        int targetCharacters = Mathf.Min(tutorialTotalCharacters,
+            Mathf.FloorToInt(tutorialCharacterProgress));
+        if (targetCharacters <= tutorialVisibleCharacters)
+            return;
+
+        tutorialVisibleCharacters = targetCharacters;
+        bodyText.maxVisibleCharacters = tutorialVisibleCharacters;
+        if (Time.unscaledTime < nextTutorialVoiceTime)
+            return;
+
+        int characterIndex = Mathf.Min(tutorialVisibleCharacters - 1,
+            bodyText.textInfo.characterCount - 1);
+        if (characterIndex < 0 || characterIndex >= bodyText.textInfo.characterInfo.Length)
+            return;
+
+        char character = bodyText.textInfo.characterInfo[characterIndex].character;
+        if (!char.IsLetterOrDigit(character))
+            return;
+
+        nextTutorialVoiceTime = Time.unscaledTime + IntroCutsceneUI.TypewriterVoiceInterval
+            + Random.Range(0f, 0.025f);
+        IntroCutsceneUI.PlayGibberishBlip(tutorialTypewriterVoiceSource);
     }
 
     void UpdateContextualCallout()
@@ -940,6 +1029,12 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireAnalyticsScreen) return "Open Analytics";
         if (step.requireMenuScreen && !menuScreenOpened) return "Open Menu";
         if (step.requireHamburger) return "Enable Hamburger";
+        if (step.requireCameraControls)
+        {
+            if (!tutorialCameraMoved) return "Move camera with WASD";
+            if (!tutorialCameraRotated) return "Rotate with right mouse + drag";
+            if (!tutorialCameraZoomed) return "Zoom with scroll wheel";
+        }
         if (step.requireRegisterEnabled)
             return HasPlacedStation(step.highlight) ? "Enable the register" : "Place register on counter";
         if (step.requireOrderServed) return "Serve the burger";
@@ -998,6 +1093,9 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.requireCameraControls
+            && (!tutorialCameraMoved || !tutorialCameraRotated || !tutorialCameraZoomed))
+            return false;
         if (step.highlight == Highlight.Inventory)
         {
             var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
@@ -1746,6 +1844,8 @@ public class OnboardingTutorial : MonoBehaviour
                 TryBegin();
             return;
         }
+        TrackCameraTutorialInputs();
+        RefreshCameraPromptStatus();
         RefreshAdvanceGate();
         RefreshControlHighlights();
         UpdateContextualCallout();
@@ -1753,12 +1853,60 @@ public class OnboardingTutorial : MonoBehaviour
         if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
             SpawnPracticeCustomer();
         RefreshAutomaticAdvance();
+        UpdateTutorialTextReveal();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
         float pulse = 0.5f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.25f);
         highlight.transform.position = highlightTarget.position + Vector3.up * 2.2f;
         highlight.transform.localScale = Vector3.one * pulse;
+    }
+
+    void TrackCameraTutorialInputs()
+    {
+        if (stepIndex < 0 || stepIndex >= Steps.Length || !Steps[stepIndex].requireCameraControls)
+            return;
+        if (PauseMenuUI.IsOpen || UIInputFocusGuard.IsTyping)
+            return;
+
+        if (Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.1f
+            || Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.1f)
+            tutorialCameraMoved = true;
+
+        Vector2 mouseDelta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+        if (Input.GetMouseButton(1) && mouseDelta.sqrMagnitude > 0.0004f)
+            tutorialCameraRotated = true;
+
+        if (Mathf.Abs(Input.mouseScrollDelta.y) > 0.01f)
+            tutorialCameraZoomed = true;
+    }
+
+    void RefreshCameraPromptStatus()
+    {
+        SetCameraPromptStatus(cameraMovePromptStatus, tutorialCameraMoved);
+        SetCameraPromptStatus(cameraRotatePromptStatus, tutorialCameraRotated);
+        SetCameraPromptStatus(cameraZoomPromptStatus, tutorialCameraZoomed);
+    }
+
+    static void SetCameraPromptStatus(TextMeshProUGUI label, bool complete)
+    {
+        if (label == null) return;
+        string value = complete ? "DONE" : "TRY IT";
+        if (label.text != value)
+        {
+            label.text = value;
+            label.color = complete
+                ? new Color(0.35f, 0.86f, 0.62f, 1f)
+                : new Color(0.72f, 0.76f, 0.82f, 1f);
+        }
+    }
+
+    void ResetCameraTutorialInputs()
+    {
+        tutorialCameraMoved = false;
+        tutorialCameraRotated = false;
+        tutorialCameraZoomed = false;
+        RefreshCameraPromptStatus();
     }
 
     void UpdateTutorialWorldHighlights()
@@ -2248,6 +2396,8 @@ public class OnboardingTutorial : MonoBehaviour
 
     void HideUI()
     {
+        if (tutorialTypewriterVoiceSource != null)
+            tutorialTypewriterVoiceSource.Stop();
         if (canvasRoot != null)
             canvasRoot.SetActive(false);
         else if (panel != null)
@@ -2256,7 +2406,9 @@ public class OnboardingTutorial : MonoBehaviour
 
     void EnsureUI()
     {
-        if (canvasRoot != null && panel != null && nextButton != null && nextButton.transform.IsChildOf(panel.transform))
+        EnsureTutorialTypewriterVoice();
+        if (canvasRoot != null && panel != null && nextButton != null && cameraPromptPanel != null
+            && nextButton.transform.IsChildOf(panel.transform))
         {
             canvasRoot.SetActive(true);
             if (panel != null) panel.SetActive(true);
@@ -2370,6 +2522,29 @@ public class OnboardingTutorial : MonoBehaviour
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
 
+        cameraPromptPanel = new GameObject("CameraControlPrompts", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        cameraPromptPanel.transform.SetParent(panel.transform, false);
+        var cameraPromptLayout = cameraPromptPanel.GetComponent<VerticalLayoutGroup>();
+        cameraPromptLayout.padding = new RectOffset(0, 0, 2, 2);
+        cameraPromptLayout.spacing = 3f;
+        cameraPromptLayout.childAlignment = TextAnchor.MiddleCenter;
+        cameraPromptLayout.childControlWidth = true;
+        cameraPromptLayout.childControlHeight = true;
+        cameraPromptLayout.childForceExpandWidth = true;
+        cameraPromptLayout.childForceExpandHeight = false;
+        var cameraPromptSize = cameraPromptPanel.GetComponent<LayoutElement>();
+        cameraPromptSize.minHeight = cameraPromptSize.preferredHeight = 96f;
+        cameraPromptSize.flexibleHeight = 0f;
+        cameraMovePromptStatus = CreateCameraPromptRow(cameraPromptPanel.transform, "Move camera",
+            InputPromptId.KeyboardW, InputPromptId.KeyboardA,
+            InputPromptId.KeyboardS, InputPromptId.KeyboardD);
+        cameraRotatePromptStatus = CreateCameraPromptRow(cameraPromptPanel.transform, "Rotate view",
+            InputPromptId.MouseRight, InputPromptId.MouseMove);
+        cameraZoomPromptStatus = CreateCameraPromptRow(cameraPromptPanel.transform, "Zoom camera",
+            InputPromptId.MouseScroll);
+        cameraPromptPanel.SetActive(false);
+
         var footer = new GameObject("Navigation", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         footer.transform.SetParent(panel.transform, false);
         footer.GetComponent<LayoutElement>().preferredHeight = 46f;
@@ -2386,6 +2561,85 @@ public class OnboardingTutorial : MonoBehaviour
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
         GameUITheme.ApplyToCanvas(canvas);
+    }
+
+    static TextMeshProUGUI CreateCameraPromptRow(Transform parent, string action,
+        params InputPromptId[] prompts)
+    {
+        var row = new GameObject(action, typeof(RectTransform), typeof(Image),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = new Color(0.12f, 0.14f, 0.18f, 0.96f);
+        row.GetComponent<Image>().raycastTarget = false;
+        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.padding = new RectOffset(8, 8, 1, 1);
+        rowLayout.spacing = 8f;
+        rowLayout.childAlignment = TextAnchor.MiddleLeft;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = false;
+        rowLayout.childForceExpandHeight = false;
+        var rowSize = row.GetComponent<LayoutElement>();
+        rowSize.minHeight = rowSize.preferredHeight = 28f;
+        rowSize.flexibleHeight = 0f;
+
+        var iconGroup = new GameObject("InputIcons", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        iconGroup.transform.SetParent(row.transform, false);
+        var iconLayout = iconGroup.GetComponent<HorizontalLayoutGroup>();
+        iconLayout.spacing = 2f;
+        iconLayout.childAlignment = TextAnchor.MiddleLeft;
+        iconLayout.childControlWidth = true;
+        iconLayout.childControlHeight = true;
+        iconLayout.childForceExpandWidth = false;
+        iconLayout.childForceExpandHeight = false;
+        int iconCount = 0;
+        foreach (InputPromptId prompt in prompts)
+        {
+            Sprite sprite = InputPromptLibrary.GetSprite(prompt);
+            if (sprite == null) continue;
+            var icon = new GameObject("Prompt_" + prompt, typeof(RectTransform),
+                typeof(Image), typeof(LayoutElement));
+            icon.transform.SetParent(iconGroup.transform, false);
+            var iconSize = icon.GetComponent<LayoutElement>();
+            iconSize.minWidth = iconSize.preferredWidth = 21f;
+            iconSize.minHeight = iconSize.preferredHeight = 21f;
+            var image = icon.GetComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            iconCount++;
+        }
+        iconGroup.GetComponent<LayoutElement>().preferredWidth = iconCount * 21f
+            + Mathf.Max(0, iconCount - 1) * iconLayout.spacing;
+
+        TextMeshProUGUI actionLabel = CreateLabel(row.transform, action, 13f,
+            FontStyles.Bold, new Color(0.92f, 0.94f, 0.98f));
+        actionLabel.alignment = TextAlignmentOptions.Left;
+        actionLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        var actionSize = actionLabel.GetComponent<LayoutElement>();
+        actionSize.minWidth = 0f;
+        actionSize.flexibleWidth = 1f;
+
+        TextMeshProUGUI status = CreateLabel(row.transform, "TRY IT", 10f,
+            FontStyles.Bold, new Color(0.72f, 0.76f, 0.82f, 1f));
+        status.alignment = TextAlignmentOptions.Right;
+        status.textWrappingMode = TextWrappingModes.NoWrap;
+        var statusSize = status.GetComponent<LayoutElement>();
+        statusSize.minWidth = statusSize.preferredWidth = 56f;
+        statusSize.flexibleWidth = 0f;
+        return status;
+    }
+
+    void EnsureTutorialTypewriterVoice()
+    {
+        if (tutorialTypewriterVoiceSource != null)
+            return;
+
+        var voiceObject = new GameObject("TutorialCardSpeech");
+        voiceObject.transform.SetParent(transform, false);
+        tutorialTypewriterVoiceSource = voiceObject.AddComponent<AudioSource>();
+        IntroCutsceneUI.ConfigureTypewriterVoiceSource(tutorialTypewriterVoiceSource);
     }
 
     static RectTransform CreateCalloutArrow(Transform parent)

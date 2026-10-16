@@ -8,6 +8,12 @@ using UnityEngine.UI;
 /// <summary>First-new-game dialogue sequence shown before onboarding begins.</summary>
 public sealed class IntroCutsceneUI : MonoBehaviour
 {
+    const string VoiceVolumePreference = "PauseMenu.VoiceVolume";
+    const float TypewriterVoiceVolume = 0.42f;
+    public const float TypewriterCharactersPerSecond = 45f;
+    public const float TypewriterVoiceInterval = 0.075f;
+    static AudioClip[] typewriterVoiceClips;
+
     static readonly string[] Lines =
     {
         "Hey look who it is – it’s 10:30 I’ve been expecting you for the last 30 minutes. First day on the job and you’re already late…",
@@ -24,15 +30,21 @@ public sealed class IntroCutsceneUI : MonoBehaviour
     TextMeshProUGUI dialogue;
     TextMeshProUGUI progress;
     TextMeshProUGUI nextLabel;
+    AudioSource typewriterVoiceSource;
     RectTransform portraitFrame;
     int lineIndex;
     int visibleCharacters;
     int totalCharacters;
     float characterProgress;
+    float nextTypewriterVoiceTime;
     bool closing;
+    Camera liveBackgroundCamera;
+    RenderTexture previousCameraTarget;
+    int previousCameraTargetDisplay;
+    bool previousCameraEnabled;
 
     public static void Show(Texture background, GameObject gusPrefab, Sprite gusPortrait,
-        Action onFinished)
+        Action onFinished, Camera liveCamera = null)
     {
         var existing = FindFirstObjectByType<IntroCutsceneUI>();
         if (existing != null)
@@ -46,7 +58,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         cutscene.finished = onFinished;
         try
         {
-            cutscene.Build(background, gusPrefab, gusPortrait);
+            cutscene.Build(background, gusPrefab, gusPortrait, liveCamera);
         }
         catch (Exception exception)
         {
@@ -55,7 +67,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         }
     }
 
-    void Build(Texture background, GameObject gusPrefab, Sprite gusPortrait)
+    void Build(Texture background, GameObject gusPrefab, Sprite gusPortrait, Camera liveCamera)
     {
         IsPlaying = true;
 
@@ -67,28 +79,43 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0f;
         gameObject.AddComponent<GraphicRaycaster>();
+        SetupTypewriterVoice();
 
-        var backgroundObject = new GameObject("CutsceneBackground", typeof(RectTransform),
-            typeof(RawImage), typeof(Button));
-        backgroundObject.transform.SetParent(transform, false);
-        Stretch((RectTransform)backgroundObject.transform);
-        var backgroundImage = backgroundObject.GetComponent<RawImage>();
-        backgroundImage.texture = background;
-        backgroundImage.color = background != null ? Color.white : GameUITheme.Charcoal;
-        var advanceButton = backgroundObject.GetComponent<Button>();
-        advanceButton.targetGraphic = backgroundImage;
-        advanceButton.transition = Selectable.Transition.None;
-        advanceButton.onClick.AddListener(Advance);
+        ConfigureLiveBackground(liveCamera);
+        bool usingLiveCamera = liveBackgroundCamera != null;
+        Transform contentRoot = transform;
 
-        var tint = CreateImage(backgroundObject.transform, "CinematicTint",
-            new Color(0.04f, 0.055f, 0.075f, background != null ? 0.34f : 0.96f));
-        Stretch((RectTransform)tint.transform);
-        tint.raycastTarget = false;
+        if (!usingLiveCamera)
+        {
+            var backgroundObject = new GameObject("CutsceneBackground", typeof(RectTransform),
+                typeof(RawImage), typeof(Button));
+            backgroundObject.transform.SetParent(transform, false);
+            Stretch((RectTransform)backgroundObject.transform);
+            var backgroundImage = backgroundObject.GetComponent<RawImage>();
+            Texture shownBackground = background;
+            backgroundImage.texture = shownBackground;
+            backgroundImage.color = shownBackground != null ? Color.white : GameUITheme.Charcoal;
+            var advanceButton = backgroundObject.GetComponent<Button>();
+            advanceButton.targetGraphic = backgroundImage;
+            advanceButton.transition = Selectable.Transition.None;
+            advanceButton.onClick.AddListener(Advance);
 
-        CreatePortrait(backgroundObject.transform, gusPrefab, gusPortrait);
-        CreateDialogueBox(backgroundObject.transform);
+            var tint = CreateImage(backgroundObject.transform, "CinematicTint",
+                new Color(0.04f, 0.055f, 0.075f,
+                    shownBackground != null ? 0.34f : 0.96f));
+            Stretch((RectTransform)tint.transform);
+            tint.raycastTarget = false;
 
-        var chapter = CreateText(backgroundObject.transform, "Chapter", "FIRST SHIFT", 18f,
+            CreatePortrait(backgroundObject.transform, gusPrefab, gusPortrait);
+            contentRoot = backgroundObject.transform;
+        }
+
+        // In live-camera mode the scene itself is the background. Avoid adding
+        // any screen-sized graphic over the camera output; the dialogue elements
+        // below are the only visuals drawn by this overlay.
+        CreateDialogueBox(contentRoot);
+
+        var chapter = CreateText(contentRoot, "Chapter", "FIRST SHIFT", 18f,
             TextAlignmentOptions.TopRight, FontStyles.Bold, GameUITheme.Accent);
         var chapterRect = chapter.rectTransform;
         chapterRect.anchorMin = new Vector2(0.68f, 0.91f);
@@ -99,6 +126,33 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 
         ShowLine(0);
         GameUITheme.ApplyTo(transform);
+    }
+
+    void ConfigureLiveBackground(Camera camera)
+    {
+        if (camera == null)
+            return;
+
+        previousCameraTarget = camera.targetTexture;
+        previousCameraTargetDisplay = camera.targetDisplay;
+        previousCameraEnabled = camera.enabled;
+        liveBackgroundCamera = camera;
+        camera.targetTexture = null;
+        camera.targetDisplay = 0;
+        camera.enabled = true;
+    }
+
+    void RestoreLiveBackground()
+    {
+        if (liveBackgroundCamera != null)
+        {
+            liveBackgroundCamera.targetTexture = previousCameraTarget;
+            liveBackgroundCamera.targetDisplay = previousCameraTargetDisplay;
+            liveBackgroundCamera.enabled = previousCameraEnabled;
+        }
+
+        liveBackgroundCamera = null;
+        previousCameraTarget = null;
     }
 
     void CreatePortrait(Transform parent, GameObject prefab, Sprite portrait)
@@ -203,12 +257,13 @@ public sealed class IntroCutsceneUI : MonoBehaviour
     {
         if (closing) return;
 
-        characterProgress += Time.unscaledDeltaTime * 45f;
+        characterProgress += Time.unscaledDeltaTime * TypewriterCharactersPerSecond;
         int target = Mathf.Min(totalCharacters, Mathf.FloorToInt(characterProgress));
         if (target != visibleCharacters)
         {
             visibleCharacters = target;
             dialogue.maxVisibleCharacters = visibleCharacters;
+            PlayTypewriterVoice();
         }
 
         if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return)
@@ -253,12 +308,110 @@ public sealed class IntroCutsceneUI : MonoBehaviour
             nextLabel.text = lineIndex == Lines.Length - 1 ? "START  >" : "NEXT  >";
     }
 
+    void SetupTypewriterVoice()
+    {
+        typewriterVoiceSource = gameObject.AddComponent<AudioSource>();
+        ConfigureTypewriterVoiceSource(typewriterVoiceSource);
+    }
+
+    public static void ConfigureTypewriterVoiceSource(AudioSource source)
+    {
+        if (source == null) return;
+        EnsureTypewriterVoiceClips();
+        source.playOnAwake = false;
+        source.spatialBlend = 0f;
+        source.ignoreListenerPause = true;
+        source.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VoiceVolumePreference, 1f))
+            * TypewriterVoiceVolume;
+    }
+
+    public static void PlayGibberishBlip(AudioSource source)
+    {
+        if (source == null) return;
+        EnsureTypewriterVoiceClips();
+        source.pitch = UnityEngine.Random.Range(0.88f, 1.14f);
+        AudioClip clip = typewriterVoiceClips[UnityEngine.Random.Range(0, typewriterVoiceClips.Length)];
+        source.PlayOneShot(clip, UnityEngine.Random.Range(0.82f, 1f));
+    }
+
+    static void EnsureTypewriterVoiceClips()
+    {
+        if (typewriterVoiceClips == null)
+            typewriterVoiceClips = CreateTypewriterVoiceClips();
+    }
+
+    void PlayTypewriterVoice()
+    {
+        if (typewriterVoiceSource == null || visibleCharacters <= 0
+            || Time.unscaledTime < nextTypewriterVoiceTime)
+            return;
+
+        int characterIndex = Mathf.Min(visibleCharacters - 1, dialogue.textInfo.characterCount - 1);
+        if (characterIndex < 0 || characterIndex >= dialogue.textInfo.characterInfo.Length)
+            return;
+
+        char character = dialogue.textInfo.characterInfo[characterIndex].character;
+        if (!char.IsLetterOrDigit(character))
+            return;
+
+        nextTypewriterVoiceTime = Time.unscaledTime + TypewriterVoiceInterval
+            + UnityEngine.Random.Range(0f, 0.025f);
+        PlayGibberishBlip(typewriterVoiceSource);
+    }
+
+    static AudioClip[] CreateTypewriterVoiceClips()
+    {
+        const int sampleRate = 22050;
+        const float duration = 0.065f;
+        int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+        float[][] harmonicProfiles =
+        {
+            new[] { 0.34f, 0.48f, 0.32f, 0.17f, 0.08f, 0.035f },
+            new[] { 0.42f, 0.34f, 0.47f, 0.25f, 0.09f, 0.025f },
+            new[] { 0.48f, 0.55f, 0.23f, 0.11f, 0.06f, 0.025f }
+        };
+
+        var clips = new AudioClip[harmonicProfiles.Length];
+        for (int clipIndex = 0; clipIndex < harmonicProfiles.Length; clipIndex++)
+        {
+            var samples = new float[sampleCount];
+            float startFrequency = 175f + clipIndex * 16f;
+            float endFrequency = 240f - clipIndex * 12f;
+            for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+            {
+                float time = sampleIndex / (float)sampleRate;
+                float normalizedTime = time / duration;
+                float envelope = Mathf.Min(1f, time / 0.006f)
+                    * Mathf.Clamp01((duration - time) / 0.018f)
+                    * Mathf.Exp(-normalizedTime * 1.4f);
+                float phase = 2f * Mathf.PI * (startFrequency * time
+                    + 0.5f * (endFrequency - startFrequency) * time * normalizedTime);
+
+                float sample = 0f;
+                float[] harmonics = harmonicProfiles[clipIndex];
+                for (int harmonic = 0; harmonic < harmonics.Length; harmonic++)
+                    sample += Mathf.Sin(phase * (harmonic + 1)) * harmonics[harmonic];
+
+                samples[sampleIndex] = sample * envelope * 0.55f;
+            }
+
+            AudioClip clip = AudioClip.Create("Gus_Gibberish_" + clipIndex,
+                sampleCount, 1, sampleRate, false);
+            clip.hideFlags = HideFlags.HideAndDontSave;
+            clip.SetData(samples, 0);
+            clips[clipIndex] = clip;
+        }
+
+        return clips;
+    }
+
     void Finish()
     {
         if (closing) return;
         closing = true;
         IsPlaying = false;
         Sfx.Play(SfxId.UiOpen);
+        RestoreLiveBackground();
         Action callback = finished;
         finished = null;
         Destroy(gameObject);
@@ -270,6 +423,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         if (closing) return;
         closing = true;
         IsPlaying = false;
+        RestoreLiveBackground();
         Action callback = finished;
         finished = null;
         Destroy(gameObject);
@@ -278,6 +432,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 
     void OnDestroy()
     {
+        RestoreLiveBackground();
         if (!closing)
         {
             IsPlaying = false;

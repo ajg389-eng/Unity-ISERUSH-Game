@@ -23,6 +23,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
     TextMeshProUGUI cashChangeValue;
     TextMeshProUGUI ordersValue;
     TextMeshProUGUI efficiencyValue;
+    TextMeshProUGUI gradeValue;
     TextMeshProUGUI balanceValue;
     TextMeshProUGUI averageWaitValue;
     TextMeshProUGUI walkedOutValue;
@@ -146,12 +147,21 @@ public class EndOfDaySummaryUI : MonoBehaviour
         int unserved = stats != null ? stats.UnservedCustomersToday : 0;
         int waste = stats != null ? stats.MealsWastedToday : 0;
         float avgWait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
-        float efficiency = stats != null ? stats.ServiceEfficiencyPercent : 0f;
+        float efficiency = stats != null && stats.CustomersVisitedToday > 0
+            ? stats.OrdersCompletedToday / (float)stats.CustomersVisitedToday * 100f : 0f;
+        ShiftGrade grade = CalculateShiftGrade(stats, tm);
 
         string cashSign = cashChange > 0 ? "+" : "";
         string cashColor = cashChange >= 0 ? "#7DDB8A" : "#E07A7A";
         string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste, visited, unserved, orders);
         string shiftGoals = BuildShiftGoals(stats, tm);
+        string gradeBreakdown = BuildGradeBreakdown(grade);
+
+        if (gradeValue != null)
+        {
+            gradeValue.text = grade.letter;
+            gradeValue.color = grade.color;
+        }
 
         if (revenueValue != null && cashChangeValue != null && ordersValue != null &&
             efficiencyValue != null && balanceValue != null && averageWaitValue != null &&
@@ -163,7 +173,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
                 ? new Color(0.49f, 0.86f, 0.54f) : new Color(0.88f, 0.48f, 0.48f);
             ordersValue.text = orders.ToString();
             efficiencyValue.text = efficiency.ToString("F0") + "%";
-            bool hadCustomers = orders + lost > 0;
+            bool hadCustomers = visited > 0;
             efficiencyValue.color = !hadCustomers ? new Color(0.72f, 0.76f, 0.82f)
                 : efficiency >= 80f ? new Color(0.49f, 0.86f, 0.54f)
                 : efficiency >= 50f ? new Color(0.95f, 0.78f, 0.43f)
@@ -172,7 +182,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
             averageWaitValue.text = avgWait.ToString("F1") + "s";
             walkedOutValue.text = lost.ToString();
             wasteValue.text = waste.ToString();
-            summaryText.text = shiftGoals + "\n\n" + diagnosis;
+            summaryText.text = shiftGoals + "\n\n" + gradeBreakdown + "\n\n" + diagnosis;
             return;
         }
 
@@ -182,11 +192,94 @@ public class EndOfDaySummaryUI : MonoBehaviour
             $"Ending balance<pos=38%><b>${balance}</b>\n\n" +
             "<color=#AAB7D1><b>CUSTOMERS</b></color>\n" +
             $"Orders served<pos=38%><b>{orders}</b><pos=57%>Walked out<pos=84%><b>{lost}</b>\n" +
-            $"Service efficiency<pos=38%><b>{efficiency:F0}%</b>\n\n" +
+            $"Visits served<pos=38%><b>{efficiency:F0}%</b>\n\n" +
             "<color=#AAB7D1><b>OPERATIONS</b></color>\n" +
             $"Average wait<pos=38%><b>{avgWait:F1}s</b><pos=57%>Food wasted<pos=84%><b>{waste}</b>\n\n" +
             "<color=#AAB7D1><b>SHIFT GOALS</b></color>\n" + shiftGoals + "\n\n" +
+            gradeBreakdown + "\n\n" +
             "<color=#AAB7D1><b>PROCESS REVIEW</b></color>\n" + diagnosis;
+    }
+
+    struct ShiftGrade
+    {
+        public int score;
+        public string letter;
+        public Color color;
+        public int ordersPoints;
+        public int revenuePoints;
+        public int servicePoints;
+        public int waitPoints;
+        public int wastePoints;
+    }
+
+    static ShiftGrade CalculateShiftGrade(StoreStatisticsManager stats, GameTimeManager timeManager)
+    {
+        int day = timeManager != null ? timeManager.CurrentDay : 1;
+        int orderTarget = Mathf.Clamp(4 + day * 2, 6, 20);
+        int revenueTarget = 100 + day * 50;
+        float waitTarget = Mathf.Max(25f, 50f - day * 2f);
+        int orders = stats != null ? stats.OrdersCompletedToday : 0;
+        int revenue = stats != null ? stats.RevenueToday : 0;
+        int waste = stats != null ? stats.MealsWastedToday : 0;
+        float serviceRate = stats != null && stats.CustomersVisitedToday > 0
+            ? stats.OrdersCompletedToday / (float)stats.CustomersVisitedToday * 100f : 0f;
+        float averageWait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
+
+        ShiftGrade grade = new ShiftGrade
+        {
+            ordersPoints = Mathf.RoundToInt(Mathf.Clamp01(orders / (float)orderTarget) * 25f),
+            revenuePoints = Mathf.RoundToInt(Mathf.Clamp01(revenue / (float)revenueTarget) * 25f),
+            servicePoints = Mathf.RoundToInt(Mathf.Clamp01(serviceRate / 100f) * 25f),
+            waitPoints = orders > 0
+                ? Mathf.RoundToInt(Mathf.Clamp01(waitTarget / Mathf.Max(averageWait, 0.01f)) * 15f)
+                : 0,
+            wastePoints = Mathf.Max(0, 10 - waste * 2)
+        };
+        grade.score = grade.ordersPoints + grade.revenuePoints + grade.servicePoints
+            + grade.waitPoints + grade.wastePoints;
+
+        if (grade.score >= 95)
+        {
+            grade.letter = "S";
+            grade.color = new Color(0.45f, 0.92f, 0.70f, 1f);
+        }
+        else if (grade.score >= 85)
+        {
+            grade.letter = "A";
+            grade.color = new Color(0.49f, 0.86f, 0.54f, 1f);
+        }
+        else if (grade.score >= 70)
+        {
+            grade.letter = "B";
+            grade.color = new Color(0.51f, 0.85f, 0.93f, 1f);
+        }
+        else if (grade.score >= 55)
+        {
+            grade.letter = "C";
+            grade.color = new Color(0.95f, 0.78f, 0.43f, 1f);
+        }
+        else if (grade.score >= 40)
+        {
+            grade.letter = "D";
+            grade.color = new Color(0.92f, 0.58f, 0.34f, 1f);
+        }
+        else
+        {
+            grade.letter = "F";
+            grade.color = new Color(0.88f, 0.48f, 0.48f, 1f);
+        }
+
+        return grade;
+    }
+
+    static string BuildGradeBreakdown(ShiftGrade grade)
+    {
+        string scoreColor = ColorUtility.ToHtmlStringRGB(grade.color);
+
+        return "<color=#AAB7D1><b>SHIFT GRADE</b></color>  "
+            + $"<color=#{scoreColor}><b>{grade.letter}  {grade.score}/100</b></color>\n"
+            + $"Orders {grade.ordersPoints}/25  |  Revenue {grade.revenuePoints}/25  |  Service {grade.servicePoints}/25  |  "
+            + $"Wait {grade.waitPoints}/15  |  Waste {grade.wastePoints}/10";
     }
 
     static string BuildShiftGoals(StoreStatisticsManager stats, GameTimeManager timeManager)
@@ -293,6 +386,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cashChangeValue = FindText("Card/HeadlineMetrics/CashChange/Value");
         ordersValue = FindText("Card/HeadlineMetrics/Orders/Value");
         efficiencyValue = FindText("Card/HeadlineMetrics/Efficiency/Value");
+        gradeValue = FindText("Card/HeadlineMetrics/Grade/Value");
         balanceValue = FindText("Card/OperationsMetrics/Balance/Value");
         averageWaitValue = FindText("Card/OperationsMetrics/AverageWait/Value");
         walkedOutValue = FindText("Card/OperationsMetrics/WalkedOut/Value");
@@ -324,7 +418,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         cardRt.anchorMin = new Vector2(0.5f, 0.5f);
         cardRt.anchorMax = new Vector2(0.5f, 0.5f);
         cardRt.pivot = new Vector2(0.5f, 0.5f);
-        cardRt.sizeDelta = new Vector2(820f, 720f);
+        cardRt.sizeDelta = new Vector2(820f, 760f);
 
         var cardImg = card.AddComponent<Image>();
         cardImg.color = new Color(0.12f, 0.13f, 0.18f, 0.98f);
@@ -354,8 +448,10 @@ public class EndOfDaySummaryUI : MonoBehaviour
             new Color(0.18f, 0.30f, 0.28f, 1f), new Color(0.49f, 0.86f, 0.54f));
         ordersValue = CreateMetricCard(headline.transform, "Orders", "ORDERS SERVED", "0",
             new Color(0.16f, 0.24f, 0.31f, 1f), new Color(0.51f, 0.85f, 0.93f));
-        efficiencyValue = CreateMetricCard(headline.transform, "Efficiency", "SERVICE RATE", "0%",
+        efficiencyValue = CreateMetricCard(headline.transform, "Efficiency", "VISITS SERVED", "0%",
             new Color(0.16f, 0.24f, 0.31f, 1f), new Color(0.51f, 0.85f, 0.93f));
+        gradeValue = CreateMetricCard(headline.transform, "Grade", "DAY GRADE", "F",
+            new Color(0.25f, 0.22f, 0.16f, 1f), new Color(0.95f, 0.78f, 0.43f), 42f);
 
         var operations = CreateMetricRow(card.transform, "OperationsMetrics", 104f);
         balanceValue = CreateMetricCard(operations.transform, "Balance", "ENDING CASH", "$0",
@@ -372,10 +468,10 @@ public class EndOfDaySummaryUI : MonoBehaviour
         summaryPanel.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.12f, 0.92f);
         summaryPanel.GetComponent<Image>().raycastTarget = false;
         var summaryPanelLayout = summaryPanel.GetComponent<LayoutElement>();
-        summaryPanelLayout.minHeight = 235f;
+        summaryPanelLayout.minHeight = 270f;
         summaryPanelLayout.flexibleHeight = 1f;
 
-        TextMeshProUGUI reviewTitle = CreateLabel(summaryPanel.transform, "ReviewTitle", "PROCESS REVIEW", 13,
+        TextMeshProUGUI reviewTitle = CreateLabel(summaryPanel.transform, "ReviewTitle", "SHIFT RESULTS & PROCESS REVIEW", 13,
             TextAlignmentOptions.TopLeft);
         reviewTitle.fontStyle = FontStyles.Bold;
         reviewTitle.color = new Color(0.65f, 0.72f, 0.84f, 1f);

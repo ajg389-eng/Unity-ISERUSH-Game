@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -9,6 +10,10 @@ using TMPro;
 /// </summary>
 public class TitleScreenController : MonoBehaviour
 {
+    public static TitleScreenController Instance { get; private set; }
+    public static bool IsTitleScreenActive => Instance != null
+        && (Instance.IsShowingTitle || Instance.firstRunIntroActive);
+
     [Header("UI")]
     [Tooltip("Full-screen panel with title and buttons (shown at start)")]
     public GameObject titlePanel;
@@ -30,8 +35,22 @@ public class TitleScreenController : MonoBehaviour
     [Tooltip("Optional portrait for Gus. A labeled placeholder is shown until final artwork is assigned.")]
     public Sprite gusPortrait;
 
+    [Header("First New Game Camera Move")]
+    [Tooltip("Scene prefab instance for Gus outside the store. Move the object directly in the Scene view.")]
+    [SerializeField] Transform gusSceneCharacter;
+    [Tooltip("Scene transform marking the title camera's close-up position. Move this object directly in the Scene view.")]
+    [SerializeField] Transform gusIntroCameraPoint;
+    [SerializeField, HideInInspector] Vector3 gusIntroWorldPosition = new Vector3(1.5f, 0f, 12.5f);
+    [SerializeField, HideInInspector] Vector3 gusIntroCameraWorldPosition = new Vector3(6f, 2.6f, 15.5f);
+    [Tooltip("Height above Gus's feet where the close-up camera aims.")]
+    [SerializeField, Min(0f)] float gusIntroCameraLookHeight = 1.25f;
+    [Tooltip("Seconds the title camera takes to move to Gus on a first-time start.")]
+    [SerializeField, Min(0.01f)] float gusIntroCameraMoveDuration = 3.25f;
+    [Tooltip("Brief pause on Gus before the existing dialogue cutscene begins.")]
+    [SerializeField, Min(0f)] float gusIntroCameraHoldDuration = 0.65f;
+
     [Header("Cameras")]
-    [Tooltip("Camera showing the restaurant exterior; active while title is visible")]
+    [Tooltip("Scene-authored restaurant view. Adjust this object's Transform before Play Mode; runtime only toggles the camera on or off.")]
     public Camera titleCamera;
     [Tooltip("Gameplay camera; active after Play. If unset, uses Camera.main.")]
     public Camera gameCamera;
@@ -44,6 +63,10 @@ public class TitleScreenController : MonoBehaviour
     [Tooltip("Panel to open when Settings is clicked (e.g. volume). Leave empty to do nothing.")]
     public GameObject settingsPanel;
 
+    [Header("Screen Transition")]
+    [Tooltip("Duration of fades between the title screen, intro, and gameplay.")]
+    [Min(0f)] public float screenFadeDuration = 0.6f;
+
     bool showingTitle = true;
     bool choosingSave;
     bool showingSettings;
@@ -54,6 +77,19 @@ public class TitleScreenController : MonoBehaviour
     Vector2 titleRestPosition;
     bool titleAnimationReady;
     bool gameStartCompleted;
+    bool firstRunIntroActive;
+    bool gusSceneCharacterConfigured;
+    bool startTransitionInProgress;
+    GameObject gusSceneInstance;
+    Image screenFadeImage;
+
+    void Awake()
+    {
+        if (Instance == null || Instance == this)
+            Instance = this;
+        if (Instance == this)
+            EnsureScreenFade();
+    }
 
     void Start()
     {
@@ -97,6 +133,9 @@ public class TitleScreenController : MonoBehaviour
 
         if (settingsPanel != null)
             settingsPanel.SetActive(false);
+
+        EnsureGusInScene();
+        StartCoroutine(FadeScreenTo(0f));
     }
 
     void Update()
@@ -442,8 +481,18 @@ public class TitleScreenController : MonoBehaviour
 
     void StartGame(int slotIndex)
     {
-        if (!showingTitle) return;
+        if (!showingTitle || startTransitionInProgress) return;
+        startTransitionInProgress = true;
+        StartCoroutine(StartGameWithFade(slotIndex));
+    }
+
+    IEnumerator StartGameWithFade(int slotIndex)
+    {
         GameSaveSlots.SlotInfo slot = GameSaveSlots.GetSlot(slotIndex);
+        bool isNewSave = !slot.exists;
+        if (!isNewSave)
+            yield return FadeScreenTo(1f);
+
         bool showIntro = !slot.exists || !slot.introSeen;
         Texture background = introBackground;
         if (background == null && titlePanel != null)
@@ -453,7 +502,13 @@ public class TitleScreenController : MonoBehaviour
                 background = titleBackground.texture;
         }
 
-        if (!GameSaveSlots.SelectAndLoad(slotIndex)) return;
+        if (!GameSaveSlots.SelectAndLoad(slotIndex))
+        {
+            startTransitionInProgress = false;
+            if (!isNewSave)
+                yield return FadeScreenTo(0f);
+            yield break;
+        }
         choosingSave = false;
         showingTitle = false;
 
@@ -462,24 +517,242 @@ public class TitleScreenController : MonoBehaviour
 
         if (showIntro)
         {
-            GameObject introCharacter = gusPrefab != null
-                ? gusPrefab
-                : Resources.Load<GameObject>("Prefabs/character_default");
-            IntroCutsceneUI.Show(background, introCharacter, gusPortrait, () =>
-            {
-                GameSaveSlots.MarkActiveSlotIntroSeen();
-                CompleteGameStart();
-            });
-            return;
+            firstRunIntroActive = true;
+            if (!isNewSave)
+                yield return FadeScreenTo(0f);
+            startTransitionInProgress = false;
+            StartCoroutine(PlayFirstGameIntro(background, isNewSave));
+            yield break;
         }
 
-        CompleteGameStart();
+        ActivateGame();
+        if (!isNewSave)
+            yield return FadeScreenTo(0f);
+        startTransitionInProgress = false;
     }
 
-    void CompleteGameStart()
+    void EnsureScreenFade()
+    {
+        if (screenFadeImage != null) return;
+
+        var fadeCanvasObject = new GameObject("TitleScreenFadeCanvas", typeof(RectTransform),
+            typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        fadeCanvasObject.transform.SetParent(transform, false);
+        RectTransform fadeCanvasRect = (RectTransform)fadeCanvasObject.transform;
+        fadeCanvasRect.anchorMin = Vector2.zero;
+        fadeCanvasRect.anchorMax = Vector2.one;
+        fadeCanvasRect.offsetMin = Vector2.zero;
+        fadeCanvasRect.offsetMax = Vector2.zero;
+
+        Canvas fadeCanvas = fadeCanvasObject.GetComponent<Canvas>();
+        fadeCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        fadeCanvas.overrideSorting = true;
+        fadeCanvas.sortingOrder = 32760;
+
+        CanvasScaler scaler = fadeCanvasObject.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0f;
+
+        var fadeObject = new GameObject("Black Fade", typeof(RectTransform), typeof(Image));
+        fadeObject.transform.SetParent(fadeCanvasObject.transform, false);
+        RectTransform fadeRect = (RectTransform)fadeObject.transform;
+        fadeRect.anchorMin = Vector2.zero;
+        fadeRect.anchorMax = Vector2.one;
+        fadeRect.offsetMin = Vector2.zero;
+        fadeRect.offsetMax = Vector2.zero;
+
+        screenFadeImage = fadeObject.GetComponent<Image>();
+        screenFadeImage.color = Color.black;
+        screenFadeImage.raycastTarget = true;
+    }
+
+    IEnumerator FadeScreenTo(float targetAlpha)
+    {
+        if (screenFadeImage == null)
+            yield break;
+
+        screenFadeImage.raycastTarget = true;
+        Color color = screenFadeImage.color;
+        float startAlpha = color.a;
+        float duration = Mathf.Max(0f, screenFadeDuration);
+        if (duration <= 0f)
+        {
+            color.a = targetAlpha;
+            screenFadeImage.color = color;
+            screenFadeImage.raycastTarget = targetAlpha > 0.001f;
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            color.a = Mathf.Lerp(startAlpha, targetAlpha, Mathf.Clamp01(elapsed / duration));
+            screenFadeImage.color = color;
+            yield return null;
+        }
+
+        color.a = targetAlpha;
+        screenFadeImage.color = color;
+        screenFadeImage.raycastTarget = targetAlpha > 0.001f;
+    }
+
+    GameObject ResolveGusPrefab()
+    {
+        return gusPrefab != null
+            ? gusPrefab
+            : Resources.Load<GameObject>("Prefabs/character_default");
+    }
+
+    GameObject EnsureGusInScene()
+    {
+        if (gusSceneInstance != null)
+            return gusSceneInstance;
+
+        // Prefer the prefab instance saved in the scene so its transform is directly
+        // editable before Play Mode. The fallback keeps older scenes working.
+        gusSceneInstance = gusSceneCharacter != null
+            ? gusSceneCharacter.gameObject
+            : GameObject.Find("Gus - Outside Store");
+        if (gusSceneInstance != null)
+        {
+            ConfigureGusSceneCharacter(gusSceneInstance);
+            return gusSceneInstance;
+        }
+
+        GameObject prefab = ResolveGusPrefab();
+        if (prefab == null)
+        {
+            Debug.LogWarning("Gus could not be added to the title scene because no character prefab is assigned.");
+            return null;
+        }
+
+        gusSceneInstance = Instantiate(prefab, gusIntroWorldPosition, Quaternion.identity);
+        gusSceneInstance.name = "Gus - Outside Store";
+
+        Vector3 facing = gusIntroCameraWorldPosition - gusIntroWorldPosition;
+        facing.y = 0f;
+        if (facing.sqrMagnitude > 0.001f)
+            gusSceneInstance.transform.rotation = Quaternion.LookRotation(facing.normalized, Vector3.up);
+
+        ConfigureGusSceneCharacter(gusSceneInstance);
+        return gusSceneInstance;
+    }
+
+    void ConfigureGusSceneCharacter(GameObject character)
+    {
+        if (character == null || gusSceneCharacterConfigured)
+            return;
+
+        foreach (Behaviour behaviour in character.GetComponentsInChildren<Behaviour>(true))
+        {
+            if (!(behaviour is Animator))
+                behaviour.enabled = false;
+        }
+
+        foreach (Collider collider in character.GetComponentsInChildren<Collider>(true))
+            collider.enabled = false;
+
+        foreach (Rigidbody body in character.GetComponentsInChildren<Rigidbody>(true))
+        {
+            body.isKinematic = true;
+            body.useGravity = false;
+        }
+
+        foreach (Animator animator in character.GetComponentsInChildren<Animator>(true))
+        {
+            animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.applyRootMotion = false;
+        }
+
+        gusSceneCharacterConfigured = true;
+    }
+
+    IEnumerator PlayFirstGameIntro(Texture background, bool skipFade)
+    {
+        GameObject gus = EnsureGusInScene();
+        if (titleCamera != null && gus != null)
+        {
+            Transform cameraTransform = titleCamera.transform;
+            Vector3 startPosition = cameraTransform.position;
+            Quaternion startRotation = cameraTransform.rotation;
+            Vector3 targetPosition = gusIntroCameraPoint != null
+                ? gusIntroCameraPoint.position
+                : gusIntroCameraWorldPosition;
+            Vector3 targetLookAt = gus.transform.position + Vector3.up * gusIntroCameraLookHeight;
+            Vector3 lookDirection = targetLookAt - targetPosition;
+            Quaternion targetRotation = lookDirection.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(lookDirection.normalized, Vector3.up)
+                : startRotation;
+
+            float duration = Mathf.Max(0.01f, gusIntroCameraMoveDuration);
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float progress = Mathf.Clamp01(elapsed / duration);
+                float easedProgress = progress * progress * (3f - 2f * progress);
+                cameraTransform.SetPositionAndRotation(
+                    Vector3.LerpUnclamped(startPosition, targetPosition, easedProgress),
+                    Quaternion.Slerp(startRotation, targetRotation, easedProgress));
+                yield return null;
+            }
+
+            cameraTransform.SetPositionAndRotation(targetPosition, targetRotation);
+            if (gusIntroCameraHoldDuration > 0f)
+                yield return new WaitForSecondsRealtime(gusIntroCameraHoldDuration);
+        }
+
+        IntroCutsceneUI.Show(background, ResolveGusPrefab(), gusPortrait, () =>
+        {
+            GameSaveSlots.MarkActiveSlotIntroSeen();
+            CompleteGameStart(skipFade);
+        }, titleCamera);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        Vector3 gusPosition = gusSceneCharacter != null
+            ? gusSceneCharacter.position
+            : gusIntroWorldPosition;
+        Vector3 cameraPosition = gusIntroCameraPoint != null
+            ? gusIntroCameraPoint.position
+            : gusIntroCameraWorldPosition;
+        Vector3 gusFocus = gusPosition + Vector3.up * gusIntroCameraLookHeight;
+        Gizmos.color = new Color(0.25f, 0.85f, 0.65f, 0.9f);
+        Gizmos.DrawWireSphere(gusPosition + Vector3.up, 0.35f);
+        Gizmos.color = new Color(0.95f, 0.72f, 0.2f, 0.9f);
+        Gizmos.DrawWireSphere(cameraPosition, 0.25f);
+        Gizmos.DrawLine(cameraPosition, gusFocus);
+    }
+
+    void CompleteGameStart(bool skipFade)
+    {
+        if (gameStartCompleted || startTransitionInProgress) return;
+        startTransitionInProgress = true;
+        StartCoroutine(CompleteGameStartWithFade(skipFade));
+    }
+
+    IEnumerator CompleteGameStartWithFade(bool skipFade)
+    {
+        if (!skipFade)
+            yield return FadeScreenTo(1f);
+        ActivateGame();
+        if (!skipFade)
+            yield return FadeScreenTo(0f);
+        startTransitionInProgress = false;
+    }
+
+    void ActivateGame()
     {
         if (gameStartCompleted) return;
         gameStartCompleted = true;
+        firstRunIntroActive = false;
+
+        if (gusSceneInstance != null)
+            gusSceneInstance.SetActive(false);
 
         if (inGameUIRoot != null)
             inGameUIRoot.SetActive(true);
@@ -553,6 +826,12 @@ public class TitleScreenController : MonoBehaviour
     }
 
     public bool IsShowingTitle => showingTitle;
+
+    void OnDestroy()
+    {
+        if (Instance == this)
+            Instance = null;
+    }
 }
 
 /// <summary>Small unscaled hover response for title-screen buttons.</summary>

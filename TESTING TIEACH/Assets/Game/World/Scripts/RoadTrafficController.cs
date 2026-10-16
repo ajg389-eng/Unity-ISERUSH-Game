@@ -66,7 +66,16 @@ public class RoadTrafficController : MonoBehaviour
         ResolveDrivePath();
         if (GetComponent<StreetScenery>() == null)
             gameObject.AddComponent<StreetScenery>();
-        if (MilestoneFeatures.HighestReachedNumberedStage() <= 1)
+        if (TitleScreenController.IsTitleScreenActive)
+        {
+            // Seed both lanes so the title view has traffic immediately, then
+            // keep arrivals frequent enough to read as a live street scene.
+            nextEastbound = Random.Range(4f, 7f);
+            nextWestbound = Random.Range(5f, 8f);
+            SpawnCar(1f);
+            SpawnCar(-1f);
+        }
+        else if (MilestoneFeatures.HighestReachedNumberedStage() <= 1)
         {
             nextEastbound = Random.Range(4f, 8f);
             nextWestbound = Random.Range(9f, 15f);
@@ -87,8 +96,11 @@ public class RoadTrafficController : MonoBehaviour
         // without freezing everyone already driving.
         SetEastboundPaused(false);
 
-        nextEastbound -= Time.deltaTime;
-        nextWestbound -= Time.deltaTime;
+        float trafficDelta = TitleScreenController.IsTitleScreenActive
+            ? Time.unscaledDeltaTime
+            : Time.deltaTime;
+        nextEastbound -= trafficDelta;
+        nextWestbound -= trafficDelta;
         bool deliveryManeuvering = false;
         RefreshLaneVehicleCache();
         foreach (DeliveryVan van in cachedDeliveryVans)
