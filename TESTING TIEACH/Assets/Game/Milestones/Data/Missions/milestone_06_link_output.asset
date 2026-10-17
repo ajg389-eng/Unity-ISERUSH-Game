@@ -17,5 +17,7 @@ MonoBehaviour:
   description: Set a station Output so work is routed through the connected kitchen.
   completionEventId: output_linked
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

@@ -675,6 +675,13 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         ProductionManager.Instance?.NotifyProductionStateChanged();
     }
 
+    public void RecordOutput(ItemDefinition item, int units)
+    {
+        if (item == null || units <= 0) return;
+        RecordOutput(units);
+        MissionProgressManager.Instance?.RecordProducedItem(item, units);
+    }
+
     void PruneOutputSamples()
     {
         float cutoff = Time.time - 60f;

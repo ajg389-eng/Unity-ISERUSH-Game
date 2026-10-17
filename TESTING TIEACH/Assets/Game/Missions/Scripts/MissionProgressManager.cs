@@ -74,10 +74,54 @@ public class MissionProgressManager : MonoBehaviour
         {
             if (mission == null || string.IsNullOrEmpty(mission.missionId)) continue;
             if (completedMissionIds.Contains(mission.missionId)) continue;
+            if (mission.producedItem != null || mission.countAnyUnlockedMenuProduct) continue;
             if (mission.completionEventId != eventId) continue;
 
             int needed = Mathf.Max(1, mission.requiredCount);
             int current = GetProgress(mission.missionId) + 1;
+            progressByMissionId[mission.missionId] = current;
+            anyChange = true;
+
+            if (current >= needed)
+            {
+                completedMissionIds.Add(mission.missionId);
+                Sfx.Play(SfxId.MissionComplete);
+            }
+        }
+
+        if (anyChange)
+            OnMissionsChanged?.Invoke();
+    }
+
+    public void RecordProducedItem(ItemDefinition item, int units)
+    {
+        if (item == null || units <= 0 || database?.missions == null) return;
+
+        bool anyChange = false;
+        bool unlockedMenuProductChecked = false;
+        bool isUnlockedMenuProduct = false;
+        foreach (MissionDefinition mission in database.missions)
+        {
+            if (mission == null || string.IsNullOrEmpty(mission.missionId)
+                || completedMissionIds.Contains(mission.missionId)) continue;
+
+            bool matchesSpecificProduct = mission.producedItem == item;
+            bool matchesAnyUnlockedProduct = false;
+            if (mission.countAnyUnlockedMenuProduct)
+            {
+                if (!unlockedMenuProductChecked)
+                {
+                    CustomerOrderConfig orderConfig = ProductionManager.Instance != null
+                        ? ProductionManager.Instance.orderConfig : null;
+                    isUnlockedMenuProduct = orderConfig != null && orderConfig.IsCustomerRecipeUnlocked(item);
+                    unlockedMenuProductChecked = true;
+                }
+                matchesAnyUnlockedProduct = isUnlockedMenuProduct;
+            }
+            if (!matchesSpecificProduct && !matchesAnyUnlockedProduct) continue;
+
+            int needed = Mathf.Max(1, mission.requiredCount);
+            int current = Mathf.Min(needed, GetProgress(mission.missionId) + units);
             progressByMissionId[mission.missionId] = current;
             anyChange = true;
 

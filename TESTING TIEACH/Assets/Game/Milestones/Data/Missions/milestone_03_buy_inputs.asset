@@ -13,9 +13,11 @@ MonoBehaviour:
   m_Name: milestone_03_buy_inputs
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_buy_inputs
-  title: Configure a bacon burger
-  description: Choose the Bacon Cheeseburger recipe at an Assembly Station.
-  completionEventId: recipe_configured_bacon_cheeseburger
+  title: Order production inputs
+  description: Place an ingredient order to supply your production line.
+  completionEventId: ingredients_ordered
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

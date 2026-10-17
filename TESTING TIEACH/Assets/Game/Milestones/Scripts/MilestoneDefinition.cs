@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// One progression chapter: Tutorial or a numbered main milestone.
-/// Player must finish all assigned missions, then pass the quiz to advance.
+/// Player advances after finishing all assigned missions.
 /// </summary>
 [CreateAssetMenu(fileName = "MilestoneDefinition", menuName = "ISE/Milestone Definition")]
 public class MilestoneDefinition : ScriptableObject
@@ -16,16 +16,21 @@ public class MilestoneDefinition : ScriptableObject
     [TextArea(2, 5)]
     public string description;
 
+    [Tooltip("Gus's dialogue shown in the exterior cutscene after this milestone is completed.")]
+    [TextArea(2, 4)]
+    public string[] completionDialogue = System.Array.Empty<string>();
+
     [Tooltip("True for the onboarding tutorial section (index 0).")]
     public bool isTutorial;
 
-    [Tooltip("Missions that must all be completed before the quiz unlocks.")]
+    [Tooltip("Missions that must all be completed before this milestone advances.")]
     public List<MissionDefinition> missions = new List<MissionDefinition>();
 
     [Tooltip("Optional shared mission list asset. Used when missions list is empty.")]
     public MissionDatabase missionDatabase;
 
-    [Tooltip("Quiz required after missions. Leave empty for a stub pass-through.")]
+    // Legacy serialized field kept to read existing project assets. Progression ignores it.
+    [HideInInspector]
     public QuizDefinition quiz;
 
     // Retained for old serialized assets. Runtime progression ignores milestone rewards.
@@ -41,5 +46,4 @@ public class MilestoneDefinition : ScriptableObject
         return System.Array.Empty<MissionDefinition>();
     }
 
-    public bool HasQuiz => quiz != null && quiz.questions != null && quiz.questions.Count > 0;
 }

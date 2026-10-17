@@ -340,56 +340,42 @@ public class IngredientsOrderUI : MonoBehaviour
         CustomerOrderConfig menu = inventory.orderConfig;
         if (menu != null)
         {
-            menuLayoutRows.Add(CreateSectionHeader("Items to Sell"));
-            var menuItemsByMilestone = new SortedDictionary<int, List<ItemDefinition>>();
+            var burgers = new List<ItemDefinition>();
+            var fries = new List<ItemDefinition>();
+            var shakes = new List<ItemDefinition>();
+            var otherMenuItems = new List<ItemDefinition>();
             foreach (ItemDefinition item in menu.GetMenuItems())
             {
                 if (item == null) continue;
-                int milestone = menu.GetMenuItemUnlockMilestone(item);
-                if (!menuItemsByMilestone.TryGetValue(milestone, out List<ItemDefinition> items))
-                {
-                    items = new List<ItemDefinition>();
-                    menuItemsByMilestone.Add(milestone, items);
-                }
-                items.Add(item);
+                if (menu.IsBurger(item)) burgers.Add(item);
+                else if (menu.IsFries(item)) fries.Add(item);
+                else if (menu.IsDrink(item)) shakes.Add(item);
+                else otherMenuItems.Add(item);
             }
-            foreach (var milestoneGroup in menuItemsByMilestone)
-            {
-                menuLayoutRows.Add(CreateMenuMilestoneHeader(milestoneGroup.Key));
-                GameObject grid = CreateMenuGrid(milestoneGroup.Key);
-                menuLayoutRows.Add(grid);
-                for (int i = 0; i < milestoneGroup.Value.Count; i += 2)
-                {
-                    GameObject pair = CreateMenuGridRow(grid.transform);
-                    menuRows.Add(CreateMenuToggleRow(menu, milestoneGroup.Value[i], pair.transform));
-                    if (i + 1 < milestoneGroup.Value.Count)
-                        menuRows.Add(CreateMenuToggleRow(menu, milestoneGroup.Value[i + 1], pair.transform));
-                    else
-                        CreateMenuGridSpacer(pair.transform);
-                }
-            }
+            AddMenuCategory(menu, "Burgers", burgers);
+            AddMenuCategory(menu, "Fries", fries);
+            AddMenuCategory(menu, "Shakes", shakes);
+            AddMenuCategory(menu, "Other", otherMenuItems);
         }
 
-        var ingredientsByMilestone = new SortedDictionary<int, List<ItemDefinition>>();
+        var pantryItems = new List<ItemDefinition>();
+        var freezerItems = new List<ItemDefinition>();
+        var otherSupplyItems = new List<ItemDefinition>();
         foreach (ItemDefinition item in inventory.GetIngredientCatalogItems())
         {
             if (item == null) continue;
-            int milestone = inventory.GetOrderItemUnlockMilestone(item);
-            if (!ingredientsByMilestone.TryGetValue(milestone, out List<ItemDefinition> items))
-            {
-                items = new List<ItemDefinition>();
-                ingredientsByMilestone.Add(milestone, items);
-            }
-            items.Add(item);
+            StationType? supplyStation = menu != null ? menu.GetVendorSupplyStation(item) : null;
+            if (supplyStation == StationType.Pantry)
+                pantryItems.Add(item);
+            else if (supplyStation == StationType.Freezer)
+                freezerItems.Add(item);
+            else
+                otherSupplyItems.Add(item);
         }
-        foreach (var milestoneGroup in ingredientsByMilestone)
-        {
-            supplyLayoutRows.Add(CreateMilestoneHeader(milestoneGroup.Key));
-            GameObject grid = CreateSupplyGrid(milestoneGroup.Key);
-            supplyLayoutRows.Add(grid);
-            foreach (ItemDefinition item in milestoneGroup.Value)
-                supplyRows.Add(CreateOrderRow(item, grid.transform));
-        }
+        AddSupplyCategory("Pantry", pantryItems);
+        AddSupplyCategory("Freezer", freezerItems);
+        AddSupplyCategory("Other", otherSupplyItems);
+
         CreateCartFooter();
         BuildNavigation(menu);
         SelectSection(showMenu);
@@ -398,6 +384,37 @@ public class IngredientsOrderUI : MonoBehaviour
         builtCatalogHash = GetCatalogHash();
         GameUITheme.ApplyTo(transform);
         SelectSection(showMenu);
+    }
+
+    void AddSupplyCategory(string category, List<ItemDefinition> items)
+    {
+        if (items == null || items.Count == 0) return;
+
+        supplyLayoutRows.Add(CreateSupplyCategoryHeader(category));
+        GameObject grid = CreateSupplyGrid(category);
+        supplyLayoutRows.Add(grid);
+        foreach (ItemDefinition item in items)
+            supplyRows.Add(CreateOrderRow(item, grid.transform));
+    }
+
+    void AddMenuCategory(CustomerOrderConfig menu, string category, List<ItemDefinition> items)
+    {
+        if (items == null || items.Count == 0) return;
+
+        menuLayoutRows.Add(CreateMenuCategoryHeader(category));
+        GameObject grid = CreateMenuGrid(category);
+        menuLayoutRows.Add(grid);
+        for (int i = 0; i < items.Count; i += 2)
+        {
+            GameObject pair = CreateMenuGridRow(grid.transform);
+            menuRows.Add(CreateMenuToggleRow(menu, items[i], pair.transform));
+            if (i + 1 < items.Count)
+            {
+                menuRows.Add(CreateMenuToggleRow(menu, items[i + 1], pair.transform));
+            }
+            else
+                CreateMenuGridSpacer(pair.transform);
+        }
     }
 
     int GetCatalogHash()
@@ -421,6 +438,9 @@ public class IngredientsOrderUI : MonoBehaviour
             {
                 if (item == null) continue;
                 hash = MixCatalogHash(hash, item, inventory.GetOrderItemUnlockMilestone(item));
+                StationType? source = menu != null ? menu.GetVendorSupplyStation(item) : null;
+                int supplyStation = source.HasValue ? (int)source.Value : -1;
+                hash = MixCatalogHash(hash, item, supplyStation);
             }
 
             return hash;
@@ -1007,7 +1027,7 @@ public class IngredientsOrderUI : MonoBehaviour
         string display = locked ? "Locked Item"
             : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : FormatGraphLabel(fallback);
         label.text = "<b>" + display + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(station) + "</color>"
-            + (locked ? "\n<color=#D8B365>Research: " + CustomerOrderConfig.RecipeResearchTitleForStage(unlockMilestone) + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Research: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
         label.fontSize = 12f;
         label.enableAutoSizing = true;
         label.fontSizeMin = 8.5f;
@@ -1256,7 +1276,7 @@ public class IngredientsOrderUI : MonoBehaviour
         text.text = "<b>" + (locked ? "Locked Item"
                 : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback)
             + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(subtitle) + "</color>"
-            + (locked ? "\n<color=#D8B365>Research: " + CustomerOrderConfig.RecipeResearchTitleForStage(unlockMilestone) + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Research: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
         text.fontSize = 14f;
         text.enableAutoSizing = true;
         text.fontSizeMin = 10.5f;
@@ -1344,9 +1364,9 @@ public class IngredientsOrderUI : MonoBehaviour
         return go;
     }
 
-    GameObject CreateMenuGrid(int milestone)
+    GameObject CreateMenuGrid(string category)
     {
-        var go = new GameObject("MenuGrid_" + milestone, typeof(RectTransform),
+        var go = new GameObject("MenuGrid_" + category, typeof(RectTransform),
             typeof(LayoutElement), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
         go.transform.SetParent(listContainer, false);
 
@@ -1708,16 +1728,15 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
     }
 
-    GameObject CreateMilestoneHeader(int milestone)
+    GameObject CreateSupplyCategoryHeader(string category)
     {
-        string label = milestone > 0 ? CustomerOrderConfig.RecipeResearchTitleForStage(milestone) : "Available Now";
-        var go = new GameObject("IngredientGroup_Milestone" + milestone, typeof(RectTransform));
+        var go = new GameObject("IngredientGroup_" + category, typeof(RectTransform));
         go.transform.SetParent(listContainer, false);
         var layout = go.AddComponent<LayoutElement>();
         layout.minHeight = 28f;
         layout.preferredHeight = 28f;
         var text = go.AddComponent<TextMeshProUGUI>();
-        text.text = label;
+        text.text = category;
         text.fontSize = 15f;
         text.fontStyle = FontStyles.Bold;
         text.color = GameUITheme.Accent;
@@ -1728,9 +1747,9 @@ public class IngredientsOrderUI : MonoBehaviour
         return go;
     }
 
-    GameObject CreateSupplyGrid(int milestone)
+    GameObject CreateSupplyGrid(string category)
     {
-        var go = new GameObject("IngredientGrid_" + milestone, typeof(RectTransform),
+        var go = new GameObject("IngredientGrid_" + category, typeof(RectTransform),
             typeof(LayoutElement), typeof(GridLayoutGroup), typeof(ContentSizeFitter));
         go.transform.SetParent(listContainer, false);
 
@@ -1752,16 +1771,15 @@ public class IngredientsOrderUI : MonoBehaviour
         return go;
     }
 
-    GameObject CreateMenuMilestoneHeader(int milestone)
+    GameObject CreateMenuCategoryHeader(string category)
     {
-        string label = milestone > 0 ? CustomerOrderConfig.RecipeResearchTitleForStage(milestone) : "Available Now";
-        var go = new GameObject("MenuGroup_Milestone" + milestone, typeof(RectTransform));
+        var go = new GameObject("MenuGroup_" + category, typeof(RectTransform));
         go.transform.SetParent(listContainer, false);
         var layout = go.AddComponent<LayoutElement>();
         layout.minHeight = 28f;
         layout.preferredHeight = 28f;
         var text = go.AddComponent<TextMeshProUGUI>();
-        text.text = label;
+        text.text = category;
         text.fontSize = 15f;
         text.fontStyle = FontStyles.Bold;
         text.color = GameUITheme.Accent;
@@ -1832,8 +1850,8 @@ public class IngredientsOrderUI : MonoBehaviour
         img.color = GameUITheme.Surface;
 
         var hlg = row.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(5, 5, 3, 3);
-        hlg.spacing = 2;
+        hlg.padding = new RectOffset(4, 4, 3, 3);
+        hlg.spacing = 1;
         hlg.childAlignment = TextAnchor.MiddleLeft;
         hlg.childControlWidth = true;
         hlg.childForceExpandWidth = false;
@@ -1842,10 +1860,13 @@ public class IngredientsOrderUI : MonoBehaviour
         var infoGo = new GameObject("Info", typeof(RectTransform));
         infoGo.transform.SetParent(row.transform, false);
         var infoLayout = infoGo.AddComponent<LayoutElement>();
-        infoLayout.minWidth = 62f;
+        infoLayout.minWidth = 54f;
         infoLayout.flexibleWidth = 1f;
         var infoTmp = infoGo.AddComponent<TextMeshProUGUI>();
-        infoTmp.fontSize = 12;
+        infoTmp.fontSize = 10.5f;
+        infoTmp.enableAutoSizing = true;
+        infoTmp.fontSizeMin = 9f;
+        infoTmp.fontSizeMax = 10.5f;
         infoTmp.color = GameUITheme.TextPrimary;
         infoTmp.alignment = TextAlignmentOptions.Left;
         if (TMP_Settings.defaultFontAsset != null) infoTmp.font = TMP_Settings.defaultFontAsset;
@@ -1853,23 +1874,37 @@ public class IngredientsOrderUI : MonoBehaviour
         var stockGo = new GameObject("Stock", typeof(RectTransform));
         stockGo.transform.SetParent(row.transform, false);
         var stockLayout = stockGo.AddComponent<LayoutElement>();
-        stockLayout.minWidth = 48f;
-        stockLayout.preferredWidth = 48f;
+        stockLayout.minWidth = 42f;
+        stockLayout.preferredWidth = 42f;
         var stockTmp = stockGo.AddComponent<TextMeshProUGUI>();
-        stockTmp.fontSize = 11;
+        stockTmp.fontSize = 9;
+        stockTmp.enableAutoSizing = true;
+        stockTmp.fontSizeMin = 7f;
+        stockTmp.fontSizeMax = 9f;
         stockTmp.color = GameUITheme.TextSecondary;
         stockTmp.alignment = TextAlignmentOptions.Center;
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
+        TextMeshProUGUI autoOrderLabel;
+        Button autoOrderButton = CreateCartButton(row.transform, "AutoRestock", "Auto", 44f,
+            GameUITheme.SurfaceHover, out autoOrderLabel);
+        SetCompactCartButton(autoOrderButton, 44f, 30f);
+        autoOrderLabel.fontSize = 8.5f;
+        autoOrderLabel.enableAutoSizing = true;
+        autoOrderLabel.fontSizeMin = 7.5f;
+        autoOrderLabel.fontSizeMax = 8.5f;
+        autoOrderLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        autoOrderLabel.overflowMode = TextOverflowModes.Overflow;
+
         TextMeshProUGUI removeLabel;
-        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 28f, GameUITheme.Danger, out removeLabel);
-        SetCompactCartButton(removeButton, 28f, 30f);
+        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 26f, GameUITheme.Danger, out removeLabel);
+        SetCompactCartButton(removeButton, 26f, 30f);
 
         var countGo = new GameObject("CartCount", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         countGo.transform.SetParent(row.transform, false);
         var countLe = countGo.GetComponent<LayoutElement>();
-        countLe.minWidth = 28f;
-        countLe.preferredWidth = 28f;
+        countLe.minWidth = 24f;
+        countLe.preferredWidth = 24f;
         var countTmp = countGo.GetComponent<TextMeshProUGUI>();
         countTmp.fontSize = 11;
         countTmp.fontStyle = FontStyles.Bold;
@@ -1878,10 +1913,21 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) countTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI addLabel;
-        Button addButton = CreateCartButton(row.transform, "Add", "+", 28f, GameUITheme.Positive, out addLabel);
-        SetCompactCartButton(addButton, 28f, 30f);
+        Button addButton = CreateCartButton(row.transform, "Add", "+", 26f, GameUITheme.Positive, out addLabel);
+        SetCompactCartButton(addButton, 26f, 30f);
 
         var captured = item;
+        autoOrderButton.onClick.AddListener(() =>
+        {
+            if (!MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
+            int packSize = inventory != null ? inventory.GetPackSize(captured) : 1;
+            int currentTarget = inventory != null ? inventory.GetReorderTarget(captured) : 0;
+            int maxPacks = MilestoneFeatures.IsResearchComplete("smart_operations") ? 8 : 4;
+            int maximumTarget = packSize * maxPacks;
+            int nextTarget = currentTarget >= maximumTarget ? 0 : currentTarget + packSize;
+            inventory?.SetReorderTarget(captured, nextTarget);
+            RefreshAll();
+        });
         removeButton.onClick.AddListener(() =>
         {
             SetCartPacks(captured, GetCartPacks(captured) - 1);
@@ -1898,6 +1944,8 @@ public class IngredientsOrderUI : MonoBehaviour
         binder.item = item;
         binder.infoText = infoTmp;
         binder.stockText = stockTmp;
+        binder.autoOrderButton = autoOrderButton;
+        binder.autoOrderLabel = autoOrderLabel;
         binder.removeButton = removeButton;
         binder.addButton = addButton;
         binder.cartCountText = countTmp;
@@ -2187,6 +2235,7 @@ public class IngredientsOrderUI : MonoBehaviour
         }
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
+        bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
         if (addAllButton != null) addAllButton.interactable = !deliveryActive;
         int cartTotal = 0;
         int cartPackCount = 0;
@@ -2217,13 +2266,20 @@ public class IngredientsOrderUI : MonoBehaviour
                 rowImage.color = GameUITheme.Surface;
             if (row.lockVisual != null) row.lockVisual.alpha = 0f;
             if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!itemUnlocked);
+            int reorderTarget = inventory.GetReorderTarget(row.item);
             if (row.stockText != null)
             {
-                row.stockText.text = !itemUnlocked ? string.Empty : incoming > 0
-                    ? "Stock\n" + stock + "\n+" + incoming + " incoming"
-                    : "Stock\n" + stock;
+                string stockValue = stock + (incoming > 0 ? " (+" + incoming + ")" : string.Empty);
+                string autoValue = !automaticOrderingUnlocked ? "Locked"
+                    : reorderTarget > 0 ? "Tgt " + reorderTarget : "Off";
+                row.stockText.text = !itemUnlocked ? string.Empty
+                    : "Stock\n" + stockValue + "\n" + autoValue;
                 row.stockText.color = GameUITheme.TextSecondary;
             }
+            if (row.autoOrderLabel != null)
+                row.autoOrderLabel.text = "Auto";
+            SetButtonState(row.autoOrderButton, itemUnlocked && automaticOrderingUnlocked,
+                reorderTarget > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
             if (!itemUnlocked) SetCartPacks(row.item, 0);
             int selected = itemUnlocked ? GetCartPacks(row.item) : 0;
             cartPackCount += selected;
@@ -2325,7 +2381,7 @@ public class IngredientsOrderUI : MonoBehaviour
         recipeDetailsText.text = "<b>" + title + "</b>\n\n<b>INPUTS</b>\n" + inputs
             + "\n<b>STATION</b>\n" + (recipe.RequiresMk2 ? "Assembly Station MK2" : "Assembly Station MK1 or MK2")
             + "\n\n" + FormatEconomics(cost, value, profit)
-            + (researchStage > 0 ? "\n<b>RESEARCH</b>  " + CustomerOrderConfig.RecipeResearchTitleForStage(researchStage) : "");
+            + (researchStage > 0 ? "\n<b>RESEARCH</b>  " + recipeChartMenu.RecipeResearchTitleForItem(item) : "");
     }
 
     static string FormatEconomics(float cost, float value, float profit)
@@ -2429,6 +2485,8 @@ public class IngredientOrderRow : MonoBehaviour
     public ItemDefinition item;
     public TextMeshProUGUI infoText;
     public TextMeshProUGUI stockText;
+    public Button autoOrderButton;
+    public TextMeshProUGUI autoOrderLabel;
     public Button removeButton;
     public Button addButton;
     public TextMeshProUGUI cartCountText;

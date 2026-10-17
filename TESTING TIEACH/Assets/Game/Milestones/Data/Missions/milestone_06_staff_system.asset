@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_staff_system
   title: Staff the operation
-  description: Hire a worker and consider how people fit into the whole production system.
+  description: Hire a worker and consider how people fit into the whole production
+    system.
   completionEventId: worker_hired
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

@@ -17,5 +17,7 @@ MonoBehaviour:
   description: Move a workstation to improve the layout of your kitchen.
   completionEventId: station_repositioned
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_supply_ops
   title: Supply operations
-  description: Order ingredients and make sure upstream supply can support downstream service.
+  description: Order ingredients and make sure upstream supply can support downstream
+    service.
   completionEventId: ingredients_ordered
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

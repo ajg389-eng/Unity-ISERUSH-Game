@@ -185,7 +185,7 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
             {
                 basketUnits--;
                 cookedOutputUnits++;
-                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(CookedItem, 1);
                 continue;
             }
 
@@ -198,7 +198,7 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
             basketUnits--;
             cookedOutputUnits++;
             cookTimer = Mathf.Max(0f, cookTimer - cycleSeconds);
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(CookedItem, 1);
             if (basketUnits <= 0) cookTimer = 0f;
         }
         processProgressIndicator?.SetProgress(

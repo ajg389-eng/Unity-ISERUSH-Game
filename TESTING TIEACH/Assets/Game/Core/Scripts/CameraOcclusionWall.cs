@@ -40,6 +40,7 @@ public class CameraOcclusionWall : MonoBehaviour
     readonly List<CutawayCap> cutawayCaps = new List<CutawayCap>();
     bool usingCutawayMaterials;
     bool usingOpacityMaterials;
+    bool cutsceneForceVisible;
     Material[][] opacityMaterials;
     readonly List<Material> opacityMaterialInstances = new List<Material>();
     bool placementLocked;
@@ -59,6 +60,7 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public float DuckAmount => cutawayAmount;
     public bool IsPlacementLocked => placementLocked;
+    public bool CutsceneForceVisible => cutsceneForceVisible;
     public float CutawayDropDistance => 0f;
     public Bounds WorldBounds => worldBounds;
 
@@ -178,11 +180,24 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public void SetDuckTarget(float target01)
     {
+        if (cutsceneForceVisible) return;
         targetCutaway = Mathf.Clamp01(target01);
+    }
+
+    public void SetCutsceneForceVisible(bool forceVisible)
+    {
+        cutsceneForceVisible = forceVisible;
+        if (!cutsceneForceVisible) return;
+
+        targetCutaway = 0f;
+        cutawayAmount = 0f;
+        ApplyCutaway(0f);
     }
 
     void LateUpdate()
     {
+        if (cutsceneForceVisible) return;
+
         float desiredAmount = placementLocked ? 0f : targetCutaway;
         bool isMoving = !Mathf.Approximately(cutawayAmount, desiredAmount);
         if (!isMoving && !rendererCacheDirty)

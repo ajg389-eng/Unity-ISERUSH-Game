@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Two-page guidebook overlay. Built at runtime and opened from the pause menu.
+/// Two-page reference overlay. Built at runtime and opened from the HUD, Gus, or pause menu.
 /// </summary>
 public class GuidebookUI : MonoBehaviour
 {
@@ -53,6 +53,24 @@ public class GuidebookUI : MonoBehaviour
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
         spreadIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpreadIndex, 0), 0, maxSpread);
         Refresh();
+    }
+
+    public void OpenToChapter(string chapter)
+    {
+        Open();
+        if (string.IsNullOrWhiteSpace(chapter)) return;
+
+        for (int i = 0; i < GuidebookPages.All.Length; i++)
+        {
+            if (!string.Equals(GuidebookPages.All[i].chapter, chapter,
+                    System.StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            spreadIndex = Mathf.Clamp(i / 2, 0, Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1));
+            SaveCurrentSpread();
+            Refresh();
+            return;
+        }
     }
 
     public void Close()

@@ -17,5 +17,7 @@ MonoBehaviour:
   description: Serve 25 customers while balancing order accuracy and speed.
   completionEventId: order_served
   requiredCount: 25
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

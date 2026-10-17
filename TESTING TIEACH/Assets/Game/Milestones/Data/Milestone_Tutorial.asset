@@ -19,6 +19,12 @@ MonoBehaviour:
 
     Topics:
     Onboarding'
+  completionDialogue:
+  - You can follow work from station to station now. That is how we start seeing
+    the whole process.
+  - An Industrial and Systems Engineer studies how people, equipment, materials,
+    and information work together. Keep looking for delays and waste across the whole
+    restaurant.
   isTutorial: 1
   missions: []
   missionDatabase: {fileID: 11400000, guid: 52859d47b8862bc4ca163b279226ec17, type: 2}

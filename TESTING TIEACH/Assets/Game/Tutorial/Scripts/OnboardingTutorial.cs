@@ -149,6 +149,7 @@ public class OnboardingTutorial : MonoBehaviour
     float ingredientExplanationUntil;
     string tutorialFocusText;
     string tutorialTextBeingRevealed;
+    string lastTutorialHighlightedText;
     int tutorialVisibleCharacters;
     int tutorialTotalCharacters;
     float tutorialCharacterProgress;
@@ -301,7 +302,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Buy stations",
             "Open <b>Build</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
-            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow. Shorter routes reduce worker travel and help the line keep up.\n\n" +
+            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow. <b>Human factors and work design</b> means arranging tasks and equipment around the people doing the work: keep stations reachable, routes direct, and aisles clear so workers spend less time walking and handling items.\n\n" +
             "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
             "Next", Highlight.Inventory),
         new Step(
@@ -338,7 +339,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Pickup Station",
             "Buy and place a <b>Pickup Station</b> on the pass. Any finished item can wait here for customer pickup, including food, drinks, and future products.\n\n" +
-            "If this sits empty, upstream stations are too slow. If it fills and items expire, you produced more than you can serve.\n\nPlace one to continue.",
+            "Pickup quality is freshness-linked sale value. Sold within <b>8 seconds</b> of arrival, an item earns <b>50% more</b>; it returns to base value by 28 seconds, then falls to <b>50% below base</b> by 56 seconds. Items remain available, but stale stock earns less. Match production to customer demand to protect freshness and avoid overproduction. Item reputation in Analytics separately affects demand next shift.\n\nPlace one to continue.",
             "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
         new Step(
             "Research the three foundations",
@@ -350,7 +351,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None, requireRecipeScreen: true),
         new Step(
             "Configure ingredients and recipes",
-            "Click the highlighted station in the kitchen. Gus will point out the exact choice to make in its station panel. We will configure each station one at a time.",
+            "Click the highlighted station in the kitchen. Gus will point out the exact choice to make in its station panel. We will configure each station one at a time. Afterward, use <b>Target / Min</b> to set its planned output pace.",
             "Next", Highlight.Management, openWorkers: true, requireRecipes: true, requireStationSequence: true),
         new Step(
             "Buy ingredients",
@@ -360,7 +361,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Hire workers",
             "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
-            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. Workers use their priorities to choose jobs within their assigned flow; unassigned workers remain idle.\n\n" +
+            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. This is <b>workforce planning</b>: give each worker a clear flow and enough transport capacity for its workload. Direct station layouts reduce walking and leave more capacity for moving materials.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true, requireStationSequence: true),
         new Step(
@@ -380,7 +381,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Assign workers to a flow",
             "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
-            "That worker's name appears on the flow. Click the name chip to unassign. The kitchen will not cook until at least one worker is on a flow.\n\n" +
+            "That worker's name appears on the flow. Click the name chip to unassign. A worker's route and handling time affect how much material they can move, so use short, clear routes and assign enough capacity for the station workload. The kitchen will not cook until at least one worker is on a flow.\n\n" +
             "Next stays locked until a flow has a worker assigned.",
             "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true, requireStationSequence: true),
         new Step(
@@ -473,27 +474,27 @@ public class OnboardingTutorial : MonoBehaviour
     static readonly string[] CompactTutorialText =
     {
         "Use <b>WASD</b> to move around. Hold <b>right mouse</b> and drag to turn the camera, then scroll to zoom. Try all three controls before continuing.",
-        "Build a small burger line, connect it, and serve one test customer.",
-        "Open <b>Build</b>. The highlighted MK1 station is free for this tutorial.",
-        "Buy the <b>Register</b>, place it on a lobby counter, then click it and choose <b>Enable</b>.",
-        "Buy a <b>Freezer</b>. You will assign Raw Patty after placement.",
+        "You are the <b>industrial and systems engineer</b> for this restaurant. Design a connected operation, balance people, equipment, materials, and customer demand, then use evidence to improve the whole system.",
+        "Open <b>Build</b>. <b>Human factors and work design</b> means shaping tasks and layout around workers. Keep stations reachable, routes direct, and aisles clear to reduce walking and handling time.",
+        "Buy the <b>Register</b>, place it on a lobby counter, then click it and choose <b>Enable</b>. Its queue shows when customer demand is greater than service capacity.",
+        "Buy a <b>Freezer</b>. You will assign Raw Patty after placement. This is the start of a process: it supplies an input another station needs.",
         "Buy a <b>Grill</b>. It turns Raw Patty into Cooked Patty.",
         "Buy a <b>Fryer</b>. Fries use Potato Slices, then combine Cooked Potato Slices with a Fry Container at Assembly.",
         "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
-        "Buy an <b>Assembly Station</b>. Its selected recipe determines its required inputs.",
-        "Buy a <b>Pickup Station</b> and <b>click a counter slot to place it</b>. Only finished products delivered here are sold.",
+        "Buy an <b>Assembly Station</b>. A recipe is a process specification: it defines the inputs needed for each finished item.",
+        "Buy a <b>Pickup Station</b> and <b>click a counter slot to place it</b>. Freshness changes sale value: within 8 seconds an item earns +50%; by 28 seconds it is at base value; by 56 seconds it reaches -50%. It stays available, but stale stock earns less. Match production with demand. Item reputation is a separate signal that changes next shift's demand.",
         "In <b>Research</b>, complete the first card in each of the three branches. Each first card finishes in one second during the tutorial.",
         "Open <b>Recipes</b> and inspect the Burger, Fries, and Shake production trees before configuring a station.",
-        "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger.",
-        "In <b>Food</b>, order Raw Patties and Buns. Express costs $200 and makes the delivery van arrive immediately.",
-        "In <b>Staff</b>, hire one worker. Worker priorities can favor specific task types.",
-        "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station.",
+        "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger. <b>Target / Min</b> sets planned output from the selected recipe's base capacity. At <b>100%</b> a 15/min recipe makes one item every 4 seconds; a lower target slows the cycle and reduces input use proportionally. Match upstream supply to each recipe's required inputs.",
+        "In <b>Food</b>, order Raw Patties and Buns. Stock prevents stations from starving, while excess stock ties up cash and can be wasted.",
+        "In <b>Staff</b>, hire one worker. This is <b>workforce planning</b>: assign clear work, then provide enough transport capacity for the flow. Short routes reduce walking and handling time.",
+        "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station. This process map includes two inputs merging at Assembly.",
         "Open <b>Business > Menu</b> and enable <b>Hamburger</b>. All sellable items start off until you choose them.",
-        "Use <b>Edit Flow</b> to adjust connections, then click Finish.",
-        "Assign a worker using the highlighted drop area. The worker can handle every station in the flow.",
-        "Customers request a burger and pay when the ordered burger reaches the Pickup Station. Workers keep the line moving, but only stage food that a waiting customer ordered.",
+        "Use <b>Edit Flow</b> to adjust connections, then click Finish. ISE improvement is iterative: change the design, then check whether the result improves.",
+        "Assign a worker using the highlighted drop area. Route length and handling time reduce the worker's available transport capacity, so work design should keep connected stations reachable and the flow direct.",
+        "Customers order at the register. Stations produce at their set rates, and workers move finished food to the Pickup Station even before it is ordered. Balance output with demand to avoid shortages and waste.",
         "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave.",
-        "In <b>Analytics</b>, In System means customers waiting or being served; Avg Order Wait is order to full pickup; Orders Served / Min counts customer orders; Service Rate is served divided by served plus lost. Completed Last Min counts item units. Review Analytics, close it, then Finish."
+        "In <b>Analytics</b>, <b>In System</b> counts customers waiting or being served; <b>Avg Order Wait</b> is order to full pickup; <b>Orders Served / Min</b> counts orders; <b>Service Rate</b> is served divided by served plus lost; <b>Completed Last Min</b> counts item units. <b>Item Reputation</b> changes next shift's demand: serving an item raises its score, while an abandoned order lowers it; every 20 points adds 5 items/min. Compare demand, queues, and output to find the constraint, change one thing, and check the effect. That measure-and-improve loop is central to ISE. Review Analytics, close it, then Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -688,10 +689,9 @@ public class OnboardingTutorial : MonoBehaviour
         if (cameraPromptPanel != null)
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
-            titleText.text = step.title;
-        if (bodyText != null)
-            bodyText.text = !string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
-                : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
+            titleText.text = ISEVocabularyHighlighter.Highlight(step.title);
+        SetTutorialBodyText(!string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
+            : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body);
         if (stepLabel != null)
             stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
         if (nextLabel != null)
@@ -830,6 +830,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (!running || bodyText == null || !bodyText.gameObject.activeInHierarchy)
             return;
 
+        ApplyISEVocabularyHighlighting();
         if (tutorialTextBeingRevealed != bodyText.text)
             ResetTutorialTextReveal();
 
@@ -860,6 +861,22 @@ public class OnboardingTutorial : MonoBehaviour
         nextTutorialVoiceTime = Time.unscaledTime + IntroCutsceneUI.TypewriterVoiceInterval
             + Random.Range(0f, 0.025f);
         IntroCutsceneUI.PlayGibberishBlip(tutorialTypewriterVoiceSource);
+    }
+
+    void SetTutorialBodyText(string sourceText)
+    {
+        if (bodyText == null) return;
+
+        string highlightedText = ISEVocabularyHighlighter.Highlight(sourceText);
+        lastTutorialHighlightedText = highlightedText;
+        if (bodyText.text != highlightedText)
+            bodyText.text = highlightedText;
+    }
+
+    void ApplyISEVocabularyHighlighting()
+    {
+        if (bodyText == null || bodyText.text == lastTutorialHighlightedText) return;
+        SetTutorialBodyText(bodyText.text);
     }
 
     void UpdateContextualCallout()
@@ -1700,13 +1717,13 @@ public class OnboardingTutorial : MonoBehaviour
                     && popup.toggleButton.gameObject.activeInHierarchy)
                 {
                     tutorialFocusText = "Click <b>Enable</b> on the register popup to let customers order.";
-                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    SetTutorialBodyText(tutorialFocusText);
                     HighlightControl(popup.toggleButton);
                 }
                 else
                 {
                     tutorialFocusText = "Click the placed <b>register</b>, then click <b>Enable</b>.";
-                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    SetTutorialBodyText(tutorialFocusText);
                 }
             }
             return;
@@ -1721,7 +1738,7 @@ public class OnboardingTutorial : MonoBehaviour
             if (menuManagement != null && !menuManagement.IsOpen)
                 menuManagement.Open();
             tutorialFocusText = "Click the <b>Menu</b> tab to choose what items to sell.";
-            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            SetTutorialBodyText(tutorialFocusText);
             HighlightHudButton("Tab_Menu");
             return;
         }
@@ -1734,7 +1751,7 @@ public class OnboardingTutorial : MonoBehaviour
             if (target != null)
             {
                 tutorialFocusText = "Click the <b>Hamburger</b> toggle to add it to the menu.";
-                if (bodyText != null) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
                 // This step replaces the earlier Business-tab target with the
                 // actual menu toggle. Focus explicitly so both the border and
                 // arrow follow the action the player needs to take.
@@ -1970,7 +1987,7 @@ public class OnboardingTutorial : MonoBehaviour
             if (management == null || !management.IsOpen)
             {
                 tutorialFocusText = "Click <b>Business</b> at the top to start configuring ingredients and recipes.";
-                if (bodyText != null) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
                 UpdateHighlight(Highlight.Management);
                 return;
             }
@@ -1989,26 +2006,26 @@ public class OnboardingTutorial : MonoBehaviour
                 highlightTarget = station.transform;
                 secondaryHighlightTarget = null;
                 tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> in the kitchen. Gus will show you its recipe choice.";
-                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
                 return;
             }
 
             tutorialFocusText = GetRecipeTutorialPrompt(recipeTutorialStationIndex, station.name.Replace("(Clone)", "").Trim());
-            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            SetTutorialBodyText(tutorialFocusText);
             if (IsRecipeTutorialStationConfigured(recipeTutorialStationIndex, station))
             {
                 recipeTutorialStationIndex++;
                 if (recipeTutorialStationIndex >= 4)
                 {
-                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger.";
-                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger. <b>Target / Min</b> sets a production station's planned output rate. At <b>100%</b>, it runs at the selected recipe's base capacity; each cycle makes one item, so 15/min means one every 4 seconds. Lower targets slow production and reduce required input rates proportionally. Match upstream output to each downstream recipe's inputs. Actual output can still fall below target if stock, space, or worker transport is limited.";
+                    SetTutorialBodyText(tutorialFocusText);
                     secondaryHighlightTarget = null;
                     return;
                 }
                 station = GetRecipeTutorialStation(recipeTutorialStationIndex);
                 if (station == null) return;
                 tutorialFocusText = "Good. Now click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> and choose its burger-line item or recipe.";
-                if (bodyText != null) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
             }
             highlightTarget = station.transform;
             calloutTarget = null;
@@ -2039,7 +2056,7 @@ public class OnboardingTutorial : MonoBehaviour
                         ingredientExplanationUntil = Time.unscaledTime + 3f;
                         tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
                         calloutTarget = null;
-                        if (bodyText != null) bodyText.text = tutorialFocusText;
+                        SetTutorialBodyText(tutorialFocusText);
                     }
                     return;
                 }
@@ -2057,7 +2074,7 @@ public class OnboardingTutorial : MonoBehaviour
                 {
                     tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
                     ingredientExplanationUntil = Time.unscaledTime + 3f;
-                    if (bodyText != null) bodyText.text = tutorialFocusText;
+                    SetTutorialBodyText(tutorialFocusText);
                 }
                 calloutTarget = null;
                 if (Time.unscaledTime < ingredientExplanationUntil) return;
@@ -2094,7 +2111,7 @@ public class OnboardingTutorial : MonoBehaviour
                 if (flowCreateCompleted && HasTutorialFlow())
                 {
                     tutorialFocusText = "Burger flow saved. Moving to the next tutorial step.";
-                    if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                    SetTutorialBodyText(tutorialFocusText);
                     return;
                 }
 
@@ -2103,7 +2120,7 @@ public class OnboardingTutorial : MonoBehaviour
                 if (workers != null)
                     foreach (Button button in workers.GetComponentsInChildren<Button>(true))
                         if (button != null && button.name == "CreateFlow") { FocusTutorialControl(button); break; }
-                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
                 return;
             }
 
@@ -2119,19 +2136,19 @@ public class OnboardingTutorial : MonoBehaviour
                     tutorialFocusText = "Start a separate <b>branch</b> from <b>Pantry</b>: click and drag to the existing <b>Assembly</b> station, then release to merge it into the same flow.";
                 else if (expected.source.GetComponent<AssemblyStation>() != null)
                     tutorialFocusText = "Bring the flow to the <b>Pickup Station</b>: click and drag from <b>Assembly</b> to <b>Pickup Station</b>, then release.";
-                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
             }
             else if (HasTutorialFlow())
             {
                 tutorialFocusText = "Flow connected. Click <b>Finish</b> to save it.";
                 if (manager.flowCaptureFinishButton != null)
                     FocusTutorialControl(manager.flowCaptureFinishButton);
-                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
             }
             else
             {
                 tutorialFocusText = "Drag from the highlighted source station to its destination. The pointer will move to the next connection after each link.";
-                if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+                SetTutorialBodyText(tutorialFocusText);
             }
         }
 
@@ -2146,7 +2163,7 @@ public class OnboardingTutorial : MonoBehaviour
                         calloutTarget = card.transform as RectTransform;
                         break;
                     }
-            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            SetTutorialBodyText(tutorialFocusText);
         }
 
         if (step.requireEditedFlow && !flowEditCompleted)
@@ -2165,7 +2182,7 @@ public class OnboardingTutorial : MonoBehaviour
                 calloutTarget = null;
                 tutorialFocusText = "Edit the burger route in the kitchen. Gus points to each station; click <b>Finish</b> to save your edit.";
             }
-            if (bodyText != null && bodyText.text != tutorialFocusText) bodyText.text = tutorialFocusText;
+            SetTutorialBodyText(tutorialFocusText);
         }
     }
 

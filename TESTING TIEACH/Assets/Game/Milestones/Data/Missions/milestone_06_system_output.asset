@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_06_system_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_06_system_output
-  title: Deliver system output
-  description: Serve 30 customers while monitoring how staffing, routing, and supply affect the result.
-  completionEventId: order_served
-  requiredCount: 30
+  missionId: milestone_06_system_output_production
+  title: Produce 75 unlocked menu items
+  description: Produce any combination of finished menu recipes you have unlocked
+    so far.
+  completionEventId: 
+  requiredCount: 75
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 1
   showBeforeComplete: 1
   showAfterComplete: 1

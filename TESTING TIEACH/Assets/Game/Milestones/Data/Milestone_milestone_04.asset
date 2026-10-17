@@ -13,8 +13,17 @@ MonoBehaviour:
   m_Name: Milestone_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_04
-  displayName: "4"
-  description: Complete the menu with the most involved recipes and production chains.
+  displayName: Inventory Control
+  description: 'Plan inventory and suppliers around demand, reliability, holding
+    cost, and waste.
+
+
+    Topics: Forecasting, supplier reliability, and inventory
+    control'
+  completionDialogue:
+  - Now you are planning stock around demand. Running out stops service; ordering
+    too much ties up cash and creates waste.
+  - 
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: d1f592cabf1b4c13a8fe1382f8035757, type: 2}
@@ -22,5 +31,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 928a3defdbfd4a0f8c1647989ee8b4da, type: 2}
   - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
   missionDatabase: {fileID: 0}
-  quiz: {fileID: 11400000, guid: 001cbbddee7e95143bce8d46fabcf385, type: 2}
+  quiz: {fileID: 0}
   unlocks: []

@@ -7,6 +7,7 @@ public class IngredientStockEntry
 {
     public ItemDefinition item;
     public int quantity;
+    public int reorderTarget;
 }
 
 /// <summary>
@@ -34,6 +35,7 @@ public class KitchenInventory : MonoBehaviour
     public List<IngredientStockEntry> stock = new List<IngredientStockEntry>();
 
     MoneyManager money;
+    float nextAutomaticRestockCheck;
 
     void Awake()
     {
@@ -54,13 +56,21 @@ public class KitchenInventory : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
+    void Update()
+    {
+        if (Time.time < nextAutomaticRestockCheck) return;
+        nextAutomaticRestockCheck = Time.time + 2f;
+        TryAutomaticRestock();
+    }
+
     public IReadOnlyList<ItemDefinition> GetOrderableItems()
     {
         var list = new List<ItemDefinition>();
         void Add(ItemDefinition item)
         {
-            if (item != null && (orderConfig == null || (!orderConfig.IsDrink(item)
-                && IsOrderItemUnlocked(item))) && !list.Contains(item))
+            if (CanPurchaseIngredient(item)
+                && (orderConfig == null || (!orderConfig.IsDrink(item) && IsOrderItemUnlocked(item)))
+                && !list.Contains(item))
                 list.Add(item);
         }
 
@@ -86,7 +96,9 @@ public class KitchenInventory : MonoBehaviour
         var list = new List<ItemDefinition>();
         void Add(ItemDefinition item)
         {
-            if (item != null && (orderConfig == null || !orderConfig.IsDrink(item)) && !list.Contains(item))
+            if (CanPurchaseIngredient(item)
+                && (orderConfig == null || !orderConfig.IsDrink(item))
+                && !list.Contains(item))
                 list.Add(item);
         }
 
@@ -103,11 +115,19 @@ public class KitchenInventory : MonoBehaviour
 
     public bool IsOrderItemUnlocked(ItemDefinition item)
     {
+        if (!CanPurchaseIngredient(item)) return false;
         if (OnboardingTutorial.BlocksProgression && orderConfig != null
             && (item == orderConfig.rawPattyIngredient || IsTutorialBun(item)))
             return true;
         return item != null && (orderConfig == null
             || (orderConfig.IsIngredientUnlocked(item) && orderConfig.IsMenuItemUnlocked(item)));
+    }
+
+    bool CanPurchaseIngredient(ItemDefinition item)
+    {
+        if (item == null) return false;
+        if (extraOrderableItems != null && extraOrderableItems.Contains(item)) return true;
+        return orderConfig == null || orderConfig.GetVendorSupplyStation(item).HasValue;
     }
 
     bool IsTutorialBun(ItemDefinition item)
@@ -177,6 +197,56 @@ public class KitchenInventory : MonoBehaviour
     public bool Has(ItemDefinition item, int amount = 1)
     {
         return GetCount(item) >= amount;
+    }
+
+    public int GetReorderTarget(ItemDefinition item)
+    {
+        return EnsureEntry(item)?.reorderTarget ?? 0;
+    }
+
+    public void SetReorderTarget(ItemDefinition item, int target)
+    {
+        IngredientStockEntry entry = EnsureEntry(item);
+        if (entry == null) return;
+        entry.reorderTarget = Mathf.Max(0, target);
+    }
+
+    public void ClearAllReorderTargets()
+    {
+        foreach (IngredientStockEntry entry in stock)
+            if (entry != null) entry.reorderTarget = 0;
+    }
+
+    void TryAutomaticRestock()
+    {
+        if (!MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
+        IngredientDeliveryService service = IngredientDeliveryService.Instance;
+        if (service != null && service.HasPending) return;
+
+        if (money == null) money = FindObjectOfType<MoneyManager>();
+        var cart = new Dictionary<ItemDefinition, int>();
+        long estimatedCost = 0;
+        foreach (ItemDefinition item in GetOrderableItems())
+        {
+            if (item == null || !IsOrderItemUnlocked(item)) continue;
+            int target = GetReorderTarget(item);
+            if (target <= 0) continue;
+
+            int available = GetCount(item) + (service != null ? service.GetIncomingCount(item) : 0);
+            if (available >= target) continue;
+
+            int packSize = GetPackSize(item);
+            int packs = Mathf.CeilToInt((target - available) / (float)packSize);
+            long itemCost = (long)GetPackPrice(item) * packs;
+            if (money != null && estimatedCost + itemCost > money.CurrentMoney) continue;
+
+            cart.Add(item, packs);
+            estimatedCost += itemCost;
+        }
+
+        // Queue all affordable automatic restocks as one regular shipment.
+        if (cart.Count > 0)
+            TryOrderCart(cart, false, false);
     }
 
     public bool TryConsume(ItemDefinition item, int amount = 1)
@@ -262,11 +332,16 @@ public class KitchenInventory : MonoBehaviour
     /// <summary>Pay for and dispatch every selected pack as one atomic shipment.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
     {
-        return TryOrderCart(packCounts, false);
+        return TryOrderCart(packCounts, false, true);
     }
 
     /// <summary>Pay for a cart and either queue normal delivery or add it to stock immediately.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts, bool express)
+    {
+        return TryOrderCart(packCounts, express, true);
+    }
+
+    bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts, bool express, bool playerInitiated)
     {
         if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
@@ -307,10 +382,13 @@ public class KitchenInventory : MonoBehaviour
             return false;
         }
 
-        var undo = PurchaseUndoManager.Ensure();
-        if (undo != null)
-            undo.RecordIngredientOrder(items, amounts, money != null ? totalPrice : 0);
-        TutorialVoiceEvents.Raise(TutorialVoiceEventId.IngredientsOrdered);
+        if (playerInitiated)
+        {
+            var undo = PurchaseUndoManager.Ensure();
+            if (undo != null)
+                undo.RecordIngredientOrder(items, amounts, money != null ? totalPrice : 0);
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.IngredientsOrdered);
+        }
         return true;
     }
 }

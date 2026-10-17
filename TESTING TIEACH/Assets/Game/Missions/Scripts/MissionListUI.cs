@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Objectives side panel with daily tasks and progression columns.
+/// Objectives panel with separate daily tasks, milestone tasks, and milestone status sections.
 /// Place under PlayerUI via Game → Setup Tasks Progression Panel to edit position in the scene.
 /// </summary>
 public class MissionListUI : MonoBehaviour
@@ -28,11 +28,14 @@ public class MissionListUI : MonoBehaviour
     public Button tasksTabButton;
     public Button progressionTabButton;
     public GameObject tasksPage;
+    public GameObject milestoneTasksPage;
     public GameObject progressionPage;
     public Transform tasksListContent;
+    public Transform milestoneTasksListContent;
     public Transform progressionListContent;
     public TextMeshProUGUI progressionDetailText;
     public Button researchButton;
+    [HideInInspector]
     public Button openQuizButton;
 
     [Header("Layout")]
@@ -69,10 +72,13 @@ public class MissionListUI : MonoBehaviour
     Button topObjectivesButton;
     Button topResearchButton;
     bool panelOpen;
-    GameObject objectiveColumnsRoot;
+    GameObject objectivesColumnsRoot;
+    GameObject tasksScrollRoot;
+    GameObject progressionScrollRoot;
     bool combinedLayoutBuilt;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
+    readonly List<GameObject> milestoneTaskRowPool = new List<GameObject>();
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
 
     public static MissionListUI Instance { get; private set; }
@@ -180,7 +186,6 @@ public class MissionListUI : MonoBehaviour
             return;
         }
 
-        HandleObjectivesScroll();
     }
 
     public static bool IsPointerOverObjectivesScrollArea
@@ -190,19 +195,9 @@ public class MissionListUI : MonoBehaviour
             MissionListUI ui = Instance;
             return ui != null && ui.IsOpen
                 && (ui.GetScrollRectAtPointer(ui.tasksListContent) != null
+                    || ui.GetScrollRectAtPointer(ui.milestoneTasksListContent) != null
                     || ui.GetScrollRectAtPointer(ui.progressionListContent) != null);
         }
-    }
-
-    void HandleObjectivesScroll()
-    {
-        float scrollDelta = Input.mouseScrollDelta.y;
-        if (Mathf.Approximately(scrollDelta, 0f)) return;
-
-        ScrollRect scroll = GetScrollRectAtPointer(tasksListContent)
-            ?? GetScrollRectAtPointer(progressionListContent);
-        if (scroll != null)
-            scroll.verticalNormalizedPosition = Mathf.Clamp01(scroll.verticalNormalizedPosition + scrollDelta * 0.08f);
     }
 
     ScrollRect GetScrollRectAtPointer(Transform content)
@@ -296,6 +291,7 @@ public class MissionListUI : MonoBehaviour
         activeTab = SideTab.Tasks;
 
         if (tasksPage != null) tasksPage.SetActive(true);
+        if (milestoneTasksPage != null) milestoneTasksPage.SetActive(true);
         if (progressionPage != null) progressionPage.SetActive(true);
 
         SetTabVisual(tasksTabButton, false);
@@ -327,14 +323,16 @@ public class MissionListUI : MonoBehaviour
     {
         ResolveDataSources();
         EnsureUI();
-        if (tasksListContent == null) return;
+        if (tasksListContent == null || milestoneTasksListContent == null) return;
 
         ClearPool(taskRowPool);
+        ClearPool(milestoneTaskRowPool);
         CreateDailyGoalRows();
 
         if (progress == null)
         {
-            CreateTaskRow("—", "No mission system", generalTaskColor, false, false, false);
+            CreateTaskRow("—", "No mission system", generalTaskColor, false, false, false,
+                milestoneTasksListContent, milestoneTaskRowPool);
             UpdatePanelHeight();
             return;
         }
@@ -344,10 +342,12 @@ public class MissionListUI : MonoBehaviour
 
         if (missions.Count == 0)
         {
-            string empty = milestones != null && milestones.IsQuizReady
-                ? "All tasks done — take the milestone quiz."
+            string empty = milestones != null && milestones.CompletedMilestoneCount > 0
+                && milestones.GetActiveMilestone() == null
+                ? "All milestones complete."
                 : "No tasks yet";
-            CreateTaskRow("—", empty, generalTaskColor, false, false, false);
+            CreateTaskRow("—", empty, generalTaskColor, false, false, false,
+                milestoneTasksListContent, milestoneTaskRowPool);
             UpdatePanelHeight();
             return;
         }
@@ -362,7 +362,8 @@ public class MissionListUI : MonoBehaviour
             string title = mission.title;
             if (!done && needed > 1)
                 title += $" ({progress.GetProgress(mission)}/{needed})";
-            CreateTaskRow(title, mission.description, color, isCurrent, done);
+            CreateTaskRow(title, mission.description, color, isCurrent, done, true,
+                milestoneTasksListContent, milestoneTaskRowPool);
         }
         UpdatePanelHeight();
     }
@@ -403,9 +404,6 @@ public class MissionListUI : MonoBehaviour
             return;
         }
 
-        if (openQuizButton != null)
-            openQuizButton.gameObject.SetActive(milestones.IsQuizReady);
-
         for (int i = 0; i < db.milestones.Count; i++)
         {
             var milestone = db.milestones[i];
@@ -416,11 +414,12 @@ public class MissionListUI : MonoBehaviour
     }
 
     void CreateTaskRow(string title, string description, Color color, bool emphasize,
-        bool complete, bool showCheckbox = true)
+        bool complete, bool showCheckbox = true, Transform rowParent = null,
+        List<GameObject> rowPool = null)
     {
         var rowGo = new GameObject("TaskRow", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
-        rowGo.transform.SetParent(tasksListContent, false);
-        taskRowPool.Add(rowGo);
+        rowGo.transform.SetParent(rowParent != null ? rowParent : tasksListContent, false);
+        (rowPool ?? taskRowPool).Add(rowGo);
 
         var rowLe = rowGo.GetComponent<LayoutElement>();
         rowLe.minHeight = 44f;
@@ -466,20 +465,25 @@ public class MissionListUI : MonoBehaviour
 
     static void CreateTaskCheckbox(Transform parent, Color color, bool complete)
     {
-        var box = new GameObject("TaskCheckbox", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(Outline));
+        var box = new GameObject("TaskCheckbox", typeof(RectTransform), typeof(LayoutElement));
         box.transform.SetParent(parent, false);
         var rect = (RectTransform)box.transform;
         rect.sizeDelta = new Vector2(16f, 16f);
         var layout = box.GetComponent<LayoutElement>();
         layout.minWidth = layout.preferredWidth = 16f;
         layout.minHeight = layout.preferredHeight = 16f;
-        var image = box.GetComponent<Image>();
-        image.color = complete ? color : new Color(color.r, color.g, color.b, 0.12f);
-        image.raycastTarget = false;
-        var outline = box.GetComponent<Outline>();
-        outline.effectColor = color;
-        outline.effectDistance = new Vector2(1f, -1f);
-        outline.useGraphicAlpha = false;
+
+        CreateTaskCheckboxPart(box.transform, "Top", color,
+            new Vector2(0f, 1f), new Vector2(1f, 1f),
+            new Vector2(0f, -2f), Vector2.zero);
+        CreateTaskCheckboxPart(box.transform, "Bottom", color,
+            Vector2.zero, new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, 2f));
+        CreateTaskCheckboxPart(box.transform, "Left", color,
+            Vector2.zero, new Vector2(0f, 1f), new Vector2(0f, 2f), new Vector2(2f, -2f));
+        CreateTaskCheckboxPart(box.transform, "Right", color,
+            new Vector2(1f, 0f), Vector2.one, new Vector2(-2f, 2f), new Vector2(0f, -2f));
+        CreateTaskCheckboxPart(box.transform, "Fill", complete ? color : Color.clear,
+            Vector2.zero, Vector2.one, new Vector2(2f, 2f), new Vector2(-2f, -2f));
 
         if (complete)
         {
@@ -501,6 +505,21 @@ public class MissionListUI : MonoBehaviour
             checkGraphic.color = new Color(0.06f, 0.08f, 0.1f, 1f);
             checkGraphic.raycastTarget = false;
         }
+    }
+
+    static void CreateTaskCheckboxPart(Transform parent, string objectName, Color color,
+        Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        var part = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+        part.transform.SetParent(parent, false);
+        var rect = (RectTransform)part.transform;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+        var image = part.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     TaskType GetMissionTaskType(MissionDefinition mission)
@@ -554,7 +573,6 @@ public class MissionListUI : MonoBehaviour
         switch (state)
         {
             case MilestoneProgressManager.MilestoneState.Active: return "In progress";
-            case MilestoneProgressManager.MilestoneState.QuizReady: return "Quiz ready";
             case MilestoneProgressManager.MilestoneState.Completed: return "Completed";
             default: return "Locked";
         }
@@ -566,20 +584,11 @@ public class MissionListUI : MonoBehaviour
         {
             case MilestoneProgressManager.MilestoneState.Active:
                 return new Color(0.22f, 0.32f, 0.42f, 1f);
-            case MilestoneProgressManager.MilestoneState.QuizReady:
-                return new Color(0.35f, 0.4f, 0.22f, 1f);
             case MilestoneProgressManager.MilestoneState.Completed:
                 return new Color(0.2f, 0.38f, 0.28f, 1f);
             default:
                 return new Color(0.14f, 0.15f, 0.18f, 1f);
         }
-    }
-
-    void OpenQuiz()
-    {
-        var quiz = FindFirstObjectByType<MilestoneQuizUI>();
-        if (quiz != null)
-            quiz.Show();
     }
 
     void EnsureUI()
@@ -622,7 +631,7 @@ public class MissionListUI : MonoBehaviour
         // previous play session may have left an empty runtime hierarchy when
         // domain/scene reload is disabled. Rebuild only when our combined
         // layout marker is absent. Once it exists, refreshes reuse the panel.
-        else if (panelRoot.transform.Find("ObjectiveColumns") == null)
+        else if (panelRoot.transform.Find("ObjectivesSplitLayout") == null)
         {
             bool wasScene = useSceneLayout;
             var parent = panelRoot.transform.parent;
@@ -674,6 +683,15 @@ public class MissionListUI : MonoBehaviour
         foreach (Graphic graphic in panelRoot.GetComponentsInChildren<Graphic>(true))
         {
             if (graphic.GetComponentInParent<Button>() != null) continue;
+            // Keep the scroll viewport interactive so users can drag the full
+            // objectives list even though its text and decorative graphics
+            // remain click-through.
+            if (graphic.GetComponent<Mask>() != null
+                && graphic.GetComponentInParent<ScrollRect>() != null)
+            {
+                graphic.raycastTarget = true;
+                continue;
+            }
             graphic.raycastTarget = false;
         }
     }
@@ -777,7 +795,7 @@ public class MissionListUI : MonoBehaviour
     void EnsureCombinedLayout()
     {
         if (panelRoot == null) return;
-        Transform combinedMarker = panelRoot.transform.Find("ObjectiveColumns");
+        Transform combinedMarker = panelRoot.transform.Find("ObjectivesSplitLayout");
         if (combinedLayoutBuilt && combinedMarker != null) return;
         if (!combinedLayoutBuilt && combinedMarker != null)
         {
@@ -786,66 +804,89 @@ public class MissionListUI : MonoBehaviour
             return;
         }
 
-        // Scene versions of this panel still contain the old tabs and pages.
-        // Keep the scene-authored root and its placement, but rebuild only its
-        // children into the single objectives layout.
+        // Scene versions may still contain the earlier objectives layout.
+        // Keep the scene-authored root and placement, and rebuild its contents
+        // with daily and milestone tasks on the left and milestone progress on the right.
         ClearChildren(panelRoot.transform);
         progressionDetailText = null;
 
         headerText = CreateLabel(panelRoot.transform, "Header", "Objectives", 20, FontStyles.Bold);
         headerText.GetComponent<LayoutElement>().preferredHeight = 26f;
 
-        objectiveColumnsRoot = new GameObject("ObjectiveColumns", typeof(RectTransform),
+        objectivesColumnsRoot = new GameObject("ObjectivesSplitLayout", typeof(RectTransform),
             typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        objectiveColumnsRoot.transform.SetParent(panelRoot.transform, false);
-        var columnsLayout = objectiveColumnsRoot.GetComponent<LayoutElement>();
+        objectivesColumnsRoot.transform.SetParent(panelRoot.transform, false);
+        var columnsLayout = objectivesColumnsRoot.GetComponent<LayoutElement>();
         columnsLayout.minHeight = 180f;
         columnsLayout.preferredHeight = 220f;
         columnsLayout.flexibleWidth = 1f;
         columnsLayout.flexibleHeight = 0f;
-        var columnsHlg = objectiveColumnsRoot.GetComponent<HorizontalLayoutGroup>();
-        columnsHlg.spacing = 10f;
-        columnsHlg.childAlignment = TextAnchor.UpperLeft;
-        columnsHlg.childControlWidth = true;
-        columnsHlg.childControlHeight = true;
-        columnsHlg.childForceExpandWidth = true;
-        columnsHlg.childForceExpandHeight = true;
+        var columnsGroup = objectivesColumnsRoot.GetComponent<HorizontalLayoutGroup>();
+        columnsGroup.spacing = 10f;
+        columnsGroup.childAlignment = TextAnchor.UpperLeft;
+        columnsGroup.childControlWidth = true;
+        columnsGroup.childControlHeight = true;
+        columnsGroup.childForceExpandWidth = true;
+        columnsGroup.childForceExpandHeight = true;
 
-        tasksPage = CreatePage(objectiveColumnsRoot.transform, "DailyTasksPage");
-        ConfigureColumnPage(tasksPage, "Daily Tasks");
-        tasksListContent = CreateScrollList(tasksPage.transform, "DailyTasksList");
+        Transform taskColumnContent = CreateColumnScroll(objectivesColumnsRoot.transform,
+            "TasksScroll", out tasksScrollRoot);
+        tasksPage = CreatePage(taskColumnContent, "DailyTasksPage");
+        ConfigureSectionPage(tasksPage, "Daily Tasks");
+        tasksListContent = CreateSectionList(tasksPage.transform, "DailyTasksList");
 
-        progressionPage = CreatePage(objectiveColumnsRoot.transform, "ProgressionPage");
-        ConfigureColumnPage(progressionPage, "Progression");
+        milestoneTasksPage = CreatePage(taskColumnContent, "MilestoneTasksPage");
+        ConfigureSectionPage(milestoneTasksPage, "Milestone Tasks");
+        milestoneTasksListContent = CreateSectionList(milestoneTasksPage.transform, "MilestoneTasksList");
+
+        Transform progressionColumnContent = CreateColumnScroll(objectivesColumnsRoot.transform,
+            "ProgressionScroll", out progressionScrollRoot);
+        progressionPage = CreatePage(progressionColumnContent, "ProgressionPage");
+        ConfigureSectionPage(progressionPage, "Milestone Progress");
         researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
             new Color(0.22f, 0.48f, 0.58f, 1f));
         researchButton.onClick.AddListener(OpenResearch);
         researchButton.gameObject.SetActive(false);
-        progressionListContent = CreateScrollList(progressionPage.transform, "ProgressionList");
-        openQuizButton = CreateButton(progressionPage.transform, "OpenQuizButton", "Open Quiz",
-            new Color(0.4f, 0.45f, 0.25f, 1f));
-        openQuizButton.onClick.AddListener(OpenQuiz);
-        openQuizButton.gameObject.SetActive(false);
+        progressionListContent = CreateSectionList(progressionPage.transform, "ProgressionList");
 
         tasksPage.SetActive(true);
+        milestoneTasksPage.SetActive(true);
         progressionPage.SetActive(true);
         combinedLayoutBuilt = true;
     }
 
-    static void ConfigureColumnPage(GameObject page, string title)
+    static void ConfigureSectionPage(GameObject page, string title)
     {
         if (page == null) return;
         var le = page.GetComponent<LayoutElement>() ?? page.AddComponent<LayoutElement>();
         le.minWidth = 0f;
         le.flexibleWidth = 1f;
-        le.flexibleHeight = 1f;
-        var header = CreateLabel(page.transform, "ColumnHeader", title, 15, FontStyles.Bold);
+        le.flexibleHeight = 0f;
+        var header = CreateLabel(page.transform, "SectionHeader", title, 15, FontStyles.Bold);
         header.alignment = TextAlignmentOptions.Left;
         header.GetComponent<LayoutElement>().preferredHeight = 24f;
     }
 
     void BindExisting()
     {
+        Transform objectivesColumns = panelRoot.transform.Find("ObjectivesSplitLayout");
+        if (objectivesColumns != null)
+        {
+            objectivesColumnsRoot = objectivesColumns.gameObject;
+            Transform taskContent = objectivesColumns.Find("TasksScroll/Viewport/Content");
+            Transform progressContent = objectivesColumns.Find("ProgressionScroll/Viewport/Content");
+            tasksScrollRoot = objectivesColumns.Find("TasksScroll")?.gameObject;
+            progressionScrollRoot = objectivesColumns.Find("ProgressionScroll")?.gameObject;
+            tasksPage = taskContent != null ? taskContent.Find("DailyTasksPage")?.gameObject : null;
+            milestoneTasksPage = taskContent != null ? taskContent.Find("MilestoneTasksPage")?.gameObject : null;
+            progressionPage = progressContent != null ? progressContent.Find("ProgressionPage")?.gameObject : null;
+            if (tasksListContent == null)
+                tasksListContent = taskContent != null ? taskContent.Find("DailyTasksPage/DailyTasksList") : null;
+            if (milestoneTasksListContent == null)
+                milestoneTasksListContent = taskContent != null ? taskContent.Find("MilestoneTasksPage/MilestoneTasksList") : null;
+            if (progressionListContent == null)
+                progressionListContent = progressContent != null ? progressContent.Find("ProgressionPage/ProgressionList") : null;
+        }
         if (headerText == null)
             headerText = panelRoot.transform.Find("Header")?.GetComponent<TextMeshProUGUI>();
         if (tasksTabButton == null)
@@ -854,19 +895,23 @@ public class MissionListUI : MonoBehaviour
             progressionTabButton = panelRoot.transform.Find("Tabs/ProgressionTab")?.GetComponent<Button>();
         if (tasksPage == null)
             tasksPage = panelRoot.transform.Find("TasksPage")?.gameObject;
+        if (milestoneTasksPage == null)
+            milestoneTasksPage = panelRoot.transform.Find("MilestoneTasksPage")?.gameObject;
         if (progressionPage == null)
             progressionPage = panelRoot.transform.Find("ProgressionPage")?.gameObject;
         if (tasksListContent == null)
             tasksListContent = panelRoot.transform.Find("TasksPage/TasksList/Viewport/Content")
                                ?? panelRoot.transform.Find("TasksPage/TasksList")
                                ?? panelRoot.transform.Find("List");
+        if (milestoneTasksListContent == null && milestoneTasksPage != null)
+            milestoneTasksListContent = milestoneTasksPage.transform.Find("MilestoneTasksList");
         if (progressionListContent == null)
             progressionListContent = panelRoot.transform.Find("ProgressionPage/ProgressionList/Viewport/Content")
                                      ?? panelRoot.transform.Find("ProgressionPage/ProgressionList");
         if (progressionDetailText == null)
             progressionDetailText = panelRoot.transform.Find("ProgressionPage/Detail")?.GetComponent<TextMeshProUGUI>();
-        if (researchButton == null)
-            researchButton = panelRoot.transform.Find("ProgressionPage/ResearchButton")?.GetComponent<Button>();
+        if (researchButton == null && progressionPage != null)
+            researchButton = progressionPage.transform.Find("ResearchButton")?.GetComponent<Button>();
         if (researchButton == null && progressionPage != null)
         {
             researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
@@ -880,6 +925,11 @@ public class MissionListUI : MonoBehaviour
             researchButton.gameObject.SetActive(false);
         if (openQuizButton == null)
             openQuizButton = panelRoot.transform.Find("ProgressionPage/OpenQuizButton")?.GetComponent<Button>();
+        if (openQuizButton != null)
+        {
+            openQuizButton.gameObject.SetActive(false);
+            openQuizButton.onClick.RemoveAllListeners();
+        }
     }
 
     void WireTabs()
@@ -893,11 +943,6 @@ public class MissionListUI : MonoBehaviour
         {
             progressionTabButton.onClick.RemoveAllListeners();
             progressionTabButton.onClick.AddListener(ShowProgressionTab);
-        }
-        if (openQuizButton != null)
-        {
-            openQuizButton.onClick.RemoveListener(OpenQuiz);
-            openQuizButton.onClick.AddListener(OpenQuiz);
         }
         if (researchButton != null)
         {
@@ -1071,13 +1116,13 @@ public class MissionListUI : MonoBehaviour
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         if (panelLayout != null)
         {
-            // The objectives rows and both columns use flexible width. The
-            // panel must expand those children across its available width.
+            // The two objectives columns should use the full panel width.
             panelLayout.childForceExpandWidth = true;
             panelLayout.childForceExpandHeight = false;
         }
 
         SetPageMinimumHeight(tasksPage, 0f);
+        SetPageMinimumHeight(milestoneTasksPage, 0f);
         SetPageMinimumHeight(progressionPage, 0f);
 
         UpdatePanelHeight();
@@ -1097,10 +1142,7 @@ public class MissionListUI : MonoBehaviour
         var layout = page.GetComponent<LayoutElement>();
         if (layout == null) return;
         layout.minHeight = minHeight;
-        // Combined objectives pages share a horizontal columns container and
-        // must stretch to the same height as the other column.
-        layout.flexibleHeight = page.transform.parent != null
-            && page.transform.parent.GetComponent<HorizontalLayoutGroup>() != null ? 1f : 0f;
+        layout.flexibleHeight = 0f;
     }
 
     void UpdatePanelHeight()
@@ -1115,67 +1157,48 @@ public class MissionListUI : MonoBehaviour
             ? panelLayout.padding.top + panelLayout.padding.bottom
             : 24f;
         float maxColumnsHeight = Mathf.Max(180f, maxHeight - panelPadding);
-        // Keep the column headers visible, then let each list scroll inside the
-        // remaining height when there are more rows than fit in the viewport.
-        float listMaxHeight = Mathf.Max(80f, maxColumnsHeight - 32f);
-        ResizeListToContent(tasksListContent, listMaxHeight);
-        ResizeListToContent(progressionListContent, listMaxHeight);
         Canvas.ForceUpdateCanvases();
 
-        float contentHeight;
-        if (objectiveColumnsRoot != null)
-        {
-            float columnsHeight = LayoutUtility.GetPreferredHeight(objectiveColumnsRoot.transform as RectTransform);
-            float dailyHeight = tasksPage != null
-                ? LayoutUtility.GetPreferredHeight(tasksPage.transform as RectTransform) : 0f;
-            float progressionHeight = progressionPage != null
-                ? LayoutUtility.GetPreferredHeight(progressionPage.transform as RectTransform) : 0f;
-            columnsHeight = Mathf.Max(columnsHeight, dailyHeight, progressionHeight, 180f);
-            columnsHeight = Mathf.Clamp(columnsHeight, 180f, maxColumnsHeight);
+        float taskHeight = GetScrollContentHeight(tasksScrollRoot);
+        float progressionHeight = GetScrollContentHeight(progressionScrollRoot);
+        float columnsHeight = Mathf.Max(taskHeight, progressionHeight, 180f);
+        columnsHeight = Mathf.Clamp(columnsHeight, 180f, maxColumnsHeight);
 
-            var columnsLayout = objectiveColumnsRoot.GetComponent<LayoutElement>();
-            if (columnsLayout != null)
-            {
-                columnsLayout.minHeight = columnsHeight;
-                columnsLayout.preferredHeight = columnsHeight;
-                columnsLayout.flexibleHeight = 0f;
-            }
-            contentHeight = columnsHeight;
-        }
-        else
+        SetScrollHeight(tasksScrollRoot, columnsHeight);
+        SetScrollHeight(progressionScrollRoot, columnsHeight);
+        var columnsLayout = objectivesColumnsRoot != null
+            ? objectivesColumnsRoot.GetComponent<LayoutElement>() : null;
+        if (columnsLayout != null)
         {
-            GameObject activePage = activeTab == SideTab.Tasks ? tasksPage : progressionPage;
-            if (activePage == null) return;
-            contentHeight = LayoutUtility.GetPreferredHeight(activePage.transform as RectTransform);
+            columnsLayout.minHeight = columnsHeight;
+            columnsLayout.preferredHeight = columnsHeight;
+            columnsLayout.flexibleHeight = 0f;
         }
-        if (contentHeight <= 0f)
-            contentHeight = activeTab == SideTab.Tasks ? 220f : 360f;
 
-        if (panelLayout != null)
-            contentHeight += panelLayout.padding.top + panelLayout.padding.bottom;
-        contentHeight = Mathf.Clamp(contentHeight, 120f, maxHeight);
+        float panelHeight = Mathf.Clamp(columnsHeight + panelPadding, 120f, maxHeight);
 
         var panelRect = panelRoot.transform as RectTransform;
         if (panelRect != null)
-            panelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
+            panelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, panelHeight);
         Canvas.ForceUpdateCanvases();
     }
 
-    void ResizeListToContent(Transform listContent, float maxHeight)
+    static float GetScrollContentHeight(GameObject scrollRoot)
     {
-        if (listContent == null) return;
-        var scroll = listContent.GetComponentInParent<ScrollRect>();
-        var contentRect = listContent as RectTransform;
-        if (contentRect == null || scroll == null) return;
-        var layout = scroll.GetComponent<LayoutElement>();
-        if (layout == null) layout = scroll.gameObject.AddComponent<LayoutElement>();
+        var scroll = scrollRoot != null ? scrollRoot.GetComponent<ScrollRect>() : null;
+        RectTransform content = scroll != null ? scroll.content : null;
+        if (content == null) return 0f;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        return LayoutUtility.GetPreferredHeight(content);
+    }
 
-        float contentHeight = LayoutUtility.GetPreferredHeight(contentRect);
-        if (contentHeight <= 0f)
-            contentHeight = contentRect.rect.height;
-        contentHeight = Mathf.Clamp(contentHeight, 44f, Mathf.Max(44f, maxHeight));
-        layout.minHeight = contentHeight;
-        layout.preferredHeight = contentHeight;
+    static void SetScrollHeight(GameObject scrollRoot, float height)
+    {
+        if (scrollRoot == null) return;
+        var layout = scrollRoot.GetComponent<LayoutElement>();
+        if (layout == null) return;
+        layout.minHeight = height;
+        layout.preferredHeight = height;
         layout.flexibleHeight = 0f;
     }
 
@@ -1232,56 +1255,78 @@ public class MissionListUI : MonoBehaviour
         return page;
     }
 
-    static Transform CreateScrollList(Transform parent, string name)
+    static Transform CreateColumnScroll(Transform parent, string name, out GameObject scrollRoot)
     {
-        var scrollGo = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(ScrollRect), typeof(LayoutElement));
-        scrollGo.transform.SetParent(parent, false);
-        var le = scrollGo.GetComponent<LayoutElement>();
-        le.flexibleHeight = 0f;
-        le.minHeight = 0f;
-        scrollGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.12f);
-        scrollGo.GetComponent<Image>().raycastTarget = false;
+        scrollRoot = new GameObject(name, typeof(RectTransform), typeof(Image),
+            typeof(ScrollRect), typeof(LayoutElement));
+        scrollRoot.transform.SetParent(parent, false);
+        scrollRoot.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.12f);
+        scrollRoot.GetComponent<Image>().raycastTarget = false;
 
-        var scroll = scrollGo.GetComponent<ScrollRect>();
+        var scrollLayout = scrollRoot.GetComponent<LayoutElement>();
+        scrollLayout.minWidth = 0f;
+        scrollLayout.flexibleWidth = 1f;
+        scrollLayout.minHeight = 180f;
+        scrollLayout.preferredHeight = 220f;
+        scrollLayout.flexibleHeight = 1f;
+
+        var scroll = scrollRoot.GetComponent<ScrollRect>();
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
         GameUITheme.ConfigureScroll(scroll);
 
         var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(Mask));
-        viewport.transform.SetParent(scrollGo.transform, false);
-        var vpRt = (RectTransform)viewport.transform;
-        vpRt.anchorMin = Vector2.zero;
-        vpRt.anchorMax = Vector2.one;
-        vpRt.offsetMin = Vector2.zero;
-        vpRt.offsetMax = Vector2.zero;
-        viewport.GetComponent<Image>().color = new Color(1, 1, 1, 0.02f);
+        viewport.transform.SetParent(scrollRoot.transform, false);
+        var viewportRect = (RectTransform)viewport.transform;
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = Vector2.zero;
+        viewportRect.offsetMax = Vector2.zero;
+        viewport.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
         viewport.GetComponent<Image>().raycastTarget = false;
         viewport.GetComponent<Mask>().showMaskGraphic = false;
 
-        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        var content = new GameObject("Content", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
         content.transform.SetParent(viewport.transform, false);
-        var contentRt = (RectTransform)content.transform;
-        contentRt.anchorMin = new Vector2(0f, 1f);
-        contentRt.anchorMax = Vector2.one;
-        contentRt.pivot = new Vector2(0.5f, 1f);
-        contentRt.offsetMin = Vector2.zero;
-        contentRt.offsetMax = Vector2.zero;
-        var vlg = content.GetComponent<VerticalLayoutGroup>();
-        vlg.spacing = 6f;
-        vlg.padding = new RectOffset(4, 4, 4, 4);
-        vlg.childControlWidth = true;
-        vlg.childControlHeight = true;
-        vlg.childForceExpandWidth = true;
-        vlg.childForceExpandHeight = false;
+        var contentRect = (RectTransform)content.transform;
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = Vector2.one;
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.offsetMin = Vector2.zero;
+        contentRect.offsetMax = Vector2.zero;
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.spacing = 14f;
+        contentLayout.padding = new RectOffset(4, 4, 4, 4);
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
         content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        scroll.viewport = vpRt;
-        scroll.content = contentRt;
+        scroll.viewport = viewportRect;
+        scroll.content = contentRect;
+        var wheelBlocker = scrollRoot.AddComponent<ScrollRectWheelBlocker>();
+        wheelBlocker.scrollRect = scroll;
+        return content.transform;
+    }
 
-        var blocker = scrollGo.AddComponent<ScrollRectWheelBlocker>();
-        blocker.scrollRect = scroll;
-
+    static Transform CreateSectionList(Transform parent, string name)
+    {
+        var content = new GameObject(name, typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        content.transform.SetParent(parent, false);
+        var layout = content.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 6f;
+        layout.padding = new RectOffset(4, 4, 2, 4);
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        var element = content.GetComponent<LayoutElement>();
+        element.minHeight = 0f;
+        element.flexibleHeight = 0f;
         return content.transform;
     }
 
@@ -1337,8 +1382,6 @@ public class MissionListUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
         if (name == "ResearchButton")
             GameIconLibrary.ApplyToButton(btn, GameIconId.Gear, 18f, 8f);
-        else if (name == "OpenQuizButton")
-            GameIconLibrary.ApplyToButton(btn, GameIconId.Information, 18f, 8f);
         return btn;
     }
 

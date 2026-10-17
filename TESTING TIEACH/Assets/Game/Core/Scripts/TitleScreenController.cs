@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -10,6 +11,15 @@ using TMPro;
 /// </summary>
 public class TitleScreenController : MonoBehaviour
 {
+    const string GusCutscenePauseSource = "GusCutscene";
+
+    sealed class GusCutsceneRequest
+    {
+        public string title;
+        public IReadOnlyList<string> dialogue;
+        public bool openingIntro;
+    }
+
     public static TitleScreenController Instance { get; private set; }
     public static bool IsTitleScreenActive => Instance != null
         && (Instance.IsShowingTitle || Instance.firstRunIntroActive);
@@ -48,6 +58,8 @@ public class TitleScreenController : MonoBehaviour
     [SerializeField, Min(0.01f)] float gusIntroCameraMoveDuration = 3.25f;
     [Tooltip("Brief pause on Gus before the existing dialogue cutscene begins.")]
     [SerializeField, Min(0f)] float gusIntroCameraHoldDuration = 0.65f;
+    [Tooltip("Seconds the camera takes to move to Gus for a cutscene.")]
+    [SerializeField, Min(0.01f)] float milestoneCameraMoveDuration = 1.5f;
 
     [Header("Cameras")]
     [Tooltip("Scene-authored restaurant view. Adjust this object's Transform before Play Mode; runtime only toggles the camera on or off.")]
@@ -82,6 +94,9 @@ public class TitleScreenController : MonoBehaviour
     bool startTransitionInProgress;
     GameObject gusSceneInstance;
     Image screenFadeImage;
+    readonly Queue<GusCutsceneRequest> pendingGusCutscenes = new Queue<GusCutsceneRequest>();
+    bool gusCutsceneSequenceRunning;
+    MilestoneProgressManager boundMilestoneManager;
 
     void Awake()
     {
@@ -93,6 +108,10 @@ public class TitleScreenController : MonoBehaviour
 
     void Start()
     {
+        BindMilestoneEvents();
+        if (boundMilestoneManager == null)
+            StartCoroutine(BindMilestoneEventsWhenReady());
+
         if (titlePanel != null)
             titlePanel.SetActive(true);
 
@@ -672,6 +691,13 @@ public class TitleScreenController : MonoBehaviour
 
     IEnumerator PlayFirstGameIntro(Texture background, bool skipFade)
     {
+        CutscenePresentation.Begin();
+        Camera gameplayViewCamera = gameCamera != null ? gameCamera : Camera.main;
+        Transform returnView = gameplayViewCamera != null && gameplayViewCamera != titleCamera
+            ? gameplayViewCamera.transform
+            : titleCamera != null ? titleCamera.transform : null;
+        Vector3 gameplayViewPosition = returnView != null ? returnView.position : Vector3.zero;
+        Quaternion gameplayViewRotation = returnView != null ? returnView.rotation : Quaternion.identity;
         GameObject gus = EnsureGusInScene();
         if (titleCamera != null && gus != null)
         {
@@ -705,11 +731,21 @@ public class TitleScreenController : MonoBehaviour
                 yield return new WaitForSecondsRealtime(gusIntroCameraHoldDuration);
         }
 
+        bool dialogueFinished = false;
         IntroCutsceneUI.Show(background, ResolveGusPrefab(), gusPortrait, () =>
         {
-            GameSaveSlots.MarkActiveSlotIntroSeen();
-            CompleteGameStart(skipFade);
+            dialogueFinished = true;
         }, titleCamera);
+
+        while (!dialogueFinished)
+            yield return null;
+
+        if (titleCamera != null && returnView != null)
+            yield return MoveCamera(titleCamera.transform, gameplayViewPosition,
+                gameplayViewRotation, gusIntroCameraMoveDuration);
+
+        GameSaveSlots.MarkActiveSlotIntroSeen();
+        CompleteGameStart(skipFade);
     }
 
     void OnDrawGizmosSelected()
@@ -750,6 +786,7 @@ public class TitleScreenController : MonoBehaviour
         if (gameStartCompleted) return;
         gameStartCompleted = true;
         firstRunIntroActive = false;
+        CutscenePresentation.End();
 
         if (gusSceneInstance != null)
             gusSceneInstance.SetActive(false);
@@ -826,8 +863,227 @@ public class TitleScreenController : MonoBehaviour
 
     void OnDestroy()
     {
+        CutscenePresentation.End();
+        if (boundMilestoneManager != null)
+            boundMilestoneManager.OnMilestoneCompleted -= HandleMilestoneCompleted;
+
         if (Instance == this)
             Instance = null;
+    }
+
+    void BindMilestoneEvents()
+    {
+        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
+        if (milestones == boundMilestoneManager) return;
+        if (boundMilestoneManager != null)
+            boundMilestoneManager.OnMilestoneCompleted -= HandleMilestoneCompleted;
+        boundMilestoneManager = milestones;
+        if (boundMilestoneManager != null)
+            boundMilestoneManager.OnMilestoneCompleted += HandleMilestoneCompleted;
+    }
+
+    IEnumerator BindMilestoneEventsWhenReady()
+    {
+        while (boundMilestoneManager == null)
+        {
+            BindMilestoneEvents();
+            if (boundMilestoneManager != null)
+                yield break;
+            yield return null;
+        }
+    }
+
+    void HandleMilestoneCompleted(MilestoneDefinition milestone)
+    {
+        if (!gameStartCompleted || milestone == null) return;
+
+        string title = boundMilestoneManager != null
+            ? boundMilestoneManager.GetMilestoneDisplayLabel(milestone)
+            : milestone.displayName;
+        QueueGusCutscene(title, milestone.completionDialogue, false);
+    }
+
+    public bool DebugPlayOpeningCutscene()
+    {
+        if (!gameStartCompleted) return false;
+        QueueGusCutscene("FIRST SHIFT", null, true);
+        return true;
+    }
+
+    public bool DebugPlayMilestoneCutscene(string milestoneId, out string label)
+    {
+        label = null;
+        if (!gameStartCompleted) return false;
+
+        MilestoneProgressManager milestones = boundMilestoneManager != null
+            ? boundMilestoneManager
+            : MilestoneProgressManager.Instance;
+        MilestoneDefinition milestone = milestones != null && milestones.database != null
+            ? milestones.database.GetById(milestoneId)
+            : null;
+        if (milestone == null) return false;
+
+        label = milestones.GetMilestoneDisplayLabel(milestone);
+        QueueGusCutscene(label, milestone.completionDialogue, false);
+        return true;
+    }
+
+    void QueueGusCutscene(string title, IReadOnlyList<string> dialogue, bool openingIntro)
+    {
+        pendingGusCutscenes.Enqueue(new GusCutsceneRequest
+        {
+            title = title,
+            dialogue = dialogue,
+            openingIntro = openingIntro
+        });
+
+        if (!gusCutsceneSequenceRunning)
+            StartCoroutine(PlayQueuedGusCutscenes());
+    }
+
+    IEnumerator PlayQueuedGusCutscenes()
+    {
+        gusCutsceneSequenceRunning = true;
+        // Let the milestone manager finish advancing and notifying other systems first.
+        yield return null;
+
+        while (pendingGusCutscenes.Count > 0)
+            yield return PlayGusCutscene(pendingGusCutscenes.Dequeue());
+
+        gusCutsceneSequenceRunning = false;
+    }
+
+    IEnumerator PlayGusCutscene(GusCutsceneRequest request)
+    {
+        GameObject gus = EnsureGusInScene();
+        Camera gameplayCamera = gameCamera != null ? gameCamera : Camera.main;
+        Camera cutsceneCamera = titleCamera != null ? titleCamera : gameplayCamera;
+        if (gus == null || cutsceneCamera == null)
+        {
+            Debug.LogWarning("The Gus cutscene could not start because Gus or a camera is missing.");
+            yield break;
+        }
+
+        bool gusWasActive = gus.activeSelf;
+        bool cutsceneCameraWasEnabled = cutsceneCamera.enabled;
+        bool gameplayCameraWasEnabled = gameplayCamera != null && gameplayCamera.enabled;
+        bool camerasAreSeparate = gameplayCamera != null && gameplayCamera != cutsceneCamera;
+        Vector3 gameplayCameraPosition = gameplayCamera != null
+            ? gameplayCamera.transform.position : cutsceneCamera.transform.position;
+        Quaternion gameplayCameraRotation = gameplayCamera != null
+            ? gameplayCamera.transform.rotation : cutsceneCamera.transform.rotation;
+
+        Canvas[] gameCanvases = inGameUIRoot != null
+            ? inGameUIRoot.GetComponentsInChildren<Canvas>(true)
+            : System.Array.Empty<Canvas>();
+        bool[] canvasEnabledStates = new bool[gameCanvases.Length];
+        for (int i = 0; i < gameCanvases.Length; i++)
+            canvasEnabledStates[i] = gameCanvases[i] != null && gameCanvases[i].enabled;
+
+        PlayerCameraController[] cameraControllers = FindObjectsByType<PlayerCameraController>(FindObjectsSortMode.None);
+        bool[] cameraControllerEnabledStates = new bool[cameraControllers.Length];
+        for (int i = 0; i < cameraControllers.Length; i++)
+            cameraControllerEnabledStates[i] = cameraControllers[i] != null && cameraControllers[i].enabled;
+
+        GameTimeManager timeManager = GameTimeManager.Instance;
+        float previousTimeScale = Time.timeScale;
+        bool usedTimeManagerPause = timeManager != null;
+
+        try
+        {
+            CutscenePresentation.Begin();
+            if (usedTimeManagerPause)
+                timeManager.RequestExternalPause(GusCutscenePauseSource);
+            else
+                Time.timeScale = 0f;
+
+            for (int i = 0; i < cameraControllers.Length; i++)
+                if (cameraControllers[i] != null) cameraControllers[i].enabled = false;
+            for (int i = 0; i < gameCanvases.Length; i++)
+                if (gameCanvases[i] != null) gameCanvases[i].enabled = false;
+
+            gus.SetActive(true);
+            cutsceneCamera.transform.SetPositionAndRotation(gameplayCameraPosition, gameplayCameraRotation);
+            if (camerasAreSeparate)
+                gameplayCamera.enabled = false;
+            cutsceneCamera.enabled = true;
+
+            Vector3 targetPosition = gusIntroCameraPoint != null
+                ? gusIntroCameraPoint.position
+                : gusIntroCameraWorldPosition;
+            Vector3 targetLookAt = gus.transform.position + Vector3.up * gusIntroCameraLookHeight;
+            Vector3 lookDirection = targetLookAt - targetPosition;
+            Quaternion targetRotation = lookDirection.sqrMagnitude > 0.001f
+                ? Quaternion.LookRotation(lookDirection.normalized, Vector3.up)
+                : cutsceneCamera.transform.rotation;
+
+            yield return MoveCamera(cutsceneCamera.transform, targetPosition, targetRotation,
+                milestoneCameraMoveDuration);
+
+            if (gusIntroCameraHoldDuration > 0f)
+                yield return new WaitForSecondsRealtime(gusIntroCameraHoldDuration);
+
+            bool dialogueFinished = false;
+            if (request.openingIntro)
+            {
+                IntroCutsceneUI.Show(null, ResolveGusPrefab(), gusPortrait,
+                    () => dialogueFinished = true, cutsceneCamera);
+            }
+            else
+            {
+                IntroCutsceneUI.ShowMilestone(request.title, request.dialogue,
+                    () => dialogueFinished = true, cutsceneCamera);
+            }
+            while (!dialogueFinished)
+                yield return null;
+
+            yield return MoveCamera(cutsceneCamera.transform, gameplayCameraPosition,
+                gameplayCameraRotation, milestoneCameraMoveDuration);
+        }
+        finally
+        {
+            if (camerasAreSeparate && gameplayCamera != null)
+                gameplayCamera.enabled = gameplayCameraWasEnabled;
+            if (cutsceneCamera != null)
+                cutsceneCamera.enabled = cutsceneCameraWasEnabled;
+            if (gus != null)
+                gus.SetActive(gusWasActive);
+
+            for (int i = 0; i < gameCanvases.Length; i++)
+                if (gameCanvases[i] != null) gameCanvases[i].enabled = canvasEnabledStates[i];
+            for (int i = 0; i < cameraControllers.Length; i++)
+                if (cameraControllers[i] != null) cameraControllers[i].enabled = cameraControllerEnabledStates[i];
+
+            CutscenePresentation.End();
+
+            if (usedTimeManagerPause && timeManager != null)
+                timeManager.ReleaseExternalPause(GusCutscenePauseSource);
+            else
+                Time.timeScale = previousTimeScale;
+        }
+    }
+
+    static IEnumerator MoveCamera(Transform cameraTransform, Vector3 targetPosition,
+        Quaternion targetRotation, float duration)
+    {
+        if (cameraTransform == null) yield break;
+
+        Vector3 startPosition = cameraTransform.position;
+        Quaternion startRotation = cameraTransform.rotation;
+        duration = Mathf.Max(0.01f, duration);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float progress = Mathf.Clamp01(elapsed / duration);
+            float easedProgress = progress * progress * (3f - 2f * progress);
+            cameraTransform.SetPositionAndRotation(
+                Vector3.LerpUnclamped(startPosition, targetPosition, easedProgress),
+                Quaternion.Slerp(startRotation, targetRotation, easedProgress));
+            yield return null;
+        }
+
+        cameraTransform.SetPositionAndRotation(targetPosition, targetRotation);
     }
 }
 

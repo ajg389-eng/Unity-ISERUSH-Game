@@ -94,6 +94,7 @@ public class PauseMenuUI : MonoBehaviour
     bool built;
     bool showingOptions;
     bool showingGuidebook;
+    bool guidebookReturnsToGame;
     bool showingCredits;
     bool titleSettingsMode;
     bool confirmationOwnsOverlay;
@@ -204,6 +205,7 @@ public class PauseMenuUI : MonoBehaviour
         visible = false;
         showingOptions = false;
         showingGuidebook = false;
+        guidebookReturnsToGame = false;
         showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
@@ -236,20 +238,42 @@ public class PauseMenuUI : MonoBehaviour
 
     public void CloseGuidebook()
     {
+        bool returnToGame = guidebookReturnsToGame;
+        guidebookReturnsToGame = false;
         showingGuidebook = false;
         if (guidebook != null)
             guidebook.Close();
-        ShowMain();
+        if (returnToGame)
+            Hide();
+        else
+            ShowMain();
     }
 
     void ShowGuidebook()
     {
+        ShowGuidebook(false, null);
+    }
+
+    void ShowGuidebook(bool returnToGameWhenClosed, string chapter)
+    {
+        guidebookReturnsToGame = returnToGameWhenClosed;
         showingGuidebook = true;
         showingOptions = false;
         if (mainPage != null) mainPage.SetActive(false);
         if (optionsPage != null) optionsPage.SetActive(false);
         if (guidebook != null)
-            guidebook.Open();
+        {
+            if (string.IsNullOrWhiteSpace(chapter)) guidebook.Open();
+            else guidebook.OpenToChapter(chapter);
+        }
+    }
+
+    public void OpenGuidebookFromHud(string chapter = null)
+    {
+        if (IsTitleVisible()) return;
+        if (!visible)
+            Show();
+        ShowGuidebook(true, chapter);
     }
 
     void ShowOptions()

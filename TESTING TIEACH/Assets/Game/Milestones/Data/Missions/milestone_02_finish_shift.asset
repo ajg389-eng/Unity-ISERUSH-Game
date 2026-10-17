@@ -12,10 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_02_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_02_finish_shift
-  title: Serve 5 Cheese Fries
-  description: Serve five orders that include Cheese Fries.
-  completionEventId: menu_item_served_cheese_fries
-  requiredCount: 5
+  missionId: milestone_02_finish_shift_production
+  title: Produce Cheese Fries
+  description: Produce 15 Cheese Fries at an Assembly Station.
+  completionEventId:
+  requiredCount: 15
+  producedItem: {fileID: 11400000, guid: d411336cad38a7a479e1738f85fe29db, type: 2}
   showBeforeComplete: 1
   showAfterComplete: 1

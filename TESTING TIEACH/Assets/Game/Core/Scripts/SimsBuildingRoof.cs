@@ -23,7 +23,20 @@ public class SimsBuildingRoof : MonoBehaviour
     const float TileMeters = 0.55f;
     float visibility;
     bool opaqueMode = true;
+    bool cutsceneForceVisible;
     readonly Color roofColor = new Color(0.42f, 0.18f, 0.16f, 1f);
+
+    public bool CutsceneForceVisible => cutsceneForceVisible;
+
+    public void SetCutsceneForceVisible(bool forceVisible)
+    {
+        cutsceneForceVisible = forceVisible;
+        if (!cutsceneForceVisible || meshRenderer == null) return;
+
+        visibility = 1f;
+        meshRenderer.enabled = true;
+        ApplyFade(1f);
+    }
 
     public void Rebuild(float minX, float maxX, float minZ, float maxZ, float eaveY,
         float peakHeight, float overhang = 0.85f)
@@ -38,6 +51,14 @@ public class SimsBuildingRoof : MonoBehaviour
     void LateUpdate()
     {
         if (meshRenderer == null) return;
+
+        if (cutsceneForceVisible)
+        {
+            visibility = 1f;
+            meshRenderer.enabled = true;
+            ApplyFade(1f);
+            return;
+        }
 
         Camera cam = Camera.main;
         if (cam == null) return;

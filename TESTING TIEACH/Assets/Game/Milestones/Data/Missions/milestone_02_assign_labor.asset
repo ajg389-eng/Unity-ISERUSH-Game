@@ -17,5 +17,7 @@ MonoBehaviour:
   description: Configure the Cheese Fries recipe at an Assembly Station.
   completionEventId: recipe_configured_cheese_fries
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

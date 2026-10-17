@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Creates Tutorial + four numbered milestones with authored quizzes and tasks.
+/// Creates Tutorial + six numbered milestones with tasks.
 /// Menu: Game / Setup Milestone Database
 /// </summary>
 public static class MilestoneDatabaseSetup
@@ -22,6 +22,9 @@ public static class MilestoneDatabaseSetup
         public string description;
         public string eventId;
         public int count;
+        public string productItemName;
+        public bool countAnyUnlockedMenuProduct;
+        public string missionIdOverride;
     }
 
     struct MilestoneContent
@@ -36,6 +39,16 @@ public static class MilestoneDatabaseSetup
 
     [MenuItem("Game/Setup Milestone Database")]
     public static void Setup()
+    {
+        Setup(showDialog: true);
+    }
+
+    public static void SetupSilently()
+    {
+        Setup(showDialog: false);
+    }
+
+    static void Setup(bool showDialog)
     {
         EnsureFolders();
 
@@ -84,10 +97,11 @@ public static class MilestoneDatabaseSetup
         AssetDatabase.Refresh();
 
         Selection.activeObject = database;
-        EditorUtility.DisplayDialog(
-            "Milestone Database",
-            "Created Tutorial + 4 milestones with tasks and quizzes at:\n" + DatabasePath,
-            "OK");
+        if (showDialog)
+            EditorUtility.DisplayDialog(
+                "Milestone Database",
+                "Created Tutorial + 6 milestones with tasks at:\n" + DatabasePath,
+                "OK");
     }
 
     [MenuItem("Game/Setup Milestone Database", true)]
@@ -121,31 +135,7 @@ public static class MilestoneDatabaseSetup
         asset.missions = BuildMissionList(id, inlineMissions);
 
         asset.unlocks = new List<MilestoneUnlock>();
-
-        if (!isTutorial)
-        {
-            string quizPath = DefinitionsFolder + $"/Quiz_{id}.asset";
-            var quiz = AssetDatabase.LoadAssetAtPath<QuizDefinition>(quizPath);
-            if (quiz == null)
-            {
-                quiz = ScriptableObject.CreateInstance<QuizDefinition>();
-                AssetDatabase.CreateAsset(quiz, quizPath);
-            }
-
-            quiz.quizId = id + "_quiz";
-            quiz.title = "Milestone " + displayName + " Quiz";
-            quiz.introText = "Answer every question correctly to advance to the next milestone and reveal new research.";
-            quiz.questions = questions != null
-                ? new List<QuizQuestion>(questions)
-                : new List<QuizQuestion>();
-
-            EditorUtility.SetDirty(quiz);
-            asset.quiz = quiz;
-        }
-        else
-        {
-            asset.quiz = null;
-        }
+        asset.quiz = null;
 
         EditorUtility.SetDirty(asset);
         return asset;
@@ -168,11 +158,18 @@ public static class MilestoneDatabaseSetup
                 AssetDatabase.CreateAsset(mission, path);
             }
 
-            mission.missionId = milestoneId + "_" + spec.id;
+            mission.missionId = !string.IsNullOrEmpty(spec.missionIdOverride)
+                ? spec.missionIdOverride
+                : milestoneId + "_" + spec.id;
+            if (string.IsNullOrEmpty(spec.missionIdOverride)
+                && (!string.IsNullOrEmpty(spec.productItemName) || spec.countAnyUnlockedMenuProduct))
+                mission.missionId += "_production";
             mission.title = spec.title;
             mission.description = spec.description;
             mission.completionEventId = spec.eventId;
             mission.requiredCount = Mathf.Max(1, spec.count);
+            mission.producedItem = FindItemDefinition(spec.productItemName);
+            mission.countAnyUnlockedMenuProduct = spec.countAnyUnlockedMenuProduct;
             mission.showBeforeComplete = true;
             mission.showAfterComplete = true;
             EditorUtility.SetDirty(mission);
@@ -182,7 +179,9 @@ public static class MilestoneDatabaseSetup
         return list;
     }
 
-    static MissionSpec M(string id, string title, string description, string eventId, int count = 1)
+    static MissionSpec M(string id, string title, string description, string eventId, int count = 1,
+        string productItemName = null, bool countAnyUnlockedMenuProduct = false,
+        string missionIdOverride = null)
     {
         return new MissionSpec
         {
@@ -190,8 +189,25 @@ public static class MilestoneDatabaseSetup
             title = title,
             description = description,
             eventId = eventId,
-            count = count
+            count = count,
+            productItemName = productItemName,
+            countAnyUnlockedMenuProduct = countAnyUnlockedMenuProduct,
+            missionIdOverride = missionIdOverride
         };
+    }
+
+    static ItemDefinition FindItemDefinition(string itemName)
+    {
+        if (string.IsNullOrWhiteSpace(itemName)) return null;
+        string[] guids = AssetDatabase.FindAssets("t:ItemDefinition", new[] { "Assets/Game/Customers/Data" });
+        foreach (string guid in guids)
+        {
+            ItemDefinition item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(AssetDatabase.GUIDToAssetPath(guid));
+            if (item != null && (item.itemName == itemName || item.name == itemName))
+                return item;
+        }
+        Debug.LogWarning("Milestone production item was not found: " + itemName);
+        return null;
     }
 
     static QuizQuestion Q(string prompt, string a, string b, string c, string d, char answer)
@@ -221,17 +237,18 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_01",
-                name = "1",
-                description = "Build a small menu and learn to shape a kitchen workflow.",
-                topics = "Burgers, fries, recipes, and station layout",
+                name = "Process Analysis",
+                description = "Map the process, improve station layout, and use queues to find bottlenecks.",
+                topics = "Process mapping, facility layout, queues, and bottlenecks",
                 missions = new[]
                 {
-                    M("observe_queue", "Set up the cheeseburger recipe",
-                        "Choose the cheeseburger recipe at an Assembly Station to add cheese to the burger workflow.",
-                        "recipe_configured_cheeseburger"),
-                    M("serve_orders", "Serve 100 customers",
-                        "Serve 100 customers with your burger and fries menu.",
-                        TutorialVoiceEventId.OrderServed, 100),
+                    M("observe_queue", "Configure a Fries recipe",
+                        "Choose the Fries recipe at an Assembly Station to set up your first side item.",
+                        "recipe_configured_fries",
+                        missionIdOverride: "milestone_01_configure_fries"),
+                    M("serve_orders", "Produce 15 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 15, countAnyUnlockedMenuProduct: true),
                     M("finish_shift", "Reposition a workstation",
                         "Move a workstation to improve the layout of your kitchen.",
                         TutorialVoiceEventId.StationRepositioned)
@@ -267,23 +284,21 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_02",
-                name = "2",
-                description = "Expand the burger and fries recipes with fresh ingredients.",
-                topics = "Classic burgers and cheese fries",
+                name = "Capacity Planning",
+                description = "Balance station and worker capacity as products and demand grow.",
+                topics = "Capacity balancing, bottleneck shifts, and labor allocation",
                 missions = new[]
                 {
-                    M("hire_capacity", "Configure a Classic Burger",
-                        "Choose the Classic Burger recipe at an Assembly Station.",
-                        "recipe_configured_classic_burger"),
+                    M("hire_capacity", "Configure a Cheeseburger",
+                        "Choose the Cheeseburger recipe at an Assembly Station.",
+                        "recipe_configured_cheeseburger",
+                        missionIdOverride: "milestone_02_configure_cheeseburger"),
                     M("assign_labor", "Add cheese fries to the menu",
                         "Configure the Cheese Fries recipe at an Assembly Station.",
                         "recipe_configured_cheese_fries"),
-                    M("balance_output", "Serve 5 Classic Burgers",
-                        "Serve five Classic Burgers.",
-                        "menu_item_served_classic_burger", 5),
-                    M("finish_shift", "Serve 5 Cheese Fries",
-                        "Serve five orders that include Cheese Fries.",
-                        "menu_item_served_cheese_fries", 5)
+                    M("balance_output", "Produce 25 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 25, countAnyUnlockedMenuProduct: true)
                 },
                 questions = new[]
                 {
@@ -316,23 +331,24 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_03",
-                name = "3",
-                description = "Add bacon and shakes, then invest in faster MK2 workstations.",
-                topics = "Bacon recipes, shakes, MK2 stations",
+                name = "Engineering Economy",
+                description = "Evaluate equipment and process changes by their impact on system output and profit.",
+                topics = "Capital planning, production scheduling, and payback",
                 missions = new[]
                 {
-                    M("buy_inputs", "Configure a bacon burger",
-                        "Choose the Bacon Cheeseburger recipe at an Assembly Station.",
-                        "recipe_configured_bacon_cheeseburger"),
-                    M("expand_assets", "Add shakes to the menu",
-                        "Configure the basic Shake recipe at a Shake Station.",
-                        "recipe_configured_shake"),
+                    M("buy_inputs", "Order production inputs",
+                        "Place an ingredient order to supply your production line.",
+                        TutorialVoiceEventId.IngredientsOrdered),
+                    M("expand_assets", "Configure a Classic Burger",
+                        "Choose the Classic Burger recipe at an Assembly Station.",
+                        "recipe_configured_classic_burger",
+                        missionIdOverride: "milestone_03_configure_classic_burger"),
                     M("produce_sales", "Purchase an MK2 workstation",
                         "Purchase any MK2 workstation upgrade.",
                         TutorialVoiceEventId.Mk2StationPurchased),
-                    M("finish_shift", "Serve 5 shakes",
-                        "Serve five customers who ordered a Shake.",
-                        "menu_item_served_shake", 5)
+                    M("finish_shift", "Produce 35 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 35, countAnyUnlockedMenuProduct: true)
                 },
                 questions = new[]
                 {
@@ -365,23 +381,24 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_04",
-                name = "4",
-                description = "Complete the menu with the most involved fries and shake production chains.",
-                topics = "Premium fries, finished shakes, and production balance",
+                name = "Inventory Control",
+                description = "Plan inventory and suppliers around demand, reliability, holding cost, and waste.",
+                topics = "Forecasting, supplier reliability, and inventory control",
                 missions = new[]
                 {
-                    M("restock", "Configure a Bacon Cheeseburger",
-                        "Choose the Bacon Cheeseburger recipe.",
-                        "recipe_configured_bacon_cheeseburger"),
+                    M("restock", "Order production supplies",
+                        "Place an ingredient order before the production line runs out.",
+                        TutorialVoiceEventId.IngredientsOrdered),
                     M("meet_demand", "Configure cheese bacon fries",
                         "Choose the Cheese Bacon Fries recipe at an Assembly Station.",
                         "recipe_configured_cheese_bacon_fries"),
-                    M("multi_day", "Configure the premium shake",
-                        "Choose the Whipped Cream Sprinkle Shake recipe.",
-                        "recipe_configured_whipped_cream_sprinkle_shake"),
-                    M("configure_recipe", "Serve 5 Bacon Cheeseburgers",
-                        "Serve five Bacon Cheeseburgers.",
-                        "menu_item_served_bacon_cheeseburger", 5)
+                    M("multi_day", "Configure a Whipped Cream Sprinkle Shake",
+                        "Choose the Whipped Cream Sprinkle Shake recipe at a Shake Station.",
+                        "recipe_configured_whipped_cream_sprinkle_shake",
+                        missionIdOverride: "milestone_04_configure_whipped_cream_sprinkle_shake"),
+                    M("configure_recipe", "Produce 45 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 45, countAnyUnlockedMenuProduct: true)
                 },
                 questions = new[]
                 {
@@ -409,6 +426,53 @@ public static class MilestoneDatabaseSetup
                         "Reduce inventory before noon",
                         "Close a cooking station during lunch",
                         'B')
+                }
+            },
+            new MilestoneContent
+            {
+                id = "milestone_05",
+                name = "Quality & Reliability",
+                description = "Balance service speed with quality, and use maintenance to prevent equipment failures.",
+                topics = "Quality Engineering, Reliability Engineering",
+                missions = new[]
+                {
+                    M("finish_shift", "Produce 60 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 60, countAnyUnlockedMenuProduct: true),
+                    M("keep_stocked", "Prevent stockouts",
+                        "Replenish ingredients before they run out so production can continue throughout the shift.",
+                        TutorialVoiceEventId.IngredientsOrdered),
+                    M("steady_service", "Maintain consistent service",
+                        "Serve 25 customers while balancing order accuracy and speed.",
+                        TutorialVoiceEventId.OrderServed, 25)
+                }
+            },
+            new MilestoneContent
+            {
+                id = "milestone_06",
+                name = "Systems Integration",
+                description = "Treat people, processes, technology, and information as one system; optimize overall service.",
+                topics = "Systems Engineering, Information Engineering, Engineering Management",
+                missions = new[]
+                {
+                    M("connect_process", "Connect people to the process",
+                        "Assign the worker to a station that supports the process bottleneck.",
+                        TutorialVoiceEventId.WorkerAssigned),
+                    M("link_output", "Link information flow",
+                        "Set a station Output so work is routed through the connected kitchen.",
+                        TutorialVoiceEventId.OutputLinked),
+                    M("multi_day", "Sustain the integrated operation",
+                        "Complete 2 full shifts and adjust people, process, and inventory as conditions change.",
+                        TutorialVoiceEventId.DayEnded, 2),
+                    M("staff_system", "Staff the operation",
+                        "Hire a worker and consider how people fit into the whole production system.",
+                        TutorialVoiceEventId.WorkerHired),
+                    M("supply_ops", "Supply operations",
+                        "Order ingredients and make sure upstream supply can support downstream service.",
+                        TutorialVoiceEventId.IngredientsOrdered),
+                    M("system_output", "Produce 75 unlocked menu items",
+                        "Produce any combination of finished menu recipes you have unlocked so far.",
+                        "", 75, countAnyUnlockedMenuProduct: true)
                 }
             },
         };

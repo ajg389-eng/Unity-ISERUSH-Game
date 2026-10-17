@@ -168,6 +168,15 @@ public class TopHudBar : MonoBehaviour
                 new Vector2(14f, 0f), new Vector2(42f, 42f));
         }
 
+        var guidebookSection = transform.Find(TopHudUtilityControls.GuidebookSectionName) as RectTransform;
+        if (guidebookSection != null)
+        {
+            var le = guidebookSection.GetComponent<LayoutElement>() ?? guidebookSection.gameObject.AddComponent<LayoutElement>();
+            le.ignoreLayout = true;
+            PositionSection(guidebookSection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(70f, 0f), new Vector2(42f, 42f));
+        }
+
         var timeSection = transform.Find(TimeSectionName) as RectTransform;
         if (timeSection != null)
         {

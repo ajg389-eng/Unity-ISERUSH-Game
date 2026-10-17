@@ -222,7 +222,7 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
             {
                 pattyUnits--;
                 cookedOutputUnits++;
-                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(GetSelectedOutput(), 1);
                 continue;
             }
 
@@ -235,7 +235,7 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
             pattyUnits--;
             cookedOutputUnits++;
             cookTimer = Mathf.Max(0f, cookTimer - cycleSeconds);
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(GetSelectedOutput(), 1);
             if (pattyUnits <= 0) cookTimer = 0f;
         }
     }

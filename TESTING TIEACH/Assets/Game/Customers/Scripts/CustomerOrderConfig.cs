@@ -2,6 +2,35 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+[System.Serializable]
+public class RecipeGraphInputDefinition
+{
+    [Min(0)] public int port;
+    public ItemDefinition item;
+    [Min(1)] public int amount = 1;
+}
+
+[System.Serializable]
+public class RecipeGraphNodeDefinition
+{
+    public string recipeName;
+    public StationType stationType;
+    public ItemDefinition output;
+    [Min(0.01f)] public float baseCycleSeconds = 4f;
+    public List<RecipeGraphInputDefinition> inputs = new List<RecipeGraphInputDefinition>();
+}
+
+[System.Serializable]
+public class RecipeSupplySourceDefinition
+{
+    public ItemDefinition item;
+    public StationType stationType;
+}
+
 [System.Serializable]
 public class AssemblyRecipeDefinition
 {
@@ -26,17 +55,17 @@ public class AssemblyRecipeDefinition
     [Tooltip("Optional raw material that must be processed at a Cutting Station before becoming the pantry input.")]
     public ItemDefinition rawPantryInput;
     [Tooltip("Optional explicit station path used to prepare Input 2 for this recipe.")]
-    public StationType[] supplyPipeline;
+    public StationType[] supplyPipeline = System.Array.Empty<StationType>();
     [Tooltip("Item carried after each station in Supply Pipeline.")]
-    public ItemDefinition[] supplyStageOutputs;
+    public ItemDefinition[] supplyStageOutputs = System.Array.Empty<ItemDefinition>();
 
     [Header("MK2 third input")]
     [Tooltip("Required only by Assembly Station MK2 recipes. MK1 cannot process recipes with this input.")]
     public ItemDefinition thirdInput;
     [Min(1)] public int thirdInputAmount = 1;
     public ItemDefinition rawThirdInput;
-    public StationType[] thirdSupplyPipeline;
-    public ItemDefinition[] thirdSupplyStageOutputs;
+    public StationType[] thirdSupplyPipeline = System.Array.Empty<StationType>();
+    public ItemDefinition[] thirdSupplyStageOutputs = System.Array.Empty<ItemDefinition>();
 
     public string DisplayName => !string.IsNullOrWhiteSpace(recipeName)
         ? recipeName
@@ -98,9 +127,9 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition cheeseBaconBurgerItem;
     public ItemDefinition superBurgerItem;
     public ItemDefinition cheeseBaconLettuceBurgerItem;
-    public ItemDefinition cheeseBaconLettuceOnionBurgerItem;
-    public ItemDefinition cheeseBaconLettuceOnionTomatoBurgerItem;
-    public ItemDefinition cheeseBaconLettuceOnionTomatoEggBurgerItem;
+    [HideInInspector] public ItemDefinition cheeseBaconLettuceOnionBurgerItem;
+    [HideInInspector] public ItemDefinition cheeseBaconLettuceOnionTomatoBurgerItem;
+    [HideInInspector] public ItemDefinition cheeseBaconLettuceOnionTomatoEggBurgerItem;
     [Tooltip("Intermediate made from Tomato Slice and Lettuce Slice.")]
     public ItemDefinition veggieMixIngredient;
     [Tooltip("Fries side")]
@@ -120,8 +149,14 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition rawPattyIngredient;
     [Tooltip("Cooked patty produced by the Grill and carried to Assembly.")]
     public ItemDefinition cookedPattyIngredient;
-    [Header("Assembly recipes")]
-    [Tooltip("Recipes players can choose on an Assembly Station.")]
+    [Header("Canonical production graph")]
+    [Tooltip("All station recipes in one item graph. Each input points to a produced item or an explicit vendor supply.")]
+    public List<RecipeGraphNodeDefinition> productionRecipes = new List<RecipeGraphNodeDefinition>();
+    [Tooltip("Items that can be purchased and dispensed by a Freezer or Pantry.")]
+    public List<RecipeSupplySourceDefinition> vendorSupplies = new List<RecipeSupplySourceDefinition>();
+
+    [Header("Legacy recipe views")]
+    [HideInInspector, Tooltip("Generated compatibility views. Edit Production Recipes above instead.")]
     public List<AssemblyRecipeDefinition> assemblyRecipes = new List<AssemblyRecipeDefinition>();
     [Header("Burger toppings")]
     public ItemDefinition lettuceIngredient;
@@ -131,27 +166,27 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition slicedLettuceIngredient;
     public ItemDefinition tomatoIngredient;
     public ItemDefinition slicedTomatoIngredient;
-    [Header("Bacon, onion, and egg")]
+    [Header("Bacon")]
     [FormerlySerializedAs("rawBaconIngredient")]
     [Tooltip("Bacon slab stocked by a Freezer and carried to a Cutting Station.")]
     public ItemDefinition baconSlabIngredient;
     [Tooltip("Cut bacon produced by a Cutting Station and carried to a Grill.")]
     public ItemDefinition cutBaconIngredient;
     public ItemDefinition cookedBaconIngredient;
-    public ItemDefinition onionIngredient;
-    public ItemDefinition onionRingIngredient;
-    public ItemDefinition friedOnionRingIngredient;
-    public ItemDefinition eggIngredient;
-    public ItemDefinition cookedEggIngredient;
-    public List<StationProcessingRecipeDefinition> grillRecipes = new List<StationProcessingRecipeDefinition>();
-    public List<StationProcessingRecipeDefinition> fryerRecipes = new List<StationProcessingRecipeDefinition>();
+    [HideInInspector] public ItemDefinition onionIngredient;
+    [HideInInspector] public ItemDefinition onionRingIngredient;
+    [HideInInspector] public ItemDefinition friedOnionRingIngredient;
+    [HideInInspector] public ItemDefinition eggIngredient;
+    [HideInInspector] public ItemDefinition cookedEggIngredient;
+    [HideInInspector] public List<StationProcessingRecipeDefinition> grillRecipes = new List<StationProcessingRecipeDefinition>();
+    [HideInInspector] public List<StationProcessingRecipeDefinition> fryerRecipes = new List<StationProcessingRecipeDefinition>();
     [Header("Cutting recipes")]
-    public List<CuttingRecipeDefinition> cuttingRecipes = new List<CuttingRecipeDefinition>();
+    [HideInInspector] public List<CuttingRecipeDefinition> cuttingRecipes = new List<CuttingRecipeDefinition>();
     [Tooltip("Shake")]
     public ItemDefinition drinkItem;
     public ItemDefinition whippedCreamShakeItem;
     public ItemDefinition whippedCreamSprinkleShakeItem;
-    public ItemDefinition cheeseSauceIngredient;
+    [HideInInspector] public ItemDefinition cheeseSauceIngredient;
     public ItemDefinition whippedCreamIngredient;
     public ItemDefinition sprinklesIngredient;
 
@@ -178,11 +213,469 @@ public class CustomerOrderConfig : ScriptableObject
         new Dictionary<ItemDefinition, int>();
     [System.NonSerialized] readonly Dictionary<string, ItemReputationState> itemReputationByName =
         new Dictionary<string, ItemReputationState>(System.StringComparer.Ordinal);
+    [System.NonSerialized] bool recipeGraphReady;
+    [System.NonSerialized] bool rebuildingRecipeGraph;
 
     sealed class DemandProduct
     {
         public ItemDefinition item;
         public int rate;
+    }
+
+    void OnEnable()
+    {
+        EnsureProductionRecipeGraph();
+    }
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        recipeGraphReady = false;
+        EnsureProductionRecipeGraph();
+        EditorUtility.SetDirty(this);
+    }
+#endif
+
+    /// <summary>
+    /// The serialized graph is authoritative. The older station-specific recipe
+    /// lists are rebuilt as compatibility views for existing UI and station code.
+    /// </summary>
+    public void EnsureProductionRecipeGraph()
+    {
+        if (recipeGraphReady || rebuildingRecipeGraph) return;
+        rebuildingRecipeGraph = true;
+        if (productionRecipes == null) productionRecipes = new List<RecipeGraphNodeDefinition>();
+        if (vendorSupplies == null) vendorSupplies = new List<RecipeSupplySourceDefinition>();
+
+        if (productionRecipes.Count == 0)
+            MigrateLegacyRecipesIntoGraph();
+        if (vendorSupplies.Count == 0)
+            InferVendorSuppliesFromGraph();
+
+        RebuildLegacyRecipeViews();
+        recipeGraphReady = true;
+        rebuildingRecipeGraph = false;
+    }
+
+    void MigrateLegacyRecipesIntoGraph()
+    {
+        productionRecipes.Clear();
+        if (assemblyRecipes != null)
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe == null || recipe.output == null) continue;
+                var node = NewGraphNode(recipe.recipeName, StationType.Assembly, recipe.output,
+                    recipe.baseCycleSeconds);
+                AddGraphInput(node, 0, recipe.processedInput, recipe.processedInputAmount);
+                AddGraphInput(node, 1, recipe.pantryInput, recipe.pantryInputAmount);
+                AddGraphInput(node, 2, recipe.thirdInput, recipe.thirdInputAmount);
+                productionRecipes.Add(node);
+            }
+
+        AddLegacyProcessingRecipes(StationType.Grill, grillRecipes);
+        AddLegacyProcessingRecipes(StationType.Fryer, fryerRecipes);
+        if (cuttingRecipes != null)
+            foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
+            {
+                if (recipe == null || recipe.output == null) continue;
+                var node = NewGraphNode(recipe.recipeName, StationType.Cutting, recipe.output,
+                    recipe.baseCycleSeconds);
+                AddGraphInput(node, 0, recipe.input, 1);
+                productionRecipes.Add(node);
+            }
+    }
+
+    void AddLegacyProcessingRecipes(StationType stationType,
+        List<StationProcessingRecipeDefinition> recipes)
+    {
+        if (recipes == null) return;
+        foreach (StationProcessingRecipeDefinition recipe in recipes)
+        {
+            if (recipe == null || recipe.output == null) continue;
+            var node = NewGraphNode(recipe.recipeName, stationType, recipe.output,
+                recipe.baseCycleSeconds);
+            AddGraphInput(node, 0, recipe.input, 1);
+            AddGraphInput(node, 1, recipe.secondaryInput, 1);
+            productionRecipes.Add(node);
+        }
+    }
+
+    static RecipeGraphNodeDefinition NewGraphNode(string name, StationType stationType,
+        ItemDefinition output, float cycleSeconds) => new RecipeGraphNodeDefinition
+    {
+        recipeName = name,
+        stationType = stationType,
+        output = output,
+        baseCycleSeconds = Mathf.Max(0.01f, cycleSeconds),
+        inputs = new List<RecipeGraphInputDefinition>()
+    };
+
+    static void AddGraphInput(RecipeGraphNodeDefinition node, int port,
+        ItemDefinition item, int amount)
+    {
+        if (node == null || item == null) return;
+        node.inputs.Add(new RecipeGraphInputDefinition
+        {
+            port = port,
+            item = item,
+            amount = Mathf.Max(1, amount)
+        });
+    }
+
+    void InferVendorSuppliesFromGraph()
+    {
+        vendorSupplies.Clear();
+        AddVendorSupply(rawPattyIngredient, StationType.Freezer);
+        AddVendorSupply(lettuceIngredient, StationType.Freezer);
+        AddVendorSupply(tomatoIngredient, StationType.Freezer);
+        AddVendorSupply(baconSlabIngredient, StationType.Freezer);
+        AddVendorSupply(whippedCreamIngredient, StationType.Freezer);
+        AddVendorSupply(friesIngredient, StationType.Pantry);
+        AddVendorSupply(cheeseIngredient, StationType.Pantry);
+        AddVendorSupply(sprinklesIngredient, StationType.Pantry);
+
+        if (assemblyRecipes != null)
+            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            {
+                if (recipe == null) continue;
+                if (recipe.processedInputFromFreezer)
+                    AddVendorSupply(recipe.processedInput, StationType.Freezer);
+                if (recipe.processedInputFromPantry)
+                    AddVendorSupply(recipe.processedInput, StationType.Pantry);
+            }
+
+        // Any recipe input with no production step is a raw supply. Default it to
+        // Pantry unless the configuration explicitly identifies it as Freezer stock.
+        foreach (RecipeGraphNodeDefinition node in productionRecipes)
+        {
+            if (node?.inputs == null) continue;
+            foreach (RecipeGraphInputDefinition input in node.inputs)
+            {
+                if (input?.item == null || HasRecipeProducer(input.item)
+                    || IsRemovedIngredient(input.item)) continue;
+                if (FindVendorSupply(input.item) != null) continue;
+                AddVendorSupply(input.item, IsKnownFreezerSupply(input.item)
+                    ? StationType.Freezer : StationType.Pantry);
+            }
+        }
+    }
+
+    bool IsKnownFreezerSupply(ItemDefinition item)
+    {
+        if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
+            || item == baconSlabIngredient || item == whippedCreamIngredient) return true;
+        if (assemblyRecipes == null) return false;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)
+                return true;
+        return false;
+    }
+
+    void AddVendorSupply(ItemDefinition item, StationType stationType)
+    {
+        if (item == null || (stationType != StationType.Pantry && stationType != StationType.Freezer)
+            || IsRemovedIngredient(item) || FindVendorSupply(item) != null) return;
+        vendorSupplies.Add(new RecipeSupplySourceDefinition { item = item, stationType = stationType });
+    }
+
+    RecipeSupplySourceDefinition FindVendorSupply(ItemDefinition item)
+    {
+        if (item == null || vendorSupplies == null) return null;
+        return vendorSupplies.Find(source => source != null && source.item == item);
+    }
+
+    bool HasRecipeProducer(ItemDefinition item)
+    {
+        return item != null && productionRecipes != null
+            && productionRecipes.Exists(recipe => recipe != null && recipe.output == item);
+    }
+
+    void RebuildLegacyRecipeViews()
+    {
+        assemblyRecipes = new List<AssemblyRecipeDefinition>();
+        grillRecipes = new List<StationProcessingRecipeDefinition>();
+        fryerRecipes = new List<StationProcessingRecipeDefinition>();
+        cuttingRecipes = new List<CuttingRecipeDefinition>();
+        if (productionRecipes == null) return;
+
+        foreach (RecipeGraphNodeDefinition node in productionRecipes)
+        {
+            if (node == null || node.output == null) continue;
+            List<RecipeGraphInputDefinition> inputs = node.inputs ?? new List<RecipeGraphInputDefinition>();
+            inputs.Sort((a, b) => (a?.port ?? 0).CompareTo(b?.port ?? 0));
+            if (node.stationType == StationType.Assembly)
+            {
+                var recipe = new AssemblyRecipeDefinition
+                {
+                    recipeName = node.recipeName,
+                    output = node.output,
+                    baseCycleSeconds = Mathf.Max(0.01f, node.baseCycleSeconds),
+                    supplyPipeline = System.Array.Empty<StationType>(),
+                    supplyStageOutputs = System.Array.Empty<ItemDefinition>(),
+                    thirdSupplyPipeline = System.Array.Empty<StationType>(),
+                    thirdSupplyStageOutputs = System.Array.Empty<ItemDefinition>()
+                };
+                foreach (RecipeGraphInputDefinition input in inputs)
+                {
+                    if (input == null || input.item == null) continue;
+                    int amount = Mathf.Max(1, input.amount);
+                    switch (Mathf.Clamp(input.port, 0, 2))
+                    {
+                        case 0:
+                            recipe.processedInput = input.item;
+                            recipe.processedInputName = input.item.itemName;
+                            recipe.processedInputAmount = amount;
+                            RecipeSupplySourceDefinition processedSource = FindVendorSupply(input.item);
+                            recipe.processedInputFromFreezer = processedSource?.stationType == StationType.Freezer;
+                            recipe.processedInputFromPantry = processedSource?.stationType == StationType.Pantry;
+                            break;
+                        case 1:
+                            recipe.pantryInput = input.item;
+                            recipe.pantryInputAmount = amount;
+                            AddLegacySupplyPathHints(recipe, input.item, false);
+                            break;
+                        case 2:
+                            recipe.thirdInput = input.item;
+                            recipe.thirdInputAmount = amount;
+                            AddLegacySupplyPathHints(recipe, input.item, true);
+                            break;
+                    }
+                }
+                assemblyRecipes.Add(recipe);
+            }
+            else if (node.stationType == StationType.Grill || node.stationType == StationType.Fryer)
+            {
+                var recipe = new StationProcessingRecipeDefinition
+                {
+                    recipeName = node.recipeName,
+                    output = node.output,
+                    baseCycleSeconds = Mathf.Max(0.01f, node.baseCycleSeconds)
+                };
+                foreach (RecipeGraphInputDefinition input in inputs)
+                {
+                    if (input == null || input.item == null) continue;
+                    if (input.port <= 0) recipe.input = input.item;
+                    else recipe.secondaryInput = input.item;
+                }
+                (node.stationType == StationType.Grill ? grillRecipes : fryerRecipes).Add(recipe);
+            }
+            else if (node.stationType == StationType.Cutting)
+            {
+                RecipeGraphInputDefinition input = inputs.Find(value => value != null && value.item != null);
+                cuttingRecipes.Add(new CuttingRecipeDefinition
+                {
+                    recipeName = node.recipeName,
+                    input = input != null ? input.item : null,
+                    output = node.output,
+                    baseCycleSeconds = Mathf.Max(0.01f, node.baseCycleSeconds)
+                });
+            }
+        }
+    }
+
+    void AddLegacySupplyPathHints(AssemblyRecipeDefinition recipe, ItemDefinition item, bool third)
+    {
+        var stations = new List<StationType>();
+        var stages = new List<ItemDefinition>();
+        if (!TryBuildSupplyPath(item, new HashSet<ItemDefinition>(), stations, stages)
+            || stations.Count <= 1) return;
+        if (third)
+        {
+            recipe.rawThirdInput = stages[0];
+            recipe.thirdSupplyPipeline = stations.ToArray();
+            recipe.thirdSupplyStageOutputs = stages.ToArray();
+        }
+        else
+        {
+            recipe.rawPantryInput = stages[0];
+            recipe.supplyPipeline = stations.ToArray();
+            recipe.supplyStageOutputs = stages.ToArray();
+        }
+    }
+
+    bool TryBuildSupplyPath(ItemDefinition item, HashSet<ItemDefinition> visited,
+        List<StationType> stations, List<ItemDefinition> stages)
+    {
+        if (item == null || !visited.Add(item)) return false;
+        RecipeSupplySourceDefinition source = FindVendorSupply(item);
+        if (source != null)
+        {
+            stations.Add(source.stationType);
+            stages.Add(item);
+            return true;
+        }
+        RecipeGraphNodeDefinition producer = productionRecipes != null
+            ? productionRecipes.Find(recipe => recipe != null && recipe.output == item) : null;
+        RecipeGraphInputDefinition upstream = producer?.inputs?.Find(value => value != null && value.item != null);
+        if (producer == null || upstream == null
+            || !TryBuildSupplyPath(upstream.item, visited, stations, stages)) return false;
+        stations.Add(producer.stationType);
+        stages.Add(item);
+        return true;
+    }
+
+    public IReadOnlyList<RecipeGraphNodeDefinition> GetProductionRecipes()
+    {
+        EnsureProductionRecipeGraph();
+        return productionRecipes;
+    }
+
+    public RecipeGraphNodeDefinition GetProductionRecipe(StationType stationType, ItemDefinition output)
+    {
+        EnsureProductionRecipeGraph();
+        return productionRecipes.Find(recipe => recipe != null
+            && recipe.stationType == stationType && recipe.output == output);
+    }
+
+    public StationType? GetVendorSupplyStation(ItemDefinition item)
+    {
+        EnsureProductionRecipeGraph();
+        RecipeSupplySourceDefinition source = FindVendorSupply(item);
+        return source != null ? source.stationType : (StationType?)null;
+    }
+
+    public void AddOrReplaceProductionRecipe(RecipeGraphNodeDefinition recipe)
+    {
+        if (recipe == null || recipe.output == null) return;
+        EnsureProductionRecipeGraph();
+        productionRecipes.RemoveAll(existing => existing != null
+            && existing.stationType == recipe.stationType && existing.output == recipe.output);
+        productionRecipes.Add(recipe);
+        recipeGraphReady = false;
+        EnsureProductionRecipeGraph();
+    }
+
+    public void SetVendorSupply(ItemDefinition item, StationType stationType)
+    {
+        if (item == null || (stationType != StationType.Pantry && stationType != StationType.Freezer)) return;
+        EnsureProductionRecipeGraph();
+        RecipeSupplySourceDefinition existing = FindVendorSupply(item);
+        if (existing == null)
+            vendorSupplies.Add(new RecipeSupplySourceDefinition { item = item, stationType = stationType });
+        else
+            existing.stationType = stationType;
+        recipeGraphReady = false;
+        EnsureProductionRecipeGraph();
+    }
+
+    public List<string> ValidateProductionRecipeGraph()
+    {
+        EnsureProductionRecipeGraph();
+        var issues = new List<string>();
+        var producers = new Dictionary<ItemDefinition, RecipeGraphNodeDefinition>();
+        var usedItems = new HashSet<ItemDefinition>();
+
+        foreach (RecipeSupplySourceDefinition source in vendorSupplies)
+        {
+            if (source == null || source.item == null)
+            {
+                issues.Add("A vendor supply entry has no item.");
+                continue;
+            }
+            if (source.stationType != StationType.Pantry && source.stationType != StationType.Freezer)
+                issues.Add(source.item.itemName + " has an invalid vendor source station.");
+            if (!IsRemovedIngredient(source.item) && HasRecipeProducer(source.item))
+                issues.Add(source.item.itemName + " is both purchased and produced by a recipe.");
+        }
+
+        foreach (RecipeGraphNodeDefinition recipe in productionRecipes)
+        {
+            if (recipe == null || recipe.output == null)
+            {
+                issues.Add("A production recipe has no output item.");
+                continue;
+            }
+            if (recipe.stationType != StationType.Assembly && recipe.stationType != StationType.Grill
+                && recipe.stationType != StationType.Fryer && recipe.stationType != StationType.Cutting)
+                issues.Add(recipe.recipeName + " uses a station that cannot process recipes.");
+            if (recipe.baseCycleSeconds <= 0f)
+                issues.Add(recipe.recipeName + " needs a positive cycle time.");
+            if (producers.ContainsKey(recipe.output))
+                issues.Add(recipe.output.itemName + " has more than one production recipe.");
+            else
+                producers.Add(recipe.output, recipe);
+
+            if (recipe.inputs == null || recipe.inputs.Count == 0)
+                issues.Add(recipe.recipeName + " has no inputs.");
+            else
+                foreach (RecipeGraphInputDefinition input in recipe.inputs)
+                {
+                    if (input == null || input.item == null)
+                    {
+                        issues.Add(recipe.recipeName + " has an empty input.");
+                        continue;
+                    }
+                    usedItems.Add(input.item);
+                    if (input.amount < 1)
+                        issues.Add(recipe.recipeName + " requires at least one " + input.item.itemName + ".");
+                    int maxPort = recipe.stationType == StationType.Assembly ? 2
+                        : recipe.stationType == StationType.Grill ? 1 : 0;
+                    if (input.port < 0 || input.port > maxPort)
+                        issues.Add(recipe.recipeName + " has an input in an unsupported station slot.");
+                    if (!IsRemovedIngredient(input.item) && !HasRecipeProducer(input.item)
+                        && FindVendorSupply(input.item) == null)
+                        issues.Add(recipe.recipeName + " needs " + input.item.itemName
+                            + ", but it has no producer or vendor source.");
+                }
+        }
+
+        var visited = new HashSet<ItemDefinition>();
+        var visiting = new HashSet<ItemDefinition>();
+        var reportedCycles = new HashSet<ItemDefinition>();
+        foreach (ItemDefinition item in producers.Keys)
+            FindRecipeCycle(item, producers, visited, visiting, reportedCycles, issues);
+
+        var roots = new List<ItemDefinition>(GetMenuItems());
+        foreach (ItemDefinition item in roots)
+            if (item != null && !IsRemovedIngredient(item) && !CanMakeItem(item,
+                new HashSet<ItemDefinition>(), producers))
+                issues.Add("Menu item " + item.itemName + " has no complete recipe path from vendor supplies.");
+
+        foreach (RecipeGraphNodeDefinition recipe in productionRecipes)
+            if (recipe != null && recipe.output != null && !IsRemovedIngredient(recipe.output)
+                && !usedItems.Contains(recipe.output) && !roots.Contains(recipe.output))
+                issues.Add("Recipe output " + recipe.output.itemName + " is unused by another recipe or the menu.");
+
+        return issues;
+    }
+
+    void FindRecipeCycle(ItemDefinition item,
+        Dictionary<ItemDefinition, RecipeGraphNodeDefinition> producers,
+        HashSet<ItemDefinition> visited, HashSet<ItemDefinition> visiting,
+        HashSet<ItemDefinition> reportedCycles, List<string> issues)
+    {
+        if (item == null || visited.Contains(item) || !producers.TryGetValue(item, out RecipeGraphNodeDefinition recipe))
+            return;
+        if (!visiting.Add(item))
+        {
+            if (reportedCycles.Add(item)) issues.Add("Recipe dependency loop includes " + item.itemName + ".");
+            return;
+        }
+        if (recipe.inputs != null)
+            foreach (RecipeGraphInputDefinition input in recipe.inputs)
+                if (input != null && input.item != null)
+                    FindRecipeCycle(input.item, producers, visited, visiting, reportedCycles, issues);
+        visiting.Remove(item);
+        visited.Add(item);
+    }
+
+    bool CanMakeItem(ItemDefinition item, HashSet<ItemDefinition> visiting,
+        Dictionary<ItemDefinition, RecipeGraphNodeDefinition> producers)
+    {
+        if (item == null || IsRemovedIngredient(item)) return false;
+        if (FindVendorSupply(item) != null) return true;
+        if (!producers.TryGetValue(item, out RecipeGraphNodeDefinition recipe)) return false;
+        if (!visiting.Add(item)) return false;
+        bool complete = recipe.inputs != null && recipe.inputs.Count > 0;
+        if (complete)
+            foreach (RecipeGraphInputDefinition input in recipe.inputs)
+                if (input == null || !CanMakeItem(input.item, visiting, producers))
+                {
+                    complete = false;
+                    break;
+                }
+        visiting.Remove(item);
+        return complete;
     }
 
     /// <summary>Customers scheduled per simulation minute to satisfy the enabled menu rates.</summary>
@@ -471,15 +964,20 @@ public class CustomerOrderConfig : ScriptableObject
 
     static string RecipeResearchId(int stage)
     {
-        if (stage <= 1) return "production_basics";
-        if (stage == 2) return "recipe_upgrades_1";
-        if (stage == 3) return "recipe_upgrades_2";
-        return "recipe_upgrades_3";
+        return stage switch
+        {
+            <= 1 => "recipe_upgrades_1",
+            2 => "recipe_upgrades_2",
+            3 => "recipe_upgrades_3",
+            4 => "recipe_upgrades_4",
+            _ => "recipe_upgrades_5",
+        };
     }
 
     /// <summary>Returns the research title for a recipe progression stage.</summary>
     public static string RecipeResearchTitleForStage(int stage)
     {
+        if (stage <= 1) return "Restaurant Basics / Recipe Upgrades I";
         ResearchProgressManager.Definition definition = ResearchProgressManager.Get(RecipeResearchId(stage));
         return definition != null && !string.IsNullOrWhiteSpace(definition.title)
             ? definition.title
@@ -492,32 +990,69 @@ public class CustomerOrderConfig : ScriptableObject
     public int GetMenuItemUnlockMilestone(ItemDefinition item)
     {
         if (item == null) return 0;
-        if (item == burgerBase || item == cheeseburgerItem || item == friesItem) return 1;
-        if (item == clBurgerItem || item == cheeseFriesItem) return 2;
-        if (item == cheeseBaconBurgerItem || item == drinkItem) return 3;
-        if (item == cheeseBaconLettuceOnionBurgerItem
-            || item == cheeseBaconLettuceOnionTomatoBurgerItem
-            || item == cheeseBaconLettuceOnionTomatoEggBurgerItem
-            || item == superBurgerItem
-            || item == cheeseBaconFriesItem || item == whippedCreamShakeItem
-            || item == whippedCreamSprinkleShakeItem) return 4;
+        if (item == burgerBase || item == friesItem || item == drinkItem) return 1;
+        if (item == cheeseburgerItem || item == cheeseFriesItem || item == whippedCreamShakeItem) return 2;
+        if (item == cheeseBaconBurgerItem || item == clBurgerItem) return 3;
+        if (item == cheeseBaconFriesItem || item == whippedCreamSprinkleShakeItem) return 4;
+        if (item == superBurgerItem) return 5;
         return 0;
+    }
+
+    string MenuItemResearchId(ItemDefinition item)
+    {
+        if (item == null) return null;
+        if (item == burgerBase) return "production_basics";
+        int milestone = GetMenuItemUnlockMilestone(item);
+        return milestone > 0 ? RecipeResearchId(milestone) : null;
+    }
+
+    public string RecipeResearchTitleForItem(ItemDefinition item)
+    {
+        string researchId = IngredientResearchId(item);
+        ResearchProgressManager.Definition definition = !string.IsNullOrEmpty(researchId)
+            ? ResearchProgressManager.Get(researchId) : null;
+        return definition != null && !string.IsNullOrWhiteSpace(definition.title)
+            ? definition.title
+            : RecipeResearchTitleForStage(GetIngredientMilestone(item));
     }
 
     public bool IsMenuItemUnlocked(ItemDefinition item)
     {
         if (IsRemovedIngredient(item)) return false;
         if (OnboardingTutorial.BlocksProgression && IsTutorialMenuItem(item)) return true;
-        int milestone = GetMenuItemUnlockMilestone(item);
-        return milestone <= 0 || MilestoneFeatures.IsResearchComplete(RecipeResearchId(milestone));
+        string researchId = MenuItemResearchId(item);
+        return string.IsNullOrEmpty(researchId) || MilestoneFeatures.IsResearchComplete(researchId);
     }
 
     public bool IsIngredientUnlocked(ItemDefinition item)
     {
+        EnsureProductionRecipeGraph();
         if (IsRemovedIngredient(item)) return false;
         if (IsTutorialBurgerItem(item))
             return true;
-        return item != null && MilestoneFeatures.IsResearchComplete(RecipeResearchId(GetIngredientMilestone(item)));
+        if (item == null) return false;
+        string researchId = IngredientResearchId(item);
+        return string.IsNullOrEmpty(researchId) || MilestoneFeatures.IsResearchComplete(researchId);
+    }
+
+    string IngredientResearchId(ItemDefinition item)
+    {
+        if (item == null) return null;
+        EnsureProductionRecipeGraph();
+        if (GetMenuItemUnlockMilestone(item) > 0)
+            return MenuItemResearchId(item);
+        if (item == rawPattyIngredient || IsBaseBurgerRecipeInput(item))
+            return "production_basics";
+        return RecipeResearchId(GetIngredientMilestone(item));
+    }
+
+    bool IsBaseBurgerRecipeInput(ItemDefinition item)
+    {
+        if (item == null || assemblyRecipes == null) return false;
+        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
+            if (recipe != null && recipe.Produces(burgerBase) && RecipeUsesIngredient(recipe, item))
+                return true;
+        return false;
     }
 
     bool IsTutorialMenuItem(ItemDefinition item) => item != null && item == burgerBase;
@@ -538,6 +1073,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     int GetRecipeUnlockMilestone(AssemblyRecipeDefinition recipe)
     {
+        EnsureProductionRecipeGraph();
         if (recipe == null) return int.MaxValue;
         int milestone = GetMenuItemUnlockMilestone(recipe.output);
         if (milestone == 0) milestone = GetIngredientMilestone(recipe.output);
@@ -551,6 +1087,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     int GetIngredientMilestone(ItemDefinition item)
     {
+        EnsureProductionRecipeGraph();
         if (item == null) return 1;
         int knownMilestone = GetKnownIngredientMilestone(item);
         if (knownMilestone > 0) return knownMilestone;
@@ -581,17 +1118,18 @@ public class CustomerOrderConfig : ScriptableObject
         if (item == null) return 0;
         int menuMilestone = GetMenuItemUnlockMilestone(item);
         if (menuMilestone > 0) return menuMilestone;
-        if (item == cheeseIngredient || item == slicedCheeseIngredient
-            || item == rawPattyIngredient || item == cookedPattyIngredient
+        if (item == cheeseIngredient || item == slicedCheeseIngredient) return 2;
+        if (item == rawPattyIngredient || item == cookedPattyIngredient
             || item == friesIngredient || item == slicedPotatoIngredient
             || item == cookedPotatoIngredient || item == fryContainerIngredient) return 1;
         if (item == lettuceIngredient || item == slicedLettuceIngredient
             || item == tomatoIngredient || item == slicedTomatoIngredient
-            || item == cheeseSauceIngredient) return 2;
+            || item == veggieMixIngredient || item == cheeseSauceIngredient) return 3;
         if (item == baconSlabIngredient || item == cutBaconIngredient || item == cookedBaconIngredient) return 3;
         if (item == onionIngredient || item == onionRingIngredient || item == friedOnionRingIngredient
-            || item == eggIngredient || item == cookedEggIngredient
-            || item == whippedCreamIngredient || item == sprinklesIngredient) return 4;
+            || item == eggIngredient || item == cookedEggIngredient) return 4;
+        if (item == whippedCreamIngredient) return 2;
+        if (item == sprinklesIngredient) return 4;
         return 0;
     }
 
@@ -604,6 +1142,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     bool IsRecipeUnlocked(AssemblyRecipeDefinition recipe)
     {
+        EnsureProductionRecipeGraph();
         if (recipe != null && (IsRemovedIngredient(recipe.output)
             || IsRemovedIngredient(recipe.processedInput)
             || IsRemovedIngredient(recipe.pantryInput)
@@ -619,8 +1158,19 @@ public class CustomerOrderConfig : ScriptableObject
         if (OnboardingTutorial.BlocksProgression && recipe != null && recipe.Produces(burgerBase))
             return true;
         if (recipe == null) return false;
+        if (GetMenuItemUnlockMilestone(recipe.output) > 0)
+        {
+            return IsMenuItemUnlocked(recipe.output)
+                && IsOptionalIngredientUnlocked(recipe.processedInput)
+                && IsOptionalIngredientUnlocked(recipe.pantryInput)
+                && IsOptionalIngredientUnlocked(recipe.rawPantryInput)
+                && IsOptionalIngredientUnlocked(recipe.thirdInput)
+                && IsOptionalIngredientUnlocked(recipe.rawThirdInput);
+        }
         return MilestoneFeatures.IsResearchComplete(RecipeResearchId(GetRecipeUnlockMilestone(recipe)));
     }
+
+    bool IsOptionalIngredientUnlocked(ItemDefinition item) => item == null || IsIngredientUnlocked(item);
 
     public bool IsAssemblyRecipeAvailable(AssemblyRecipeDefinition recipe) => IsRecipeUnlocked(recipe);
 
@@ -801,6 +1351,7 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>Outputs the grill can be configured to produce.</summary>
     public IEnumerable<ItemDefinition> GetGrillProducts()
     {
+        EnsureProductionRecipeGraph();
         var yielded = new HashSet<ItemDefinition>();
         if (cookedPattyIngredient != null && IsIngredientUnlocked(cookedPattyIngredient)
             && yielded.Add(cookedPattyIngredient)) yield return cookedPattyIngredient;
@@ -810,23 +1361,33 @@ public class CustomerOrderConfig : ScriptableObject
                     && yielded.Add(recipe.output)) yield return recipe.output;
     }
 
-    public StationProcessingRecipeDefinition GetGrillRecipe(ItemDefinition output) =>
-        grillRecipes != null ? grillRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
-    public StationProcessingRecipeDefinition GetFryerRecipe(ItemDefinition output) =>
-        fryerRecipes != null ? fryerRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
+    public StationProcessingRecipeDefinition GetGrillRecipe(ItemDefinition output)
+    {
+        EnsureProductionRecipeGraph();
+        return grillRecipes != null
+            ? grillRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
+    }
+
+    public StationProcessingRecipeDefinition GetFryerRecipe(ItemDefinition output)
+    {
+        EnsureProductionRecipeGraph();
+        return fryerRecipes != null
+            ? fryerRecipes.Find(r => r != null && r.output == output && IsProcessingRecipeUnlocked(r)) : null;
+    }
 
     bool IsProcessingRecipeUnlocked(StationProcessingRecipeDefinition recipe)
     {
         if (recipe == null) return false;
         if (IsRemovedIngredient(recipe.input) || IsRemovedIngredient(recipe.secondaryInput)
             || IsRemovedIngredient(recipe.output)) return false;
-        int requiredStage = Mathf.Max(GetIngredientMilestone(recipe.input),
-            Mathf.Max(GetIngredientMilestone(recipe.secondaryInput), GetIngredientMilestone(recipe.output)));
-        return MilestoneFeatures.IsResearchComplete(RecipeResearchId(requiredStage));
+        return IsOptionalIngredientUnlocked(recipe.input)
+            && IsOptionalIngredientUnlocked(recipe.secondaryInput)
+            && IsOptionalIngredientUnlocked(recipe.output);
     }
 
     public IEnumerable<ItemDefinition> GetFryerProducts()
     {
+        EnsureProductionRecipeGraph();
         var yielded = new HashSet<ItemDefinition>();
         if (cookedPotatoIngredient != null && IsIngredientUnlocked(cookedPotatoIngredient)
             && yielded.Add(cookedPotatoIngredient)) yield return cookedPotatoIngredient;
@@ -839,59 +1400,30 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>Raw ingredients a Freezer may be configured to dispense.</summary>
     public IEnumerable<ItemDefinition> GetFreezerIngredients(bool includeLocked = false)
     {
-        var yielded = new HashSet<ItemDefinition>();
-        if (rawPattyIngredient != null && (includeLocked || IsIngredientUnlocked(rawPattyIngredient)) && yielded.Add(rawPattyIngredient)) yield return rawPattyIngredient;
-        if (lettuceIngredient != null && (includeLocked || IsIngredientUnlocked(lettuceIngredient)) && yielded.Add(lettuceIngredient)) yield return lettuceIngredient;
-        if (tomatoIngredient != null && (includeLocked || IsIngredientUnlocked(tomatoIngredient)) && yielded.Add(tomatoIngredient)) yield return tomatoIngredient;
-        if (baconSlabIngredient != null && (includeLocked || IsIngredientUnlocked(baconSlabIngredient)) && yielded.Add(baconSlabIngredient)) yield return baconSlabIngredient;
-        if (onionIngredient != null && !IsRemovedIngredient(onionIngredient)
-            && (includeLocked || IsIngredientUnlocked(onionIngredient)) && yielded.Add(onionIngredient)) yield return onionIngredient;
-        if (eggIngredient != null && !IsRemovedIngredient(eggIngredient)
-            && (includeLocked || IsIngredientUnlocked(eggIngredient)) && yielded.Add(eggIngredient)) yield return eggIngredient;
-        if (whippedCreamIngredient != null && (includeLocked || IsIngredientUnlocked(whippedCreamIngredient))
-            && yielded.Add(whippedCreamIngredient)) yield return whippedCreamIngredient;
-        if (assemblyRecipes != null)
-            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-                if (recipe != null && recipe.processedInputFromFreezer
-                    && recipe.processedInput != null && !IsDrink(recipe.processedInput)
-                    && (includeLocked || IsRecipeUnlocked(recipe)) && yielded.Add(recipe.processedInput))
-                    yield return recipe.processedInput;
+        EnsureProductionRecipeGraph();
+        foreach (RecipeSupplySourceDefinition source in vendorSupplies)
+            if (source != null && source.item != null && source.stationType == StationType.Freezer
+                && !IsRemovedIngredient(source.item) && !IsDrink(source.item)
+                && (includeLocked || IsIngredientUnlocked(source.item)))
+                yield return source.item;
     }
 
     /// <summary>Raw ingredients a Pantry may be configured to dispense.</summary>
     public IEnumerable<ItemDefinition> GetPantryIngredients(bool includeLocked = false)
     {
-        var yielded = new HashSet<ItemDefinition>();
-        if (assemblyRecipes != null)
-        {
-            foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            {
-                ItemDefinition source = GetAssemblySupplySource(recipe);
-                if (source != null && (includeLocked || IsRecipeUnlocked(recipe))
-                    && (includeLocked || IsIngredientUnlocked(source))
-                    && !IsFreezerIngredient(source, includeLocked) && yielded.Add(source)) yield return source;
-                if (recipe != null && recipe.processedInputFromPantry
-                    && recipe.processedInput != null && (includeLocked || IsRecipeUnlocked(recipe))
-                    && yielded.Add(recipe.processedInput))
-                    yield return recipe.processedInput;
-            }
-        }
-        if (friesIngredient != null && (includeLocked || IsIngredientUnlocked(friesIngredient)) && yielded.Add(friesIngredient)) yield return friesIngredient;
-        if (cheeseIngredient != null && (includeLocked || IsIngredientUnlocked(cheeseIngredient)) && yielded.Add(cheeseIngredient)) yield return cheeseIngredient;
-        if (sprinklesIngredient != null && (includeLocked || IsIngredientUnlocked(sprinklesIngredient)) && yielded.Add(sprinklesIngredient)) yield return sprinklesIngredient;
+        EnsureProductionRecipeGraph();
+        foreach (RecipeSupplySourceDefinition source in vendorSupplies)
+            if (source != null && source.item != null && source.stationType == StationType.Pantry
+                && !IsRemovedIngredient(source.item) && !IsDrink(source.item)
+                && (includeLocked || IsIngredientUnlocked(source.item)))
+                yield return source.item;
     }
 
     public bool IsFreezerIngredient(ItemDefinition item, bool includeLocked = false)
     {
-        if (item == null || IsDrink(item)) return false;
-        if (item == rawPattyIngredient || item == lettuceIngredient || item == tomatoIngredient
-            || item == baconSlabIngredient || item == whippedCreamIngredient)
-            return includeLocked || IsIngredientUnlocked(item);
-        if (assemblyRecipes == null) return false;
-        foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
-            if (recipe != null && recipe.processedInputFromFreezer && recipe.processedInput == item)
-                return includeLocked || IsRecipeUnlocked(recipe);
-        return false;
+        if (item == null || IsDrink(item) || IsRemovedIngredient(item)) return false;
+        return GetVendorSupplyStation(item) == StationType.Freezer
+            && (includeLocked || IsIngredientUnlocked(item));
     }
 
     /// <summary>Products the assembly station can be set to make (burgers only).</summary>
@@ -909,6 +1441,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public IEnumerable<AssemblyRecipeDefinition> GetAssemblyRecipes()
     {
+        EnsureProductionRecipeGraph();
         if (assemblyRecipes == null) yield break;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             if (recipe != null && recipe.output != null && IsRecipeUnlocked(recipe))
@@ -917,6 +1450,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public IEnumerable<CuttingRecipeDefinition> GetCuttingRecipes()
     {
+        EnsureProductionRecipeGraph();
         if (cuttingRecipes == null) yield break;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
             if (recipe != null && recipe.input != null && recipe.output != null
@@ -926,6 +1460,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public CuttingRecipeDefinition GetCuttingRecipe(ItemDefinition output)
     {
+        EnsureProductionRecipeGraph();
         if (output == null || cuttingRecipes == null) return null;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
             if (recipe != null && recipe.output == output
@@ -936,6 +1471,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public CuttingRecipeDefinition GetCuttingRecipeForInput(ItemDefinition input)
     {
+        EnsureProductionRecipeGraph();
         if (input == null || cuttingRecipes == null) return null;
         foreach (CuttingRecipeDefinition recipe in cuttingRecipes)
             if (recipe != null && recipe.input == input
@@ -946,6 +1482,7 @@ public class CustomerOrderConfig : ScriptableObject
 
     public AssemblyRecipeDefinition GetAssemblyRecipe(ItemDefinition output)
     {
+        EnsureProductionRecipeGraph();
         if (output == null || assemblyRecipes == null) return null;
         foreach (AssemblyRecipeDefinition recipe in assemblyRecipes)
             if (recipe != null && recipe.Produces(output) && IsRecipeUnlocked(recipe))
@@ -958,26 +1495,58 @@ public class CustomerOrderConfig : ScriptableObject
     public ItemDefinition GetAssemblySupplySource(AssemblyRecipeDefinition recipe)
     {
         if (recipe == null) return null;
-        return recipe.rawPantryInput != null ? recipe.rawPantryInput : recipe.pantryInput;
+        if (recipe.rawPantryInput != null && recipe.rawPantryInput != recipe.output)
+            return recipe.rawPantryInput;
+        RecipeGraphNodeDefinition node = GetProductionRecipe(StationType.Assembly, recipe.output);
+        RecipeGraphInputDefinition input = node?.inputs?.Find(value => value != null && value.port == 1);
+        return input != null ? FindVendorSourceFor(input.item, new HashSet<ItemDefinition>()) : recipe.pantryInput;
     }
 
     public bool AssemblySupplyRequiresCutting(AssemblyRecipeDefinition recipe) =>
-        recipe != null && recipe.rawPantryInput != null && recipe.pantryInput != null
-        && recipe.rawPantryInput != recipe.pantryInput;
+        recipe != null && HasPreparedSupply(recipe.pantryInput, new HashSet<ItemDefinition>());
 
     public ItemDefinition GetAssemblyThirdSupplySource(AssemblyRecipeDefinition recipe)
     {
         if (recipe == null) return null;
-        return recipe.rawThirdInput != null ? recipe.rawThirdInput : recipe.thirdInput;
+        if (recipe.rawThirdInput != null && recipe.rawThirdInput != recipe.output)
+            return recipe.rawThirdInput;
+        return FindVendorSourceFor(recipe.thirdInput, new HashSet<ItemDefinition>());
     }
 
     public bool AssemblyThirdSupplyRequiresProcessing(AssemblyRecipeDefinition recipe) =>
-        recipe != null && recipe.rawThirdInput != null && recipe.thirdInput != null
-        && recipe.rawThirdInput != recipe.thirdInput;
+        recipe != null && HasPreparedSupply(recipe.thirdInput, new HashSet<ItemDefinition>());
+
+    ItemDefinition FindVendorSourceFor(ItemDefinition item, HashSet<ItemDefinition> visited)
+    {
+        if (item == null || !visited.Add(item)) return null;
+        RecipeSupplySourceDefinition source = FindVendorSupply(item);
+        if (source != null) return item;
+        RecipeGraphNodeDefinition producer = productionRecipes != null
+            ? productionRecipes.Find(recipe => recipe != null && recipe.output == item) : null;
+        if (producer?.inputs == null) return null;
+        foreach (RecipeGraphInputDefinition input in producer.inputs)
+        {
+            ItemDefinition found = FindVendorSourceFor(input?.item, visited);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    bool HasPreparedSupply(ItemDefinition item, HashSet<ItemDefinition> visited)
+    {
+        if (item == null || !visited.Add(item) || FindVendorSupply(item) != null) return false;
+        RecipeGraphNodeDefinition producer = productionRecipes != null
+            ? productionRecipes.Find(recipe => recipe != null && recipe.output == item) : null;
+        if (producer == null) return false;
+        foreach (RecipeGraphInputDefinition input in producer.inputs)
+            if (input != null && HasPreparedSupply(input.item, visited)) return true;
+        return true;
+    }
 
     /// <summary>Assembly outputs in production order, including intermediate recipes.</summary>
     public List<ItemDefinition> GetAssemblyChain(ItemDefinition finalProduct)
     {
+        EnsureProductionRecipeGraph();
         var chain = new List<ItemDefinition>();
         var visited = new HashSet<ItemDefinition>();
         AppendAssemblyChain(finalProduct, chain, visited);
@@ -987,10 +1556,13 @@ public class CustomerOrderConfig : ScriptableObject
     void AppendAssemblyChain(ItemDefinition output, List<ItemDefinition> chain, HashSet<ItemDefinition> visited)
     {
         if (output == null || !visited.Add(output)) return;
-        AssemblyRecipeDefinition recipe = GetAssemblyRecipe(output);
+        if (GetAssemblyRecipe(output) == null) return;
+        RecipeGraphNodeDefinition recipe = GetProductionRecipe(StationType.Assembly, output);
         if (recipe == null) return;
-        if (recipe.processedInput != null && GetAssemblyRecipe(recipe.processedInput) != null)
-            AppendAssemblyChain(recipe.processedInput, chain, visited);
+        if (recipe.inputs != null)
+            foreach (RecipeGraphInputDefinition input in recipe.inputs)
+                if (input?.item != null && GetAssemblyRecipe(input.item) != null)
+                    AppendAssemblyChain(input.item, chain, visited);
         chain.Add(output);
     }
 
@@ -1091,7 +1663,6 @@ public class CustomerOrderConfig : ScriptableObject
             if (freezerItem != null && !IsDrink(freezerItem) && yielded.Add(freezerItem)) yield return freezerItem;
         foreach (ItemDefinition pantryItem in GetPantryIngredients(includeLocked))
             if (pantryItem != null && !IsDrink(pantryItem) && yielded.Add(pantryItem)) yield return pantryItem;
-        if (friesIngredient == null && friesItem != null && yielded.Add(friesItem)) yield return friesItem;
     }
 }
 

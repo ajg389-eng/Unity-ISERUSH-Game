@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_01_observe_queue
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_01_observe_queue
-  title: Set up the cheeseburger recipe
-  description: Choose the cheeseburger recipe at an Assembly Station to add cheese to the burger workflow.
-  completionEventId: recipe_configured_cheeseburger
+  missionId: milestone_01_configure_fries
+  title: Configure a Fries recipe
+  description: Choose the Fries recipe at an Assembly Station to set up your first
+    side item.
+  completionEventId: recipe_configured_fries
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

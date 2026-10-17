@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 18;
+    public const int CurrentVersion = 20;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -18,6 +18,7 @@ public class KitchenSaveSnapshot
     public bool tutorialOrderServed;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
+    public List<IngredientShipment> ingredientShipments = new List<IngredientShipment>();
     public List<Worker> workers = new List<Worker>();
     public List<Flow> flows = new List<Flow>();
     public List<WallPhoto> wallPhotos = new List<WallPhoto>();
@@ -29,7 +30,9 @@ public class KitchenSaveSnapshot
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
-    [Serializable] public class Stock { public string item; public int count, acquired; }
+    [Serializable] public class Stock { public string item; public int count, acquired, reorderTarget; }
+    [Serializable] public class IngredientShipment { public float remaining, duration; public List<IngredientShipmentPack> packs = new List<IngredientShipmentPack>(); }
+    [Serializable] public class IngredientShipmentPack { public string item; public int amount; }
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; public ProductionStationCheckpoint productionState; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); public ProductionWorkerCheckpoint productionState; }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; public string fromGuid, toGuid; }
@@ -155,7 +158,8 @@ public class KitchenSaveSnapshot
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
         }
         var kitchen=KitchenInventory.Instance;
-        if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity});
+        if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity,reorderTarget=entry.reorderTarget});
+        IngredientDeliveryService.Instance?.CaptureSaveState(s.ingredientShipments);
         var pm=ProductionManager.Instance;
         if(pm!=null) {
             var staff=new List<KitchenEmployee>();
@@ -340,7 +344,15 @@ public class KitchenSaveSnapshot
         }
         for(int i=0;i<equipment.Count;i++) { int output=equipment[i].output; if(output>=0 && output<objects.Count) StationNode.EnsureOn(objects[i]).SetOutput(objects[output]); }
         foreach(var entry in inventory) if(definitions.TryGetValue(entry.item,out var item)) inv.RestoreCounts(item,entry.count,entry.acquired);
-        if(KitchenInventory.Instance!=null) { KitchenInventory.Instance.ClearAllStock(); foreach(var entry in ingredients) if(definitions.TryGetValue(entry.item,out var item)) KitchenInventory.Instance.AddStock(item,entry.count); }
+        if(KitchenInventory.Instance!=null) {
+            KitchenInventory.Instance.ClearAllStock();
+            KitchenInventory.Instance.ClearAllReorderTargets();
+            foreach(var entry in ingredients) if(definitions.TryGetValue(entry.item,out var item)) {
+                KitchenInventory.Instance.AddStock(item,entry.count);
+                KitchenInventory.Instance.SetReorderTarget(item,entry.reorderTarget);
+            }
+        }
+        IngredientDeliveryService.Instance?.RestoreSaveState(ingredientShipments, definitions);
         var staff=new List<KitchenEmployee>();
         foreach(var w in workers) {
             var go=UnityEngine.Object.Instantiate(pm.employeePrefab,w.position,Quaternion.identity); var employee=go.GetComponent<KitchenEmployee>();

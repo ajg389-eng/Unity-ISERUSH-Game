@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// Progression frame: Tutorial + the numbered milestones in the active database.
-/// Flow: complete all milestone missions → pass quiz (all answers correct) → next milestone and its research projects.
+/// Flow: complete all milestone missions → next milestone and its research projects.
 /// </summary>
 public class MilestoneProgressManager : MonoBehaviour
 {
@@ -14,8 +14,7 @@ public class MilestoneProgressManager : MonoBehaviour
     {
         Locked = 0,
         Active = 1,
-        QuizReady = 2,
-        Completed = 3
+        Completed = 2
     }
 
     public MilestoneDatabase database;
@@ -26,14 +25,11 @@ public class MilestoneProgressManager : MonoBehaviour
     readonly HashSet<string> completedMilestoneIds = new HashSet<string>();
 
     string activeMilestoneId;
-    bool quizReady;
 
     public event Action OnMilestonesChanged;
-    public event Action OnQuizReady;
     public event Action<MilestoneDefinition> OnMilestoneCompleted;
 
     public string ActiveMilestoneId => activeMilestoneId;
-    public bool IsQuizReady => quizReady;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
     public IReadOnlyCollection<string> GetCompletedMilestoneIds() => completedMilestoneIds;
 
@@ -80,7 +76,13 @@ public class MilestoneProgressManager : MonoBehaviour
                 if (entry == null || entry.isTutorial) continue;
                 number++;
                 if (entry.milestoneId == milestone.milestoneId)
-                    return "Milestone " + number;
+                {
+                    string displayName = milestone.displayName?.Trim();
+                    if (string.IsNullOrWhiteSpace(displayName)
+                        || (int.TryParse(displayName, out int displayNumber) && displayNumber == number))
+                        return "Milestone " + number;
+                    return "Milestone " + number + ": " + displayName;
+                }
             }
         }
         return string.IsNullOrWhiteSpace(milestone.displayName) ? milestone.milestoneId : milestone.displayName;
@@ -92,7 +94,6 @@ public class MilestoneProgressManager : MonoBehaviour
         if (FindFirstObjectByType<MilestoneProgressManager>() != null) return;
         var go = new GameObject("MilestoneSystem");
         go.AddComponent<MilestoneProgressManager>();
-        go.AddComponent<MilestoneQuizUI>();
     }
 
     void Awake()
@@ -140,7 +141,7 @@ public class MilestoneProgressManager : MonoBehaviour
             return MilestoneState.Completed;
 
         if (milestone.milestoneId == activeMilestoneId)
-            return quizReady ? MilestoneState.QuizReady : MilestoneState.Active;
+            return MilestoneState.Active;
 
         return MilestoneState.Locked;
     }
@@ -171,14 +172,7 @@ public class MilestoneProgressManager : MonoBehaviour
         return true;
     }
 
-    /// <summary>Called by quiz UI when every answer is correct.</summary>
-    public bool TryCompleteActiveQuiz()
-    {
-        if (!quizReady) return false;
-        return CompleteActiveMilestone();
-    }
-
-    /// <summary>Advance the active milestone with no quiz UI (tutorial / empty quiz).</summary>
+    /// <summary>Advance after the active milestone's missions are complete.</summary>
     bool CompleteActiveMilestone()
     {
         var current = GetActiveMilestone();
@@ -186,7 +180,6 @@ public class MilestoneProgressManager : MonoBehaviour
         if (completedMilestoneIds.Contains(current.milestoneId)) return false;
 
         completedMilestoneIds.Add(current.milestoneId);
-        quizReady = false;
 
         OnMilestoneCompleted?.Invoke(current);
 
@@ -241,7 +234,6 @@ public class MilestoneProgressManager : MonoBehaviour
         label = GetMilestoneDisplayLabel(target);
 
         completedMilestoneIds.Clear();
-        quizReady = false;
 
         foreach (var milestone in database.milestones)
         {
@@ -260,18 +252,9 @@ public class MilestoneProgressManager : MonoBehaviour
     public string GetActiveMilestoneDebugLabel() =>
         GetActiveMilestone() != null ? GetMilestoneDisplayLabel(GetActiveMilestone()) : "None";
 
-    /// <summary>Debug / stub helper: mark missions complete enough to open the quiz.</summary>
-    public void DebugForceQuizReady()
-    {
-        quizReady = true;
-        OnQuizReady?.Invoke();
-        OnMilestonesChanged?.Invoke();
-    }
-
     public void ResetAllProgress()
     {
         completedMilestoneIds.Clear();
-        quizReady = false;
         activeMilestoneId = null;
         EnsureActiveMilestone();
         ApplyActiveMissions(reset: true);
@@ -303,7 +286,6 @@ public class MilestoneProgressManager : MonoBehaviour
     public void RestoreCheckpoint(string savedActiveMilestoneId, IReadOnlyList<string> savedCompletedMilestoneIds)
     {
         completedMilestoneIds.Clear();
-        quizReady = false;
 
         if (database?.milestones != null && savedCompletedMilestoneIds != null)
         {
@@ -356,38 +338,12 @@ public class MilestoneProgressManager : MonoBehaviour
 
     void EvaluateActiveMilestone()
     {
-        if (OnboardingTutorial.BlocksProgression)
-        {
-            if (quizReady)
-            {
-                quizReady = false;
-                OnMilestonesChanged?.Invoke();
-            }
-            return;
-        }
+        if (OnboardingTutorial.BlocksProgression) return;
 
         if (string.IsNullOrEmpty(activeMilestoneId)) return;
         if (completedMilestoneIds.Contains(activeMilestoneId)) return;
-
-        bool wasReady = quizReady;
-        quizReady = AreActiveMissionsComplete();
-
-        var current = GetActiveMilestone();
-        if (quizReady && current != null && (current.isTutorial || !current.HasQuiz))
-        {
+        if (AreActiveMissionsComplete())
             CompleteActiveMilestone();
-            return;
-        }
-
-        if (quizReady && !wasReady)
-        {
-            OnQuizReady?.Invoke();
-            OnMilestonesChanged?.Invoke();
-        }
-        else if (quizReady != wasReady)
-        {
-            OnMilestonesChanged?.Invoke();
-        }
     }
 
     /// <summary>Called when the first-run kitchen tour is finished or skipped.</summary>

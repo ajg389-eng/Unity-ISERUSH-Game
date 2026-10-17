@@ -1227,10 +1227,15 @@ public class WorkersUI : MonoBehaviour
         {
             text.Append("<b>Workers:</b> ").Append(selectedMetrics.activeWorkerCount)
                 .Append(" assigned | 4 items/trip")
-                .Append("\n<b>Planned output:</b> ").Append(FormatItemRate(selectedMetrics.effectiveOutputPerMinute))
-                .Append(" items/min (10-min schedule; ingredients & pickup space available)")
-                .Append("\n<b>Next 60 seconds:</b> ").Append(selectedMetrics.next60Output)
-                .Append(" items (current stock & pickup space; updates after collections)");
+                .Append("\n<b>Output:</b> ").Append(FormatItemRate(selectedMetrics.effectiveOutputPerMinute))
+                .Append(" predicted / ").Append(FormatItemRate(selectedMetrics.stationCapacityPerMinute))
+                .Append(" items/min target");
+            float outputGap = selectedMetrics.stationCapacityPerMinute
+                - selectedMetrics.effectiveOutputPerMinute;
+            if (outputGap > 0.1f)
+                text.Append(" (short ").Append(FormatItemRate(outputGap)).Append("/min)");
+            text.Append("\n<b>Next minute:</b> ").Append(selectedMetrics.next60Output)
+                .Append(" items at current stock");
             if (!string.IsNullOrEmpty(selectedMetrics.forecastWarning))
                 text.Append("\n").Append(selectedMetrics.forecastWarning);
             return;

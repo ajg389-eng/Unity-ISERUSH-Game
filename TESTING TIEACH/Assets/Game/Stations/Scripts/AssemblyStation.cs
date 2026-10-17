@@ -411,7 +411,7 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
             {
                 bufferedOutputs++;
                 processingUnits--;
-                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(GetSelectedRecipe()?.output, 1);
                 changed = true;
                 if (bufferedOutputs >= OutputSlotCapacity) break;
                 continue;
@@ -427,7 +427,7 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
             bufferedOutputs++;
             processingUnits = Mathf.Max(0, processingUnits - 1);
             processingTimer = Mathf.Max(0f, processingTimer - cycleSeconds);
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(GetSelectedRecipe()?.output, 1);
             changed = true;
             if (processingUnits <= 0) processingTimer = 0f;
         }

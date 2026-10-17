@@ -8,6 +8,8 @@ public static class MilestoneFeatures
     public const int CapacityAndOptimization = 2;
     public const int Mk2Stations = 3;
     public const int AdvancedMenuRecipes = 4;
+    public const int QualityAndReliability = 5;
+    public const int SystemsIntegration = 6;
 
     public static int HighestReachedNumberedStage()
     {
@@ -41,7 +43,10 @@ public static class MilestoneFeatures
         <= RestaurantBasics => "production_basics",
         CapacityAndOptimization => "station_capacity_1",
         Mk2Stations => "mk2_stations",
-        _ => "recipe_upgrades_3",
+        AdvancedMenuRecipes => "recipe_upgrades_4",
+        QualityAndReliability => "industrial_kitchen",
+        SystemsIntegration => "expanded_capacity",
+        _ => "expanded_capacity",
     };
 
     public static string ResearchTitleForStage(int numberedStage) =>
@@ -49,8 +54,7 @@ public static class MilestoneFeatures
 
     public static bool ExtraEquipmentUnlocked => Researched("additional_stations") || Researched("station_capacity_1");
     public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
-    public static bool ExpertStaffingUnlocked => Researched("expert_workforce");
-    public static bool QueueAnalyticsUnlocked => Researched("queue_analytics");
+    public static bool ExpertStaffingUnlocked => Researched("sixth_worker");
     public static bool ExtraFlowStaffingUnlocked => Researched("multi_worker_flows");
     public static int MaxWorkersPerFlow
     {

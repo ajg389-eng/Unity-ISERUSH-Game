@@ -13,9 +13,11 @@ MonoBehaviour:
   m_Name: milestone_04_restock
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_04_restock
-  title: Configure a Bacon Cheeseburger
-  description: Choose the Bacon Cheeseburger recipe.
-  completionEventId: recipe_configured_bacon_cheeseburger
+  title: Order production supplies
+  description: Place an ingredient order before the production line runs out.
+  completionEventId: ingredients_ordered
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

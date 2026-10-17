@@ -1340,7 +1340,7 @@ public partial class ProductionManager : MonoBehaviour
     public const int ExtraHiresFromFifthWorkerResearch = 1;
     public const int ExtraHiresFromSixthWorkerResearch = 1;
 
-    /// <summary>Hire limits grow when Fourth Worker and Expert Workforce research completes.</summary>
+    /// <summary>Hire limits grow through Fourth Worker, Fifth Worker, and Sixth Worker research.</summary>
     public int MaxHiredWorkers => StartingHireCap
         + (MilestoneFeatures.ExtraStaffingUnlocked ? ExtraHiresFromFourthWorkerResearch : 0)
         + (MilestoneFeatures.IsResearchComplete("fifth_worker") ? ExtraHiresFromFifthWorkerResearch : 0)

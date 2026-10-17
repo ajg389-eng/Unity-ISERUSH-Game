@@ -14,16 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_05
   displayName: Quality & Reliability
-  description: 'Balance speed with quality and keep equipment reliable.
+  description: 'Balance service speed with quality, and use maintenance to prevent
+    equipment failures.
 
 
-    Topics:
-    Quality Engineering, Reliability Engineering'
+    Topics: Quality Engineering, Reliability Engineering'
+  completionDialogue:
+  - Fast service only matters if the food is right and the equipment stays reliable.
+    Good maintenance keeps today's work from becoming tomorrow's breakdown.
+  - Quality and reliability are part of the system's performance too.
   isTutorial: 0
   missions:
+  - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   - {fileID: 11400000, guid: d82ccab227e8478499a826b153e046a2, type: 2}
   - {fileID: 11400000, guid: 87def93dacac42be9ebe5230394d6279, type: 2}
-  - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   missionDatabase: {fileID: 0}
-  quiz: {fileID: 11400000, guid: a2558a7b983aa0a488984e02f87f88f9, type: 2}
+  quiz: {fileID: 0}
   unlocks: []

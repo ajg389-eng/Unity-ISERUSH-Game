@@ -22,6 +22,12 @@ public class MissionDefinition : ScriptableObject
     [Min(1)]
     public int requiredCount = 1;
 
+    [Tooltip("When set, this mission tracks units produced by a station instead of a game event.")]
+    public ItemDefinition producedItem;
+
+    [Tooltip("Counts production of any currently unlocked, finished customer menu recipe. Intermediate ingredients do not count.")]
+    public bool countAnyUnlockedMenuProduct;
+
     [Tooltip("Show in the list before it is completed.")]
     public bool showBeforeComplete = true;
 

@@ -306,14 +306,6 @@ public class DebugMenu : MonoBehaviour
             Toast("Current milestone tasks");
         });
         Transform progressionRow = CreateButtonRow(actionContent, "ProgressionRow");
-        CreateButton(progressionRow, "Force Quiz", () =>
-        {
-            var m = MilestoneProgressManager.Instance;
-            if (m == null) { Toast("No MilestoneProgressManager"); return; }
-            m.DebugForceQuizReady();
-            Toast("Quiz ready");
-            FindFirstObjectByType<MilestoneQuizUI>()?.Show();
-        });
         CreateButton(progressionRow, "Milestone Map", () =>
         {
             if (OnboardingTutorial.BlocksProgression)
@@ -365,6 +357,9 @@ public class DebugMenu : MonoBehaviour
             int milestoneNumber = n;
             CreateButton(jumpRow.transform, milestoneNumber.ToString(), () => JumpToMilestone(milestoneNumber));
         }
+
+        CreateGusCutsceneDebugSection(actionContent);
+
         CreateSectionHeader(actionContent, "TUTORIAL");
         Transform tutorialRow = CreateButtonRow(actionContent, "TutorialRow");
         CreateButton(tutorialRow, "Skip Tutorial", () =>
@@ -477,6 +472,75 @@ public class DebugMenu : MonoBehaviour
 
         Toast("Now on " + label);
         RefreshStatus();
+    }
+
+    void CreateGusCutsceneDebugSection(Transform parent)
+    {
+        CreateSectionHeader(parent, "GUS CUTSCENES");
+        CreateLabel(parent, "Replay without changing milestone progress.", 10, FontStyles.Normal)
+            .color = new Color(0.62f, 0.7f, 0.8f);
+
+        Transform row = CreateButtonRow(parent, "GusCutsceneOpeningRow");
+        CreateButton(row, "Opening Intro", PlayOpeningCutscene);
+
+        MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
+        MilestoneDatabase database = milestoneProgress != null
+            ? milestoneProgress.database
+            : Resources.Load<MilestoneDatabase>("MilestoneDatabase");
+        if (database == null || database.milestones == null) return;
+
+        int numberedMilestone = 0;
+        int buttonsInRow = 1;
+        foreach (MilestoneDefinition milestone in database.milestones)
+        {
+            if (milestone == null || string.IsNullOrEmpty(milestone.milestoneId)) continue;
+
+            string buttonLabel;
+            if (milestone.isTutorial)
+            {
+                buttonLabel = "Tutorial";
+            }
+            else
+            {
+                numberedMilestone++;
+                buttonLabel = "Milestone " + numberedMilestone;
+            }
+
+            if (buttonsInRow >= 2)
+            {
+                row = CreateButtonRow(parent, "GusCutsceneRow" + numberedMilestone);
+                buttonsInRow = 0;
+            }
+
+            string milestoneId = milestone.milestoneId;
+            CreateButton(row, buttonLabel, () => PlayMilestoneCutscene(milestoneId));
+            buttonsInRow++;
+        }
+    }
+
+    void PlayOpeningCutscene()
+    {
+        TitleScreenController titleScreen = TitleScreenController.Instance;
+        if (titleScreen == null || !titleScreen.DebugPlayOpeningCutscene())
+        {
+            Toast("Start the game before replaying cutscenes");
+            return;
+        }
+
+        SetVisible(false);
+    }
+
+    void PlayMilestoneCutscene(string milestoneId)
+    {
+        TitleScreenController titleScreen = TitleScreenController.Instance;
+        string label;
+        if (titleScreen == null || !titleScreen.DebugPlayMilestoneCutscene(milestoneId, out label))
+        {
+            Toast("Could not find cutscene. Start the game first.");
+            return;
+        }
+
+        SetVisible(false);
     }
 
     void ResetStationsAndWorkers()

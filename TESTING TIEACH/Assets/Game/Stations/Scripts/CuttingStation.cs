@@ -153,7 +153,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
         if (processed <= 0) return 0;
         inputUnits -= processed;
         outputUnits += processed;
-        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(processed);
+        StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(GetSelectedRecipe()?.output, processed);
         RefreshItemDisplay(true);
         return processed;
     }
@@ -181,7 +181,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
             {
                 outputUnits++;
                 processingUnits--;
-                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+                StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(recipe.output, 1);
                 changed = true;
                 continue;
             }
@@ -194,7 +194,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
             outputUnits++;
             processingUnits = Mathf.Max(0, processingUnits - 1);
             processingTimer = Mathf.Max(0f, processingTimer - cycleSeconds);
-            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(1);
+            StationRuntimeMetrics.EnsureOn(gameObject)?.RecordOutput(recipe.output, 1);
             changed = true;
             if (processingUnits <= 0) processingTimer = 0f;
         }

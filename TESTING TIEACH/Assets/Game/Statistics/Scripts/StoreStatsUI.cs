@@ -44,20 +44,13 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Queue length per station</b>");
-        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
-        {
-            sb.AppendLine("  Complete Queue Analytics research to unlock.");
-        }
+        var queues = s.QueueLengthPerStation;
+        if (queues.Count == 0)
+            sb.AppendLine("  No registers");
         else
-        {
-            var queues = s.QueueLengthPerStation;
-            if (queues.Count == 0)
-                sb.AppendLine("  No registers");
-            else
-                foreach (var kv in queues)
-                    sb.AppendLine("  " + kv.Key + ": " + kv.Value);
-            sb.AppendLine("  <i><size=80%>Where customers are waiting</size></i>");
-        }
+            foreach (var kv in queues)
+                sb.AppendLine("  " + kv.Key + ": " + kv.Value);
+        sb.AppendLine("  <i><size=80%>Customers waiting to order</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Average wait time</b>");
@@ -69,27 +62,17 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Station utilization (%)</b>");
-        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
-        {
-            sb.AppendLine("  Complete Queue Analytics research to unlock.");
-        }
+        var util = s.StationUtilizationPercent;
+        if (util.Count == 0)
+            sb.AppendLine("  —");
         else
-        {
-            var util = s.StationUtilizationPercent;
-            if (util.Count == 0)
-                sb.AppendLine("  —");
-            else
-                foreach (var kv in util)
-                    sb.AppendLine("  " + kv.Key + ": " + kv.Value.ToString("F0") + "%");
-            sb.AppendLine("  <i><size=80%>Capacity usage</size></i>");
-        }
+            foreach (var kv in util)
+                sb.AppendLine("  " + kv.Key + ": " + kv.Value.ToString("F0") + "%");
+        sb.AppendLine("  <i><size=80%>Capacity usage</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Worker utilization</b>");
-        if (!MilestoneFeatures.QueueAnalyticsUnlocked)
-            sb.AppendLine("  Complete Queue Analytics research to unlock.");
-        else
-            sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
+        sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Pickup Station stock</b>");

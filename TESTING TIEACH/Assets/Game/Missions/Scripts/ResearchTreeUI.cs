@@ -5,9 +5,11 @@ using UnityEngine.UI;
 
 public sealed class ResearchTreeUI : MonoBehaviour
 {
-    const float NodeWidth = 360f;
-    const float NodeHeight = 130f;
+    const float NodeWidth = 400f;
+    const float NodeHeight = 160f;
     const float BranchOffset = 460f;
+    const int MinimumMilestoneSections = 6;
+    const float MilestoneRowSpacing = 270f;
 
     sealed class NodeView
     {
@@ -171,7 +173,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         chartObject.transform.SetParent(viewport.transform, false);
         chart = (RectTransform)chartObject.transform;
         chart.anchorMin = chart.anchorMax = chart.pivot = new Vector2(0.5f, 0.5f);
-        chart.sizeDelta = new Vector2(5200f, 1350f);
+        chart.sizeDelta = new Vector2(5200f, GetChartHeight());
         RecipeGraphDrag drag = viewport.AddComponent<RecipeGraphDrag>();
         drag.content = chart; drag.minimumZoom = 0.35f; drag.maximumZoom = 1.28f;
         drag.allowPan = true;
@@ -191,7 +193,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         chart.anchoredPosition = Vector2.zero;
         // Keep all three branches visible in one map. Players can still pan and
         // zoom the map to inspect a branch without switching screens.
-        chart.localScale = Vector3.one * 0.34f;
+        chart.localScale = Vector3.one * 0.5f;
 
         CreateMilestoneSections();
         float[] branchCenters = { -1600f, 0f, 1600f };
@@ -256,16 +258,15 @@ public sealed class ResearchTreeUI : MonoBehaviour
 
     void CreateMilestoneSections()
     {
-        const float rowSpacing = 270f;
         float firstRow = chart.sizeDelta.y * 0.5f - 240f;
-        for (int milestone = 1; milestone <= 4; milestone++)
+        for (int milestone = 1; milestone <= GetMilestoneSectionCount(); milestone++)
         {
             var section = new GameObject("Milestone" + milestone + "Section", typeof(RectTransform), typeof(Image));
             section.transform.SetParent(chart, false);
             RectTransform sectionRt = (RectTransform)section.transform;
             sectionRt.anchorMin = sectionRt.anchorMax = sectionRt.pivot = new Vector2(0.5f, 0.5f);
             sectionRt.sizeDelta = new Vector2(chart.sizeDelta.x - 80f, 224f);
-            sectionRt.anchoredPosition = new Vector2(0f, firstRow - (milestone - 1) * rowSpacing);
+            sectionRt.anchoredPosition = new Vector2(0f, firstRow - (milestone - 1) * MilestoneRowSpacing);
             Image sectionImage = section.GetComponent<Image>();
             sectionImage.color = milestone % 2 == 0
                 ? new Color(0.08f, 0.10f, 0.14f, 0.38f)
@@ -274,16 +275,31 @@ public sealed class ResearchTreeUI : MonoBehaviour
             section.transform.SetAsFirstSibling();
 
             TextMeshProUGUI label = CreateText(section.transform, "Label", "MILESTONE " + milestone,
-                12f, FontStyles.Bold, Vector2.zero, Vector2.zero,
+                18f, FontStyles.Bold, Vector2.zero, Vector2.zero,
                 TextAlignmentOptions.Left);
             RectTransform labelRect = label.rectTransform;
             labelRect.anchorMin = new Vector2(0f, 0.5f);
             labelRect.anchorMax = new Vector2(0f, 0.5f);
             labelRect.pivot = new Vector2(0f, 0.5f);
             labelRect.anchoredPosition = new Vector2(18f, 0f);
-            labelRect.sizeDelta = new Vector2(180f, 26f);
+            labelRect.sizeDelta = new Vector2(300f, 30f);
             label.color = GameUITheme.TextSecondary;
         }
+    }
+
+    int GetMilestoneSectionCount()
+    {
+        int count = MinimumMilestoneSections;
+        if (MilestoneProgressManager.Instance != null)
+            count = Mathf.Max(count, MilestoneProgressManager.Instance.GetNumberedMilestoneCount());
+        foreach (ResearchProgressManager.Definition definition in ResearchProgressManager.Definitions)
+            if (definition != null) count = Mathf.Max(count, definition.milestone);
+        return count;
+    }
+
+    float GetChartHeight()
+    {
+        return Mathf.Max(1350f, 500f + (GetMilestoneSectionCount() - 1) * MilestoneRowSpacing);
     }
 
     void CreateBranchLane(int category, string label, Color color, float x)
@@ -292,7 +308,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         lane.transform.SetParent(chart, false);
         RectTransform laneRt = (RectTransform)lane.transform;
         laneRt.anchorMin = laneRt.anchorMax = laneRt.pivot = new Vector2(0.5f, 0.5f);
-        laneRt.sizeDelta = new Vector2(1500f, 1200f);
+        laneRt.sizeDelta = new Vector2(1500f, chart.sizeDelta.y - 100f);
         laneRt.anchoredPosition = new Vector2(x, -30f);
         Image laneImage = lane.GetComponent<Image>();
         laneImage.color = new Color(color.r, color.g, color.b, 0.055f);
@@ -334,7 +350,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         var positions = new Dictionary<string, Vector2>();
         var definitions = ResearchProgressManager.Definitions;
         float top = chart.sizeDelta.y * 0.5f - 240f;
-        const float rowSpacing = 270f;
+        const float rowSpacing = MilestoneRowSpacing;
 
         var branch = new List<ResearchProgressManager.Definition>();
         foreach (ResearchProgressManager.Definition definition in definitions)
@@ -342,7 +358,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         // Keep the dependency branches visible while placing every milestone
         // on a consistent horizontal row. The source coordinates identify the
         // left, centre, and right branch within each category.
-        for (int milestone = 1; milestone <= 4; milestone++)
+        for (int milestone = 1; milestone <= GetMilestoneSectionCount(); milestone++)
         {
             var row = branch.FindAll(definition => definition.milestone == milestone);
             row.Sort((a, b) =>
@@ -408,29 +424,29 @@ public sealed class ResearchTreeUI : MonoBehaviour
         Image statusIcon = statusIconObject.GetComponent<Image>();
         statusIcon.preserveAspect = true;
         statusIcon.raycastTarget = false;
-        TextMeshProUGUI title = CreateText(node.transform, "Title", definition.title, 14f, FontStyles.Bold,
+        TextMeshProUGUI title = CreateText(node.transform, "Title", definition.title, 22f, FontStyles.Bold,
             new Vector2(16f, 35f), new Vector2(-12f, 57f), TextAlignmentOptions.Left);
         RectTransform titleRect = title.rectTransform;
         titleRect.anchorMin = new Vector2(0f, 1f); titleRect.anchorMax = new Vector2(1f, 1f);
-        titleRect.pivot = new Vector2(0.5f, 1f); titleRect.anchoredPosition = new Vector2(0f, -10f);
-        titleRect.sizeDelta = new Vector2(-28f, 22f);
+        titleRect.pivot = new Vector2(0.5f, 1f); titleRect.anchoredPosition = new Vector2(0f, -12f);
+        titleRect.sizeDelta = new Vector2(-32f, 28f);
         title.textWrappingMode = TextWrappingModes.NoWrap;
         title.overflowMode = TextOverflowModes.Ellipsis;
-        TextMeshProUGUI description = CreateText(node.transform, "Description", definition.description, 11f, FontStyles.Normal,
+        TextMeshProUGUI description = CreateText(node.transform, "Description", definition.description, 18f, FontStyles.Normal,
             new Vector2(14f, -20f), new Vector2(-12f, 34f), TextAlignmentOptions.TopLeft);
         RectTransform descriptionRect = description.rectTransform;
         descriptionRect.anchorMin = new Vector2(0f, 1f); descriptionRect.anchorMax = new Vector2(1f, 1f);
-        descriptionRect.pivot = new Vector2(0.5f, 1f); descriptionRect.anchoredPosition = new Vector2(0f, -35f);
-        descriptionRect.sizeDelta = new Vector2(-28f, 52f);
+        descriptionRect.pivot = new Vector2(0.5f, 1f); descriptionRect.anchoredPosition = new Vector2(0f, -44f);
+        descriptionRect.sizeDelta = new Vector2(-32f, 72f);
         description.color = new Color(0.76f, 0.79f, 0.81f, 1f);
         description.textWrappingMode = TextWrappingModes.Normal;
         description.overflowMode = TextOverflowModes.Ellipsis;
-        TextMeshProUGUI meta = CreateText(node.transform, "Meta", "", 11f, FontStyles.Bold,
+        TextMeshProUGUI meta = CreateText(node.transform, "Meta", "", 15f, FontStyles.Bold,
             new Vector2(14f, -58f), new Vector2(-12f, -40f), TextAlignmentOptions.Left);
         RectTransform metaRect = meta.rectTransform;
         metaRect.anchorMin = new Vector2(0f, 0f); metaRect.anchorMax = new Vector2(1f, 0f);
-        metaRect.pivot = new Vector2(0.5f, 0f); metaRect.anchoredPosition = new Vector2(0f, 9f);
-        metaRect.sizeDelta = new Vector2(-28f, 18f);
+        metaRect.pivot = new Vector2(0.5f, 0f); metaRect.anchoredPosition = new Vector2(0f, 10f);
+        metaRect.sizeDelta = new Vector2(-32f, 22f);
         meta.textWrappingMode = TextWrappingModes.NoWrap;
         meta.overflowMode = TextOverflowModes.Ellipsis;
 

@@ -14,6 +14,7 @@ public sealed class DeterministicProductionController : IDisposable
     {
         public int Workers;
         public long Next60;
+        public float TargetPerMinute;
         public float PlannedPerMinute;
         public long StartsAt;
         public string Warning;
@@ -55,6 +56,7 @@ public sealed class DeterministicProductionController : IDisposable
     bool configurationCheck = true, disposed;
     long nextForecastAt = -1;
     long[] plannedTotals;
+    float[] targetTotals;
     string[] workerDescriptions;
     int[] workerDescriptionKeys;
 
@@ -331,6 +333,20 @@ public sealed class DeterministicProductionController : IDisposable
         forecasts = new FlowForecast[flowIndex.Count];
         for (int i = 0; i < forecasts.Length; i++) forecasts[i] = new FlowForecast();
         foreach (Sim.Worker worker in plan.Workers) forecasts[worker.Flow].Workers++;
+        targetTotals = new float[flowIndex.Count];
+        var countedTargets = new HashSet<(int flow, int station, int item)>();
+        foreach (Sim.Edge edge in plan.Edges)
+        {
+            if (edge.To < 0 || edge.To >= plan.Nodes.Length
+                || plan.Nodes[edge.To].Kind != Sim.NodeKind.Pickup
+                || edge.From < 0 || edge.From >= plan.Nodes.Length
+                || edge.Flow < 0 || edge.Flow >= targetTotals.Length) continue;
+            Sim.Node source = plan.Nodes[edge.From];
+            if (source.Kind != Sim.NodeKind.Processor || source.OutputItem != edge.Item
+                || source.CycleTicks <= 0 || source.CycleTicks == Sim.Never
+                || !countedTargets.Add((edge.Flow, edge.From, edge.Item))) continue;
+            targetTotals[edge.Flow] += 60f * Sim.TicksPerSecond / source.CycleTicks;
+        }
         plannedTotals = null;
         nextForecastAt = -1;
         SynchronizeExternalState();
@@ -359,8 +375,20 @@ public sealed class DeterministicProductionController : IDisposable
             int id = Item(item);
             if (id < 0) return;
             Sim.Input existing = inputs.Find(x => x.Item == id);
-            if (existing != null) existing.Amount += Mathf.Max(1, amount);
+            if (existing != null)
+            {
+                existing.Amount += Mathf.Max(1, amount);
+                existing.Capacity += Mathf.Max(1, capacity);
+            }
             else inputs.Add(new Sim.Input { Item = id, Amount = Mathf.Max(1, amount), Capacity = capacity });
+        };
+        System.Action<RecipeGraphNodeDefinition, System.Func<int, int>> graphInputs = (recipe, capacityForPort) =>
+        {
+            if (recipe?.inputs == null) return;
+            foreach (RecipeGraphInputDefinition recipeInput in recipe.inputs)
+                if (recipeInput != null && recipeInput.item != null)
+                    input(recipeInput.item, recipeInput.amount,
+                        capacityForPort != null ? capacityForPort(recipeInput.port) : 1);
         };
         if (b.Freezer != null || b.Pantry != null)
         {
@@ -384,36 +412,66 @@ public sealed class DeterministicProductionController : IDisposable
             n.Kind = Sim.NodeKind.Processor;
             if (b.Grill != null)
             {
-                n.OutputItem = Item(b.Grill.GetSelectedOutput()); n.OutputCapacity = b.Grill.OutputSlotCapacity;
+                ItemDefinition output = b.Grill.GetSelectedOutput();
+                RecipeGraphNodeDefinition recipe = manager.orderConfig != null
+                    ? manager.orderConfig.GetProductionRecipe(StationType.Grill, output) : null;
+                n.OutputItem = Item(output); n.OutputCapacity = b.Grill.OutputSlotCapacity;
                 n.SharedCapacity = b.Grill.SlotCapacity; n.CycleTicks = Cycle(b.Grill.EffectiveProcessTimeSeconds);
-                input(b.Grill.GetSelectedInput(), 1, b.Grill.InputSlotCapacity);
-                input(b.Grill.GetSelectedSecondaryInput(), 1, b.Grill.InputSlotCapacity);
+                if (recipe != null)
+                    graphInputs(recipe, _ => b.Grill.InputSlotCapacity);
+                else
+                {
+                    input(b.Grill.GetSelectedInput(), 1, b.Grill.InputSlotCapacity);
+                    input(b.Grill.GetSelectedSecondaryInput(), 1, b.Grill.InputSlotCapacity);
+                }
             }
             else if (b.Fryer != null)
             {
-                n.OutputItem = Item(b.Fryer.GetSelectedOutput()); n.OutputCapacity = b.Fryer.OutputSlotCapacity;
+                ItemDefinition output = b.Fryer.GetSelectedOutput();
+                RecipeGraphNodeDefinition recipe = manager.orderConfig != null
+                    ? manager.orderConfig.GetProductionRecipe(StationType.Fryer, output) : null;
+                n.OutputItem = Item(output); n.OutputCapacity = b.Fryer.OutputSlotCapacity;
                 n.CycleTicks = Cycle(b.Fryer.EffectiveProcessTimeSeconds);
-                input(b.Fryer.GetSelectedInput(), 1, b.Fryer.InputSlotCapacity);
+                if (recipe != null)
+                    graphInputs(recipe, _ => b.Fryer.InputSlotCapacity);
+                else
+                    input(b.Fryer.GetSelectedInput(), 1, b.Fryer.InputSlotCapacity);
             }
             else if (b.Cutting != null)
             {
-                CuttingRecipeDefinition recipe = b.Cutting.GetSelectedRecipe();
-                n.OutputItem = Item(recipe?.output); n.OutputCapacity = b.Cutting.OutputSlotCapacity;
+                CuttingRecipeDefinition selected = b.Cutting.GetSelectedRecipe();
+                RecipeGraphNodeDefinition recipe = manager.orderConfig != null
+                    ? manager.orderConfig.GetProductionRecipe(StationType.Cutting, selected?.output) : null;
+                n.OutputItem = Item(selected?.output); n.OutputCapacity = b.Cutting.OutputSlotCapacity;
                 n.SharedCapacity = b.Cutting.SlotCapacity;
                 n.CycleTicks = Cycle(b.Cutting.EffectiveProcessTimeSeconds);
-                input(recipe?.input, 1, b.Cutting.InputSlotCapacity);
+                if (recipe != null)
+                    graphInputs(recipe, _ => b.Cutting.InputSlotCapacity);
+                else
+                    input(selected?.input, 1, b.Cutting.InputSlotCapacity);
             }
             else if (b.Assembly != null)
             {
-                AssemblyRecipeDefinition recipe = b.Assembly.GetSelectedRecipe();
-                n.OutputItem = Item(recipe?.output); n.OutputCapacity = b.Assembly.OutputSlotCapacity;
+                AssemblyRecipeDefinition selected = b.Assembly.GetSelectedRecipe();
+                RecipeGraphNodeDefinition recipe = manager.orderConfig != null
+                    ? manager.orderConfig.GetProductionRecipe(StationType.Assembly, selected?.output) : null;
+                n.OutputItem = Item(selected?.output); n.OutputCapacity = b.Assembly.OutputSlotCapacity;
                 n.CycleTicks = Cycle(b.Assembly.EffectiveProcessTimeSeconds);
                 if (recipe != null)
                 {
-                    if (recipe.RequiresProcessedInput) input(recipe.processedInput, recipe.processedInputAmount, b.Assembly.ProcessedInputCapacity);
-                    input(recipe.pantryInput, recipe.pantryInputAmount, b.Assembly.PantryInputCapacity);
-                    input(recipe.thirdInput, recipe.thirdInputAmount, b.Assembly.ThirdInputCapacity);
-                    if (recipe.RequiresMk2 && !b.Assembly.IsMk2) n.OutputItem = -1;
+                    graphInputs(recipe, port => port <= 0 ? b.Assembly.ProcessedInputCapacity
+                        : port == 1 ? b.Assembly.PantryInputCapacity : b.Assembly.ThirdInputCapacity);
+                    bool requiresThirdInput = recipe.inputs != null
+                        && recipe.inputs.Exists(recipeInput => recipeInput != null && recipeInput.port >= 2
+                            && recipeInput.item != null);
+                    if (requiresThirdInput && !b.Assembly.IsMk2) n.OutputItem = -1;
+                }
+                else if (selected != null)
+                {
+                    if (selected.RequiresProcessedInput) input(selected.processedInput, selected.processedInputAmount, b.Assembly.ProcessedInputCapacity);
+                    input(selected.pantryInput, selected.pantryInputAmount, b.Assembly.PantryInputCapacity);
+                    input(selected.thirdInput, selected.thirdInputAmount, b.Assembly.ThirdInputCapacity);
+                    if (selected.RequiresMk2 && !b.Assembly.IsMk2) n.OutputItem = -1;
                 }
             }
             else if (b.Drink != null)
@@ -569,7 +627,7 @@ public sealed class DeterministicProductionController : IDisposable
                     Debug.LogError("Scheduled production inventory changed during an atomic event: " + item.name);
                 if (binding.Node.Kind == Sim.NodeKind.Source) binding.Metrics?.RecordOutput(e.Units);
             }
-            else if (e.Kind == Sim.EventKind.Produce) binding.Metrics?.RecordOutput(e.Units);
+            else if (e.Kind == Sim.EventKind.Produce) binding.Metrics?.RecordOutput(item, e.Units);
             else if (e.Kind == Sim.EventKind.Deliver)
             {
                 int stored = binding.Pickup != null ? binding.Pickup.StoreInput(item, e.Units) : 0;
@@ -692,6 +750,8 @@ public sealed class DeterministicProductionController : IDisposable
             {
                 forecasts[i].Next60 = counts[i];
                 forecasts[i].StartsAt = simulation.Now;
+                forecasts[i].TargetPerMinute = targetTotals != null && i < targetTotals.Length
+                    ? targetTotals[i] : 0f;
                 forecasts[i].PlannedPerMinute = plannedTotals[i] / 10f;
                 forecasts[i].Warning = ForecastWarning(i);
             }
@@ -714,7 +774,35 @@ public sealed class DeterministicProductionController : IDisposable
             if (!reachable) return "A flow node is unreachable. Clear its route or move the station.";
         }
         if (!hasPickup) return "Connect the final product to a Pickup Station.";
-        return plannedTotals[flow] == 0 ? "No scheduled output. Check recipe inputs and connections." : null;
+        if (plannedTotals[flow] == 0)
+        {
+            foreach (Sim.Edge terminal in simulation.Plan.Edges)
+            {
+                if (terminal.Flow != flow || simulation.Plan.Nodes[terminal.To].Kind != Sim.NodeKind.Pickup)
+                    continue;
+                Sim.Node producer = simulation.Plan.Nodes[terminal.From];
+                foreach (Sim.Input input in producer.Inputs)
+                {
+                    bool connected = false;
+                    foreach (Sim.Edge incoming in simulation.Plan.Edges)
+                        if (incoming.Flow == flow && incoming.To == terminal.From && incoming.Item == input.Item)
+                        { connected = true; break; }
+                    if (!connected)
+                    {
+                        string itemName = input.Item >= 0 && input.Item < items.Count
+                            ? items[input.Item].itemName : "required item";
+                        string stationName = bindings[terminal.From].Object != null
+                            ? StationNode.EnsureOn(bindings[terminal.From].Object).DisplayName : "the final station";
+                        return "Connect " + itemName + " to " + stationName + ".";
+                    }
+                }
+            }
+            return "No output is scheduled. Check station targets and supply connections.";
+        }
+        float gap = forecasts[flow].TargetPerMinute - forecasts[flow].PlannedPerMinute;
+        if (gap > 0.1f)
+            return "Short by " + gap.ToString("0.0") + " items/min. Check worker coverage and upstream supply.";
+        return null;
     }
 
     public ProductionStationCheckpoint CaptureStation(GameObject station)

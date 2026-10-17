@@ -12,10 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_03_expand_assets
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_03_expand_assets
-  title: Add shakes to the menu
-  description: Configure the basic Shake recipe at a Shake Station.
-  completionEventId: recipe_configured_shake
+  missionId: milestone_03_configure_classic_burger
+  title: Configure a Classic Burger
+  description: Choose the Classic Burger recipe at an Assembly Station.
+  completionEventId: recipe_configured_classic_burger
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

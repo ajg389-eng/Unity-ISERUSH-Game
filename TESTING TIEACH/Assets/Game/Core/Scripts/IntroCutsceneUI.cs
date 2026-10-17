@@ -14,7 +14,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
     public const float TypewriterVoiceInterval = 0.075f;
     static AudioClip[] typewriterVoiceClips;
 
-    static readonly string[] Lines =
+    static readonly string[] OpeningLines =
     {
         "Hey look who it is – it’s 10:30 I’ve been expecting you for the last 30 minutes. First day on the job and you’re already late…",
         "Let me get one thing straight, the only reason you're here is because the investors threatened to pull the plug on this whole place if I didn’t take their advice and hire an Industrial & Systems Engineer…",
@@ -27,6 +27,8 @@ public sealed class IntroCutsceneUI : MonoBehaviour
     public static bool IsPlaying { get; private set; }
 
     Action finished;
+    string[] lines = OpeningLines;
+    string chapterTitle = "FIRST SHIFT";
     TextMeshProUGUI dialogue;
     TextMeshProUGUI progress;
     TextMeshProUGUI nextLabel;
@@ -65,6 +67,50 @@ public sealed class IntroCutsceneUI : MonoBehaviour
             Debug.LogException(exception);
             cutscene.FailOpen();
         }
+    }
+
+    public static void ShowMilestone(string title, IReadOnlyList<string> dialogueLines,
+        Action onFinished, Camera liveCamera)
+    {
+        var existing = FindFirstObjectByType<IntroCutsceneUI>();
+        if (existing != null)
+        {
+            existing.finished = onFinished;
+            return;
+        }
+
+        var go = new GameObject("GusMilestoneCutscene");
+        var cutscene = go.AddComponent<IntroCutsceneUI>();
+        cutscene.finished = onFinished;
+        cutscene.chapterTitle = string.IsNullOrWhiteSpace(title) ? "MILESTONE COMPLETE" : title;
+        cutscene.lines = CopyDialogueLines(dialogueLines);
+        try
+        {
+            cutscene.Build(null, null, null, liveCamera);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception);
+            cutscene.FailOpen();
+        }
+    }
+
+    static string[] CopyDialogueLines(IReadOnlyList<string> source)
+    {
+        if (source == null || source.Count == 0)
+            return new[] { "Good work. Take a moment to review what changed, then get back to improving the process." };
+
+        var result = new List<string>(source.Count);
+        for (int i = 0; i < source.Count; i++)
+        {
+            string line = source[i];
+            if (!string.IsNullOrWhiteSpace(line))
+                result.Add(line.Trim());
+        }
+
+        return result.Count > 0
+            ? result.ToArray()
+            : new[] { "Good work. Take a moment to review what changed, then get back to improving the process." };
     }
 
     void Build(Texture background, GameObject gusPrefab, Sprite gusPortrait, Camera liveCamera)
@@ -115,7 +161,8 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         // below are the only visuals drawn by this overlay.
         CreateDialogueBox(contentRoot);
 
-        var chapter = CreateText(contentRoot, "Chapter", "FIRST SHIFT", 18f,
+        var chapter = CreateText(contentRoot, "Chapter",
+            ISEVocabularyHighlighter.Highlight(chapterTitle), 18f,
             TextAlignmentOptions.TopRight, FontStyles.Bold, GameUITheme.Accent);
         var chapterRect = chapter.rectTransform;
         chapterRect.anchorMin = new Vector2(0.68f, 0.91f);
@@ -284,7 +331,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
             return;
         }
 
-        if (lineIndex + 1 >= Lines.Length)
+        if (lineIndex + 1 >= lines.Length)
         {
             Finish();
             return;
@@ -296,16 +343,18 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 
     void ShowLine(int index)
     {
-        lineIndex = Mathf.Clamp(index, 0, Lines.Length - 1);
-        dialogue.text = Lines[lineIndex];
+        lineIndex = Mathf.Clamp(index, 0, lines.Length - 1);
+        dialogue.text = ISEVocabularyHighlighter.Highlight(lines[lineIndex]);
         dialogue.ForceMeshUpdate();
         totalCharacters = dialogue.textInfo.characterCount;
         visibleCharacters = 0;
         characterProgress = 0f;
         dialogue.maxVisibleCharacters = 0;
-        progress.text = (lineIndex + 1) + " / " + Lines.Length + "     SPACE TO CONTINUE";
+        progress.text = (lineIndex + 1) + " / " + lines.Length + "     SPACE TO CONTINUE";
         if (nextLabel != null)
-            nextLabel.text = lineIndex == Lines.Length - 1 ? "START  >" : "NEXT  >";
+            nextLabel.text = lineIndex == lines.Length - 1
+                ? chapterTitle == "FIRST SHIFT" ? "START  >" : "BACK TO SHIFT  >"
+                : "NEXT  >";
     }
 
     void SetupTypewriterVoice()

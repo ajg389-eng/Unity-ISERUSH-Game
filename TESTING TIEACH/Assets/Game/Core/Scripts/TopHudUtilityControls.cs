@@ -9,6 +9,7 @@ public class TopHudUtilityControls : MonoBehaviour
     public const string MusicSectionName = "MusicSection";
     public const string NotificationSectionName = "NotificationSection";
     public const string GusHelpSectionName = "GusHelpSection";
+    public const string GuidebookSectionName = "GuidebookSection";
     public const string InvestorLetterId = "investor-welcome-letter";
     const string PanelName = "NotificationHistoryPanel";
     const string MusicPanelName = "MusicTrackPicker";
@@ -93,6 +94,7 @@ public class TopHudUtilityControls : MonoBehaviour
         EnsureMusicPanel();
         EnsureNotificationSection();
         EnsureGusHelpSection();
+        EnsureGuidebookSection();
         EnsureHistoryPanel();
         var bar = GetComponent<TopHudBar>();
         if (bar != null) bar.ApplyFitLayout();
@@ -286,10 +288,44 @@ public class TopHudUtilityControls : MonoBehaviour
         {
             Sfx.Play(SfxId.UiClick);
             if (!ManagementTabInfoUI.OpenActiveHelp())
-                NotificationCenter.Post("Open a management tab and ask Gus for details.",
+                NotificationCenter.Post("Open a management tab to get Gus's advice about it.",
                     GameNotificationKind.Message, "gus-help-no-tab", 2f);
         });
         GameUITheme.ApplyCompactControlEffects(button);
+        DelayedTooltip.Attach(button, "Ask Gus about the open management screen");
+    }
+
+    void EnsureGuidebookSection()
+    {
+        Transform existing = transform.Find(GuidebookSectionName);
+        GameObject section = existing != null
+            ? existing.gameObject
+            : new GameObject(GuidebookSectionName, typeof(RectTransform));
+        if (section.transform.parent != transform)
+            section.transform.SetParent(transform, false);
+
+        Button button = FindButton(section.transform, "GuidebookButton");
+        if (button == null)
+            button = CreateButton(section.transform, "GuidebookButton", "i", 42f, out _);
+
+        RectTransform buttonRect = (RectTransform)button.transform;
+        buttonRect.anchorMin = Vector2.zero;
+        buttonRect.anchorMax = Vector2.one;
+        buttonRect.offsetMin = Vector2.zero;
+        buttonRect.offsetMax = Vector2.zero;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(() =>
+        {
+            Sfx.Play(SfxId.UiClick);
+            PauseMenuUI pauseMenu = PauseMenuUI.Instance;
+            if (pauseMenu == null)
+                pauseMenu = FindFirstObjectByType<PauseMenuUI>();
+            if (pauseMenu != null)
+                pauseMenu.OpenGuidebookFromHud();
+        });
+        GameIconLibrary.ApplyToButton(button, GameIconId.Information, 22f, 0f, true);
+        GameUITheme.ApplyCompactControlEffects(button);
+        DelayedTooltip.Attach(button, "Guidebook: open");
     }
 
     void EnsureHistoryPanel()

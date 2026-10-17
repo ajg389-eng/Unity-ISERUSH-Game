@@ -11,10 +11,13 @@ public class ManagementTabInfoUI : MonoBehaviour
     public const string ObjectName = "ManagementTabInfoUI";
 
     Button infoButton;
+    Button guidebookButton;
+    TextMeshProUGUI guidebookButtonText;
     GameObject overlay;
     TextMeshProUGUI titleText;
     TextMeshProUGUI bodyText;
     GameObject activePanel;
+    string activeGuidebookChapter;
 
     public static ManagementTabInfoUI EnsureOn(Transform managementPanel)
     {
@@ -156,7 +159,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         var bodyRt = bodyFrame.GetComponent<RectTransform>();
         bodyRt.anchorMin = Vector2.zero;
         bodyRt.anchorMax = Vector2.one;
-        bodyRt.offsetMin = new Vector2(18f, 18f);
+        bodyRt.offsetMin = new Vector2(18f, 64f);
         bodyRt.offsetMax = new Vector2(-18f, -68f);
         bodyFrame.GetComponent<Image>().color = new Color(0.065f, 0.072f, 0.10f, 0.92f);
 
@@ -187,6 +190,8 @@ public class ManagementTabInfoUI : MonoBehaviour
         GameUITheme.ConfigureScroll(scroll);
         scroll.viewport = viewportRt;
         scroll.content = textRt;
+
+        guidebookButton = CreateGuidebookButton(card.transform);
     }
 
     Button CreateCloseButton(Transform parent)
@@ -208,6 +213,31 @@ public class ManagementTabInfoUI : MonoBehaviour
         label.raycastTarget = false;
         Button button = go.GetComponent<Button>();
         GameIconLibrary.ApplyToButton(button, GameIconId.Cross, 20f, 0f, true);
+        return button;
+    }
+
+    Button CreateGuidebookButton(Transform parent)
+    {
+        var go = new GameObject("ReadGuidebookButton", typeof(RectTransform), typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot = new Vector2(1f, 0f);
+        rt.anchoredPosition = new Vector2(-18f, 14f);
+        rt.sizeDelta = new Vector2(190f, 36f);
+
+        var image = go.GetComponent<Image>();
+        image.color = GameUITheme.Surface;
+        var button = go.GetComponent<Button>();
+        button.targetGraphic = image;
+
+        guidebookButtonText = CreateText(go.transform, "Label", 14f, FontStyles.Bold);
+        Stretch((RectTransform)guidebookButtonText.transform, 0f);
+        guidebookButtonText.text = "Read Guidebook";
+        guidebookButtonText.alignment = TextAlignmentOptions.Center;
+
+        button.onClick.AddListener(OpenGuidebookReference);
+        GameUITheme.ApplyCompactControlEffects(button);
         return button;
     }
 
@@ -287,117 +317,130 @@ public class ManagementTabInfoUI : MonoBehaviour
 
     void RefreshCopy()
     {
-        GetCopy(activePanel, out string title, out string body);
+        GetCopy(activePanel, out string title, out string body, out activeGuidebookChapter);
         if (titleText != null) titleText.text = "GUS  |  " + title;
         if (bodyText != null) bodyText.text = body;
+        if (guidebookButton != null)
+            guidebookButton.interactable = !string.IsNullOrWhiteSpace(activeGuidebookChapter);
+        if (guidebookButtonText != null)
+            guidebookButtonText.text = "Read Guidebook";
     }
 
-    static void GetCopy(GameObject panel, out string title, out string body)
+    void OpenGuidebookReference()
+    {
+        if (string.IsNullOrWhiteSpace(activeGuidebookChapter)) return;
+
+        PauseMenuUI pauseMenu = PauseMenuUI.Instance;
+        if (pauseMenu == null)
+            pauseMenu = FindFirstObjectByType<PauseMenuUI>();
+        if (pauseMenu == null) return;
+
+        Close();
+        pauseMenu.OpenGuidebookFromHud(activeGuidebookChapter);
+    }
+
+    static string FormatHelp(string whatYouSee, string nextStep, string iseConnection)
+    {
+        return "<b>What you are seeing</b>\n" + whatYouSee + "\n\n" +
+            "<b>Try this</b>\n" + nextStep + "\n\n" +
+            "<color=#73BFF2><b>ISE connection</b></color>\n" + iseConnection;
+    }
+
+    static void GetCopy(GameObject panel, out string title, out string body, out string guidebookChapter)
     {
         if (panel != null && panel.name == InventoryUI.StationsPanelName)
         {
-            title = "Stations tab help";
-            body =
-                "<b>Station cards</b>\nEach card shows a station you can buy and place. The first number is how many you own and the second is your current cap. The price is removed when the station is purchased.\n\n" +
-                "<b>Capacity limit</b>\nYou start with one of each station. Complete <b>Expanded Menu & Stations</b> research to buy a second copy, then complete capacity research to raise the limit further. MAX on the card means you reached the current limit.\n\n" +
-                "<b>Place a station</b>\nSelect a card, move the preview over a valid grid tile, rotate if needed, and click to place it. Green tiles are valid; blocked or occupied tiles cannot be used. Double-click a placed object to pick it up and move it.\n\n" +
-                "<b>Production stations</b>\nFreezers and pantries supply materials. Grills, fryers, shake stations, and assembly stations transform materials. The Pickup Station holds finished products. Registers take customer orders.\n\n" +
-                "<b>Counter equipment</b>\nRegisters sit on top of counter slots. Pickup Stations use counter-grid placement and hold finished products for collection.\n\n" +
-                "<b>Undo purchase</b>\nThe bottom button reverses the latest eligible purchase.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Layout affects travel distance, handling time, congestion, and therefore the capacity of the whole workflow.";
+            title = "Stations";
+            guidebookChapter = "Build";
+            body = FormatHelp(
+                "Station cards show what you own, your current limit, and the next purchase cost.",
+                "Choose a station, place it on a valid footprint, and leave a clear route between work areas.",
+                "Layout affects worker travel, handling effort, and total system capacity.");
             return;
         }
 
         if (panel != null && panel.name == InventoryUI.FloorPanelName)
         {
-            title = "Floor tab help";
-            body =
-                "<b>Current floor size</b>\nShows the kitchen grid dimensions now and the dimensions after the next expansion.\n\n" +
-                "<b>Expand Floor</b>\nPurchases the displayed number of rows and columns for the shown price. The button is disabled when you cannot afford it or the floor is already at its limit.\n\n" +
-                "<b>Undo Floor</b>\nReverses the latest eligible floor expansion when the added area can be safely removed.\n\n" +
-                "<b>Planning before buying</b>\nExpansion creates more placement capacity, but it can also increase walking distance. Use the existing footprint efficiently before adding space.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Facility size and layout are capacity decisions. More space is useful only when the improvement is worth its cost and added travel.";
+            title = "Floor";
+            guidebookChapter = "Build";
+            body = FormatHelp(
+                "The Floor tab shows the kitchen size, the next expansion, and its price.",
+                "Expand when the current layout cannot fit the needed stations or clear walking space.",
+                "More floor adds capacity for equipment, but can also increase travel.");
             return;
         }
 
         if (panel != null && panel.name == InventoryUI.CustomizePanelName)
         {
-            title = "Customize help";
-            body =
-                "<b>Surface customization</b>\nWalls, floors, and the roof each have their own texture and color controls. Color is applied as a tint over the selected texture.\n\n" +
-                "<b>Live preview</b>\nChanges apply immediately and are stored in the current save slot. Additional texture assets appear automatically when added to the customization Resources folders.\n\n" +
-                "<color=#73BFF2><b>Design note:</b></color> Appearance is cosmetic and does not alter station capacity or customer demand.";
+            title = "Customize";
+            guidebookChapter = "Build";
+            body = FormatHelp(
+                "These controls change the look of the walls, floor, and roof.",
+                "Use clear visual differences to make work areas easier to recognize.",
+                "Readable environments help people orient themselves. These appearance settings do not change production.");
             return;
         }
 
         if (panel != null && (panel.name == "TasksPage" || panel.name == "DailyTasksPage"))
         {
-            title = "Objectives help";
-            body =
-                "<b>Daily tasks</b>\nThe left column shows the current shift targets and milestone tasks. The highlighted task is the next objective to complete.\n\n" +
-                "<b>Status symbols</b>\nA pointer marks the current task, an open circle marks a later task, and a check mark marks a completed task.\n\n" +
-                "<b>Why tasks matter</b>\nTasks introduce the restaurant systems in a controlled order and give you a practical reason to apply each ISE concept.\n\n" +
-                "<color=#73BFF2><b>Tip:</b></color> If progress stops, inspect the exact condition in the current task rather than changing several systems at once.";
+            title = "Tasks";
+            guidebookChapter = "Start Here";
+            body = FormatHelp(
+                "The highlighted task is the current objective. Later tasks show what comes next.",
+                "Read the task condition and complete that action before changing other systems.",
+                "Clear, staged objectives help you learn a complex process one step at a time.");
             return;
         }
 
         if (panel != null && panel.name == "ProgressionPage")
         {
-            title = "Progression help";
-            body =
-                "<b>Milestones</b>\nMilestones group related tasks into larger learning stages. Completed stages remain visible so you can track what has been mastered.\n\n" +
-                "<b>Locked progression</b>\nFinish the onboarding tutorial before later milestones become available. Then complete the required tasks in the current stage.\n\n" +
-                "<b>Quiz</b>\nWhen a milestone is ready, Open Quiz tests the ideas used during that stage. Passing advances the chapter and makes its research projects available. Completing research grants the gameplay unlocks.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Progression connects game decisions to concepts such as flow, capacity, inventory, bottlenecks, and continuous improvement.";
+            title = "Progression";
+            guidebookChapter = "Start Here";
+            body = FormatHelp(
+                "Milestones group tasks into stages. Research projects become available as you progress.",
+                "Complete the current milestone tasks, then choose research that addresses your next capacity need.",
+                "Milestones connect practice with gradual system improvement.");
             return;
         }
 
         if (panel != null && panel.GetComponentInChildren<IngredientsOrderUI>(true) != null)
         {
-            title = "Supply and Menu help";
-            body =
-                "<b>Items to sell</b>\nThe green toggle determines whether customers can order that product. Each item also shows its station sequence and the material used at every step.\n\n" +
-                "<b>Recipes</b>\nOpen the centered recipe book and switch between Burger, Fries, and Shake to see each production tree from raw ingredients to the most complex finished product.\n\n" +
-                "<b>Workflow</b>\nRead the stations from left to right. A product can only be completed when its required stations exist, have materials, and belong to a usable worker flow.\n\n" +
-                "<b>Buy ingredients</b>\nEach row shows the ingredient, current stock, pack size, and purchase price. Ordering spends cash and starts a <b>1-minute delivery</b>. A delivery person comes in the front door and hands the pack over at the counter when the timer ends.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Inventory protects production from shortages, but excess stock ties up money. Match purchasing to expected demand.";
+            title = "Supply and Menu";
+            guidebookChapter = "Supply";
+            body = FormatHelp(
+                "The menu controls which products customers can order. Supply shows current and incoming ingredients.",
+                "Enable the products you plan to make, then check ingredient stock against their recipes before the shift.",
+                "Inventory planning balances shortage risk against cash tied up in stock.");
             return;
         }
 
         if (panel != null && panel.GetComponentInChildren<WorkersUI>(true) != null)
         {
-            title = "Workers tab help";
-            body =
-                "<b>Hire</b>\nYou can hire up to <b>3 workers</b> from the start (the first hire is free). Complete <b>Fourth Worker</b> research to raise the hiring limit. More labor can increase capacity, but every hire must be used effectively.\n\n" +
-                "<b>Flow chips</b>\nSelect a saved flow to inspect or modify it. Click the name field to rename the selected flow.\n\n" +
-                "<b>Create Flow</b>\nReturns you to the kitchen. Click stations in the exact order work should travel, then finish the route.\n\n" +
-                "<b>Edit Flow</b>\nReopens the selected route so its station order can be changed. The station chips show the current sequence.\n\n" +
-                "<b>Workers on a flow</b>\nAssign one worker from their card. Complete <b>Multi-Worker Flows</b> research to put a second person on the same flow and staff the bottleneck. Click a worker name in the flow to remove that assignment.\n\n" +
-                "<b>Economics</b>\nThe analysis highlights route length, cycle behavior, and likely imbalance. A long route or one slow station can limit the entire system.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Balance labor and station capacity around the bottleneck instead of maximizing every station independently.";
+            title = "Workers and Flows";
+            guidebookChapter = "Workers";
+            body = FormatHelp(
+                "Flows connect the stations that move and transform items. Workers assigned to a flow handle its transfers.",
+                "Check the selected flow's planned workload and worker coverage. Confirm every node is connected through to Pickup.",
+                "Balance labor and station workload across the full process instead of optimizing one station alone.");
             return;
         }
 
         if (panel != null && panel.GetComponentInChildren<CustomersUI>(true) != null)
         {
-            title = "Analytics tab help";
-            body =
-                "<b>In store now</b>\nThe number of customers currently inside the system. This is customer work-in-process, or WIP.\n\n" +
-                "<b>Visited today</b>\nAll customers who entered during the current shift. <b>Walked out</b> counts customers who left without completing service.\n\n" +
-                "<b>Visit trend</b>\nEach bar shows actual arrivals during one hour. The highlighted bar is the current hour. The exact plan shows scheduled arrivals for that hour. Customer arrivals are evenly spaced and stay at the same rate throughout the shift.\n\n" +
-                "<b>Demand and throughput by item</b>\nTarget / Min is the scheduled request rate for each enabled menu recipe. Items Ordered / Min is the actual register accepted rate over the trailing 60 simulation seconds, normalized over the elapsed time during its first minute. Requests waiting for register capacity remain in Open Demand and are included in production planning. Ready and cooking are live counts; completed is output delivered during the same trailing minute.\n\n" +
-                "<color=#73BFF2><b>ISE idea:</b></color> Compare each fixed demand rate with the production line's output and add or split stations to balance capacity.";
+            title = "Customer Analytics";
+            guidebookChapter = "Reports";
+            body = FormatHelp(
+                "This screen tracks customer visits, demand, and product output.",
+                "Compare each item's demand rate with its completed rate. Use orders per minute for customer service and items per minute for production.",
+                "Demand and throughput are different measures. Match the production system to the work customers request.");
             return;
         }
 
-        title = "Store Stats tab help";
-        body =
-            "<b>Customers in system (WIP)</b>\nEveryone currently waiting or being served. Rising WIP often signals congestion.\n\n" +
-            "<b>Queues and utilization</b>\nComplete <b>Queue Analytics</b> research to open these metrics. They show how long lines are and how busy stations and workers are. Use the numbers to decide where extra labor or equipment belongs.\n\n" +
-            "<b>Average wait time</b>\nHow long customers wait before service. <b>Throughput</b> is completed orders per minute.\n\n" +
-            "<b>Pickup Station stock</b>\nFinished products waiting for customers. Too little creates shortages; too much risks waste.\n\n" +
-            "<b>Waste and revenue</b>\nWaste counts expired products. Revenue counts money earned from completed sales.\n\n" +
-            "<b>Order completion time</b>\nThe full cycle time from order creation to pickup.\n\n" +
-            "<color=#73BFF2><b>ISE idea:</b></color> Use several measures together. Improving one number can hurt another, such as raising inventory to reduce waits while increasing waste.";
+        title = "Store Stats";
+        guidebookChapter = "Reports";
+        body = FormatHelp(
+            "Store Stats brings together queues, utilization, wait, Pickup stock, waste, and revenue.",
+            "Find where work is accumulating, then compare that queue with the station or worker serving it.",
+            "Work in process and waiting time help reveal constraints across the whole system.");
     }
 }

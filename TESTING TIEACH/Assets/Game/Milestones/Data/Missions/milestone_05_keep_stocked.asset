@@ -14,8 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_05_keep_stocked
   title: Prevent stockouts
-  description: Replenish ingredients before they run out so production can continue throughout the shift.
+  description: Replenish ingredients before they run out so production can continue
+    throughout the shift.
   completionEventId: ingredients_ordered
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

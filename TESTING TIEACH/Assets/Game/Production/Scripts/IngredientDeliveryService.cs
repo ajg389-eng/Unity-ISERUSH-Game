@@ -42,6 +42,56 @@ public class IngredientDeliveryService : MonoBehaviour
         }
     }
 
+    public void CaptureSaveState(List<KitchenSaveSnapshot.IngredientShipment> destination)
+    {
+        if (destination == null) return;
+        destination.Clear();
+        foreach (Shipment shipment in shipments)
+        {
+            if (shipment == null || shipment.packs.Count == 0) continue;
+            var saved = new KitchenSaveSnapshot.IngredientShipment
+            {
+                remaining = Mathf.Max(0f, shipment.remaining),
+                duration = Mathf.Max(0f, shipment.duration)
+            };
+            foreach (Pack pack in shipment.packs)
+                if (pack != null && pack.item != null && pack.amount > 0)
+                    saved.packs.Add(new KitchenSaveSnapshot.IngredientShipmentPack
+                    {
+                        item = pack.item.name,
+                        amount = pack.amount
+                    });
+            if (saved.packs.Count > 0) destination.Add(saved);
+        }
+    }
+
+    public void RestoreSaveState(List<KitchenSaveSnapshot.IngredientShipment> savedShipments,
+        IReadOnlyDictionary<string, ItemDefinition> definitions)
+    {
+        for (int i = shipments.Count - 1; i >= 0; i--)
+            CancelShipment(i);
+        if (savedShipments == null || definitions == null) return;
+
+        foreach (KitchenSaveSnapshot.IngredientShipment saved in savedShipments)
+        {
+            if (saved == null || saved.packs == null) continue;
+            var shipment = new Shipment
+            {
+                remaining = Mathf.Max(0f, saved.remaining),
+                duration = Mathf.Max(0f, saved.duration),
+                dispatched = false
+            };
+            foreach (KitchenSaveSnapshot.IngredientShipmentPack savedPack in saved.packs)
+            {
+                if (savedPack == null || string.IsNullOrEmpty(savedPack.item) || savedPack.amount <= 0
+                    || !definitions.TryGetValue(savedPack.item, out ItemDefinition item)
+                    || item == null) continue;
+                shipment.packs.Add(new Pack { item = item, amount = savedPack.amount });
+            }
+            if (shipment.packs.Count > 0) shipments.Add(shipment);
+        }
+    }
+
     public float NextDeliveryRemaining
     {
         get

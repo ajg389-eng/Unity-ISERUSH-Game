@@ -1,5 +1,5 @@
 /// <summary>
-/// Static copy for the in-game guidebook. Two pages are shown at a time.
+/// Concise reference copy for the in-game guidebook. Two pages are shown at a time.
 /// </summary>
 public static class GuidebookPages
 {
@@ -20,159 +20,140 @@ public static class GuidebookPages
     public static readonly Page[] All =
     {
         new Page(
-            "Guidebook",
-            "Welcome",
-            "This book is a quick field guide for running your kitchen.\n\n" +
-            "Use the arrows (or A and D) to turn the page. You always see two pages at once, like a real book.\n\n" +
-            "A first-run tutorial walks you through buying stations, stocking food, hiring, and building a flow. After that, this book is the reference if you forget a screen.\n\n" +
-            "Open it from the pause menu (Esc). The game stays paused while you read."),
+            "Start Here",
+            "Find the right help",
+            "<b>Ask Gus</b> explains the management tab you have open and suggests one next step. Use his <b>Read Guidebook</b> button to jump to the related chapter.\n\n" +
+            "The <b>Guidebook</b> is the reference for rules, rates, and examples. Open it with the HUD information icon. Use the chapter tabs, page arrows, or A and D to browse.\n\n" +
+            "The <b>tutorial</b> teaches the first actions in order. Return to the Guidebook when you need a rule or want to understand the ISE idea behind it."),
         new Page(
-            "Guidebook",
-            "What's inside",
-            "<b>Inventory</b> (top-left, or press Q)\n" +
-            "• Stations — buy and place kitchen equipment\n" +
-            "• Floor — expand the kitchen grid\n\n" +
-            "<b>Management</b> (top-left, or press E)\n" +
-            "• Workers — hire staff, create and edit flows, assign people to those flows\n" +
-            "• Food — choose what to sell and buy ingredient packs\n" +
-            "• Customers — live demand, throughput, and visit trends\n\n" +
-            "<b>Side panel</b>\n" +
-            "• Tasks — current milestone missions\n" +
-            "• Progression — tutorial chapter, then numbered milestones and quizzes\n\n" +
-            "Inventory changes the layout. Management runs the layout. You need both."),
+            "Start Here",
+            "Plan your first shift",
+            "1. Place the stations needed for one menu item.\n" +
+            "2. Enable that item and buy its ingredients in Supply.\n" +
+            "3. Create a flow from its input stations through production to Pickup.\n" +
+            "4. Hire a worker and assign them to the flow.\n" +
+            "5. Set station target rates to match expected demand.\n" +
+            "6. Run the shift and compare item demand with completed output.\n\n" +
+            "Start with one product, then expand when you can see what is limiting it. Tasks and milestones introduce systems in stages and unlock research."),
+
         new Page(
-            "Inventory",
-            "Inventory",
-            "Open <b>Inventory</b> from the top-left tabs. While it is open you are in Build mode: click the grid to place equipment instead of serving.\n\n" +
-            "Two tabs:\n" +
-            "• <b>Stations</b> — catalog of equipment\n" +
-            "• <b>Floor</b> — spend money to grow the walkable kitchen\n\n" +
-            "The <b>first copy of each station type is free</b>. Complete <b>Expanded Menu & Stations</b> research to buy extra copies, which cost cash.\n\n" +
-            "Close Inventory when you are done so you return to Play."),
+            "Build",
+            "Place stations",
+            "Open <b>Inventory</b> and choose a station. After purchase, move its preview over the kitchen grid and place it on a valid highlighted footprint. Occupied or blocked tiles are invalid.\n\n" +
+            "The first copy of each station type is free. The station card shows your owned count, current limit, and cost for another copy. Double-click a placed station to move it.\n\n" +
+            "Leave clear walking space between stations. Workers need a usable route to each flow node."),
         new Page(
-            "Inventory",
-            "Stations",
-            "The Stations tab is the catalog: freezer, grill, fryer, shake station, assembly, Pickup Station, pantry, and more. The register is already in the lobby.\n\n" +
-            "<b>How to place</b>\n" +
-            "1. Buy the card (first copy is FREE).\n" +
-            "2. Click the card so a ghost follows the mouse.\n" +
-            "3. Click an empty kitchen tile to drop it. Rotate if the ghost shows a facing.\n" +
-            "Double-click a placed station, counter item, or door to pick it up and move it.\n\n" +
-            "Place in the kitchen, not the checkered lobby. Leave aisles so workers can walk.\n\n" +
-            "A station with no flow and no worker will sit idle even if it looks perfect."),
+            "Build",
+            "Plan the kitchen layout",
+            "Place related stations close enough to keep worker routes short, while leaving clear aisles and room to serve customers. A larger floor gives more placement space, but can also increase travel.\n\n" +
+            "A useful layout makes the work easy to follow: ingredients enter the process, stations transform them, and finished items reach Pickup. Avoid making workers cross busy paths when you can arrange a direct route.\n\n" +
+            "<b>ISE connection:</b> Facility layout affects travel, handling effort, congestion, and the capacity of the whole system."),
+
         new Page(
-            "Inventory",
-            "Floor",
-            "The Floor tab grows the kitchen grid.\n\n" +
-            "Expand when stations no longer fit or queues block walkways. The button shows current size and the next size. If it says the floor is maxed, you cannot grow further.\n\n" +
-            "Extra floor does nothing by itself. Fill it with a clearer path from prep to the Pickup Station."),
+            "Production",
+            "Recipe rates",
+            "Each production cycle creates one output item. The recipe defines the station's base rate, and the target control sets its planned output up to <b>100%</b> of that rate.\n\n" +
+            "At <b>15 items/min</b>, a station makes one item every <b>4 seconds</b> (60 / 15). At <b>30 items/min</b>, it makes one every <b>2 seconds</b>.\n\n" +
+            "A target is a pace, not a guarantee. Missing inputs, full output slots, or a blocked route can keep actual production below target."),
         new Page(
-            "Kitchen",
-            "What each station does",
-            "<b>Register</b> — customers line up and order here.\n" +
-            "<b>Freezer</b> — raw burger patties pulled from kitchen stock.\n" +
-            "<b>Grill</b> — cooks those patties.\n" +
-            "<b>Cutting Station</b> — supports future recipes that need prepared ingredients.\n" +
-            "<b>Fryer</b> cooks potato slices from a Cutting Station into fries.\n" +
-            "<b>Assembly</b> — combines two recipe inputs into one finished item. The Burger recipe uses a cooked patty and bun.\n" +
-            "<b>Pickup Station</b> holds any finished product until pickup, including food, shakes, and future menu items. Products can expire if they sit too long.\n" +
-            "<b>Pantry</b> — supplies burger ingredients and raw potatoes for fries.\n\n" +
-            "Burger patties run freezer > grill > assembly > Pickup Station while a pantry feeder supplies buns to assembly in parallel. Fries run pantry > cutting > fryer > Pickup Station."),
+            "Production",
+            "Balance recipe inputs",
+            "A recipe can run only as fast as its required inputs arrive. Compare the total supply rate for each input with the rate the next station consumes.\n\n" +
+            "For example, two grills supplying cooked patties at 10/min and 5/min can feed an assembly station targeting 15 burgers/min, if the bun branch also supplies 15/min. The 5/min grill is not the whole line's limit because the two grill outputs combine.\n\n" +
+            "Use parallel stations to add capacity, then check that every required input branch keeps pace."),
+
         new Page(
-            "Management",
-            "Management",
-            "Open <b>Management</b> from the top-left tabs or press <b>E</b>. Time pauses so you can think, but you can still click the kitchen.\n\n" +
-            "Tabs:\n" +
-            "• <b>Workers</b> — hire, create/edit flows, assign people\n" +
-            "• <b>Food</b> — menu toggles and ingredient packs\n" +
-            "• <b>Customers</b> — visits, live demand, throughput, and outstanding orders\n\n" +
-            "Clicking a station in Manage is for inspecting that machine (rates, recipe, Pickup Station inventory). Staffing and delivery paths are owned by <b>flows</b> on the Workers tab — not by a per-station Assign Worker / Assign Output panel.\n\n" +
-            "Inventory and Management cannot stay open together. Closing Management returns you to Play."),
-        new Page(
-            "Management",
-            "Hire workers",
-            "The Workers tab is where you hire. The <b>first hire is free</b>. You can hire up to <b>3 workers</b> at first. Complete <b>Fourth Worker</b> research to raise the limit by one, then <b>Expert Workforce</b> research to raise it further. Later hires cost cash.\n\n" +
-            "Hiring alone does nothing. After you hire:\n" +
-            "1. Create (or select) a flow.\n" +
-            "2. On that worker's card, click <b>Assign to Current Flow</b>.\n\n" +
-            "One worker can cover up to <b>three</b> stations. Unassigned workers stand idle. Overloaded workers bounce between too many jobs and become the bottleneck.\n\n" +
-            "Undo under the list can reverse a hire if you clicked too soon."),
-        new Page(
-            "Management",
+            "Workers",
             "Create a flow",
-            "A <b>flow</b> is a network of station nodes showing how work can move through the kitchen.\n\n" +
-            "1. Open Management → <b>Workers</b>.\n" +
-            "2. Click <b>Create Flow</b>. The panel hides so you can see the kitchen.\n" +
-            "3. Press on a station, drag to the next station, and release to create a path.\n" +
-            "4. Drag from the same station to another destination to split the flow. Drag onto an existing node to merge paths. Click selects a node and Ctrl-click removes it.\n" +
-            "5. Confirm when the graph looks right. Esc cancels a new capture.\n\n" +
-            "Branches let one flow contain burgers, fries, shakes, and ingredient-supply paths. Jobs choose the branch matching their next recipe step."),
+            "A flow connects the stations that move or transform items. Create one from the Workers tab, select stations in work order, and finish at the Pickup Station for finished products.\n\n" +
+            "Add branches when a recipe needs parallel inputs, such as a pantry feeding buns to assembly while a grill supplies cooked patties. Split or merge routes where the work actually separates or joins.\n\n" +
+            "Check that every station node is reachable and connected to the right part of the recipe."),
         new Page(
-            "Management",
-            "Edit and assign",
-            "<b>Edit Flow</b> — select a flow chip, then Edit Flow. Drag from one station to another to add a path. Drag repeatedly from one node to split the route, or drag onto an existing node to merge paths. Click selects a node, Ctrl-click removes it, and Esc restores the previous graph.\n\n" +
-            "<b>Assign to Current Flow</b> — select the flow, then use that button on a worker card. The name appears on the flow. Click the name chip to unassign. Complete <b>Multi-Worker Flows</b> research to assign a second worker to the same line.\n\n" +
-            "Without at least one worker on a flow, that line will not cook — even if every station is placed and stocked."),
+            "Workers",
+            "Assign and plan transport",
+            "Hire a worker, then assign their card to the flow that needs labor. Workers carry up to <b>4 items per trip</b>. Training raises their transport pace through <b>60, 80, 100, and 120 items/min</b>.\n\n" +
+            "Travel and station interaction still take time. Keep routes short and clear, and use the selected flow's capacity information to see whether worker coverage can support its station workload.\n\n" +
+            "If the line falls short, check reachability, travel distance, and the specific input or output station before adding more workers."),
+
         new Page(
-            "Management",
-            "Food",
-            "The Food tab (called Ingredients in the tutorial) shows kitchen stock and lets you buy packs with cash. Toggle which menu items new customers may order.\n\n" +
-            "Stations cannot cook what you do not have. If a flow looks assigned but nothing moves, check this list before you rebuild the layout.\n\n" +
-            "Order ahead for the steady customer demand so the freezer and fryer do not starve. Huge unused piles are wasted money, the same idea as Pickup Station waste earlier in the chain.\n\n" +
-            "Undo works here if you ordered the wrong pack."),
+            "Supply",
+            "Stock ingredients",
+            "The menu controls which items customers can order. The Supply tab shows current stock, incoming deliveries, pack sizes, and prices. Buy ingredients used by enabled menu items. A normal shipment takes <b>1 minute</b> to arrive. Express Ordering begins delivery immediately and adds a <b>$200 fee</b>.\n\n" +
+            "Plan stock to cover use during the delivery delay. Check incoming quantities before ordering again so you do not spend cash on stock already on the way.\n\n" +
+            "<b>ISE connection:</b> Inventory protects production from shortages, while excess stock ties up cash."),
         new Page(
-            "Management",
-            "Customers",
-            "The Customers tab is a live report of demand and service. Use it when lines form or production falls behind.\n\n" +
-            "• <b>In store now</b> — customers currently inside the system. This is customer work-in-process, or WIP.\n" +
-            "• <b>Visited today</b> — everyone who entered during the shift.\n" +
-            "• <b>Walked out</b> — customers who left without completing service.\n" +
-            "• <b>Visit trend</b> — actual arrivals by hour, which reveals peak periods.\n" +
-            "• <b>Live demand and throughput</b> — exact product demand and completed output over the last 60 simulation seconds."),
-        new Page(
-            "Management",
-            "Reading demand",
-            "Each product shows its ready stock, items currently in production, shortfall, orders per minute, and completed items per minute. These are measured values, not forecasts.\n\n" +
-            "If orders per minute stay above completions, increase capacity on that product's flow or shorten its route. If ready stock stays high while orders are low, reduce production to avoid waste.\n\n" +
-            "If workers are idle while shortfall rises, check the flow order, ingredient stock, and station availability before hiring more people."),
+            "Supply",
+            "Automatic ordering",
+            "Automatic Ordering research adds a target for each ingredient. The game places a normal order when available stock plus incoming stock falls below that target.\n\n" +
+            "Choose targets that cover expected use during replenishment. Larger targets reduce the chance of a shortage, but spend cash earlier and can leave extra stock. Turn auto ordering off for ingredients you no longer need.\n\n" +
+            "Check the target and incoming stock after changing your menu or production rates."),
+
         new Page(
             "Service",
-            "Customers",
-            "Customers arrive by <b>car</b>, park in an open stall, and walk through a placed door to queue at the <b>register</b>. The car leaves once that customer is done. After they order they wait at the <b>Pickup Station</b> for their completed items.\n\n" +
-            "They only have so much patience in line. If they wait too long they leave and you lose the sale.\n\n" +
-            "Customers arrive at evenly spaced intervals. Each enabled menu item has a fixed demand rate based on its assembler recipe output, so you can plan production before the shift starts.\n\n" +
-            "A shift runs on the clock at the top of the screen (pause / play / fast-forward). Demand stays consistent through the shift. When the day ends you get a summary: revenue, walkouts, waste, and wait times. Then the next day starts."),
+            "Demand and customer queues",
+            "Scheduled item demand uses five-item/min steps, starts from the product recipe's output at 100%, and stays steady through the shift. Customers arrive at the rate needed to express that demand.\n\n" +
+            "They first queue at the <b>register</b>. Their patience timer starts after they order, then they wait in the <b>Pickup Station</b> queue for every item in that order.\n\n" +
+            "Analytics separates customer orders from product units. One order can contain several items. Use customer order rates to understand service and item rates to plan production.\n\n" +
+            "If the register line grows, check ordering capacity. If ordered customers wait at Pickup, compare ready food with the items their orders need."),
         new Page(
-            "Progress",
-            "Tasks and milestones",
-            "The side panel has <b>Tasks</b> (current missions) and <b>Progression</b> (the chapter list).\n\n" +
-            "Progression stays locked until you finish or skip the first-run kitchen tutorial.\n\n" +
-            "<b>Tutorial: Restaurant Basics</b> completes on its own when its work is done — there is no quiz on that chapter.\n\n" +
-            "Later milestones still work the same way: finish every task, then pass the quiz (every answer correct) to advance the chapter. The new chapter makes more research projects available. Completing a research project grants its listed unlocks.\n\n" +
-            "For example, Milestone 2 makes research available for extra station copies, a fourth hire, a second worker on a flow, express ordering, and queue analytics. Those features activate when their research is completed."),
+            "Service",
+            "Pickup and freshness",
+            "The Pickup Station holds finished items for customer collection. It has limited slots, so clear space is needed for new output. Customers wait there after ordering until their full order is ready.\n\n" +
+            "Freshness changes the sale value of an item over time: up to <b>8 seconds</b> earns <b>+50%</b>, at <b>28 seconds</b> it returns to base value, and at <b>56 seconds</b> it reaches <b>-50%</b>. Items remain available until collected or discarded.\n\n" +
+            "Match production to demand so food is ready when needed without sitting at Pickup too long."),
+
         new Page(
-            "Guide",
-            "A good first shift",
-            "1. Inventory → Stations: place a freezer, grill, fryer, shake station, assembly station, Pickup Station, and pantries. First copy of each is free.\n" +
-            "2. Inventory → Floor: expand if you have no walking room.\n" +
-            "3. Management → Food: buy raw ingredients, including milk and empty cups for shakes.\n" +
-            "4. Management → Workers: hire at least one person (first hire free).\n" +
-            "5. Create Flow and click stations in order toward the Pickup Station.\n" +
-            "6. Assign that worker to the flow.\n" +
-            "7. Close Management and serve. When the line grows, open Customers and fix the slowest step — do not buy everything at once."),
+            "Reports",
+            "Read item analytics",
+            "In the by-item section, compare these rates: <b>Target / Min</b> is scheduled demand, <b>Items Ordered / Min</b> is accepted customer demand, and <b>Completed / Min</b> is finished output.\n\n" +
+            "Open Demand shows requests still waiting to be accepted. Ready and Cooking are current item counts. Use the same product row when comparing demand with production.\n\n" +
+            "A sustained gap between demand and completed output means customers may wait or leave. A large output surplus can build stock and increase waste."),
         new Page(
-            "Guide",
-            "Remember",
-            "Inventory builds the kitchen. Management runs it with <b>flows</b>. The Customers tab tells you if the plan is working.\n\n" +
-            "Place → Stock → Hire → Create flow → Assign workers → Watch the numbers.\n\n" +
-            "Come back to this book whenever a screen feels unclear. The tabs in the game match the chapters here."),
+            "Reports",
+            "Understand the shift grade",
+            "The end-of-day grade combines five outcomes: orders served, revenue, service rate, average wait, and food waste. The summary shows points for each category and an operations diagnosis.\n\n" +
+            "Use the lowest scoring category to choose what to improve next. For example, reduce waits by finding where queues form, or reduce waste by bringing production closer to demand.\n\n" +
+            "Change one part of the system, then compare the next shift's measures."),
+
         new Page(
-            "Guide",
-            "Common stuck points",
-            "• <b>Nothing cooks</b> — no flow, no worker on the flow, or Food stock is empty.\n" +
-            "• <b>Bought a station but cannot click Next in the tutorial</b> — it must be placed on the floor, not only sitting in inventory.\n" +
-            "• <b>Customers order but never receive items</b> — the flow does not end at the Pickup Station, or it is full of the wrong products.\n" +
-            "• <b>Cannot open Progression</b> — finish the first-run tutorial first.\n" +
-            "• <b>Tight on cash</b> — first station of each type and the first hire are free; research unlocks extra station copies and a fourth hire."),
+            "ISE Practice",
+            "Match production to demand",
+            "<b>Takt time</b> is the pace needed to meet demand: available seconds divided by required items. At 15 items/min, the line needs one item every 4 seconds.\n\n" +
+            "Set the finished item's target, then check that recipe inputs and worker transport support that pace. If demand is 15/min, two parallel sources producing 10/min and 5/min can provide the combined 15/min input.\n\n" +
+            "Use the Analytics screen to compare the plan with actual completed items. Avoid making much more than customers request."),
+        new Page(
+            "ISE Practice",
+            "Find bottlenecks and queues",
+            "A bottleneck is a constraint that limits completed output. It may be a station, missing ingredient, worker coverage, travel route, or full Pickup Station. Parallel stations can combine capacity, so do not identify the bottleneck by looking only for the lowest individual rate.\n\n" +
+            "Work in process (WIP) is work waiting or being processed. A growing register queue means customers are waiting to order. A growing Pickup queue means ordered work is waiting for finished items.\n\n" +
+            "Follow the queue upstream to find the constrained step, make one change, and measure again."),
+        new Page(
+            "ISE Practice",
+            "Human factors and work design",
+            "Work design considers how people interact with tasks, tools, and space. In the kitchen, clear routes, readable station placement, enough aisle space, and a sensible task sequence help workers move items consistently.\n\n" +
+            "Reduce unnecessary walking and backtracking. Keep related tasks close, make flow direction easy to understand, and avoid placing equipment where it blocks another station's access.\n\n" +
+            "A good design supports both capacity and reliable work. Watch worker movement and queues to see whether the layout is helping."),
+        new Page(
+            "ISE Practice",
+            "Improve the system",
+            "The restaurant is a connected system of people, equipment, materials, information, and customers. A local change can affect other parts of the line. For example, adding a station can increase output but also add travel, inventory, and handling.\n\n" +
+            "Use a simple improvement cycle: define the shortfall, inspect related measures, change one cause, and compare the result. Check both service and waste so an improvement in one area does not create a new problem elsewhere."),
+
+        new Page(
+            "Troubleshooting",
+            "A station is not producing",
+            "Check these in order:\n" +
+            "1. Is the menu item enabled and its recipe available?\n" +
+            "2. Does the station have the required recipe and a target above zero?\n" +
+            "3. Is there enough ingredient stock and space for input or output?\n" +
+            "4. Is the station connected to the correct flow and assigned worker?\n" +
+            "5. Can the worker reach the station and the next node?\n\n" +
+            "Inspect the first missing input or blocked transfer. Rebuilding the whole flow can hide the original cause."),
+        new Page(
+            "Troubleshooting",
+            "An order is waiting",
+            "If customers wait at the register, inspect register service and the line ahead. If they have ordered and wait at Pickup, check every product in their order, not just one.\n\n" +
+            "Confirm the required recipe is enabled, ingredients are stocked, its production route reaches Pickup, and Pickup has free slots. For a worker who is returning to the flow start, check that the first node is reachable from their work area and the route has connected nodes.\n\n" +
+            "Use Analytics for demand and item output, then the Workers tab for flow coverage and route details."),
     };
 }

@@ -743,18 +743,15 @@ public static class WorkerFlowAssigner
         for (int i = 0; i < activeWorkers; i++)
             result.estimatedCycleSeconds = Mathf.Max(result.estimatedCycleSeconds,
                 WorkflowAnalysis.GetEstimatedCycleSeconds(flow.workers[i]));
-        float stationBottleneck = WorkflowAnalysis.GetFlowBottleneckOutputPerMinute(flow);
-        result.estimatedThroughputPerMinute = stationBottleneck > 0.01f
-            ? stationBottleneck
+        WorkflowAnalysis.FlowLayoutMetrics layout = WorkflowAnalysis.AnalyzeFlowLayout(flow);
+        result.estimatedThroughputPerMinute = layout.effectiveOutputPerMinute > 0.01f
+            ? layout.effectiveOutputPerMinute
             : (result.estimatedCycleSeconds > 0f ? 60f / result.estimatedCycleSeconds : 0f);
-        if (stationBottleneck > 0.01f)
-            result.estimatedCycleSeconds = 60f / stationBottleneck;
+        if (result.estimatedThroughputPerMinute > 0.01f)
+            result.estimatedCycleSeconds = 60f / result.estimatedThroughputPerMinute;
         result.handoffs = Mathf.Max(0, activeWorkers - 1);
-        GameObject slowest = workStations[0];
-        foreach (GameObject station in workStations)
-            if (WorkflowAnalysis.GetStationWorkSeconds(station) > WorkflowAnalysis.GetStationWorkSeconds(slowest))
-                slowest = station;
-        result.bottleneck = StationNode.EnsureOn(slowest).DisplayName;
+        result.bottleneck = !string.IsNullOrWhiteSpace(layout.bottleneck)
+            ? layout.bottleneck : "No measured bottleneck";
         result.success = true;
         result.message = "Every worker can operate every station in the flow.";
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
@@ -1489,7 +1486,8 @@ public static class WorkflowAnalysis
             result.activeWorkerCount = forecast.Workers;
             result.hasAssignedWorker = forecast.Workers > 0;
             result.effectiveOutputPerMinute = forecast.PlannedPerMinute;
-            result.stationCapacityPerMinute = forecast.PlannedPerMinute;
+            result.stationCapacityPerMinute = forecast.TargetPerMinute;
+            result.totalStationOutputPerMinute = forecast.TargetPerMinute;
             result.effectiveCycleSeconds = forecast.PlannedPerMinute > 0f ? 60f / forecast.PlannedPerMinute : 0f;
             result.actualOutputPerMinute = scheduledManager.GetFlowCompletedOutputPerMinute(flow);
             result.minimumCarryCapacity = result.maximumCarryCapacity = 4;

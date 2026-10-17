@@ -24,20 +24,23 @@ public sealed class ResearchProgressManager : MonoBehaviour
     public static ResearchProgressManager Instance { get; private set; }
     public static readonly IReadOnlyList<Definition> Definitions = new List<Definition>
     {
-        new Definition("production_basics", "Restaurant Basics", "Unlock burgers and fries", 0, 1, 100, 30, new Vector2(0, 390)),
+        new Definition("production_basics", "Restaurant Basics", "<b>Unlocks</b><br>• Hamburger", 0, 1, 100, 30, new Vector2(0, 390)),
         new Definition("station_capacity_1", "Station Capacity I", "Place up to 2 of each station", 0, 2, 250, 60, new Vector2(270, 145), "production_basics"),
         new Definition("station_capacity_2", "Station Capacity II", "Place up to 3 of each station", 0, 3, 500, 90, new Vector2(270, -5), "station_capacity_1"),
         new Definition("station_capacity_3", "Station Capacity III", "Place up to 4 of each station", 0, 4, 800, 120, new Vector2(270, -155), "station_capacity_2"),
-        new Definition("recipe_upgrades_1", "Recipe Upgrades I", "<b>Unlocks</b><br>• Bacon Burger<br>• Basic Shake", 0, 2, 400, 75, new Vector2(-270, 145), "production_basics"),
-        new Definition("recipe_upgrades_2", "Recipe Upgrades II", "<b>Unlocks</b><br>• Cheese Bacon Burger<br>• Cheese Fries<br>• Whipped Cream Shake", 0, 3, 750, 120, new Vector2(-270, -5), "recipe_upgrades_1"),
-        new Definition("recipe_upgrades_3", "Recipe Upgrades III", "<b>Unlocks</b><br>• Premium Burgers<br>• Bacon Fries<br>• Sprinkle Shake", 0, 4, 1000, 150, new Vector2(-270, -155), "recipe_upgrades_2"),
+        new Definition("recipe_upgrades_1", "Recipe Upgrades I", "<b>Unlocks</b><br>• Fries<br>• Shake", 0, 1, 400, 75, new Vector2(-270, 390), "production_basics"),
+        new Definition("recipe_upgrades_2", "Recipe Upgrades II", "<b>Unlocks</b><br>• Cheeseburger<br>• Cheese Fries<br>• Whipped Cream Shake", 0, 2, 750, 120, new Vector2(-270, 145), "recipe_upgrades_1"),
+        new Definition("recipe_upgrades_3", "Recipe Upgrades III", "<b>Unlocks</b><br>• Bacon Cheeseburger<br>• Classic Burger", 0, 3, 1000, 150, new Vector2(-270, -5), "recipe_upgrades_2"),
+        new Definition("recipe_upgrades_4", "Recipe Upgrades IV", "<b>Unlocks</b><br>• Cheese Bacon Fries<br>• Whipped Cream Sprinkle Shake", 0, 4, 1250, 180, new Vector2(-270, -155), "recipe_upgrades_3"),
+        new Definition("recipe_upgrades_5", "Recipe Upgrades V", "<b>Unlocks</b><br>• Super Burger", 0, 5, 1500, 210, new Vector2(-270, -305), "recipe_upgrades_4"),
         new Definition("mk2_stations", "MK2 Stations", "Improve station speed", 0, 3, 500, 90, new Vector2(0, -305), "recipe_upgrades_1"),
-        new Definition("industrial_kitchen", "Industrial Kitchen", "Place up to 5 of each station", 0, 4, 1200, 240, new Vector2(0, -755), "station_capacity_3"),
+        new Definition("industrial_kitchen", "Industrial Kitchen", "Place up to 5 of each station", 0, 5, 1200, 240, new Vector2(0, -755), "station_capacity_3"),
+        new Definition("expanded_capacity", "Integrated Capacity", "Place up to 6 of each station", 0, 6, 1600, 300, new Vector2(0, -905), "industrial_kitchen"),
 
         new Definition("core_workforce", "Core Workforce", "Hire and assign workers", 1, 1, 100, 30, new Vector2(0, 390)),
         new Definition("fourth_worker", "Fourth Worker", "Hire up to 4 workers", 1, 2, 200, 60, new Vector2(-270, 145), "core_workforce"),
-        new Definition("fifth_worker", "Fifth Worker", "Hire up to 5 workers", 1, 3, 400, 75, new Vector2(-270, -5), "fourth_worker"),
-        new Definition("sixth_worker", "Sixth Worker", "Hire up to 6 workers", 1, 4, 700, 120, new Vector2(-270, -155), "fifth_worker"),
+        new Definition("fifth_worker", "Fifth Worker", "Hire up to 5 workers", 1, 5, 400, 75, new Vector2(-270, -5), "fourth_worker"),
+        new Definition("sixth_worker", "Sixth Worker", "Hire up to 6 workers", 1, 6, 700, 120, new Vector2(-270, -155), "fifth_worker"),
         new Definition("multi_worker_flows", "Multi-Worker Flows", "Assign up to 2 workers per flow", 1, 2, 300, 60, new Vector2(270, 145), "core_workforce"),
         new Definition("multi_worker_flows_2", "Multi-Worker Flows II", "Assign up to 3 workers per flow", 1, 3, 500, 90, new Vector2(270, -5), "multi_worker_flows"),
         new Definition("multi_worker_flows_3", "Multi-Worker Flows III", "Assign up to 4 workers per flow", 1, 4, 800, 120, new Vector2(270, -155), "multi_worker_flows_2"),
@@ -46,8 +49,8 @@ public sealed class ResearchProgressManager : MonoBehaviour
         new Definition("carry_training_3", "Transport Training III", "Unlock worker upgrades up to 120 items/min", 1, 4, 850, 140, new Vector2(-135, -605), "carry_training_2"),
         new Definition("manual_operations", "Manual Operations", "Order and track supplies", 2, 1, 100, 30, new Vector2(0, 390)),
         new Definition("express_ordering", "Express Ordering", "Speed up ingredient orders", 2, 2, 250, 45, new Vector2(-270, 145), "manual_operations"),
-        new Definition("automatic_ordering", "Automatic Ordering", "Restock below target", 2, 4, 700, 120, new Vector2(-270, -115), "express_ordering"),
-        new Definition("smart_operations", "Smart Operations", "Coordinate stock and targets", 2, 4, 1200, 240, new Vector2(0, -380), "automatic_ordering")
+        new Definition("automatic_ordering", "Automatic Ordering", "Restock below target to prevent stockouts", 2, 5, 700, 120, new Vector2(-270, -115), "express_ordering"),
+        new Definition("smart_operations", "Integrated Supply Planning", "Raise automatic restock targets to 8 packs", 2, 6, 1200, 240, new Vector2(0, -380), "automatic_ordering")
     };
 
     readonly HashSet<string> completed = new HashSet<string>();

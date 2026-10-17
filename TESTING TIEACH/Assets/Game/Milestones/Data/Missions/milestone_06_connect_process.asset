@@ -17,5 +17,7 @@ MonoBehaviour:
   description: Assign the worker to a station that supports the process bottleneck.
   completionEventId: worker_assigned
   requiredCount: 1
+  producedItem: {fileID: 0}
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

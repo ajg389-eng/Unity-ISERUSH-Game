@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// One multiple-choice quiz question for a milestone gate.
+/// Legacy milestone quiz data retained for existing project assets.
 /// </summary>
 [Serializable]
 public class QuizQuestion
@@ -18,7 +18,7 @@ public class QuizQuestion
 }
 
 /// <summary>
-/// Quiz that must be fully correct before advancing to the next milestone.
+/// Legacy quiz asset type. Milestone progression no longer reads or displays it.
 /// </summary>
 [CreateAssetMenu(fileName = "QuizDefinition", menuName = "ISE/Quiz Definition")]
 public class QuizDefinition : ScriptableObject

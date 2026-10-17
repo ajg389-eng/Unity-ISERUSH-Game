@@ -13,8 +13,18 @@ MonoBehaviour:
   m_Name: Milestone_milestone_03
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_03
-  displayName: "3"
-  description: Add bacon and shakes, then invest in faster MK2 workstations.
+  displayName: Engineering Economy
+  description: 'Evaluate equipment and process changes by their impact on system
+    output and profit.
+
+
+    Topics: Capital planning, production scheduling, and
+    payback'
+  completionDialogue:
+  - You tested changes against output and profit instead of guessing. That is the
+    point of using data.
+  - Watch the full process after each upgrade. Improving one station can move the
+    bottleneck somewhere else.
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: e5621d6c34624c468ba8caa9bd54a043, type: 2}
@@ -22,5 +32,5 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e85ffb3a5a24494ea67f8ccb7f4a3842, type: 2}
   - {fileID: 11400000, guid: 720b3bc1d4e94236af25b99cfc37e39a, type: 2}
   missionDatabase: {fileID: 0}
-  quiz: {fileID: 11400000, guid: 585ae384468413b4d8a77a404601f5db, type: 2}
+  quiz: {fileID: 0}
   unlocks: []
