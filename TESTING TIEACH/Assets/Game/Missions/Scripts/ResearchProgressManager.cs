@@ -25,17 +25,17 @@ public sealed class ResearchProgressManager : MonoBehaviour
     public static readonly IReadOnlyList<Definition> Definitions = new List<Definition>
     {
         new Definition("production_basics", "Restaurant Basics", "<b>Unlocks</b><br>• Hamburger", 0, 1, 100, 30, new Vector2(0, 390)),
-        new Definition("station_capacity_1", "Station Capacity I", "Place up to 2 of each station", 0, 2, 250, 60, new Vector2(270, 145), "production_basics"),
-        new Definition("station_capacity_2", "Station Capacity II", "Place up to 3 of each station", 0, 3, 500, 90, new Vector2(270, -5), "station_capacity_1"),
-        new Definition("station_capacity_3", "Station Capacity III", "Place up to 4 of each station", 0, 4, 800, 120, new Vector2(270, -155), "station_capacity_2"),
+        new Definition("station_capacity_1", "Capacity Planning", "Estimate the equipment needed to meet a target production rate", 0, 2, 250, 60, new Vector2(270, 145), "production_basics"),
+        new Definition("station_capacity_2", "Bottleneck Analysis", "Identify constraints across stations, workers, and routes", 0, 3, 500, 90, new Vector2(270, -5), "station_capacity_1"),
+        new Definition("station_capacity_3", "Line Balancing", "Balance station rates across parallel recipe branches", 0, 4, 800, 120, new Vector2(270, -155), "station_capacity_2"),
         new Definition("recipe_upgrades_1", "Recipe Upgrades I", "<b>Unlocks</b><br>• Fries<br>• Shake", 0, 1, 400, 75, new Vector2(-270, 390), "production_basics"),
         new Definition("recipe_upgrades_2", "Recipe Upgrades II", "<b>Unlocks</b><br>• Cheeseburger<br>• Cheese Fries<br>• Whipped Cream Shake", 0, 2, 750, 120, new Vector2(-270, 145), "recipe_upgrades_1"),
         new Definition("recipe_upgrades_3", "Recipe Upgrades III", "<b>Unlocks</b><br>• Bacon Cheeseburger<br>• Classic Burger", 0, 3, 1000, 150, new Vector2(-270, -5), "recipe_upgrades_2"),
         new Definition("recipe_upgrades_4", "Recipe Upgrades IV", "<b>Unlocks</b><br>• Cheese Bacon Fries<br>• Whipped Cream Sprinkle Shake", 0, 4, 1250, 180, new Vector2(-270, -155), "recipe_upgrades_3"),
         new Definition("recipe_upgrades_5", "Recipe Upgrades V", "<b>Unlocks</b><br>• Super Burger", 0, 5, 1500, 210, new Vector2(-270, -305), "recipe_upgrades_4"),
         new Definition("mk2_stations", "MK2 Stations", "Improve station speed", 0, 3, 500, 90, new Vector2(0, -305), "recipe_upgrades_1"),
-        new Definition("industrial_kitchen", "Industrial Kitchen", "Place up to 5 of each station", 0, 5, 1200, 240, new Vector2(0, -755), "station_capacity_3"),
-        new Definition("expanded_capacity", "Integrated Capacity", "Place up to 6 of each station", 0, 6, 1600, 300, new Vector2(0, -905), "industrial_kitchen"),
+        new Definition("industrial_kitchen", "Quality and Reliability", "Plan consistent production with quality checks and recovery steps", 0, 5, 1200, 240, new Vector2(0, -755), "station_capacity_3"),
+        new Definition("expanded_capacity", "Systems Integration", "Coordinate production, workers, inventory, and customer demand", 0, 6, 1600, 300, new Vector2(0, -905), "industrial_kitchen"),
 
         new Definition("core_workforce", "Core Workforce", "Hire and assign workers", 1, 1, 100, 30, new Vector2(0, 390)),
         new Definition("fourth_worker", "Fourth Worker", "Hire up to 4 workers", 1, 2, 200, 60, new Vector2(-270, 145), "core_workforce"),

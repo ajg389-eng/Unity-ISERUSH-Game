@@ -3,16 +3,13 @@ using UnityEngine;
 
 public class InventoryManager : MonoBehaviour
 {
+    const float StationPriceIncreasePerAdditionalCopy = 0.20f;
+    const int StationPriceRoundingIncrement = 5;
+
     public List<ItemDefinition> allItems = new List<ItemDefinition>();
 
-    [Header("Station capacity")]
-    [Min(1), Tooltip("Owned copies of each station type after Additional Stations research.")]
-    public int baseStationCapacity = 2;
-    [Min(0), Tooltip("Additional copies granted by Expanded Capacity and Industrial Kitchen research.")]
-    public int capacityPerResearchProject = 1;
-
     private Dictionary<ItemDefinition, int> counts = new Dictionary<ItemDefinition, int>();
-    /// <summary>Total units ever acquired (starting stock + purchases). First of each item is free.</summary>
+    /// <summary>Total units ever acquired (starting stock + purchases).</summary>
     private Dictionary<ItemDefinition, int> acquired = new Dictionary<ItemDefinition, int>();
 
     public MoneyManager money;
@@ -57,42 +54,38 @@ public class InventoryManager : MonoBehaviour
         return total;
     }
 
-    public const int DoorPurchaseCap = 1;
+    public const int UniquePlacementPurchaseCap = 1;
 
-    /// <summary>Total owned capacity for one station type, including completed research bonuses.</summary>
-    public int GetStationCapacity(ItemDefinition item)
+    public bool IsAtUniquePlacementLimit(ItemDefinition item)
     {
-        if (item == null) return 0;
-        if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor
-            || item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall)
-            return DoorPurchaseCap;
-        if (OnboardingTutorial.BlocksProgression)
-            return 1;
-        int capacity = MilestoneFeatures.ExtraEquipmentUnlocked ? Mathf.Max(1, baseStationCapacity) : 1;
-        if (MilestoneFeatures.IsResearchComplete("station_capacity_2"))
-            capacity += capacityPerResearchProject;
-        if (MilestoneFeatures.IsResearchComplete("station_capacity_3"))
-            capacity += capacityPerResearchProject;
-        // Preserve saves made before the station capacity branch was split.
-        if (MilestoneFeatures.IsResearchComplete("expanded_capacity"))
-            capacity += capacityPerResearchProject;
-        if (MilestoneFeatures.IsResearchComplete("industrial_kitchen"))
-            capacity += capacityPerResearchProject;
-        return Mathf.Max(1, capacity);
+        if (item == null) return true;
+
+        // Keep the unique door and customer-wall placement rules. Processing
+        // stations have no quantity cap and are limited by cost and floor space.
+        bool specialPlacement = item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor
+            || item.placementSurface == ItemDefinition.PlacementSurface.CustomerWall;
+        return specialPlacement
+            && GetStationFamilyAcquiredCount(item) >= UniquePlacementPurchaseCap;
     }
 
-    public bool IsAtStationCapacity(ItemDefinition item)
-    {
-        return item == null || GetStationFamilyAcquiredCount(item) >= GetStationCapacity(item);
-    }
-
-    /// <summary>Shop price: first unit of each station/item is free.</summary>
+    /// <summary>
+    /// Shop price: the first station in a family is free. Each additional copy
+    /// increases the base price by 20% of that item's base price per previously
+    /// acquired copy, rounded to the nearest $5. MK1 and MK2 share a family count.
+    /// </summary>
     public int GetPurchasePrice(ItemDefinition item)
     {
         if (item == null) return 0;
-        // The first station in a family is free. Switching to MK2 must not grant
-        // a second free station for the same kind of equipment.
-        return GetStationFamilyAcquiredCount(item) <= 0 ? 0 : Mathf.Max(0, item.price);
+        int familyCount = GetStationFamilyAcquiredCount(item);
+        if (familyCount <= 0) return 0;
+
+        int basePrice = Mathf.Max(0, item.price);
+        if (basePrice == 0) return 0;
+
+        int additionalCopies = Mathf.Max(0, familyCount - 1);
+        float rawPrice = basePrice * (1f + StationPriceIncreasePerAdditionalCopy * additionalCopies);
+        return Mathf.Max(0, Mathf.RoundToInt(rawPrice / StationPriceRoundingIncrement)
+            * StationPriceRoundingIncrement);
     }
 
     public void SelectItem(ItemDefinition item)
@@ -103,7 +96,7 @@ public class InventoryManager : MonoBehaviour
     public bool CanPurchase(ItemDefinition item)
     {
         return item != null && !OnboardingTutorial.IsStationLocked(item)
-            && !IsResearchLocked(item) && !IsAtStationCapacity(item);
+            && !IsResearchLocked(item) && !IsAtUniquePlacementLimit(item);
     }
 
     static bool IsResearchLocked(ItemDefinition item)

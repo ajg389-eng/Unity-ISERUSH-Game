@@ -264,20 +264,20 @@ public class InventoryItemCardUI : MonoBehaviour
         priceText.text = price <= 0 ? "FREE" : "$" + price;
     }
 
-    public void SetOwnedCapacity(int owned, int capacity)
+    public void SetOwnedCount(int owned)
     {
-        capacity = Mathf.Max(1, capacity);
-        bool atCapacity = owned >= capacity;
         var inventory = FindFirstObjectByType<InventoryManager>();
         bool canPlace = boundItem != null && inventory != null && inventory.GetCount(boundItem) > 0;
+        bool atUniquePlacementLimit = boundItem != null && inventory != null
+            && inventory.IsAtUniquePlacementLimit(boundItem);
         if (qtyText != null)
-            qtyText.text = Mathf.Max(0, owned) + "/" + capacity;
+            qtyText.text = Mathf.Max(0, owned).ToString();
         if (buyButton != null)
-            buyButton.interactable = (canPlace || !atCapacity) && !tutorialLocked;
+            buyButton.interactable = (canPlace || !atUniquePlacementLimit) && !tutorialLocked;
         if (priceText != null)
         {
             if (canPlace) priceText.text = "PLACE";
-            else if (atCapacity) priceText.text = "MAX";
+            else if (atUniquePlacementLimit) priceText.text = "MAX";
             else if (inventory != null && boundItem != null) SetPrice(inventory.GetPurchasePrice(boundItem));
         }
     }

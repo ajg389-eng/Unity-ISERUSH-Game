@@ -592,9 +592,7 @@ public class InventoryUI : MonoBehaviour
                 if (bought)
                 {
                     card.SetPrice(inventory.GetPurchasePrice(captured));
-                    card.SetOwnedCapacity(
-                        inventory.GetAcquiredCount(captured),
-                        inventory.GetStationCapacity(captured));
+                    card.SetOwnedCount(inventory.GetAcquiredCount(captured));
                     card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
                         inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
                     Sfx.Play(SfxId.Purchase);
@@ -604,9 +602,7 @@ public class InventoryUI : MonoBehaviour
                     Sfx.Play(SfxId.UiError);
             },
             displayPrice: inventory.GetPurchasePrice(captured));
-        card.SetOwnedCapacity(
-            inventory.GetAcquiredCount(captured),
-            inventory.GetStationCapacity(captured));
+        card.SetOwnedCount(inventory.GetAcquiredCount(captured));
         card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
             inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
         card.SetTutorialLocked(IsMilestoneStationLocked(captured));
@@ -662,8 +658,7 @@ public class InventoryUI : MonoBehaviour
             card.SetUnlockRequirement(lockedMk2Selected
                 ? "Unlock with MK2 Stations research"
                 : null);
-            card.SetOwnedCapacity(inventory.GetStationFamilyAcquiredCount(active),
-                inventory.GetStationCapacity(active));
+            card.SetOwnedCount(inventory.GetStationFamilyAcquiredCount(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
                 inventory.GetCount(active), inventory.GetAcquiredCount(active));
             card.SetTutorialLocked(IsMilestoneStationLocked(active));
@@ -700,16 +695,15 @@ public class InventoryUI : MonoBehaviour
 
         nameText.text = item.itemName;
         int owned = inventory.GetAcquiredCount(item);
-        int capacity = inventory.GetStationCapacity(item);
-        qtyText.text = owned + "/" + capacity;
+        qtyText.text = owned.ToString();
         int price = inventory.GetPurchasePrice(item);
-        bool atCapacity = inventory.IsAtStationCapacity(item);
+        bool atUniquePlacementLimit = inventory.IsAtUniquePlacementLimit(item);
         bool tutorialLocked = IsMilestoneStationLocked(item);
         bool canPlace = inventory.GetCount(item) > 0;
-        priceText.text = tutorialLocked ? "LOCKED" : canPlace ? "PLACE" : atCapacity
+        priceText.text = tutorialLocked ? "LOCKED" : canPlace ? "PLACE" : atUniquePlacementLimit
             ? "MAX"
             : price <= 0 ? "FREE" : "$" + price;
-        buyButton.interactable = !tutorialLocked && (canPlace || !atCapacity);
+        buyButton.interactable = !tutorialLocked && (canPlace || !atUniquePlacementLimit);
         nameButton.interactable = !tutorialLocked;
 
         ItemDefinition captured = item;
@@ -729,15 +723,13 @@ public class InventoryUI : MonoBehaviour
             if (bought)
             {
                 int nextOwned = inventory.GetAcquiredCount(captured);
-                int nextCapacity = inventory.GetStationCapacity(captured);
-                qtyText.text = nextOwned + "/" + nextCapacity;
+                qtyText.text = nextOwned.ToString();
                 int nextPrice = inventory.GetPurchasePrice(captured);
-                bool nowAtCapacity = inventory.IsAtStationCapacity(captured);
+                bool atUniquePlacementLimit = inventory.IsAtUniquePlacementLimit(captured);
                 bool hasUnplaced = inventory.GetCount(captured) > 0;
-                priceText.text = hasUnplaced ? "PLACE" : nowAtCapacity
-                    ? "MAX"
+                priceText.text = hasUnplaced ? "PLACE" : atUniquePlacementLimit ? "MAX"
                     : nextPrice <= 0 ? "FREE" : "$" + nextPrice;
-                buyButton.interactable = hasUnplaced || !nowAtCapacity;
+                buyButton.interactable = hasUnplaced || !atUniquePlacementLimit;
                 Sfx.Play(SfxId.Purchase);
                 BeginItemPlacement(captured);
             }

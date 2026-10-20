@@ -40,7 +40,7 @@ public static class GuidebookPages
             "Build",
             "Place stations",
             "Open <b>Inventory</b> and choose a station. After purchase, move its preview over the kitchen grid and place it on a valid highlighted footprint. Occupied or blocked tiles are invalid.\n\n" +
-            "The first copy of each station type is free. The station card shows your owned count, current limit, and cost for another copy. Double-click a placed station to move it.\n\n" +
+            "The first copy of each station family is free. MK1 and MK2 share that family. Each extra copy adds 20% of its base price to the next cost, rounded to the nearest $5. There is no station quantity cap, so plan around purchase cost and available floor space. Double-click a placed station to move it.\n\n" +
             "Leave clear walking space between stations. Workers need a usable route to each flow node."),
         new Page(
             "Build",

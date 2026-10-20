@@ -52,7 +52,6 @@ public static class MilestoneFeatures
     public static string ResearchTitleForStage(int numberedStage) =>
         ResearchProgressManager.Get(ResearchIdForStage(numberedStage))?.title ?? "Research";
 
-    public static bool ExtraEquipmentUnlocked => Researched("additional_stations") || Researched("station_capacity_1");
     public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
     public static bool ExpertStaffingUnlocked => Researched("sixth_worker");
     public static bool ExtraFlowStaffingUnlocked => Researched("multi_worker_flows");

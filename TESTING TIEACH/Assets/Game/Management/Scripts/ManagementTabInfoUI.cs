@@ -353,7 +353,7 @@ public class ManagementTabInfoUI : MonoBehaviour
             title = "Stations";
             guidebookChapter = "Build";
             body = FormatHelp(
-                "Station cards show what you own, your current limit, and the next purchase cost.",
+                "Station cards show how many you own and the next purchase cost. There is no station quantity cap, so plan around cost and floor space.",
                 "Choose a station, place it on a valid footprint, and leave a clear route between work areas.",
                 "Layout affects worker travel, handling effort, and total system capacity.");
             return;
