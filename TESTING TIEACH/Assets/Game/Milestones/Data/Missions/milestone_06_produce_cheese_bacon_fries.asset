@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
-  m_Name: milestone_02_assign_labor
+  m_Name: milestone_06_produce_cheese_bacon_fries
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_02_assign_labor
-  title: Add cheese fries to the menu
-  description: Configure the Cheese Fries recipe at an Assembly Station.
-  completionEventId: recipe_configured_cheese_fries
-  requiredCount: 1
+  missionId: milestone_06_serve_cheese_bacon_fries
+  title: Serve 100 Cheese Bacon Fries
+  description: Serve 100 Cheese Bacon Fries to customers.
+  completionEventId: menu_item_served_cheese_bacon_fries
+  requiredCount: 100
   producedItem: {fileID: 0}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1

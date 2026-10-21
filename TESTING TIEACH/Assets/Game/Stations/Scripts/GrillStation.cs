@@ -8,15 +8,13 @@ using UnityEngine.Serialization;
 /// </summary>
 public partial class GrillStation : MonoBehaviour, IStationBuffer
 {
-    const int Mk1SlotCapacity = 4;
-    const int Mk2SlotCapacity = 8;
     [Header("Product")]
     [Tooltip("Output this grill produces. Must be chosen in Manage mode.")]
     public ItemDefinition selectedProduct;
 
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Time to cook one item at 100% rate.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 6f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -30,7 +28,9 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
     readonly List<Transform> inputMarkers = new List<Transform>();
     readonly List<Transform> outputMarkers = new List<Transform>();
     readonly List<Transform> slotMarkers = new List<Transform>();
-    int displayedUnits = -1;
+    int displayedWaitingInput = -1;
+    int displayedPattyUnits = -1;
+    int displayedSecondaryInput = -1;
     int displayedCookedOutputUnits = -1;
     ItemDefinition displayedProduct;
     StationProcessProgressIndicator processProgressIndicator;
@@ -57,10 +57,10 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
     public float CookProgressSeconds => cookTimer;
     public float ProcessRemainingSeconds => IsCookingPatty
         ? Mathf.Max(0f, EffectiveProcessTimeSeconds - cookTimer) : 0f;
-    public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
-    public int InputSlotCapacity => SlotCapacity;
-    public int OutputSlotCapacity => SlotCapacity;
+    public int InputSlotCapacity => StationBufferLimits.PerItem;
+    public int OutputSlotCapacity => StationBufferLimits.PerItem;
+    public int VisibleSlotCount { get { EnsureBufferMarkers(); return slotMarkers.Count; } }
 
     void OnEnable()
     {
@@ -68,26 +68,25 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
         StationConfigurationCaution.Ensure(gameObject);
         NormalizeLegacySelection();
         FindBufferMarkers();
-        // Legacy saves could contain a full input buffer and a separate full
-        // output buffer. Collapse them into the shared physical slot pool,
-        // retaining completed food first.
-        cookedOutputUnits = Mathf.Clamp(cookedOutputUnits, 0, SlotCapacity);
-        pattyUnits = Mathf.Clamp(pattyUnits, 0, SlotCapacity - cookedOutputUnits);
-        waitingInputUnits = Mathf.Clamp(waitingInputUnits, 0,
-            SlotCapacity - cookedOutputUnits - pattyUnits);
-        secondaryInputUnits = Mathf.Clamp(secondaryInputUnits, 0,
-            SlotCapacity - cookedOutputUnits - pattyUnits - waitingInputUnits);
+        cookedOutputUnits = Mathf.Clamp(cookedOutputUnits, 0, OutputSlotCapacity);
+        pattyUnits = Mathf.Clamp(pattyUnits, 0, InputSlotCapacity);
+        waitingInputUnits = Mathf.Clamp(waitingInputUnits, 0, InputSlotCapacity);
+        secondaryInputUnits = Mathf.Clamp(secondaryInputUnits, 0, InputSlotCapacity);
         StartNextBatchIfPossible();
         RefreshItemDisplay(force: true);
     }
 
     public int GetInputCount(ItemDefinition item) => IsSelectedSecondaryInput(item)
         ? secondaryInputUnits : IsSelectedInput(item) ? waitingInputUnits : 0;
+    public int GetHeldInputCount(ItemDefinition item) => GetInputCount(item)
+        + (item != null && item == GetSelectedInput() ? pattyUnits : 0);
     public int GetOutputCount(ItemDefinition item) =>
         IsSelectedOutput(item) ? cookedOutputUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && (IsSelectedInput(item) || IsSelectedSecondaryInput(item))
-            && BufferedPattyCount + amount <= SlotCapacity;
+        amount > 0 && (IsSelectedInput(item)
+            ? waitingInputUnits + amount <= InputSlotCapacity
+            : IsSelectedSecondaryInput(item)
+                && secondaryInputUnits + amount <= InputSlotCapacity);
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;
@@ -215,7 +214,7 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
         {
             if (pattyUnits <= 0)
                 StartNextBatchIfPossible();
-            if (pattyUnits <= 0 || cookedOutputUnits >= SlotCapacity) break;
+            if (pattyUnits <= 0 || cookedOutputUnits >= OutputSlotCapacity) break;
 
             float cycleSeconds = EffectiveProcessTimeSeconds;
             if (cycleSeconds <= 0.001f)
@@ -251,7 +250,7 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
             || (SelectedSecondaryInput != null && secondaryInputUnits <= 0)) return;
         // Raw food already occupies its final grill slots. Starting or finishing
         // cooking changes item state without moving it into another buffer.
-        int batch = Mathf.Min(waitingInputUnits, SlotCapacity - cookedOutputUnits);
+        int batch = Mathf.Min(waitingInputUnits, OutputSlotCapacity - cookedOutputUnits);
         if (SelectedSecondaryInput != null) batch = Mathf.Min(batch, secondaryInputUnits);
         if (batch <= 0) return;
         waitingInputUnits -= batch;
@@ -277,9 +276,9 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
         selectedProduct = product;
         NormalizeLegacySelection();
         waitingInputUnits = 0;
-        secondaryInputUnits = Mathf.Clamp(secondaryUnits, 0, SlotCapacity);
+        secondaryInputUnits = Mathf.Clamp(secondaryUnits, 0, InputSlotCapacity);
         cookedOutputUnits = 0;
-        pattyUnits = Mathf.Clamp(units, 0, Mathf.Max(0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity) - secondaryInputUnits));
+        pattyUnits = Mathf.Clamp(units, 0, InputSlotCapacity);
         cookTimer = pattyUnits > 0
             ? Mathf.Clamp(progressSeconds, 0f, EffectiveProcessTimeSeconds)
             : 0f;
@@ -296,7 +295,9 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
 
     void RefreshItemDisplay(bool force)
     {
-        if (!force && displayedUnits == BufferedPattyCount
+        if (!force && displayedWaitingInput == waitingInputUnits
+            && displayedPattyUnits == pattyUnits
+            && displayedSecondaryInput == secondaryInputUnits
             && displayedCookedOutputUnits == cookedOutputUnits
             && displayedProduct == selectedProduct) return;
 
@@ -305,7 +306,9 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "GrillItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
 
-        displayedUnits = BufferedPattyCount;
+        displayedWaitingInput = waitingInputUnits;
+        displayedPattyUnits = pattyUnits;
+        displayedSecondaryInput = secondaryInputUnits;
         displayedCookedOutputUnits = cookedOutputUnits;
         displayedProduct = selectedProduct;
         if (BufferedPattyCount <= 0) return;

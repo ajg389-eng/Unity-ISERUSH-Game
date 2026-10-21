@@ -127,6 +127,70 @@ public class CustomerSpawner : MonoBehaviour
         return order;
     }
 
+    public void RestoreSavedCustomers(IList<CustomerAI.SavedState> savedCustomers,
+        IReadOnlyDictionary<string, ItemDefinition> definitions,
+        IReadOnlyDictionary<string, GameObject> restoredStationsByGuid)
+    {
+        if (savedCustomers == null || customerPrefab == null) return;
+        RefreshPlacedRegisters();
+
+        foreach (CustomerAI.SavedState saved in savedCustomers)
+        {
+            if (saved == null) continue;
+
+            Register restoredRegister = null;
+            if (!string.IsNullOrEmpty(saved.registerStationGuid)
+                && restoredStationsByGuid != null
+                && restoredStationsByGuid.TryGetValue(saved.registerStationGuid, out GameObject station))
+                restoredRegister = station != null ? station.GetComponent<Register>() : null;
+
+            if (!saved.leaving
+                && (restoredRegister == null || !restoredRegister.IsPlacedRegister || !restoredRegister.isEnabled))
+                restoredRegister = FindNearestEnabledRegister(saved.position);
+
+            GameObject customerObject = Instantiate(customerPrefab, saved.position, saved.rotation);
+            CustomerAI customer = customerObject.GetComponent<CustomerAI>();
+            if (customer == null)
+            {
+                Destroy(customerObject);
+                continue;
+            }
+
+            customer.RestoreSaveState(saved, definitions, restoredRegister, grid, exitPath);
+        }
+    }
+
+    public void ResetArrivalScheduleForSaveRestore()
+    {
+        arrivalScheduled = false;
+        scheduledDemandRevision = -1;
+        supplementalOrderIndex = 0;
+        activeDemandBatch = null;
+        pendingDemandBatches.Clear();
+        pendingItemCounts.Clear();
+        pendingScheduledRequestCount = 0;
+        pendingDemandSummary = null;
+        pendingDemandSummaryDirty = true;
+        nextDispatchRetryTime = 0f;
+    }
+
+    Register FindNearestEnabledRegister(Vector3 position)
+    {
+        Register best = null;
+        float bestDistance = float.PositiveInfinity;
+        IReadOnlyList<Register> active = Register.ActiveRegisters;
+        for (int i = 0; i < active.Count; i++)
+        {
+            Register candidate = active[i];
+            if (candidate == null || !candidate.IsPlacedRegister || !candidate.isEnabled) continue;
+            float distance = (candidate.transform.position - position).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            best = candidate;
+            bestDistance = distance;
+        }
+        return best;
+    }
+
     public long PendingScheduledRequestCount => pendingScheduledRequestCount;
 
     /// <summary>Aggregated unsent scheduled demand for production planning. One summary order avoids per-arrival allocations.</summary>

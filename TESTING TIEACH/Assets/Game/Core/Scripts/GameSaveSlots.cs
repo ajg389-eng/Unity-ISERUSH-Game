@@ -114,12 +114,11 @@ public static class GameSaveSlots
                 // Older saves never contained a layout or clock time.
                 if (time != null) time.RestoreDay(info.day);
                 if (money != null) money.SetMoney(info.cash);
-            }
 
-            // Saved layouts and configuration persist, but active production work
-            // never does. Loading begins from the same clean runtime state as the
-            // debug Reset Stations + Workers action.
-            DebugMenu.ResetStationsAndWorkersRuntime(out _, out _);
+                // There is no saved kitchen to restore, so clear any scene state
+                // left over from the previously selected slot.
+                DebugMenu.ResetStationsAndWorkersRuntime(out _, out _);
+            }
         }
         else
         {

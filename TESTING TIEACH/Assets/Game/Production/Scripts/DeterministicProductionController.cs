@@ -53,7 +53,7 @@ public sealed class DeterministicProductionController : IDisposable
     GridManager grid;
     int signature, gridRevision;
     double epoch, nextConfigurationCheck;
-    bool configurationCheck = true, disposed;
+    bool configurationCheck = true, disposed, invalidEventLogged;
     long nextForecastAt = -1;
     long[] plannedTotals;
     float[] targetTotals;
@@ -164,7 +164,6 @@ public sealed class DeterministicProductionController : IDisposable
                     hash = hash * 31 + (selected != null ? selected.GetInstanceID() : 0);
                     if (assembly != null) hash = hash * 31 + (assembly.GetSelectedRecipe() != null ? 1 : 0);
                     if (cutting != null) hash = hash * 31 + (cutting.GetSelectedRecipe() != null ? 1 : 0);
-                    if (pantry != null) hash = hash * 31 + (pantry.secondItem != null ? pantry.secondItem.GetInstanceID() : 0);
                     float seconds = grill != null ? grill.EffectiveProcessTimeSeconds : fryer != null ? fryer.EffectiveProcessTimeSeconds
                         : cutting != null ? cutting.EffectiveProcessTimeSeconds : assembly != null ? assembly.EffectiveProcessTimeSeconds
                         : freezer != null ? freezer.EffectiveMaxOutputPerMinute : pantry != null ? pantry.EffectiveMaxOutputPerMinute
@@ -196,6 +195,7 @@ public sealed class DeterministicProductionController : IDisposable
 
     void Rebuild()
     {
+        invalidEventLogged = false;
         // Keep physical cargo across edits. Unpicked reservations can safely be
         // discarded; already picked items remain on their individual worker.
         var cargo = new Dictionary<KitchenEmployee, (ItemDefinition item, int units, GameObject source)>();
@@ -397,8 +397,6 @@ public sealed class DeterministicProductionController : IDisposable
             var outputs = new List<int>();
             int first = Item(b.Freezer != null ? b.Freezer.selectedItem : b.Pantry.selectedItem);
             if (first >= 0) outputs.Add(first);
-            int second = b.Pantry != null ? Item(b.Pantry.secondItem) : -1;
-            if (second >= 0 && !outputs.Contains(second)) outputs.Add(second);
             n.SourceItems = outputs.ToArray();
         }
         else if (b.Pickup != null)
@@ -416,7 +414,7 @@ public sealed class DeterministicProductionController : IDisposable
                 RecipeGraphNodeDefinition recipe = manager.orderConfig != null
                     ? manager.orderConfig.GetProductionRecipe(StationType.Grill, output) : null;
                 n.OutputItem = Item(output); n.OutputCapacity = b.Grill.OutputSlotCapacity;
-                n.SharedCapacity = b.Grill.SlotCapacity; n.CycleTicks = Cycle(b.Grill.EffectiveProcessTimeSeconds);
+                n.CycleTicks = Cycle(b.Grill.EffectiveProcessTimeSeconds);
                 if (recipe != null)
                     graphInputs(recipe, _ => b.Grill.InputSlotCapacity);
                 else
@@ -443,7 +441,6 @@ public sealed class DeterministicProductionController : IDisposable
                 RecipeGraphNodeDefinition recipe = manager.orderConfig != null
                     ? manager.orderConfig.GetProductionRecipe(StationType.Cutting, selected?.output) : null;
                 n.OutputItem = Item(selected?.output); n.OutputCapacity = b.Cutting.OutputSlotCapacity;
-                n.SharedCapacity = b.Cutting.SlotCapacity;
                 n.CycleTicks = Cycle(b.Cutting.EffectiveProcessTimeSeconds);
                 if (recipe != null)
                     graphInputs(recipe, _ => b.Cutting.InputSlotCapacity);
@@ -477,6 +474,7 @@ public sealed class DeterministicProductionController : IDisposable
             else if (b.Drink != null)
             {
                 n.OutputItem = Item(manager.orderConfig != null ? manager.orderConfig.drinkItem : null);
+                n.OutputCapacity = StationBufferLimits.PerItem;
                 n.StockItem = n.OutputItem;
                 StationNode node = station.GetComponent<StationNode>();
                 n.CycleTicks = Period(node != null ? node.outputAmountPerMinute : 60f / Mathf.Max(0.001f, b.Drink.processTimeSeconds));
@@ -619,6 +617,21 @@ public sealed class DeterministicProductionController : IDisposable
     {
         foreach (Sim.SimulationEvent e in simulation.Events)
         {
+            if (e.Node < 0 || e.Node >= bindings.Count
+                || e.Node >= simulation.Plan.Nodes.Length
+                || e.Item < 0 || e.Item >= items.Count
+                || e.Item >= simulation.Plan.ItemCount
+                || (e.Worker >= 0 && (e.Worker >= workers.Count || e.Worker >= simulation.Trips.Length)))
+            {
+                configurationCheck = true;
+                if (!invalidEventLogged)
+                {
+                    invalidEventLogged = true;
+                    Debug.LogError($"Scheduled production discarded an invalid event index (kind={e.Kind}, node={e.Node}/{bindings.Count}, item={e.Item}/{items.Count}, worker={e.Worker}/{workers.Count}). The production plan will rebuild.");
+                }
+                continue;
+            }
+
             Binding binding = bindings[e.Node];
             ItemDefinition item = items[e.Item];
             if (e.Kind == Sim.EventKind.ConsumeStock)
@@ -639,7 +652,6 @@ public sealed class DeterministicProductionController : IDisposable
                         meals[i].placedAt = (float)(epoch + e.At / (double)Sim.TicksPerSecond);
                 }
                 if (e.Worker >= 0) manager.RecordFlowCompletedOutput(workers[e.Worker], item, stored);
-                manager.RecordCompletedOutput(CustomerOrder.FromItem(item, stored));
             }
         }
     }

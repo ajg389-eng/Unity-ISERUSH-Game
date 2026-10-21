@@ -8,10 +8,10 @@ using UnityEngine.Serialization;
 /// </summary>
 public partial class AssemblyStation : MonoBehaviour, IStationBuffer
 {
-    const int Mk1InputCapacityPerType = 4;
-    const int Mk1OutputCapacity = 4;
-    const int Mk2InputCapacityPerType = 8;
-    const int Mk2OutputCapacity = 8;
+    const int Mk1InputCapacityPerType = StationBufferLimits.PerItem;
+    const int Mk1OutputCapacity = StationBufferLimits.PerItem;
+    const int Mk2InputCapacityPerType = StationBufferLimits.PerItem;
+    const int Mk2OutputCapacity = StationBufferLimits.PerItem;
 
     [Header("Product")]
     [Tooltip("Recipe output this station assembles. Must be chosen in Manage mode.")]
@@ -20,7 +20,7 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
 
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Time to produce one item at 100% rate.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 6f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
     [SerializeField, Min(0)] int bufferedProcessedInputs;
@@ -54,6 +54,10 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
     public int BufferedThirdInputCount => bufferedThirdInputs;
     public bool IsMk2 => stationMark >= 2;
     public int BufferedOutputCount => bufferedOutputs;
+    public int ProcessedInputVisibleSlotCount => CountVisibleSlots(processedInputDisplaySlots);
+    public int PantryInputVisibleSlotCount => CountVisibleSlots(pantryInputDisplaySlots);
+    public int ThirdInputVisibleSlotCount => CountVisibleSlots(thirdInputDisplaySlots);
+    public int OutputVisibleSlotCount => CountVisibleSlots(outputDisplaySlots);
     public bool IsProcessing => processingUnits > 0;
     public int ProcessingUnitCount => processingUnits;
     public float ProcessingProgressSeconds => processingTimer;
@@ -108,6 +112,26 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
         if (recipe.RequiresProcessedInput
             && (recipe.processedInput == null || item == recipe.processedInput))
             return bufferedProcessedInputs;
+        return 0;
+    }
+
+    public int GetHeldInputCount(ItemDefinition item)
+    {
+        AssemblyRecipeDefinition recipe = GetSelectedRecipe();
+        if (recipe == null) return 0;
+        int processingAmount = processingUnits;
+        if (item == null && recipe.RequiresProcessedInput && recipe.processedInput == null)
+            return bufferedProcessedInputs
+                + processingAmount * Mathf.Max(1, recipe.processedInputAmount);
+        if (item == null) return 0;
+        if (item == recipe.pantryInput) return bufferedPantryInputs
+            + processingAmount * Mathf.Max(1, recipe.pantryInputAmount);
+        if (item == recipe.thirdInput) return bufferedThirdInputs
+            + processingAmount * Mathf.Max(1, recipe.thirdInputAmount);
+        if (recipe.RequiresProcessedInput
+            && (recipe.processedInput == null || item == recipe.processedInput))
+            return bufferedProcessedInputs
+                + processingAmount * Mathf.Max(1, recipe.processedInputAmount);
         return 0;
     }
 
@@ -507,6 +531,15 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
         if (tableDisplayRoot == null) return;
         for (int i = tableDisplayRoot.childCount - 1; i >= 0; i--)
             Destroy(tableDisplayRoot.GetChild(i).gameObject);
+    }
+
+    static int CountVisibleSlots(Transform[] slots)
+    {
+        if (slots == null) return 0;
+        int count = 0;
+        foreach (Transform slot in slots)
+            if (slot != null) count++;
+        return count;
     }
 
     void SpawnDisplayedItems(GameObject prefab, int count, Transform[] slots, string label)

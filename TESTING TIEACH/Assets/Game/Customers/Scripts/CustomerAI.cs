@@ -45,13 +45,14 @@ public class CustomerAI : MonoBehaviour
     bool orderRevealed;
     bool includeInOrderRate = true;
     bool orderPlacementRecorded;
-    bool abandonedReputationRecorded;
     bool patienceActive;
     bool waitingForPickup;
     HeatLampStation pickupStation;
     bool leaving;
     bool leavingImpatient;
     bool orderCompletionReported;
+    bool itemReputationFinalized;
+    readonly List<DeliveredItemQuality> deliveredItemQualities = new List<DeliveredItemQuality>();
     PartyCharacterRandomizer characterLook;
     int smilingFaceIndex = -1;
     int frowningFaceIndex = -1;
@@ -77,6 +78,7 @@ public class CustomerAI : MonoBehaviour
     bool queuedIsFront;
 
     public static IReadOnlyList<CustomerAI> OrderBoardCustomers => ActiveCustomers;
+    public bool HasOrderedAtRegister => orderRevealed;
     static int nextOrderNumber;
     static readonly System.Random customerNameRandom = new System.Random();
     static readonly string[] orderNames = { "Kevin", "Emma", "Riley", "Alex", "Maya", "Noah", "Skyler", "Chloe", "Owen", "Avery", "Jordan", "Sofia", "Liam", "Grace", "Ethan", "Harper", "Leo", "Zoe", "Sam", "Ella" };
@@ -92,6 +94,18 @@ public class CustomerAI : MonoBehaviour
     public bool IsLeaving => phase == Phase.Leaving;
     /// <summary>True after the customer has ordered and is waiting at pickup.</summary>
     public bool IsWaitingForPickup => waitingForPickup && !leaving;
+
+    struct DeliveredItemQuality
+    {
+        public ItemDefinition item;
+        public float freshnessModifier;
+
+        public DeliveredItemQuality(ItemDefinition item, float freshnessModifier)
+        {
+            this.item = item;
+            this.freshnessModifier = freshnessModifier;
+        }
+    }
 
     /// <summary>
     /// Distance along <paramref name="forward"/> to the nearest customer
@@ -129,12 +143,88 @@ public class CustomerAI : MonoBehaviour
     }
     public bool HasReservedSlot => hasQueueSlot;
     public Vector3 ReservedSlotPosition => queuedSlotPos;
+    public Register AssignedRegister => reg;
+    public HeatLampStation AssignedPickupStation => pickupStation;
+
+    [System.Serializable]
+    public class SavedState
+    {
+        public Vector3 position;
+        public Quaternion rotation;
+        public string customerDisplayName;
+        public string registerStationGuid;
+        public int orderNumber;
+        public int salePrice;
+        public int bodyIndex;
+        public int faceIndex;
+        public int hatIndex = -1;
+        public float queueJoinAgeSeconds;
+        public float orderPlacedAgeSeconds;
+        public float patienceDuration;
+        public float patienceRemaining;
+        public Vector3 returnSpawnPoint;
+        public bool hasReturnSpawnPoint;
+        public bool hasOrderPlacedTime;
+        public bool orderRevealed;
+        public bool includeInOrderRate;
+        public bool orderPlacementRecorded;
+        public bool patienceStarted;
+        public bool patienceActive;
+        public bool waitingForPickup;
+        public bool leaving;
+        public bool leavingImpatient;
+        public bool orderCompletionReported;
+        public bool itemReputationFinalized;
+        public List<SavedOrderLine> order;
+        public List<SavedOrderLine> originalOrder;
+        public List<SavedDeliveredItem> deliveredItems = new List<SavedDeliveredItem>();
+    }
+
+    [System.Serializable]
+    public class SavedOrderLine
+    {
+        public string item;
+        public int quantity;
+    }
+
+    [System.Serializable]
+    public class SavedDeliveredItem
+    {
+        public string item;
+        public float freshnessModifier;
+    }
 
     float standY;
     bool standYReady;
     static float cachedFloorY;
     static int cachedFloorFrame = -1;
     static readonly List<CustomerAI> ActiveCustomers = new List<CustomerAI>();
+
+    public static List<SavedState> CaptureAllForSave()
+    {
+        var saved = new List<SavedState>(ActiveCustomers.Count);
+        for (int i = 0; i < ActiveCustomers.Count; i++)
+        {
+            CustomerAI customer = ActiveCustomers[i];
+            if (customer != null && customer.isActiveAndEnabled)
+                saved.Add(customer.CaptureSaveState());
+        }
+
+        saved.Sort((a, b) => b.queueJoinAgeSeconds.CompareTo(a.queueJoinAgeSeconds));
+        return saved;
+    }
+
+    public static void ClearActiveCustomersForRestore()
+    {
+        var active = new List<CustomerAI>(ActiveCustomers);
+        foreach (CustomerAI customer in active)
+        {
+            if (customer == null) continue;
+            customer.gameObject.SetActive(false);
+            Destroy(customer.gameObject);
+        }
+        ActiveCustomers.Clear();
+    }
 
     void OnEnable()
     {
@@ -254,14 +344,171 @@ public class CustomerAI : MonoBehaviour
         hasReturnSpawnPoint = true;
     }
 
+    SavedState CaptureSaveState()
+    {
+        PartyCharacterRandomizer look = characterLook != null
+            ? characterLook : GetComponent<PartyCharacterRandomizer>();
+        StationNode registerNode = reg != null ? reg.GetComponent<StationNode>() : null;
+        var saved = new SavedState
+        {
+            position = transform.position,
+            rotation = transform.rotation,
+            customerDisplayName = CustomerDisplayName,
+            registerStationGuid = registerNode != null ? registerNode.StableStationId : null,
+            orderNumber = OrderNumber,
+            salePrice = salePrice,
+            bodyIndex = look != null ? look.bodyIndex : 0,
+            faceIndex = look != null ? look.faceIndex : 0,
+            hatIndex = look != null ? look.hatIndex : -1,
+            queueJoinAgeSeconds = Mathf.Max(0f, Time.time - queueJoinTime),
+            orderPlacedAgeSeconds = hasOrderPlacedTime ? Mathf.Max(0f, Time.time - orderPlacedTime) : 0f,
+            patienceDuration = patienceDuration,
+            patienceRemaining = patienceMeter != null ? patienceMeter.RemainingSeconds : 0f,
+            returnSpawnPoint = returnSpawnPoint,
+            hasReturnSpawnPoint = hasReturnSpawnPoint,
+            hasOrderPlacedTime = hasOrderPlacedTime,
+            orderRevealed = orderRevealed,
+            includeInOrderRate = includeInOrderRate,
+            orderPlacementRecorded = orderPlacementRecorded,
+            patienceStarted = patienceStarted,
+            patienceActive = patienceActive,
+            waitingForPickup = waitingForPickup,
+            leaving = leaving,
+            leavingImpatient = leavingImpatient,
+            orderCompletionReported = orderCompletionReported,
+            itemReputationFinalized = itemReputationFinalized,
+            order = CaptureOrder(order),
+            originalOrder = CaptureOrder(OriginalOrder)
+        };
+
+        foreach (DeliveredItemQuality delivered in deliveredItemQualities)
+            if (delivered.item != null)
+                saved.deliveredItems.Add(new SavedDeliveredItem
+                {
+                    item = delivered.item.name,
+                    freshnessModifier = delivered.freshnessModifier
+                });
+
+        return saved;
+    }
+
+    static List<SavedOrderLine> CaptureOrder(CustomerOrder source)
+    {
+        if (source?.lines == null) return null;
+        var result = new List<SavedOrderLine>(source.lines.Count);
+        foreach (CustomerOrder.OrderLine line in source.lines)
+            if (line.item != null && line.quantity > 0)
+                result.Add(new SavedOrderLine { item = line.item.name, quantity = line.quantity });
+        return result;
+    }
+
+    public void RestoreSaveState(SavedState saved,
+        IReadOnlyDictionary<string, ItemDefinition> definitions, Register restoredRegister,
+        GridManager restoredGrid, CustomerPath restoredExitPath)
+    {
+        if (saved == null) return;
+
+        transform.SetPositionAndRotation(saved.position, saved.rotation);
+        grid = restoredGrid != null ? restoredGrid : GridManager.Instance;
+        exitPath = restoredExitPath;
+        route.Clear();
+        routeIndex = 0;
+        gridPath.Clear();
+        gridPathDestination = new Vector3(float.PositiveInfinity, 0f, float.PositiveInfinity);
+        hasTarget = false;
+        hasQueueSlot = false;
+        isFront = false;
+        phase = Phase.GoingToSlot;
+
+        order = RestoreOrder(saved.order, definitions);
+        OriginalOrder = RestoreOrder(saved.originalOrder, definitions);
+        CustomerDisplayName = saved.customerDisplayName;
+        OrderNumber = saved.orderNumber;
+        nextOrderNumber = Mathf.Max(nextOrderNumber, OrderNumber);
+        salePrice = saved.salePrice;
+        orderRevealed = saved.orderRevealed;
+        includeInOrderRate = saved.includeInOrderRate;
+        orderPlacementRecorded = saved.orderPlacementRecorded;
+        hasOrderPlacedTime = saved.hasOrderPlacedTime;
+        orderPlacedTime = Time.time - saved.orderPlacedAgeSeconds;
+        queueJoinTime = Time.time - saved.queueJoinAgeSeconds;
+        patienceDuration = Mathf.Max(0.1f, saved.patienceDuration);
+        patienceStarted = saved.patienceStarted;
+        patienceActive = false;
+        waitingForPickup = saved.waitingForPickup;
+        leaving = saved.leaving;
+        leavingImpatient = saved.leavingImpatient;
+        orderCompletionReported = saved.orderCompletionReported;
+        itemReputationFinalized = saved.itemReputationFinalized;
+        returnSpawnPoint = saved.returnSpawnPoint;
+        hasReturnSpawnPoint = saved.hasReturnSpawnPoint;
+        reg = restoredRegister;
+        pickupStation = null;
+        deliveredItemQualities.Clear();
+        if (saved.deliveredItems != null && definitions != null)
+            foreach (SavedDeliveredItem delivered in saved.deliveredItems)
+                if (delivered != null && !string.IsNullOrEmpty(delivered.item)
+                    && definitions.TryGetValue(delivered.item, out ItemDefinition deliveredItem)
+                    && deliveredItem != null)
+                    deliveredItemQualities.Add(new DeliveredItemQuality(
+                        deliveredItem, delivered.freshnessModifier));
+
+        if (characterLook == null)
+            characterLook = PartyCharacterRandomizer.EnsureOn(gameObject);
+        if (characterLook != null)
+        {
+            characterLook.randomizeOnStart = false;
+            characterLook.bodyIndex = saved.bodyIndex;
+            characterLook.faceIndex = saved.faceIndex;
+            characterLook.hatIndex = saved.hatIndex;
+            characterLook.ApplyCurrent();
+        }
+
+        RefreshOrderLabel();
+        if (leaving)
+        {
+            BeginLeaveRoute(restoredRegister != null ? restoredRegister.storeExit : null);
+            return;
+        }
+
+        if (restoredRegister != null)
+            restoredRegister.RestoreCustomerQueue(this, orderRevealed);
+        if (orderRevealed)
+            BeginPickupJourney();
+
+        if (saved.patienceActive && saved.patienceRemaining > 0f)
+        {
+            patienceActive = true;
+            patienceStarted = true;
+            if (patienceMeter == null)
+                patienceMeter = GetComponent<CustomerPatienceMeter>();
+            if (patienceMeter != null)
+                patienceMeter.Restore(patienceDuration, saved.patienceRemaining, OnPatienceExpired);
+        }
+    }
+
+    static CustomerOrder RestoreOrder(List<SavedOrderLine> lines,
+        IReadOnlyDictionary<string, ItemDefinition> definitions)
+    {
+        if (lines == null) return null;
+        var restored = new CustomerOrder();
+        if (definitions == null) return restored;
+        foreach (SavedOrderLine line in lines)
+            if (line != null && line.quantity > 0 && !string.IsNullOrEmpty(line.item)
+                && definitions.TryGetValue(line.item, out ItemDefinition item) && item != null)
+                restored.lines.Add(new CustomerOrder.OrderLine(item, line.quantity));
+        return restored;
+    }
+
     public void SetOrder(CustomerOrder o, bool includeInOrderRate = true)
     {
         order = o != null ? o.Clone() : new CustomerOrder();
         OriginalOrder = order.Clone();
         orderCompletionReported = false;
+        itemReputationFinalized = false;
+        deliveredItemQualities.Clear();
         this.includeInOrderRate = includeInOrderRate;
         orderPlacementRecorded = false;
-        abandonedReputationRecorded = false;
         OrderNumber = ++nextOrderNumber;
         CustomerDisplayName = orderNames[customerNameRandom.Next(orderNames.Length)] + " " + (char)('A' + customerNameRandom.Next(26)) + ".";
         salePrice = GetGenericOrderBasePrice(order);
@@ -285,9 +532,10 @@ public class CustomerAI : MonoBehaviour
         salePrice = 0;
         orderRevealed = false;
         orderCompletionReported = false;
+        itemReputationFinalized = false;
+        deliveredItemQualities.Clear();
         includeInOrderRate = true;
         orderPlacementRecorded = false;
-        abandonedReputationRecorded = false;
         StopPatienceMeter();
         if (orderLabel == null) orderLabel = GetComponent<CustomerOrderLabel>();
         if (orderLabel != null)
@@ -300,19 +548,27 @@ public class CustomerAI : MonoBehaviour
 
     public bool TryReceiveItem(ItemDefinition item)
     {
+        return TryReceiveItem(item, 0f);
+    }
+
+    public bool TryReceiveItem(ItemDefinition item, float freshnessModifier)
+    {
         if (item == null || order == null) return false;
         if (!order.TryRemoveOne(item)) return false;
-        RecordItemReputationServed(item);
+        deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
         RefreshOrderLabel();
         return true;
     }
 
-    void RecordItemReputationServed(ItemDefinition item)
+    void FinalizeCompletedItemReputation()
     {
+        if (itemReputationFinalized || !IsOrderFullyDelivered) return;
+        itemReputationFinalized = true;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
-        if (config != null)
-            config.RecordItemServed(item);
+        if (config == null) return;
+        foreach (DeliveredItemQuality delivered in deliveredItemQualities)
+            config.RecordItemServed(delivered.item, delivered.freshnessModifier);
     }
 
     /// <summary>
@@ -416,7 +672,6 @@ public class CustomerAI : MonoBehaviour
     public void LeaveImpatient(Transform exit)
     {
         if (leaving) return;
-        RecordUnservedItemReputation();
         Register currentRegister = reg;
         if (currentRegister != null)
             currentRegister.LeaveQueue(this);
@@ -433,19 +688,6 @@ public class CustomerAI : MonoBehaviour
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.RecordCustomerLost();
-    }
-
-    void RecordUnservedItemReputation()
-    {
-        if (abandonedReputationRecorded || !orderRevealed || order == null || order.lines == null)
-            return;
-        abandonedReputationRecorded = true;
-        CustomerOrderConfig config = ProductionManager.Instance != null
-            ? ProductionManager.Instance.orderConfig : null;
-        if (config == null) return;
-        foreach (CustomerOrder.OrderLine line in order.lines)
-            if (line.item != null && line.quantity > 0)
-                config.RecordItemLeftUnserved(line.item, line.quantity);
     }
 
     public void SetTargetRegister(Register r)
@@ -580,6 +822,7 @@ public class CustomerAI : MonoBehaviour
     public void OnServed(Transform exit)
     {
         if (leaving) return;
+        FinalizeCompletedItemReputation();
         StopPatienceMeter();
         waitingForPickup = false;
         if (pickupStation != null) pickupStation.LeavePickupQueue(this);
@@ -857,9 +1100,9 @@ public class CustomerAI : MonoBehaviour
 
         if (!HeatLampStation.TryCustomerTakeAvailableItem(
                 this, pickupStation, order, out ItemDefinition item,
-                out int adjustedSaleValue)) return;
+                out int adjustedSaleValue, out float freshnessModifier)) return;
         if (!order.TryRemoveOne(item)) return;
-        RecordItemReputationServed(item);
+        deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
         ApplyPickupSaleValue(item, adjustedSaleValue);
 
         RefreshOrderLabel();
@@ -874,6 +1117,7 @@ public class CustomerAI : MonoBehaviour
     void FinishPickupAndLeave()
     {
         if (leaving) return;
+        FinalizeCompletedItemReputation();
 
         // Complete the sale while the customer is still registered with the
         // pickup queue. Self-service used to remove the customer first, which

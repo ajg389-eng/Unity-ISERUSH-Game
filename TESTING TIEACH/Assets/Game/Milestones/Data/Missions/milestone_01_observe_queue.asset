@@ -12,12 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_01_observe_queue
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_01_configure_fries
-  title: Configure a Fries recipe
-  description: Choose the Fries recipe at an Assembly Station to set up your first
-    side item.
-  completionEventId: recipe_configured_fries
-  requiredCount: 1
+  missionId: milestone_01_serve_fries
+  title: Serve 50 Fries
+  description: Serve 50 Fries to customers.
+  completionEventId: menu_item_served_fries
+  requiredCount: 50
   producedItem: {fileID: 0}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1

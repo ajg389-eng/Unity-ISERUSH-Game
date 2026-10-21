@@ -10,14 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
-  m_Name: milestone_06_supply_ops
+  m_Name: milestone_03_produce_classic_burger
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_06_supply_ops
-  title: Supply operations
-  description: Order ingredients and make sure upstream supply can support downstream
-    service.
-  completionEventId: ingredients_ordered
-  requiredCount: 1
+  missionId: milestone_03_serve_classic_burgers
+  title: Serve 50 Classic Burgers
+  description: Serve 50 Classic Burgers to customers.
+  completionEventId: menu_item_served_classic_burger
+  requiredCount: 50
   producedItem: {fileID: 0}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1

@@ -12,13 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_04_configure_recipe
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_04_configure_recipe_production
-  title: Produce 45 unlocked menu items
-  description: Produce any combination of finished menu recipes you have unlocked
-    so far.
-  completionEventId: 
-  requiredCount: 45
+  missionId: milestone_04_serve_cheese_bacon_fries
+  title: Serve 50 Cheese Bacon Fries
+  description: Serve 50 Cheese Bacon Fries to customers.
+  completionEventId: menu_item_served_cheese_bacon_fries
+  requiredCount: 50
   producedItem: {fileID: 0}
-  countAnyUnlockedMenuProduct: 1
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

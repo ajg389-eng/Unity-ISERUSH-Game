@@ -704,12 +704,13 @@ public class IngredientsOrderUI : MonoBehaviour
         chartRt.anchorMin = chartRt.anchorMax = new Vector2(0.5f, 0.5f);
         chartRt.pivot = new Vector2(0.5f, 0.5f);
         chartRt.sizeDelta = new Vector2(2000f, 2400f);
-        chartRt.anchoredPosition = new Vector2(0f, -240f);
+        chartRt.anchoredPosition = Vector2.zero;
         recipeChartContainer = chart.transform;
         recipeChartRoot = recipeChartContainer;
         recipeGraphDrag = viewport.AddComponent<RecipeGraphDrag>();
         recipeGraphDrag.content = chartRt;
         recipeGraphDrag.zoomLabel = recipeZoomLabel;
+        recipeGraphDrag.edgePadding = 16f;
         GameUITheme.ApplyTo(recipesOverlay.transform);
     }
 
@@ -794,18 +795,19 @@ public class IngredientsOrderUI : MonoBehaviour
         Vector2 graphSize = new Vector2(maxX - minX, maxY - minY);
         Vector2 graphCenter = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
         Rect viewport = recipeChartViewport.rect;
-        float availableWidth = Mathf.Max(1f, viewport.width - 32f);
-        float availableHeight = Mathf.Max(1f, viewport.height - 32f);
+        float padding = recipeGraphDrag != null ? recipeGraphDrag.edgePadding : 16f;
+        float availableWidth = Mathf.Max(1f, viewport.width - padding * 2f);
+        float availableHeight = Mathf.Max(1f, viewport.height - padding * 2f);
         float fitWidth = availableWidth / Mathf.Max(1f, graphSize.x);
         float fitHeight = availableHeight / Mathf.Max(1f, graphSize.y);
-        float zoom = fitHeight >= 0.6f ? Mathf.Min(fitWidth, fitHeight) : fitWidth;
-        zoom = Mathf.Clamp(zoom, 0.45f, 1f);
+        Rect graphBounds = Rect.MinMaxRect(minX, minY, maxX, maxY);
+        float zoom = recipeGraphDrag != null
+            ? recipeGraphDrag.SetGraphBounds(graphBounds)
+            : Mathf.Min(fitWidth, fitHeight);
+        zoom = Mathf.Clamp(zoom, 0.01f, 1f);
 
         chart.localScale = Vector3.one * zoom;
-        float chartY = graphSize.y * zoom <= availableHeight
-            ? -graphCenter.y * zoom
-            : recipeChartViewport.rect.height * 0.5f - 16f - maxY * zoom;
-        chart.anchoredPosition = new Vector2(-graphCenter.x * zoom, chartY);
+        chart.anchoredPosition = -graphCenter * zoom;
         recipeGraphDrag?.RefreshZoomLabel();
     }
 
@@ -920,6 +922,28 @@ public class IngredientsOrderUI : MonoBehaviour
         ConnectGraphNodes(slices, cooked, "COOK");
         ConnectGraphNodes(cooked, fries);
         ConnectGraphNodes(container, fries, "ASSEMBLE");
+
+        var cheese = AddGraphNode(menu.cheeseIngredient, "CHEESE", "PANTRY", new Vector2(420f, 420f));
+        var slicedCheese = AddGraphNode(menu.slicedCheeseIngredient, "SLICED CHEESE", "CUTTING",
+            new Vector2(420f, 210f));
+        var cheeseFries = AddGraphNode(menu.cheeseFriesItem, "CHEESE FRIES", "ASSEMBLY",
+            new Vector2(-40f, -500f), true);
+        ConnectGraphNodes(cheese, slicedCheese, "SLICE");
+        ConnectGraphNodes(fries, cheeseFries);
+        ConnectGraphNodes(slicedCheese, cheeseFries, "ADD CHEESE");
+
+        var baconSlab = AddGraphNode(menu.baconSlabIngredient, "BACON SLAB", "FREEZER",
+            new Vector2(420f, -500f));
+        var cutBacon = AddGraphNode(menu.cutBaconIngredient, "CUT BACON", "CUTTING",
+            new Vector2(420f, -710f));
+        var cookedBacon = AddGraphNode(menu.cookedBaconIngredient, "COOKED BACON", "GRILL",
+            new Vector2(420f, -920f));
+        var cheeseBaconFries = AddGraphNode(menu.cheeseBaconFriesItem, "CHEESE BACON FRIES",
+            "ASSEMBLY", new Vector2(-40f, -1190f), true);
+        ConnectGraphNodes(baconSlab, cutBacon, "CUT");
+        ConnectGraphNodes(cutBacon, cookedBacon, "COOK");
+        ConnectGraphNodes(cheeseFries, cheeseBaconFries);
+        ConnectGraphNodes(cookedBacon, cheeseBaconFries, "ADD BACON");
     }
 
     void BuildShakeTree(CustomerOrderConfig menu)
@@ -930,6 +954,20 @@ public class IngredientsOrderUI : MonoBehaviour
         var shake = AddGraphNode(menu.drinkItem, "SHAKE", "SHAKE STATION", new Vector2(0f, -20f), true);
         ConnectGraphNodes(milk, shake);
         ConnectGraphNodes(cup, shake, "COMBINE");
+
+        var whippedCream = AddGraphNode(menu.whippedCreamIngredient, "WHIPPED CREAM", "FREEZER",
+            new Vector2(300f, 260f));
+        var creamShake = AddGraphNode(menu.whippedCreamShakeItem, "WHIPPED CREAM SHAKE",
+            "ASSEMBLY", new Vector2(0f, -280f), true);
+        ConnectGraphNodes(shake, creamShake);
+        ConnectGraphNodes(whippedCream, creamShake, "ADD CREAM");
+
+        var sprinkles = AddGraphNode(menu.sprinklesIngredient, "SPRINKLES", "PANTRY",
+            new Vector2(300f, -280f));
+        var sprinkleShake = AddGraphNode(menu.whippedCreamSprinkleShakeItem,
+            "WHIPPED CREAM SPRINKLE SHAKE", "ASSEMBLY", new Vector2(0f, -560f), true);
+        ConnectGraphNodes(creamShake, sprinkleShake);
+        ConnectGraphNodes(sprinkles, sprinkleShake, "ADD SPRINKLES");
     }
 
     static AssemblyRecipeDefinition FindConfiguredAssemblyRecipe(CustomerOrderConfig menu, ItemDefinition output)
@@ -2521,6 +2559,27 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
     public bool allowPan = true;
     Vector2 startPointer;
     Vector2 startContent;
+    Rect graphBounds;
+    bool hasGraphBounds;
+
+    public float SetGraphBounds(Rect bounds)
+    {
+        graphBounds = bounds;
+        hasGraphBounds = bounds.width > 0f && bounds.height > 0f;
+        return CalculateFitZoom();
+    }
+
+    float CalculateFitZoom()
+    {
+        RectTransform viewport = transform as RectTransform;
+        if (!hasGraphBounds || viewport == null) return minimumZoom;
+
+        Vector2 available = viewport.rect.size - Vector2.one * edgePadding * 2f;
+        float fitWidth = Mathf.Max(1f, available.x) / graphBounds.width;
+        float fitHeight = Mathf.Max(1f, available.y) / graphBounds.height;
+        minimumZoom = Mathf.Clamp(Mathf.Min(fitWidth, fitHeight), 0.01f, 1f);
+        return minimumZoom;
+    }
 
     void OnEnable() => ActiveGraphs.Add(this);
     void OnDisable() => ActiveGraphs.Remove(this);
@@ -2545,6 +2604,7 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
     public void OnScroll(PointerEventData eventData)
     {
         if (content == null || Mathf.Approximately(eventData.scrollDelta.y, 0f)) return;
+        if (hasGraphBounds) CalculateFitZoom();
         float oldZoom = content.localScale.x;
         float newZoom = Mathf.Clamp(oldZoom + Mathf.Sign(eventData.scrollDelta.y) * zoomStep,
             minimumZoom, maximumZoom);
@@ -2573,6 +2633,24 @@ public sealed class RecipeGraphDrag : MonoBehaviour, IBeginDragHandler, IDragHan
         if (viewport == null) return position;
 
         float zoom = Mathf.Max(0.01f, content.localScale.x);
+        if (hasGraphBounds)
+        {
+            Vector2 halfViewport = viewport.rect.size * 0.5f;
+            Vector2 scaledMin = graphBounds.min * zoom;
+            Vector2 scaledMax = graphBounds.max * zoom;
+            float graphMinPositionX = halfViewport.x - edgePadding - scaledMax.x;
+            float graphMaxPositionX = -halfViewport.x + edgePadding - scaledMin.x;
+            float graphMinPositionY = halfViewport.y - edgePadding - scaledMax.y;
+            float graphMaxPositionY = -halfViewport.y + edgePadding - scaledMin.y;
+
+            if (graphMinPositionX > graphMaxPositionX)
+                graphMinPositionX = graphMaxPositionX = -(scaledMin.x + scaledMax.x) * 0.5f;
+            if (graphMinPositionY > graphMaxPositionY)
+                graphMinPositionY = graphMaxPositionY = -(scaledMin.y + scaledMax.y) * 0.5f;
+            return new Vector2(Mathf.Clamp(position.x, graphMinPositionX, graphMaxPositionX),
+                Mathf.Clamp(position.y, graphMinPositionY, graphMaxPositionY));
+        }
+
         Vector2 viewportSize = viewport.rect.size;
         Vector2 contentSize = content.rect.size * zoom;
         float maxX = Mathf.Max(0f, (contentSize.x - viewportSize.x) * 0.5f + edgePadding);

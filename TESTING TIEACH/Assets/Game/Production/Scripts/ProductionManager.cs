@@ -258,7 +258,7 @@ public partial class ProductionManager : MonoBehaviour
         public float time;
     }
     readonly List<TimedItemCount> orderedHistory = new List<TimedItemCount>();
-    readonly List<TimedItemCount> completedHistory = new List<TimedItemCount>();
+    readonly List<TimedItemCount> pickupDeliveryHistory = new List<TimedItemCount>();
     sealed class TimedFlowOutput
     {
         public ProductionFlowPlan flow;
@@ -408,14 +408,16 @@ public partial class ProductionManager : MonoBehaviour
     {
         public ItemDefinition item;
         public int requested;
+        /// <summary>Units in active customer orders accepted at a register.</summary>
+        public int openOrdersAtRegister;
         public int ready;
         public int cooking;
         /// <summary>Number of this item in customer orders accepted at registers during the trailing simulation minute.</summary>
         public int orderedLastMinute;
         /// <summary>Register accepted item rate, normalized to a minute during the first minute of tracking.</summary>
         public float orderedPerMinute;
-        /// <summary>Exact number delivered to pickup stations during the trailing simulation minute.</summary>
-        public int completedLastMinute;
+        /// <summary>Item units successfully delivered to Pickup Stations during the trailing minute.</summary>
+        public int producedLastMinute;
         /// <summary>Kitchen units still short of live orders (absolute).</summary>
         public int requiredOutput;
         /// <summary>Exact scheduled customer demand target (items per minute).</summary>
@@ -431,6 +433,7 @@ public partial class ProductionManager : MonoBehaviour
         CustomerOrderConfig demandConfig = demandSpawner != null && demandSpawner.orderConfig != null
             ? demandSpawner.orderConfig
             : orderConfig;
+        var acceptedOpenOrders = GetAcceptedOpenOrdersByItem(includeDrinks, demandConfig);
         var requested = new Dictionary<ItemDefinition, int>();
         foreach (var order in GetAllQueuedOrders())
         {
@@ -472,16 +475,17 @@ public partial class ProductionManager : MonoBehaviour
 
         PruneThroughputHistory();
         var orderedLastMinute = SumHistory(orderedHistory);
-        var completedLastMinute = SumHistory(completedHistory);
+        var producedLastMinute = SumHistory(pickupDeliveryHistory);
         float observedDemandWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
             1f, ThroughputWindowSeconds);
 
         var items = new HashSet<ItemDefinition>();
         foreach (var kv in requested) items.Add(kv.Key);
+        foreach (var kv in acceptedOpenOrders) items.Add(kv.Key);
         foreach (var kv in ready) items.Add(kv.Key);
         foreach (var kv in cooking) items.Add(kv.Key);
         foreach (var kv in orderedLastMinute) items.Add(kv.Key);
-        foreach (var kv in completedLastMinute) items.Add(kv.Key);
+        foreach (var kv in producedLastMinute) items.Add(kv.Key);
         foreach (var item in GetCookableMenuItems())
             if (item != null) items.Add(item);
         if (demandConfig != null)
@@ -503,17 +507,18 @@ public partial class ProductionManager : MonoBehaviour
             int shortfall = Mathf.Max(0, req - readyCount - cookingCount);
 
             orderedLastMinute.TryGetValue(item, out int orderedRate);
-            completedLastMinute.TryGetValue(item, out int completedRate);
+            producedLastMinute.TryGetValue(item, out int producedRate);
 
             list.Add(new ItemOutputNeed
             {
                 item = item,
                 requested = req,
+                openOrdersAtRegister = acceptedOpenOrders.TryGetValue(item, out int openCount) ? openCount : 0,
                 ready = readyCount,
                 cooking = cookingCount,
                 orderedLastMinute = orderedRate,
                 orderedPerMinute = orderedRate * 60f / observedDemandWindow,
-                completedLastMinute = completedRate,
+                producedLastMinute = producedRate,
                 requiredOutput = shortfall,
                 requiredPerMinute = demandSpawner != null
                     ? demandSpawner.GetCustomerDemandPerMinute(item)
@@ -534,15 +539,41 @@ public partial class ProductionManager : MonoBehaviour
         return list;
     }
 
+    Dictionary<ItemDefinition, int> GetAcceptedOpenOrdersByItem(bool includeDrinks,
+        CustomerOrderConfig demandConfig)
+    {
+        var counts = new Dictionary<ItemDefinition, int>();
+        IReadOnlyList<CustomerAI> customers = CustomerAI.OrderBoardCustomers;
+        for (int i = 0; i < customers.Count; i++)
+        {
+            CustomerAI customer = customers[i];
+            if (customer == null || customer.IsLeaving || !customer.HasOrderedAtRegister) continue;
+
+            CustomerOrder order = customer.GetOrder();
+            if (order?.lines == null) continue;
+            foreach (CustomerOrder.OrderLine line in order.lines)
+            {
+                if (line.item == null || line.quantity <= 0) continue;
+                if (!includeDrinks && demandConfig != null && demandConfig.IsDrink(line.item)) continue;
+                counts[line.item] = counts.TryGetValue(line.item, out int current)
+                    ? current + line.quantity
+                    : line.quantity;
+            }
+        }
+
+        return counts;
+    }
+
     /// <summary>Records item quantities only after the register accepts the customer's order.</summary>
     public void RecordCustomerOrder(CustomerOrder order)
     {
         RecordHistory(orderedHistory, order);
     }
 
-    public void RecordCompletedOutput(CustomerOrder order)
+    /// <summary>Records item units only after a Pickup Station accepts the delivery.</summary>
+    public void RecordPickupDelivery(CustomerOrder order)
     {
-        RecordHistory(completedHistory, order);
+        RecordHistory(pickupDeliveryHistory, order);
     }
 
     public void RecordFlowCompletedOutput(KitchenEmployee worker, ItemDefinition item, int count)
@@ -694,7 +725,7 @@ public partial class ProductionManager : MonoBehaviour
     {
         float cutoff = Time.time - ThroughputWindowSeconds;
         orderedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
-        completedHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
+        pickupDeliveryHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
         completedFlowHistory.RemoveAll(entry => entry == null || entry.time < cutoff);
         PruneWorkerEfficiencyHistory(cutoff);
     }
@@ -1414,7 +1445,7 @@ public partial class ProductionManager : MonoBehaviour
         RecoverOrphanedJobAssignments();
         CollectProductionJobs();
         EnsureAssemblySupplyJobs();
-        EnsureGrillInputSupplyJobs();
+        EnsureGrillBufferSupplyJobs();
         AssignJobsToEmployees();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         double elapsed = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0
@@ -1486,50 +1517,58 @@ public partial class ProductionManager : MonoBehaviour
         }
     }
 
-    void EnsureGrillInputSupplyJobs()
+    void EnsureGrillBufferSupplyJobs()
     {
         if (orderConfig == null) return;
         foreach (GrillStation grill in cachedGrillStations)
         {
-            if (grill == null || grill.GetSelectedSecondaryInput() == null) continue;
+            if (grill == null || grill.GetSelectedOutput() == null) continue;
+            QueueGrillInputSupplyJob(grill, grill.GetSelectedInput());
             ItemDefinition secondary = grill.GetSelectedSecondaryInput();
-            CuttingRecipeDefinition cuttingRecipe = orderConfig.GetCuttingRecipe(secondary);
-            if (cuttingRecipe == null || cuttingRecipe.input == null) continue;
-
-            ProductionJob parentDemand = null;
-            foreach (ProductionJob candidate in pendingJobs)
-            {
-                if (candidate == null || candidate.isAssemblySupply) continue;
-                List<ItemDefinition> stages = orderConfig.GetAssemblyChain(candidate.product);
-                AssemblyRecipeDefinition first = stages.Count > 0
-                    ? orderConfig.GetAssemblyRecipe(stages[0]) : null;
-                if (first != null && first.processedInput == grill.GetSelectedOutput())
-                { parentDemand = candidate; break; }
-            }
-            if (parentDemand == null) continue;
-
-            bool alreadyQueued = false;
-            foreach (ProductionJob queued in pendingJobs)
-                if (queued != null && queued.isAssemblySupply && queued.grillSupplyTarget == grill
-                    && queued.assemblySupplyOutputItem == secondary) { alreadyQueued = true; break; }
-            if (alreadyQueued || grill.GetInputCount(secondary) > 0) continue;
-
-            int grillSupplyBatch = Mathf.Min(4, grill.InputSlotCapacity);
-            var supply = new ProductionJob(CustomerOrder.FromItem(parentDemand.product, 1),
-                new[] { StationType.Pantry, StationType.Cutting }, null, parentDemand.rootDemandId)
-            {
-                isAssemblySupply = true,
-                grillSupplyTarget = grill,
-                assemblySupplySourceItem = cuttingRecipe.input,
-                assemblySupplyOutputItem = secondary,
-                assemblySupplyStageItems = new[] { cuttingRecipe.input, secondary },
-                requestedSupplyUnits = grillSupplyBatch
-            };
-            if (!CanAnyWorkerContinue(supply)) continue;
-            pendingJobs.Add(supply);
-            if (!parentDemand.prerequisiteTaskIds.Contains(supply.taskId))
-                parentDemand.prerequisiteTaskIds.Add(supply.taskId);
+            if (secondary != null && secondary != grill.GetSelectedInput())
+                QueueGrillInputSupplyJob(grill, secondary);
         }
+    }
+
+    void QueueGrillInputSupplyJob(GrillStation grill, ItemDefinition inputItem)
+    {
+        if (grill == null || inputItem == null) return;
+        int target = grill.InputSlotCapacity;
+        int reserved = grill.GetInputCount(inputItem);
+        foreach (ProductionJob queued in pendingJobs)
+        {
+            if (queued == null || !queued.isAssemblySupply || queued.grillSupplyTarget != grill
+                || queued.assemblySupplyOutputItem != inputItem)
+                continue;
+            reserved += Mathf.Max(1, queued.requestedSupplyUnits);
+        }
+        if (reserved >= target) return;
+
+        CuttingRecipeDefinition cuttingRecipe = orderConfig.GetCuttingRecipe(inputItem);
+        ItemDefinition sourceItem = cuttingRecipe != null && cuttingRecipe.input != null
+            ? cuttingRecipe.input : inputItem;
+        StationType sourceType = orderConfig.IsFreezerIngredient(sourceItem)
+            ? StationType.Freezer : StationType.Pantry;
+        StationType[] pipeline = cuttingRecipe != null && cuttingRecipe.input != null
+            ? new[] { sourceType, StationType.Cutting }
+            : new[] { sourceType };
+        ItemDefinition[] stageItems = pipeline.Length > 1
+            ? new[] { sourceItem, inputItem }
+            : new[] { inputItem };
+        int requestBatch = Mathf.Min(target - reserved,
+            GetLargestCarryCapacityForFlowStation(grill.gameObject));
+        if (requestBatch <= 0) return;
+
+        var supply = new ProductionJob(CustomerOrder.FromItem(grill.GetSelectedOutput(), 1), pipeline)
+        {
+            isAssemblySupply = true,
+            grillSupplyTarget = grill,
+            assemblySupplySourceItem = sourceItem,
+            assemblySupplyOutputItem = inputItem,
+            assemblySupplyStageItems = stageItems,
+            requestedSupplyUnits = requestBatch
+        };
+        if (CanAnyWorkerContinue(supply)) pendingJobs.Add(supply);
     }
 
     void EnsureAssemblyIngredientSupplyJob(AssemblyStation station, AssemblyRecipeDefinition recipe,
@@ -1555,7 +1594,8 @@ public partial class ProductionManager : MonoBehaviour
         StationType[] pipeline = pipelineOverride != null && pipelineOverride.Length > 0
             ? pipelineOverride : (requiresCutting ? new[] { sourceType, StationType.Cutting }
                 : new[] { sourceType });
-        int requestBatch = Mathf.Min(target - reserved, GetLargestCarryCapacityForStation(station));
+        int requestBatch = Mathf.Min(target - reserved,
+            GetLargestCarryCapacityForFlowStation(station.gameObject));
         var supply = new ProductionJob(CustomerOrder.FromItem(recipe.output, 1), pipeline, null,
             parentDemand != null ? parentDemand.rootDemandId : 0)
         {
@@ -2809,7 +2849,7 @@ public partial class ProductionManager : MonoBehaviour
             CuttingStation cutting = stationObject.GetComponent<CuttingStation>();
             if (cutting != null)
             {
-                limit = Mathf.Min(limit, cutting.SlotCapacity);
+                limit = Mathf.Min(limit, Mathf.Min(cutting.InputSlotCapacity, cutting.OutputSlotCapacity));
                 continue;
             }
             AssemblyStation assemblyStation = stationObject.GetComponent<AssemblyStation>();
@@ -2968,7 +3008,7 @@ public partial class ProductionManager : MonoBehaviour
         }
     }
 
-    int GetLargestCarryCapacityForStation(AssemblyStation station)
+    int GetLargestCarryCapacityForFlowStation(GameObject station)
     {
         int capacity = 1;
         if (station == null) return capacity;
@@ -2976,7 +3016,7 @@ public partial class ProductionManager : MonoBehaviour
         {
             if (employee == null) continue;
             ProductionFlowPlan flow = GetFlowForWorker(employee);
-            if (flow?.stations == null || !flow.stations.Contains(station.gameObject)) continue;
+            if (flow?.stations == null || !flow.stations.Contains(station)) continue;
             capacity = Mathf.Max(capacity, employee.CarryCapacity);
         }
         return capacity;
@@ -3288,7 +3328,7 @@ public partial class ProductionManager : MonoBehaviour
         jobsWithReservations.Clear();
         pendingJobs.Clear();
         orderedHistory.Clear();
-        completedHistory.Clear();
+        pickupDeliveryHistory.Clear();
         completedFlowHistory.Clear();
         workerTripHistory.Clear();
         workerWaitHistory.Clear();
@@ -3693,7 +3733,7 @@ public partial class ProductionManager : MonoBehaviour
         else if (station.GetComponent<GrillStation>() is GrillStation grillStation)
         {
             if (ReservedInputCount(station, item, except) > 0) return 0;
-            occupied = grillStation.BufferedPattyCount;
+            occupied = grillStation.GetInputCount(item);
         }
         else if (station.GetComponent<FryerStation>() is FryerStation fryerStation)
         {
@@ -3701,7 +3741,7 @@ public partial class ProductionManager : MonoBehaviour
             occupied = fryerStation.GetInputCount(item);
         }
         else if (station.GetComponent<CuttingStation>() is CuttingStation cuttingStation)
-            occupied = cuttingStation.BufferedUnitCount;
+            occupied = cuttingStation.GetInputCount(item);
         else if (station.GetComponent<AssemblyStation>() is AssemblyStation assembly)
             return Mathf.Max(0, GetAssemblyInputCapacity(assembly, item) - buffer.GetInputCount(item)
                 - ReservedInputCount(station, item, except));

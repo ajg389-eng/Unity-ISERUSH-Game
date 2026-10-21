@@ -12,13 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_01_serve_orders
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_01_serve_orders_production
-  title: Produce 15 unlocked menu items
-  description: Produce any combination of finished menu recipes you have unlocked
-    so far.
-  completionEventId: 
-  requiredCount: 15
+  missionId: milestone_01_serve_hamburgers
+  title: Serve 50 Hamburgers
+  description: Serve 50 Hamburgers to customers.
+  completionEventId: menu_item_served_hamburger
+  requiredCount: 50
   producedItem: {fileID: 0}
-  countAnyUnlockedMenuProduct: 1
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

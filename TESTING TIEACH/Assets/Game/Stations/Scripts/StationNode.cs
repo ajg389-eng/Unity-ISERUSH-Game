@@ -17,6 +17,12 @@ public interface IStationBuffer
     int TakeOutput(ItemDefinition item, int amount);
 }
 
+/// <summary>Operational buffering is independent from the number of visible item markers.</summary>
+public static class StationBufferLimits
+{
+    public const int PerItem = 30;
+}
+
 /// <summary>Discovers the authored Input*/Output* buffer markers on station prefabs.</summary>
 public static class StationBufferLayout
 {
@@ -75,6 +81,7 @@ public static class StationBufferLayout
 /// </summary>
 public class StationNode : MonoBehaviour
 {
+    public const float ProductionRateStepPerMinute = 5f;
     public const float MinimumProductionRatePercent = 1f;
     public const float MaximumProductionRatePercent = 100f;
     static readonly Dictionary<string, StationNode> activeStationsById =
@@ -140,6 +147,8 @@ public class StationNode : MonoBehaviour
         StationConfigurationCaution.Ensure(gameObject);
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
+        if (SupportsProductionRateControl)
+            SetTargetOutputPerMinute(outputAmountPerMinute);
     }
 
     void OnEnable()
@@ -293,13 +302,8 @@ public class StationNode : MonoBehaviour
         return seconds > 0.001f ? 60f / seconds : 0f;
     }
 
-    /// <summary>Returns an MK1 recipe cycle adjusted for the selected station tier.</summary>
-    public static float GetTierAdjustedCycleSeconds(Component station, float mk1CycleSeconds)
-    {
-        if (station == null || mk1CycleSeconds <= 0f) return mk1CycleSeconds;
-        StationNode node = station.GetComponent<StationNode>();
-        return node != null && node.StationMark >= 2 ? mk1CycleSeconds * 0.5f : mk1CycleSeconds;
-    }
+    /// <summary>MK1 and MK2 use the same recipe rate; tier differences are capacity and recipe access.</summary>
+    public static float GetTierAdjustedCycleSeconds(Component station, float recipeCycleSeconds) => recipeCycleSeconds;
 
     void SetIo(float input, float output, string inUnit, string outUnit)
     {
@@ -314,8 +318,12 @@ public class StationNode : MonoBehaviour
     public void SetProductionRatePercent(float percent)
     {
         if (!SupportsProductionRateControl) return;
-        productionRatePercent = Mathf.Clamp(percent,
-            MinimumProductionRatePercent, MaximumProductionRatePercent);
+        EnsureIoDefaults(force: true);
+        if (baseOutputAmountPerMinute <= 0.001f) return;
+
+        float requestedRate = baseOutputAmountPerMinute * Mathf.Clamp(percent,
+            MinimumProductionRatePercent, MaximumProductionRatePercent) / 100f;
+        SetTargetOutputPerMinute(requestedRate);
         EnsureIoDefaults(force: true);
     }
 
@@ -324,8 +332,12 @@ public class StationNode : MonoBehaviour
         if (!SupportsProductionRateControl) return;
         EnsureIoDefaults(force: true);
         if (baseOutputAmountPerMinute <= 0.001f) return;
-        float requestedPercent = targetRate / baseOutputAmountPerMinute * 100f;
-        SetProductionRatePercent(requestedPercent);
+
+        float minRate = Mathf.Min(ProductionRateStepPerMinute, baseOutputAmountPerMinute);
+        float snappedRate = Mathf.Round(Mathf.Max(0f, targetRate) / ProductionRateStepPerMinute)
+            * ProductionRateStepPerMinute;
+        snappedRate = Mathf.Clamp(snappedRate, minRate, baseOutputAmountPerMinute);
+        productionRatePercent = snappedRate / baseOutputAmountPerMinute * 100f;
     }
 
     public float GetEffectiveCycleSeconds(float nominalSeconds)
@@ -792,7 +804,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         if (grill != null)
         {
             if (grill.IsCookingPatty) return StationRuntimeState.Working;
-            if (grill.IsCooked() && grill.BufferedPattyCount >= grill.SlotCapacity)
+            if (grill.GetOutputCount(grill.GetSelectedOutput()) >= grill.OutputSlotCapacity)
                 return StationRuntimeState.Blocked;
             if (!grill.HasPattyOnGrill) return StationRuntimeState.Starved;
         }
@@ -802,7 +814,7 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         {
             if (cutting.IsProcessing) return StationRuntimeState.Working;
             CuttingRecipeDefinition recipe = cutting.GetSelectedRecipe();
-            if (cutting.BufferedUnitCount >= cutting.SlotCapacity)
+            if (cutting.GetOutputCount(recipe != null ? recipe.output : null) >= cutting.OutputSlotCapacity)
                 return StationRuntimeState.Blocked;
             if (recipe != null && cutting.GetInputCount(recipe.input) <= 0)
                 return StationRuntimeState.Starved;

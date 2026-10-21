@@ -400,7 +400,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true, requireOrderServed: true),
         new Step(
             "Review analytics",
-            "Before you open Analytics: <b>In System</b> counts customers waiting or being served. <b>Avg Order Wait</b> is order placement to full pickup. <b>Orders Served / Min</b> counts customer orders completed per minute. <b>Service Rate</b> is served ÷ (served + lost). In the item table, <b>Completed Last Min</b> counts item units, not orders. Open Analytics, review it, close it, then click Finish.",
+            "Before you open Analytics: <b>In System</b> counts customers waiting or being served. <b>Avg Order Wait</b> is order placement to full pickup. <b>Orders Served / Min</b> counts customer orders completed per minute. <b>Service Rate</b> is served ÷ (served + lost). In the item table, <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then click Finish.",
             "Finish", Highlight.None, requireAnalyticsScreen: true),
     };
 
@@ -468,7 +468,7 @@ public class OnboardingTutorial : MonoBehaviour
         "I am opening the doors for one test customer. They will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
         "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then continue to Analytics.",
 
-        "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Completed Last Min in the item table counts item units, not orders. Open Analytics, review it, close it, then Finish."
+        "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Produced / Min in the item table counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then Finish."
     };
 
     static readonly string[] CompactTutorialText =
@@ -494,7 +494,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Assign a worker using the highlighted drop area. Route length and handling time reduce the worker's available transport capacity, so work design should keep connected stations reachable and the flow direct.",
         "Customers order at the register. Stations produce at their set rates, and workers move finished food to the Pickup Station even before it is ordered. Balance output with demand to avoid shortages and waste.",
         "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave.",
-        "In <b>Analytics</b>, <b>In System</b> counts customers waiting or being served; <b>Avg Order Wait</b> is order to full pickup; <b>Orders Served / Min</b> counts orders; <b>Service Rate</b> is served divided by served plus lost; <b>Completed Last Min</b> counts item units. <b>Item Reputation</b> changes next shift's demand: serving an item raises its score, while an abandoned order lowers it; every 20 points adds 5 items/min. Compare demand, queues, and output to find the constraint, change one thing, and check the effect. That measure-and-improve loop is central to ISE. Review Analytics, close it, then Finish."
+        "In <b>Analytics</b>, <b>In System</b> counts customers waiting or being served; <b>Avg Order Wait</b> is order to full pickup; <b>Orders Served / Min</b> counts orders; <b>Service Rate</b> is served divided by served plus lost; <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds. <b>Item Reputation</b> changes next shift's demand: serving an item raises its score, while an abandoned order lowers it; every 20 points adds 5 items/min. Compare demand, queues, and output to find the constraint, change one thing, and check the effect. That measure-and-improve loop is central to ISE. Review Analytics, close it, then Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -2237,8 +2237,8 @@ public class OnboardingTutorial : MonoBehaviour
                 AssemblyRecipeDefinition burgerRecipe = config != null ? config.GetAssemblyRecipe(config.burgerBase) : null;
                 ItemDefinition expected = config != null ? config.GetAssemblySupplySource(burgerRecipe) : null;
                 return pantry != null && (expected != null
-                    ? pantry.selectedItem == expected || pantry.secondItem == expected
-                    : ItemNameContains(pantry.selectedItem, "Bun") || ItemNameContains(pantry.secondItem, "Bun"));
+                    ? pantry.selectedItem == expected
+                    : ItemNameContains(pantry.selectedItem, "Bun"));
             }
             default:
             {

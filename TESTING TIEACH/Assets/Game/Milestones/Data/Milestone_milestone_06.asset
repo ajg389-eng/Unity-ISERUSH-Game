@@ -26,12 +26,9 @@ MonoBehaviour:
   - Keep checking the results, because a change in one part can shift the rest.
   isTutorial: 0
   missions:
-  - {fileID: 11400000, guid: 026c9aacc1474635afcdbd56f458e762, type: 2}
-  - {fileID: 11400000, guid: 2cd413fad3d341ed87db0b594605b85d, type: 2}
-  - {fileID: 11400000, guid: 109707ca1821467a86081718a699152d, type: 2}
-  - {fileID: 11400000, guid: 9928d40b8412459f96a7298963f813da, type: 2}
-  - {fileID: 11400000, guid: be5e084d8bc54ef192eeeb5f70b4981f, type: 2}
   - {fileID: 11400000, guid: f4dd5e7666294f548dd18355eb390375, type: 2}
+  - {fileID: 11400000, guid: 2d6eff8a216647678689348797f51cf0, type: 2}
+  - {fileID: 11400000, guid: f273a94d2ab7449198238e0e6f0bb506, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

@@ -26,9 +26,9 @@ MonoBehaviour:
     Keep the work moving at the rate customers need.
   isTutorial: 0
   missions:
-  - {fileID: 11400000, guid: 87cc280dfbb24cef9721503379b0be4b, type: 2}
-  - {fileID: 11400000, guid: 8051162f612243b4b7b1e9bcdfaecb6b, type: 2}
   - {fileID: 11400000, guid: d1be50ffdb1743fd9372bd1d477f336f, type: 2}
+  - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}
+  - {fileID: 11400000, guid: ef8ec327ad06458ba97a3bb331545b9f, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

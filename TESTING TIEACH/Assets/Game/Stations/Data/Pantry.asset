@@ -17,9 +17,9 @@ MonoBehaviour:
   price: 100
   startingQuantity: 0
   placementSurface: 0
-  footprintX: 2
+  footprintX: 1
   footprintY: 1
-  placementScale: {x: 2, y: 2, z: 1}
+  placementScale: {x: 1, y: 2, z: 1}
   placementEuler: {x: 0, y: 0, z: 0}
   counterEmbedDepth: 0
   counterLocalOffset: {x: 0, y: 0, z: 0}

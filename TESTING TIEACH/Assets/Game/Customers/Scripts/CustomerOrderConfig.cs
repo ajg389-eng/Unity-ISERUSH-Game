@@ -98,10 +98,12 @@ public class StationProcessingRecipeDefinition
 [CreateAssetMenu(menuName = "FactoryGame/Customer Order Config", fileName = "CustomerOrderConfig")]
 public class CustomerOrderConfig : ScriptableObject
 {
-    public const int MaxItemReputation = 100;
-    public const int ReputationPerDemandTier = 20;
+    public const int MaxItemReputation = 750;
+    public const int MaxReputationStars = 5;
     public const int DemandBonusPerTier = 5;
     public const int MaxItemDemandBonusPerMinute = 25;
+    const int LegacyReputationPerDemandTier = 20;
+    static readonly int[] ReputationStarServedThresholds = { 50, 150, 300, 500, 750 };
 
     [System.Serializable]
     public class SavedItemReputation
@@ -109,6 +111,8 @@ public class CustomerOrderConfig : ScriptableObject
         public string itemName;
         public int reputation;
         public int activeDemandTier;
+        public int servedCount;
+        public int progressVersion;
     }
 
     sealed class ItemReputationState
@@ -734,11 +738,10 @@ public class CustomerOrderConfig : ScriptableObject
         state.reputation = Mathf.Min(MaxItemReputation, state.reputation + 1);
     }
 
-    public void RecordItemLeftUnserved(ItemDefinition item, int quantity)
+    /// <summary>Counts one completed item toward that recipe's next reputation star.</summary>
+    public void RecordItemServed(ItemDefinition item, float freshnessModifier)
     {
-        if (!IsTrackedMenuItem(item) || quantity <= 0) return;
-        ItemReputationState state = GetOrCreateItemReputation(item);
-        state.reputation = Mathf.Max(0, state.reputation - quantity * 2);
+        RecordItemServed(item);
     }
 
     /// <summary>Applies reputation earned during the previous shift to today's fixed demand schedule.</summary>
@@ -767,7 +770,9 @@ public class CustomerOrderConfig : ScriptableObject
             {
                 itemName = pair.Key,
                 reputation = pair.Value.reputation,
-                activeDemandTier = pair.Value.activeDemandTier
+                activeDemandTier = pair.Value.activeDemandTier,
+                servedCount = pair.Value.reputation,
+                progressVersion = 1
             });
         }
         return saved;
@@ -786,9 +791,12 @@ public class CustomerOrderConfig : ScriptableObject
             {
                 if (record == null || string.IsNullOrEmpty(record.itemName)
                     || !menuItemNames.Contains(record.itemName)) continue;
+                int servedCount = record.progressVersion > 0
+                    ? Mathf.Clamp(record.servedCount, 0, MaxItemReputation)
+                    : ConvertLegacyReputationToServedCount(record.reputation);
                 itemReputationByName[record.itemName] = new ItemReputationState
                 {
-                    reputation = Mathf.Clamp(record.reputation, 0, MaxItemReputation),
+                    reputation = servedCount,
                     activeDemandTier = Mathf.Clamp(record.activeDemandTier, 0,
                         MaxItemDemandBonusPerMinute / DemandBonusPerTier)
                 };
@@ -828,8 +836,49 @@ public class CustomerOrderConfig : ScriptableObject
 
     static int GetDemandTier(int reputation)
     {
-        return Mathf.Clamp(reputation / ReputationPerDemandTier, 0,
-            MaxItemDemandBonusPerMinute / DemandBonusPerTier);
+        int tier = 0;
+        for (int i = 0; i < ReputationStarServedThresholds.Length; i++)
+        {
+            if (reputation < ReputationStarServedThresholds[i]) break;
+            tier++;
+        }
+        return tier;
+    }
+
+    public static int GetItemReputationStars(int servedCount)
+    {
+        return GetDemandTier(Mathf.Clamp(servedCount, 0, MaxItemReputation));
+    }
+
+    public static int GetServedCountProgressToNextStar(int servedCount)
+    {
+        int stars = GetItemReputationStars(servedCount);
+        if (stars >= MaxReputationStars) return 0;
+        int previousThreshold = stars > 0 ? ReputationStarServedThresholds[stars - 1] : 0;
+        return Mathf.Max(0, servedCount - previousThreshold);
+    }
+
+    public static int GetServedCountNeededForNextStar(int servedCount)
+    {
+        int stars = GetItemReputationStars(servedCount);
+        if (stars >= MaxReputationStars) return 0;
+        int previousThreshold = stars > 0 ? ReputationStarServedThresholds[stars - 1] : 0;
+        return ReputationStarServedThresholds[stars] - previousThreshold;
+    }
+
+    static int ConvertLegacyReputationToServedCount(int legacyReputation)
+    {
+        int oldTier = Mathf.Clamp(legacyReputation / LegacyReputationPerDemandTier,
+            0, MaxReputationStars);
+        if (oldTier >= MaxReputationStars) return MaxItemReputation;
+
+        int previousThreshold = oldTier > 0 ? ReputationStarServedThresholds[oldTier - 1] : 0;
+        int nextThreshold = ReputationStarServedThresholds[oldTier];
+        float oldTierProgress = (legacyReputation % LegacyReputationPerDemandTier)
+            / (float)LegacyReputationPerDemandTier;
+        return Mathf.Clamp(Mathf.RoundToInt(previousThreshold
+            + (nextThreshold - previousThreshold) * oldTierProgress),
+            0, MaxItemReputation);
     }
 
     /// <summary>Returns the next order in the exact repeating one-minute demand cycle.</summary>

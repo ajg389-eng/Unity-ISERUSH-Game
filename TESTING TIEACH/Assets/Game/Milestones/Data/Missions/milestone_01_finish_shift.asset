@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_01_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_01_finish_shift
-  title: Reposition a workstation
-  description: Move a workstation to improve the layout of your kitchen.
-  completionEventId: station_repositioned
-  requiredCount: 1
+  missionId: milestone_01_serve_shakes
+  title: Serve 50 Shakes
+  description: Serve 50 Shakes to customers.
+  completionEventId: menu_item_served_shake
+  requiredCount: 50
   producedItem: {fileID: 0}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1

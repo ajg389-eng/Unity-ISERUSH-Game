@@ -463,7 +463,6 @@ public static class WorkerFlowAssigner
         if (pantry != null)
         {
             if (pantry.selectedItem != null) products.Add(pantry.selectedItem);
-            if (pantry.secondItem != null) products.Add(pantry.secondItem);
             return;
         }
 
@@ -2095,7 +2094,6 @@ public static class WorkflowAnalysis
         else if (pantry != null)
         {
             AddRateItem(outputs, pantry.selectedItem);
-            AddRateItem(outputs, pantry.secondItem);
         }
         else if (grill != null) output = grill.GetSelectedOutput();
         else if (fryer != null) output = fryer.GetSelectedOutput();

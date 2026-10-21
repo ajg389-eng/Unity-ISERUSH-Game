@@ -1056,7 +1056,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         meals.Add(new HeldMeal(order.Clone(), Time.time));
         totalDelivered++;
         if (ProductionManager.Instance != null)
-            ProductionManager.Instance.RecordCompletedOutput(order);
+            ProductionManager.Instance.RecordPickupDelivery(order);
         Sfx.Play(SfxId.HeatLampStock);
         RefreshStatusLabel();
         return true;
@@ -1178,8 +1178,17 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item,
         out int adjustedSaleValue)
     {
+        return TryCustomerTakeAvailableItem(customer, queueStation, customerOrder,
+            out item, out adjustedSaleValue, out _);
+    }
+
+    public static bool TryCustomerTakeAvailableItem(CustomerAI customer,
+        HeatLampStation queueStation, CustomerOrder customerOrder, out ItemDefinition item,
+        out int adjustedSaleValue, out float freshnessModifier)
+    {
         item = null;
         adjustedSaleValue = 0;
+        freshnessModifier = 0f;
         if (customer == null || customerOrder?.lines == null) return false;
 
         IReadOnlyList<HeatLampStation> stations = ActiveStations;
@@ -1212,7 +1221,8 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             }
 
             if (source == null) continue;
-            CustomerOrder taken = source.TryTakeSingleItem(line.item, out adjustedSaleValue);
+            CustomerOrder taken = source.TryTakeSingleItem(line.item, out adjustedSaleValue,
+                out freshnessModifier);
             ItemDefinition actualItem = taken != null ? taken.PrimaryItem : null;
             if (actualItem == null) continue;
             source.totalSold++;
@@ -1271,12 +1281,20 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     public CustomerOrder TryTakeSingleItem(ItemDefinition item, out int adjustedSaleValue)
     {
+        return TryTakeSingleItem(item, out adjustedSaleValue, out _);
+    }
+
+    public CustomerOrder TryTakeSingleItem(ItemDefinition item, out int adjustedSaleValue,
+        out float freshnessModifier)
+    {
         adjustedSaleValue = 0;
+        freshnessModifier = 0f;
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
         ItemDefinition held = meal?.order?.PrimaryItem;
         if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
+        freshnessModifier = GetFreshnessModifier(meal);
         adjustedSaleValue = GetFreshnessSaleValue(meal, held);
         if (meal.order.GetTotalQuantity() <= 0)
             meals.RemoveAt(idx);

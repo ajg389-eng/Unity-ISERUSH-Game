@@ -26,10 +26,8 @@ MonoBehaviour:
   - 
   isTutorial: 0
   missions:
-  - {fileID: 11400000, guid: d1f592cabf1b4c13a8fe1382f8035757, type: 2}
-  - {fileID: 11400000, guid: 26890e37f245430bbdcda2edde7ca593, type: 2}
-  - {fileID: 11400000, guid: 928a3defdbfd4a0f8c1647989ee8b4da, type: 2}
   - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
+  - {fileID: 11400000, guid: f2193414de654acebe722bc290248751, type: 2}
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

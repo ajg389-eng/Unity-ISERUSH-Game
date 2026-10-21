@@ -31,6 +31,7 @@ public class CustomerPatienceMeter : MonoBehaviour
 
     public bool IsActive => active;
     public float Normalized => duration > 0f ? Mathf.Clamp01(remaining / duration) : 0f;
+    public float RemainingSeconds => active ? remaining : 0f;
 
     void Awake()
     {
@@ -53,6 +54,24 @@ public class CustomerPatienceMeter : MonoBehaviour
             meterRoot.SetActive(true);
 
         RefreshVisual();
+    }
+
+    public void Restore(float totalWaitSeconds, float remainingSeconds, Action expiredCallback)
+    {
+        EnsureHierarchy();
+        ConfigureImages();
+
+        duration = Mathf.Max(0.1f, totalWaitSeconds);
+        remaining = Mathf.Clamp(remainingSeconds, 0f, duration);
+        onExpired = expiredCallback;
+        active = remaining > 0f;
+
+        if (meterRoot != null)
+            meterRoot.SetActive(active);
+
+        RefreshVisual();
+        if (!active)
+            onExpired?.Invoke();
     }
 
     public void Stop()

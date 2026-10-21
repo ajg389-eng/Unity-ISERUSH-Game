@@ -978,10 +978,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void CreateSelectedItemPreview(GameObject station)
     {
         ItemDefinition item = GetSelectedStationItem(station);
-        var pantry = station != null ? station.GetComponent<PantryStation>() : null;
-        bool twoItems = pantry != null && pantry.secondItem != null;
-        CreateSelectedItemPreview(station, item, twoItems ? -0.32f : 0f);
-        if (twoItems) CreateSelectedItemPreview(station, pantry.secondItem, 0.32f);
+        CreateSelectedItemPreview(station, item, 0f);
     }
 
     void DrawAllStationPreviews()

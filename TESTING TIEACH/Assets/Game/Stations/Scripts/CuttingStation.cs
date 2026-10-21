@@ -4,13 +4,11 @@ using UnityEngine;
 /// <summary>Processes raw burger toppings into slices ready for assembly.</summary>
 public partial class CuttingStation : MonoBehaviour, IStationBuffer
 {
-    const int Mk1SlotCapacity = 4;
-    const int Mk2SlotCapacity = 8;
     [Header("Recipe")]
     [Tooltip("Output selected for this station. The recipe defines its matching raw input.")]
     public ItemDefinition selectedProduct;
     [Tooltip("Time to process one item at 100% rate.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 6f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
@@ -45,24 +43,21 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
     public float ProcessRemainingSeconds => IsProcessing
         ? Mathf.Max(0f, EffectiveProcessTimeSeconds - processingTimer) : 0f;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
-    public int SlotCapacity => stationMark >= 2 ? Mk2SlotCapacity : Mk1SlotCapacity;
-    // The legacy buffer interface exposes separate limits, but both directions
-    // now use this same shared physical slot pool.
-    public int InputSlotCapacity => SlotCapacity;
-    public int OutputSlotCapacity => SlotCapacity;
+    public int InputSlotCapacity => StationBufferLimits.PerItem;
+    public int OutputSlotCapacity => StationBufferLimits.PerItem;
     public int BufferedUnitCount => inputUnits + outputUnits + processingUnits;
     public int AuthoredInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }
     public int AuthoredOutputSlotCount { get { EnsureBufferMarkers(); return outputMarkers.Count; } }
+    public int VisibleSlotCount { get { EnsureBufferMarkers(); return slotMarkers.Count; } }
 
     void OnEnable()
     {
         processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         StationConfigurationCaution.Ensure(gameObject);
         FindBufferMarkers();
-        // Collapse legacy separate input/output pools into the new shared slots.
-        outputUnits = Mathf.Clamp(outputUnits, 0, SlotCapacity);
-        processingUnits = Mathf.Clamp(processingUnits, 0, SlotCapacity - outputUnits);
-        inputUnits = Mathf.Clamp(inputUnits, 0, SlotCapacity - outputUnits - processingUnits);
+        outputUnits = Mathf.Clamp(outputUnits, 0, OutputSlotCapacity);
+        processingUnits = Mathf.Clamp(processingUnits, 0, 1);
+        inputUnits = Mathf.Clamp(inputUnits, 0, InputSlotCapacity - processingUnits);
         RefreshItemDisplay(true);
     }
 
@@ -110,6 +105,12 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
         return recipe != null && item == recipe.input ? inputUnits : 0;
     }
 
+    public int GetHeldInputCount(ItemDefinition item)
+    {
+        CuttingRecipeDefinition recipe = GetSelectedRecipe();
+        return recipe != null && item == recipe.input ? inputUnits + processingUnits : 0;
+    }
+
     public int GetOutputCount(ItemDefinition item)
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
@@ -120,7 +121,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
     {
         CuttingRecipeDefinition recipe = GetSelectedRecipe();
         return recipe != null && item == recipe.input && amount > 0
-            && BufferedUnitCount + amount <= SlotCapacity;
+            && inputUnits + amount <= InputSlotCapacity;
     }
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
@@ -149,6 +150,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
     public int ProcessBuffered(int amount)
     {
         // One call represents one item cycle, regardless of older batch callers.
+        if (outputUnits >= OutputSlotCapacity) return 0;
         int processed = Mathf.Min(1, inputUnits);
         if (processed <= 0) return 0;
         inputUnits -= processed;
@@ -167,6 +169,7 @@ public partial class CuttingStation : MonoBehaviour, IStationBuffer
         bool changed = false;
         while (true)
         {
+            if (outputUnits >= OutputSlotCapacity) break;
             if (processingUnits <= 0)
             {
                 if (inputUnits <= 0) break;

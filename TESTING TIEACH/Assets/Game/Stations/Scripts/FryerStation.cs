@@ -11,12 +11,10 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
     public ItemDefinition selectedProduct;
     [FormerlySerializedAs("cookTimeSeconds")]
     [Tooltip("Time to fry one item at 100% rate.")]
-    [Min(0f)] public float processTimeSeconds = 4f;
+    [Min(0f)] public float processTimeSeconds = 6f;
     [SerializeField, Range(1, 2)] int stationMark = 1;
     public Vector3 interactionOffset = Vector3.zero;
 
-    const int Mk1BufferCapacity = 4;
-    const int Mk2BufferCapacity = 8;
     [SerializeField, Min(0)] int basketUnits;
     [SerializeField, Min(0)] int waitingInputUnits;
     [SerializeField, Min(0)] int cookedOutputUnits;
@@ -25,8 +23,9 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
     Transform itemDisplayRoot;
     readonly List<Transform> inputMarkers = new List<Transform>();
     readonly List<Transform> outputMarkers = new List<Transform>();
-    int displayedUnits = -1;
-    bool displayedCooked;
+    int displayedWaitingInput = -1;
+    int displayedBasket = -1;
+    int displayedCookedOutput = -1;
     ItemDefinition displayedProduct;
     StationProcessProgressIndicator processProgressIndicator;
 
@@ -74,15 +73,25 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
         }
     }
     public float EffectiveProcessTimeSeconds => StationNode.GetEffectiveCycleSeconds(this, BaseProcessCycleSeconds);
-    int BufferCapacity => stationMark >= 2 ? Mk2BufferCapacity : Mk1BufferCapacity;
-    public int InputSlotCapacity => BufferCapacity;
-    public int OutputSlotCapacity => BufferCapacity;
+    public int InputSlotCapacity => StationBufferLimits.PerItem;
+    public int OutputSlotCapacity => StationBufferLimits.PerItem;
     public int BufferedUnitCount => waitingInputUnits + basketUnits + cookedOutputUnits;
+    public int VisibleInputSlotCount { get { EnsureBufferMarkers(); return inputMarkers.Count; } }
+    public int VisibleOutputSlotCount
+    {
+        get
+        {
+            EnsureBufferMarkers();
+            return outputMarkers.Count > 0 ? outputMarkers.Count : inputMarkers.Count;
+        }
+    }
     public int GetInputCount(ItemDefinition item) => item == RawItem ? waitingInputUnits : 0;
+    public int GetHeldInputCount(ItemDefinition item) => GetInputCount(item)
+        + (item != null && item == RawItem ? basketUnits : 0);
     public int GetOutputCount(ItemDefinition item) => item == CookedItem ? cookedOutputUnits : 0;
     public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && waitingInputUnits + amount <= InputSlotCapacity
-            && item != null && item == RawItem;
+        amount > 0 && item != null && item == RawItem
+            && waitingInputUnits + amount <= InputSlotCapacity;
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
@@ -158,7 +167,7 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
     {
         processProgressIndicator = StationProcessProgressIndicator.Ensure(gameObject);
         FindBufferMarkers();
-        basketUnits = Mathf.Clamp(basketUnits, 0, Mathf.Min(InputSlotCapacity, OutputSlotCapacity));
+        basketUnits = Mathf.Clamp(basketUnits, 0, InputSlotCapacity);
         waitingInputUnits = Mathf.Clamp(waitingInputUnits, 0, InputSlotCapacity);
         cookedOutputUnits = Mathf.Clamp(cookedOutputUnits, 0, OutputSlotCapacity);
         RefreshItemDisplay(true);
@@ -230,27 +239,42 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
 
     void RefreshItemDisplay(bool force)
     {
-        bool cooked = IsCooked();
-        if (!force && displayedUnits == BufferedUnitCount && displayedCooked == cooked
+        if (!force && displayedWaitingInput == waitingInputUnits
+            && displayedBasket == basketUnits && displayedCookedOutput == cookedOutputUnits
             && displayedProduct == selectedProduct) return;
         EnsureBufferMarkers();
         if (itemDisplayRoot == null)
             itemDisplayRoot = StationItemVisualUtility.GetOrCreateDisplayRoot(transform, "FryerItemDisplay");
         StationItemVisualUtility.ClearChildren(itemDisplayRoot);
-        displayedUnits = BufferedUnitCount;
-        displayedCooked = cooked;
+        displayedWaitingInput = waitingInputUnits;
+        displayedBasket = basketUnits;
+        displayedCookedOutput = cookedOutputUnits;
         displayedProduct = selectedProduct;
         if (BufferedUnitCount <= 0) return;
         GameObject inputPrefab = RawItem != null ? RawItem.prefab : null;
         GameObject outputPrefab = CookedItem != null ? CookedItem.prefab : null;
-        int rawVisible = Mathf.Min(waitingInputUnits + basketUnits, inputMarkers.Count);
-        for (int i = 0; inputPrefab != null && i < rawVisible; i++)
-            StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[i], itemDisplayRoot,
-                "FryerInput_" + i);
-        List<Transform> activeOutputs = outputMarkers.Count > 0 ? outputMarkers : inputMarkers;
-        int outputVisible = Mathf.Min(cookedOutputUnits, activeOutputs.Count);
-        for (int i = 0; outputPrefab != null && i < outputVisible; i++)
-            StationItemVisualUtility.SpawnAtMarker(outputPrefab, activeOutputs[i], itemDisplayRoot,
-                "FryerOutput_" + i);
+        if (outputMarkers.Count > 0)
+        {
+            int rawVisible = Mathf.Min(waitingInputUnits + basketUnits, inputMarkers.Count);
+            for (int i = 0; inputPrefab != null && i < rawVisible; i++)
+                StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[i], itemDisplayRoot,
+                    "FryerInput_" + i);
+            int outputVisible = Mathf.Min(cookedOutputUnits, outputMarkers.Count);
+            for (int i = 0; outputPrefab != null && i < outputVisible; i++)
+                StationItemVisualUtility.SpawnAtMarker(outputPrefab, outputMarkers[i], itemDisplayRoot,
+                    "FryerOutput_" + i);
+        }
+        else
+        {
+            int outputVisible = Mathf.Min(cookedOutputUnits, inputMarkers.Count);
+            for (int i = 0; outputPrefab != null && i < outputVisible; i++)
+                StationItemVisualUtility.SpawnAtMarker(outputPrefab, inputMarkers[i], itemDisplayRoot,
+                    "FryerOutput_" + i);
+            int slot = outputVisible;
+            int rawVisible = Mathf.Min(waitingInputUnits + basketUnits, inputMarkers.Count - slot);
+            for (int i = 0; inputPrefab != null && i < rawVisible; i++, slot++)
+                StationItemVisualUtility.SpawnAtMarker(inputPrefab, inputMarkers[slot], itemDisplayRoot,
+                    "FryerInput_" + i);
+        }
     }
 }

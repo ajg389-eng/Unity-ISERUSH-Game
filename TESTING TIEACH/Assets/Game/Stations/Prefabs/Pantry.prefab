@@ -3194,7 +3194,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2, y: 2, z: 1}
+  m_LocalScale: {x: 1, y: 2, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 8965105714162761261}
@@ -3294,6 +3294,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PantryStation
   selectedItem: {fileID: 0}
   processTimeSeconds: 0
+  maxOutputPerMinute: 30
+  lowStockWarningThreshold: 10
   interactionOffset: {x: 0, y: 0, z: 0}
 --- !u!114 &4988263162553479662
 MonoBehaviour:
@@ -3307,7 +3309,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae0e0ac329fb5014199c9d97764e0d13, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildFootprint
-  sizeX: 2
+  sizeX: 1
   sizeY: 1
 --- !u!114 &-8525227422408040580
 MonoBehaviour:
@@ -3328,6 +3330,7 @@ MonoBehaviour:
   - {x: 1, y: -1}
   buildModeHighlight: {fileID: 4329351292084752439}
   interactionRadius: 0
+  employeeClearance: 0.4
 --- !u!1 &8201901185203891113
 GameObject:
   m_ObjectHideFlags: 0

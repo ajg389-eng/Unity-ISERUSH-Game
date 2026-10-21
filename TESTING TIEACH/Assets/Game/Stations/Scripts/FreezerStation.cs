@@ -14,7 +14,7 @@ public partial class FreezerStation : MonoBehaviour, IStationBuffer
     [Tooltip("Total time for one freezer operation.")]
     [Min(0f)] public float processTimeSeconds = 0f;
     [Tooltip("Maximum sustained amount this freezer can dispense per minute.")]
-    [Min(0.1f)] public float maxOutputPerMinute = 30f;
+    [Min(0.1f)] public float maxOutputPerMinute = 15f;
     [Tooltip("Show the station caution sign when assigned stock reaches this amount or lower.")]
     [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;

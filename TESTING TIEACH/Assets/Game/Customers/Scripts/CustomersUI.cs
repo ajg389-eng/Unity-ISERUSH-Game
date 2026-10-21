@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Management tab: customer visit trend graph + required kitchen output per ordered item.
+/// Management tab: current customer arrivals + required kitchen output per ordered item.
 /// </summary>
 public class CustomersUI : MonoBehaviour
 {
@@ -13,24 +13,18 @@ public class CustomersUI : MonoBehaviour
     float nextRefresh;
     bool built;
 
-    TextMeshProUGUI graphTitle;
+    TextMeshProUGUI arrivalsSummary;
     TextMeshProUGUI demandTitle;
     TextMeshProUGUI demandHelp;
     TextMeshProUGUI[] demandHeader;
     readonly List<TextMeshProUGUI> metricValues = new List<TextMeshProUGUI>();
-    RectTransform graphBarsRoot;
     Transform demandListRoot;
     RectTransform demandViewport;
     ScrollRect demandScroll;
-    readonly List<Image> barFills = new List<Image>();
-    readonly List<Image> barTracks = new List<Image>();
-    readonly List<Image> barRanges = new List<Image>();
-    readonly List<Image> barMeans = new List<Image>();
-    readonly List<TextMeshProUGUI> barValues = new List<TextMeshProUGUI>();
-    readonly List<TextMeshProUGUI> barLabels = new List<TextMeshProUGUI>();
     readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
-    static readonly float[] demandColumnMinimumWidths = { 120f, 76f, 56f, 45f, 53f, 68f, 86f, 110f, 74f };
+    readonly List<Image[]> demandReputationStars = new List<Image[]>();
+    static readonly float[] demandColumnMinimumWidths = { 210f, 105f, 120f, 120f, 175f };
     readonly float[] demandColumnWidths = (float[])demandColumnMinimumWidths.Clone();
 
     void OnEnable()
@@ -71,57 +65,22 @@ public class CustomersUI : MonoBehaviour
 
         BuildMetricCards();
 
-        graphTitle = CreateLabel(transform, "GraphTitle",
+        arrivalsSummary = CreateLabel(transform, "ArrivalsSummary",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -126), new Vector2(-28, 28),
-            15, TextAlignmentOptions.MidlineLeft);
-        graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F8F5EE>Exact Plan</color>";
-        graphTitle.richText = true;
-        graphTitle.textWrappingMode = TextWrappingModes.NoWrap;
-        graphTitle.enableAutoSizing = true;
-        graphTitle.fontSizeMin = 11f;
-        graphTitle.fontSizeMax = 15f;
-        graphTitle.overflowMode = TextOverflowModes.Overflow;
-
-        var graphFrame = new GameObject("VisitGraph", typeof(RectTransform));
-        graphFrame.transform.SetParent(transform, false);
-        var graphRt = (RectTransform)graphFrame.transform;
-        graphRt.anchorMin = new Vector2(0, 1);
-        graphRt.anchorMax = new Vector2(1, 1);
-        graphRt.pivot = new Vector2(0.5f, 1f);
-        graphRt.anchoredPosition = new Vector2(0, -158);
-        graphRt.sizeDelta = new Vector2(-28, 240);
-        var frameImg = graphFrame.AddComponent<Image>();
-        frameImg.color = Color.clear;
-        frameImg.gameObject.AddComponent<GameUIThemeStyled>();
-
-        var barsGo = new GameObject("Bars", typeof(RectTransform));
-        barsGo.transform.SetParent(graphFrame.transform, false);
-        graphBarsRoot = (RectTransform)barsGo.transform;
-        graphBarsRoot.anchorMin = Vector2.zero;
-        graphBarsRoot.anchorMax = Vector2.one;
-        graphBarsRoot.offsetMin = new Vector2(8, 34);
-        graphBarsRoot.offsetMax = new Vector2(-8, -8);
-        var hlg = barsGo.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 3;
-        hlg.childAlignment = TextAnchor.LowerCenter;
-        hlg.childControlWidth = true;
-        hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = true;
-        hlg.childForceExpandHeight = true;
-        hlg.padding = new RectOffset(2, 2, 2, 2);
-
-        int bucketCount = StoreStatisticsManager.Instance != null
-            ? StoreStatisticsManager.Instance.ShiftHourCount
-            : 12;
-        for (int i = 0; i < bucketCount; i++)
-            CreateBarColumn(graphBarsRoot);
+            new Vector2(0, -124), new Vector2(-28, 24),
+            13, TextAlignmentOptions.MidlineLeft);
+        arrivalsSummary.richText = true;
+        arrivalsSummary.textWrappingMode = TextWrappingModes.NoWrap;
+        arrivalsSummary.enableAutoSizing = true;
+        arrivalsSummary.fontSizeMin = 11f;
+        arrivalsSummary.fontSizeMax = 13f;
+        arrivalsSummary.overflowMode = TextOverflowModes.Overflow;
 
         demandTitle = CreateLabel(transform, "DemandTitle",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -410), new Vector2(-28, 30),
+            new Vector2(0, -150), new Vector2(-28, 30),
             18, TextAlignmentOptions.MidlineLeft);
-        demandTitle.text = "Live Demand by Item";
+        demandTitle.text = "Item Demand & Production";
         demandTitle.textWrappingMode = TextWrappingModes.NoWrap;
         demandTitle.enableAutoSizing = true;
         demandTitle.fontSizeMin = 14f;
@@ -130,13 +89,13 @@ public class CustomersUI : MonoBehaviour
 
         demandHelp = CreateLabel(transform, "DemandHelp",
             new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -434), new Vector2(-28, 20),
-            11, TextAlignmentOptions.MidlineLeft);
-        demandHelp.text = "Target = scheduled demand/min. Ordered = actual register rate over the last 60 sim seconds (normalized while warming up). Reputation adjusts next shift.";
+            new Vector2(0, -176), new Vector2(-28, 34),
+            12, TextAlignmentOptions.TopLeft);
+        demandHelp.text = "Open orders are waiting for pickup. Ordered/min counts items accepted at the register. Produced/min counts item units successfully delivered to Pickup Stations in the last 60 seconds.\nServe 50 items for star 1, then 100, 150, 200, and 250 more. Each star adds 5 requests/min next shift.";
         demandHelp.enableAutoSizing = true;
-        demandHelp.fontSizeMin = 9f;
-        demandHelp.fontSizeMax = 11f;
-        demandHelp.textWrappingMode = TextWrappingModes.NoWrap;
+        demandHelp.fontSizeMin = 11f;
+        demandHelp.fontSizeMax = 12f;
+        demandHelp.textWrappingMode = TextWrappingModes.Normal;
         demandHelp.overflowMode = TextOverflowModes.Ellipsis;
         demandHelp.color = new Color(0.72f, 0.77f, 0.86f, 1f);
 
@@ -146,7 +105,7 @@ public class CustomersUI : MonoBehaviour
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(12, 12);
-        scrollRt.offsetMax = new Vector2(-12, -466);
+        scrollRt.offsetMax = new Vector2(-12, -216);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         demandScroll = scroll;
@@ -155,6 +114,63 @@ public class CustomersUI : MonoBehaviour
         scroll.decelerationRate = 0.135f;
         scroll.horizontal = true;
         scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+
+        var verticalScrollbarObject = new GameObject("VerticalScrollbar",
+            typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        verticalScrollbarObject.transform.SetParent(scrollGo.transform, false);
+        RectTransform verticalScrollbarRect = (RectTransform)verticalScrollbarObject.transform;
+        verticalScrollbarRect.anchorMin = new Vector2(1f, 0f);
+        verticalScrollbarRect.anchorMax = new Vector2(1f, 1f);
+        verticalScrollbarRect.pivot = new Vector2(1f, 0.5f);
+        verticalScrollbarRect.anchoredPosition = new Vector2(-2f, 0f);
+        verticalScrollbarRect.sizeDelta = new Vector2(8f, 0f);
+        Image verticalTrack = verticalScrollbarObject.GetComponent<Image>();
+        verticalTrack.color = new Color(0.10f, 0.12f, 0.16f, 0.9f);
+        var handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handleObject.transform.SetParent(verticalScrollbarObject.transform, false);
+        RectTransform handleRect = (RectTransform)handleObject.transform;
+        handleRect.anchorMin = Vector2.zero;
+        handleRect.anchorMax = Vector2.one;
+        handleRect.offsetMin = new Vector2(1f, 1f);
+        handleRect.offsetMax = new Vector2(-1f, -1f);
+        Image handleImage = handleObject.GetComponent<Image>();
+        handleImage.color = GameUITheme.MutedText;
+        Scrollbar verticalScrollbar = verticalScrollbarObject.GetComponent<Scrollbar>();
+        verticalScrollbar.handleRect = handleRect;
+        verticalScrollbar.targetGraphic = handleImage;
+        verticalScrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scroll.verticalScrollbar = verticalScrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+        scroll.verticalScrollbarSpacing = -10f;
+
+        var horizontalScrollbarObject = new GameObject("HorizontalScrollbar",
+            typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        horizontalScrollbarObject.transform.SetParent(scrollGo.transform, false);
+        RectTransform horizontalScrollbarRect = (RectTransform)horizontalScrollbarObject.transform;
+        horizontalScrollbarRect.anchorMin = new Vector2(0f, 0f);
+        horizontalScrollbarRect.anchorMax = new Vector2(1f, 0f);
+        horizontalScrollbarRect.pivot = new Vector2(0.5f, 0f);
+        horizontalScrollbarRect.anchoredPosition = new Vector2(0f, 2f);
+        horizontalScrollbarRect.sizeDelta = new Vector2(0f, 8f);
+        Image horizontalTrack = horizontalScrollbarObject.GetComponent<Image>();
+        horizontalTrack.color = new Color(0.10f, 0.12f, 0.16f, 0.9f);
+        var horizontalHandleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        horizontalHandleObject.transform.SetParent(horizontalScrollbarObject.transform, false);
+        RectTransform horizontalHandleRect = (RectTransform)horizontalHandleObject.transform;
+        horizontalHandleRect.anchorMin = Vector2.zero;
+        horizontalHandleRect.anchorMax = Vector2.one;
+        horizontalHandleRect.offsetMin = new Vector2(1f, 1f);
+        horizontalHandleRect.offsetMax = new Vector2(-1f, -1f);
+        Image horizontalHandleImage = horizontalHandleObject.GetComponent<Image>();
+        horizontalHandleImage.color = GameUITheme.MutedText;
+        Scrollbar horizontalScrollbar = horizontalScrollbarObject.GetComponent<Scrollbar>();
+        horizontalScrollbar.handleRect = horizontalHandleRect;
+        horizontalScrollbar.targetGraphic = horizontalHandleImage;
+        horizontalScrollbar.direction = Scrollbar.Direction.LeftToRight;
+        scroll.horizontalScrollbar = horizontalScrollbar;
+        scroll.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+        scroll.horizontalScrollbarSpacing = -10f;
 
         var scrollImage = scrollGo.GetComponent<Image>();
         if (scrollImage != null)
@@ -202,15 +218,15 @@ public class CustomersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         demandHeader = CreateDemandTableRow("Header", 42f, out _);
-        string[] headings = { "Item", "Status", "Open\nDemand", "Ready", "Cooking", "Target /\nMin", "Items Ordered /\nMin", "Reputation /\nNext Shift", "Completed\nLast Min" };
+        string[] headings = { "Item", "Open\nOrders", "Ordered\n/min", "Produced\n/min", "Reputation /\nNext Shift" };
         for (int i = 0; i < headings.Length; i++)
         {
             demandHeader[i].text = headings[i];
             demandHeader[i].fontStyle = FontStyles.Bold;
-            demandHeader[i].fontSize = 12f;
+            demandHeader[i].fontSize = 13f;
             demandHeader[i].enableAutoSizing = true;
-            demandHeader[i].fontSizeMin = 10f;
-            demandHeader[i].fontSizeMax = 12f;
+            demandHeader[i].fontSizeMin = 12f;
+            demandHeader[i].fontSizeMax = 13f;
             demandHeader[i].textWrappingMode = TextWrappingModes.Normal;
             demandHeader[i].overflowMode = TextOverflowModes.Overflow;
             demandHeader[i].color = new Color(0.72f, 0.77f, 0.86f, 1f);
@@ -257,8 +273,8 @@ public class CustomersUI : MonoBehaviour
         rowLayout.childForceExpandWidth = true;
         rowLayout.childForceExpandHeight = true;
 
-        CreateMetricCard(row.transform, "In System", new Color(0.58f, 0.47f, 0.93f, 1f));
-        CreateMetricCard(row.transform, "Avg Wait", new Color(0.29f, 0.72f, 0.95f, 1f));
+        CreateMetricCard(row.transform, "Customers in Store", new Color(0.58f, 0.47f, 0.93f, 1f));
+        CreateMetricCard(row.transform, "Order to Pickup", new Color(0.29f, 0.72f, 0.95f, 1f));
         CreateMetricCard(row.transform, "Orders Served / Min", new Color(0.25f, 0.78f, 0.62f, 1f));
         CreateMetricCard(row.transform, "Service Rate", new Color(0.98f, 0.68f, 0.30f, 1f));
     }
@@ -302,93 +318,6 @@ public class CustomersUI : MonoBehaviour
         metricValues.Add(value);
     }
 
-    void CreateBarColumn(Transform parent)
-    {
-        var col = new GameObject("Bar", typeof(RectTransform));
-        col.transform.SetParent(parent, false);
-        var le = col.AddComponent<LayoutElement>();
-        le.flexibleWidth = 1f;
-        le.minWidth = 10f;
-
-        var track = new GameObject("Track", typeof(RectTransform));
-        track.transform.SetParent(col.transform, false);
-        var trackRt = (RectTransform)track.transform;
-        trackRt.anchorMin = new Vector2(0.15f, 0.24f);
-        trackRt.anchorMax = new Vector2(0.85f, 1f);
-        trackRt.offsetMin = Vector2.zero;
-        trackRt.offsetMax = Vector2.zero;
-        var trackImage = track.AddComponent<Image>();
-        trackImage.color = new Color(0.2f, 0.22f, 0.28f, 1f);
-        barTracks.Add(trackImage);
-
-        var range = new GameObject("ExpectedRange", typeof(RectTransform), typeof(Image));
-        range.transform.SetParent(track.transform, false);
-        var rangeRect = (RectTransform)range.transform;
-        rangeRect.anchorMin = Vector2.zero;
-        rangeRect.anchorMax = new Vector2(1f, 0f);
-        rangeRect.pivot = new Vector2(0.5f, 0f);
-        rangeRect.offsetMin = Vector2.zero;
-        rangeRect.offsetMax = Vector2.zero;
-        range.GetComponent<Image>().color = new Color(0.94f, 0.70f, 0.24f, 0.34f);
-        range.GetComponent<Image>().raycastTarget = false;
-        barRanges.Add(range.GetComponent<Image>());
-
-        var meanLine = new GameObject("ExpectedMean", typeof(RectTransform), typeof(Image));
-        meanLine.transform.SetParent(track.transform, false);
-        var meanRect = (RectTransform)meanLine.transform;
-        meanRect.anchorMin = new Vector2(0f, 0f);
-        meanRect.anchorMax = new Vector2(1f, 0f);
-        meanRect.pivot = new Vector2(0.5f, 0f);
-        meanRect.sizeDelta = new Vector2(0f, 2f);
-        meanLine.GetComponent<Image>().color = new Color(1f, 0.79f, 0.39f, 1f);
-        meanLine.GetComponent<Image>().raycastTarget = false;
-        barMeans.Add(meanLine.GetComponent<Image>());
-
-        var fill = new GameObject("Fill", typeof(RectTransform));
-        fill.transform.SetParent(track.transform, false);
-        var fillRt = (RectTransform)fill.transform;
-        fillRt.anchorMin = new Vector2(0f, 0f);
-        fillRt.anchorMax = new Vector2(1f, 0f);
-        fillRt.pivot = new Vector2(0.5f, 0f);
-        fillRt.offsetMin = Vector2.zero;
-        fillRt.offsetMax = Vector2.zero;
-        var fillImg = fill.AddComponent<Image>();
-        fillImg.color = new Color(0.35f, 0.72f, 0.95f, 1f);
-        barFills.Add(fillImg);
-        meanLine.transform.SetAsLastSibling();
-
-        var valueGo = new GameObject("Count", typeof(RectTransform), typeof(TextMeshProUGUI));
-        valueGo.transform.SetParent(track.transform, false);
-        var valueRect = (RectTransform)valueGo.transform;
-        valueRect.anchorMin = new Vector2(0f, 0f);
-        valueRect.anchorMax = new Vector2(1f, 0f);
-        valueRect.pivot = new Vector2(0.5f, 0f);
-        valueRect.sizeDelta = new Vector2(0f, 16f);
-        var valueText = valueGo.GetComponent<TextMeshProUGUI>();
-        valueText.fontSize = 10;
-        valueText.alignment = TextAlignmentOptions.Center;
-        valueText.color = new Color(0.82f, 0.86f, 0.92f, 1f);
-        valueText.raycastTarget = false;
-        valueText.enableWordWrapping = false;
-        barValues.Add(valueText);
-
-        var labelGo = new GameObject("Label", typeof(RectTransform));
-        labelGo.transform.SetParent(col.transform, false);
-        var labelRt = (RectTransform)labelGo.transform;
-        labelRt.anchorMin = new Vector2(0f, 0f);
-        labelRt.anchorMax = new Vector2(1f, 0.24f);
-        labelRt.offsetMin = Vector2.zero;
-        labelRt.offsetMax = Vector2.zero;
-        var label = labelGo.AddComponent<TextMeshProUGUI>();
-        label.fontSize = 10;
-        label.alignment = TextAlignmentOptions.Center;
-        label.color = new Color(0.75f, 0.78f, 0.85f, 1f);
-        label.text = "—";
-        label.enableWordWrapping = false;
-        label.overflowMode = TextOverflowModes.Ellipsis;
-        barLabels.Add(label);
-    }
-
     static TextMeshProUGUI CreateLabel(
         Transform parent,
         string name,
@@ -428,7 +357,7 @@ public class CustomersUI : MonoBehaviour
     {
         EnsureBuilt();
         RefreshSummary();
-        RefreshGraph();
+        RefreshArrivalsSummary();
         RefreshDemand();
     }
 
@@ -437,93 +366,45 @@ public class CustomersUI : MonoBehaviour
         if (metricValues.Count < 4) return;
         var stats = StoreStatisticsManager.Instance;
         metricValues[0].text = stats != null ? stats.CustomersInSystem.ToString() : "—";
-        metricValues[1].text = stats != null ? stats.AverageWaitTimeTodaySeconds.ToString("F1") + " s" : "—";
-        metricValues[2].text = stats != null ? stats.ThroughputOrdersPerMinute.ToString("F1") : "—";
+        metricValues[1].text = stats != null && stats.OrdersCompletedToday > 0
+            ? stats.AverageWaitTimeTodaySeconds.ToString("F1") + " s"
+            : "No data";
+        metricValues[2].text = stats != null
+            ? (stats.OrdersCompletedToday > 0 ? stats.ThroughputOrdersPerMinute.ToString("F1") : "Warming up")
+            : "No data";
         int servedOrLost = stats != null ? stats.OrdersCompletedToday + stats.CustomersLostToday : 0;
         metricValues[3].text = stats == null || servedOrLost == 0
-            ? "—"
+            ? "Warming up"
             : stats.ServiceEfficiencyPercent.ToString("F0") + "%";
     }
 
-    void RefreshGraph()
+    void RefreshArrivalsSummary()
     {
-        var stats = StoreStatisticsManager.Instance;
-        if (stats == null || graphBarsRoot == null) return;
+        if (arrivalsSummary == null) return;
 
-        int startH = stats.ShiftStartHour;
-        if (graphTitle != null)
-            graphTitle.text = "Arrivals / Hour · <color=#38B7A3>Actual</color> · <color=#F8F5EE>Exact Plan</color>";
+        var stats = StoreStatisticsManager.Instance;
+        if (stats == null)
+        {
+            arrivalsSummary.text = "Arrivals this hour: <color=#38B7A3>—</color> actual / <color=#F6C85F>—</color> planned";
+            return;
+        }
 
         int[] buckets = stats.GetVisitTrendBuckets();
-        string[] hourLabels = stats.GetVisitHourLabels();
         int currentIdx = stats.GetCurrentHourBucketIndex();
-
+        int actual = currentIdx >= 0 && currentIdx < buckets.Length ? buckets[currentIdx] : 0;
+        int gameHour = stats.ShiftStartHour + Mathf.Max(0, currentIdx);
         var spawner = FindFirstObjectByType<CustomerSpawner>();
-        var lowerBounds = new int[buckets.Length];
-        var upperBounds = new int[buckets.Length];
-        var means = new float[buckets.Length];
-        int max = 1;
-        for (int i = 0; i < buckets.Length; i++)
+        float planned = spawner != null ? spawner.ExpectedCustomersPerGameHour(gameHour) : 0f;
+        var timeManager = GameTimeManager.Instance;
+        if (timeManager != null)
         {
-            means[i] = spawner != null ? spawner.ExpectedCustomersPerGameHour(startH + i) : 0f;
-            lowerBounds[i] = upperBounds[i] = Mathf.RoundToInt(means[i]);
-            max = Mathf.Max(max, Mathf.Max(buckets[i], upperBounds[i]));
+            float hourStart = gameHour * 60f;
+            float elapsedFraction = Mathf.Clamp01((timeManager.CurrentMinutes - hourStart) / 60f);
+            planned *= elapsedFraction;
         }
 
-        while (barFills.Count < buckets.Length)
-            CreateBarColumn(graphBarsRoot);
-
-        Color normal = new Color(0.22f, 0.72f, 0.66f, 1f);
-        Color current = new Color(0.36f, 0.91f, 0.78f, 1f);
-
-        for (int i = 0; i < barFills.Count; i++)
-        {
-            bool active = i < buckets.Length;
-            barFills[i].transform.parent.parent.gameObject.SetActive(active);
-            if (!active) continue;
-
-            int value = buckets[i];
-            float t = max > 0 ? value / (float)max : 0f;
-            var fillRt = (RectTransform)barFills[i].transform;
-            float barHeight = Mathf.Clamp01(Mathf.Max(t, value > 0 ? 0.06f : 0f));
-            fillRt.anchorMax = new Vector2(1f, barHeight);
-            barFills[i].color = i == currentIdx ? current : normal;
-            if (i < barTracks.Count)
-                barTracks[i].color = i == currentIdx
-                    ? new Color(0.31f, 0.27f, 0.19f, 1f)
-                    : new Color(0.2f, 0.22f, 0.28f, 1f);
-            if (i < barValues.Count)
-            {
-                barValues[i].text = value.ToString();
-                barValues[i].color = i == currentIdx
-                    ? new Color(1f, 0.79f, 0.40f, 1f)
-                    : new Color(0.82f, 0.86f, 0.92f, 1f);
-                var valueRt = (RectTransform)barValues[i].transform;
-                valueRt.anchoredPosition = new Vector2(0f, Mathf.Max(0f, barHeight * ((RectTransform)barTracks[i].transform).rect.height - 14f));
-            }
-            if (i < means.Length && i < barRanges.Count && i < barMeans.Count)
-            {
-                var trackRect = (RectTransform)barTracks[i].transform;
-                var rangeRect = (RectTransform)barRanges[i].transform;
-                rangeRect.anchorMin = new Vector2(0f, lowerBounds[i] / (float)max);
-                rangeRect.anchorMax = new Vector2(1f, upperBounds[i] / (float)max);
-                rangeRect.offsetMin = Vector2.zero;
-                rangeRect.offsetMax = Vector2.zero;
-                barRanges[i].color = i == currentIdx
-                    ? new Color(1f, 0.73f, 0.25f, 0.46f)
-                    : new Color(0.94f, 0.70f, 0.24f, 0.34f);
-                var meanRect = (RectTransform)barMeans[i].transform;
-                meanRect.anchoredPosition = new Vector2(0f, means[i] / max * trackRect.rect.height - 1f);
-            }
-
-            if (i < barLabels.Count)
-            {
-                string hour = i < hourLabels.Length ? hourLabels[i] : "";
-                barLabels[i].text = hour;
-            }
-        }
+        arrivalsSummary.text = $"Arrivals this hour: <color=#38B7A3>{actual}</color> actual / <color=#F6C85F>{Mathf.RoundToInt(planned)}</color> planned so far";
     }
-
     void RefreshDemand()
     {
         if (demandListRoot == null) return;
@@ -536,8 +417,8 @@ public class CustomersUI : MonoBehaviour
 
         EnsureDemandRowCount(Mathf.Max(1, needs.Count));
         demandTitle.text = needs.Count == 1
-            ? "Demand vs Orders by Item (1 Item)"
-            : $"Demand vs Orders by Item ({needs.Count} Items)";
+            ? "Item Demand & Production (1 item)"
+            : $"Item Demand & Production ({needs.Count} items)";
         UpdateDemandTableLayout();
 
         // Hide entire rows so inactive items leave no backgrounds or layout gaps.
@@ -548,6 +429,8 @@ public class CustomersUI : MonoBehaviour
         {
             for (int column = 0; column < demandRows[0].Length; column++)
                 demandRows[0][column].text = column == 0 ? "No cookable menu items yet." : "";
+            foreach (Image star in demandReputationStars[0])
+                if (star != null) star.enabled = false;
             if (demandImages.Count > 0 && demandImages[0] != null)
             {
                 demandImages[0].texture = null;
@@ -573,34 +456,31 @@ public class CustomersUI : MonoBehaviour
             string name = row.item != null
                 ? (string.IsNullOrEmpty(row.item.itemName) ? row.item.name : row.item.itemName)
                 : "Item";
-            string state = row.requiredOutput > 0
-                ? $"<color=#FF9C79><b>SHORT {row.requiredOutput}</b></color>"
-                : row.requested > 0
-                    ? "<color=#77D9AE><b>COVERED</b></color>"
-                    : "<color=#9AA7B8>NO OPEN ORDERS</color>";
             var cells = demandRows[i];
             cells[0].text = name;
-            cells[1].text = state;
-            cells[2].text = row.requested.ToString();
-            cells[3].text = row.ready.ToString();
-            cells[4].text = row.cooking.ToString();
-            cells[5].text = Mathf.RoundToInt(row.requiredPerMinute).ToString();
-            cells[6].text = row.orderedPerMinute.ToString("F1");
+            cells[1].text = row.openOrdersAtRegister.ToString();
+            cells[2].text = row.orderedPerMinute.ToString("F1");
+            cells[3].text = row.producedLastMinute.ToString();
             CustomerOrderConfig config = pm != null ? pm.orderConfig : null;
             int reputation = config != null ? config.GetItemReputation(row.item) : 0;
             int pendingChange = config != null ? config.GetPendingItemDemandChangePerMinute(row.item) : 0;
-            int nextThreshold = Mathf.Min(CustomerOrderConfig.MaxItemReputation,
-                (reputation / CustomerOrderConfig.ReputationPerDemandTier + 1)
-                    * CustomerOrderConfig.ReputationPerDemandTier);
+            int starsEarned = CustomerOrderConfig.GetItemReputationStars(reputation);
+            foreach (Image star in demandReputationStars[i])
+                if (star != null) star.enabled = true;
+            SetReputationStars(i, starsEarned);
+            int progressToNextStar = CustomerOrderConfig.GetServedCountProgressToNextStar(reputation);
+            int servedForNextStar = CustomerOrderConfig.GetServedCountNeededForNextStar(reputation);
             string reputationDetail = pendingChange > 0
                 ? $"+{pendingChange}/min next shift"
                 : pendingChange < 0
                     ? $"{pendingChange}/min next shift"
-                    : reputation >= CustomerOrderConfig.MaxItemReputation
+                    : starsEarned >= CustomerOrderConfig.MaxReputationStars
                         ? "MAX DEMAND"
-                        : $"+5/min at {nextThreshold}";
-            cells[7].text = $"{reputation}/{CustomerOrderConfig.MaxItemReputation}\n{reputationDetail}";
-            cells[8].text = row.completedLastMinute.ToString();
+                        : "+5/min at next star";
+            string reputationProgress = starsEarned >= CustomerOrderConfig.MaxReputationStars
+                ? $"{reputation} items served"
+                : $"{progressToNextStar}/{servedForNextStar} to next star";
+            cells[4].text = $"{reputationProgress}\n{reputationDetail}";
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
                 rowImage.color = Color.clear;
@@ -611,8 +491,55 @@ public class CustomersUI : MonoBehaviour
     {
         while (demandRows.Count < count)
         {
-            demandRows.Add(CreateDemandTableRow("DemandRow", 60f, out var preview));
+            TextMeshProUGUI[] row = CreateDemandTableRow("DemandRow", 60f, out var preview);
+            demandRows.Add(row);
             demandImages.Add(preview);
+            demandReputationStars.Add(CreateReputationStars(row[4]));
+        }
+    }
+
+    Image[] CreateReputationStars(TextMeshProUGUI label)
+    {
+        int count = CustomerOrderConfig.MaxReputationStars;
+        var stars = new Image[count];
+        Sprite sprite = GameIconLibrary.GetSprite(GameIconId.Star);
+        for (int i = 0; i < count; i++)
+        {
+            var starObject = new GameObject($"ReputationStar{i + 1}",
+                typeof(RectTransform), typeof(Image));
+            starObject.transform.SetParent(label.transform.parent, false);
+
+            RectTransform rect = (RectTransform)starObject.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2((i - (count - 1) * 0.5f) * 18f, 15f);
+            rect.sizeDelta = new Vector2(16f, 16f);
+
+            Image image = starObject.GetComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            stars[i] = image;
+        }
+
+        RectTransform labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = new Vector2(1f, 0.55f);
+        labelRect.offsetMin = new Vector2(2f, 1f);
+        labelRect.offsetMax = new Vector2(-2f, -1f);
+        return stars;
+    }
+
+    void SetReputationStars(int rowIndex, int earned)
+    {
+        if (rowIndex < 0 || rowIndex >= demandReputationStars.Count) return;
+        Image[] stars = demandReputationStars[rowIndex];
+        for (int i = 0; i < stars.Length; i++)
+        {
+            if (stars[i] == null) continue;
+            stars[i].color = i < earned
+                ? new Color(1f, 0.78f, 0.30f, 1f)
+                : new Color(0.31f, 0.37f, 0.44f, 0.8f);
         }
     }
 
@@ -652,10 +579,10 @@ public class CustomersUI : MonoBehaviour
             SetRect(label.rectTransform, Vector2.zero, Vector2.one,
                 new Vector2(i == 0 && name != "Header" ? 44f : 4f, 4f), new Vector2(-4f, -4f));
             label.raycastTarget = false;
-            label.fontSize = 12f;
+        label.fontSize = 13f;
             label.enableAutoSizing = true;
-            label.fontSizeMin = 10f;
-            label.fontSizeMax = 12f;
+        label.fontSizeMin = 12f;
+        label.fontSizeMax = 13f;
             label.textWrappingMode = TextWrappingModes.Normal;
             label.overflowMode = TextOverflowModes.Overflow;
             label.gameObject.AddComponent<GameUIThemeStyled>();

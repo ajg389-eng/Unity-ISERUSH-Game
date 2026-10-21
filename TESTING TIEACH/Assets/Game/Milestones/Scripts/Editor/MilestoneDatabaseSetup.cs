@@ -210,6 +210,11 @@ public static class MilestoneDatabaseSetup
         return null;
     }
 
+    static string ServedItemEvent(string itemName)
+    {
+        return TutorialVoiceEventId.MenuItemServed(FindItemDefinition(itemName));
+    }
+
     static QuizQuestion Q(string prompt, string a, string b, string c, string d, char answer)
     {
         int index;
@@ -242,16 +247,15 @@ public static class MilestoneDatabaseSetup
                 topics = "Process mapping, facility layout, queues, and bottlenecks",
                 missions = new[]
                 {
-                    M("observe_queue", "Configure a Fries recipe",
-                        "Choose the Fries recipe at an Assembly Station to set up your first side item.",
-                        "recipe_configured_fries",
-                        missionIdOverride: "milestone_01_configure_fries"),
-                    M("serve_orders", "Produce 15 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 15, countAnyUnlockedMenuProduct: true),
-                    M("finish_shift", "Reposition a workstation",
-                        "Move a workstation to improve the layout of your kitchen.",
-                        TutorialVoiceEventId.StationRepositioned)
+                    M("observe_queue", "Serve 50 Fries",
+                        "Serve 50 Fries to customers.", ServedItemEvent("Fries"), 50,
+                        missionIdOverride: "milestone_01_serve_fries"),
+                    M("serve_orders", "Serve 50 Hamburgers",
+                        "Serve 50 Hamburgers to customers.", ServedItemEvent("Hamburger"), 50,
+                        missionIdOverride: "milestone_01_serve_hamburgers"),
+                    M("finish_shift", "Serve 50 Shakes",
+                        "Serve 50 Shakes to customers.", ServedItemEvent("Shake"), 50,
+                        missionIdOverride: "milestone_01_serve_shakes")
                 },
                 questions = new[]
                 {
@@ -289,16 +293,15 @@ public static class MilestoneDatabaseSetup
                 topics = "Capacity balancing, bottleneck shifts, and labor allocation",
                 missions = new[]
                 {
-                    M("hire_capacity", "Configure a Cheeseburger",
-                        "Choose the Cheeseburger recipe at an Assembly Station.",
-                        "recipe_configured_cheeseburger",
-                        missionIdOverride: "milestone_02_configure_cheeseburger"),
-                    M("assign_labor", "Add cheese fries to the menu",
-                        "Configure the Cheese Fries recipe at an Assembly Station.",
-                        "recipe_configured_cheese_fries"),
-                    M("balance_output", "Produce 25 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 25, countAnyUnlockedMenuProduct: true)
+                    M("balance_output", "Serve 50 Cheeseburgers",
+                        "Serve 50 Cheeseburgers to customers.", ServedItemEvent("Cheeseburger"), 50,
+                        missionIdOverride: "milestone_02_serve_cheeseburgers"),
+                    M("finish_shift", "Serve 50 Cheese Fries",
+                        "Serve 50 Cheese Fries to customers.", ServedItemEvent("Cheese Fries"), 50,
+                        missionIdOverride: "milestone_02_serve_cheese_fries"),
+                    M("produce_whipped_cream_shake", "Serve 50 Whipped Cream Shakes",
+                        "Serve 50 Whipped Cream Shakes to customers.", ServedItemEvent("Whipped Cream Shake"), 50,
+                        missionIdOverride: "milestone_02_serve_whipped_cream_shakes")
                 },
                 questions = new[]
                 {
@@ -336,19 +339,12 @@ public static class MilestoneDatabaseSetup
                 topics = "Capital planning, production scheduling, and payback",
                 missions = new[]
                 {
-                    M("buy_inputs", "Order production inputs",
-                        "Place an ingredient order to supply your production line.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("expand_assets", "Configure a Classic Burger",
-                        "Choose the Classic Burger recipe at an Assembly Station.",
-                        "recipe_configured_classic_burger",
-                        missionIdOverride: "milestone_03_configure_classic_burger"),
-                    M("produce_sales", "Purchase an MK2 workstation",
-                        "Purchase any MK2 workstation upgrade.",
-                        TutorialVoiceEventId.Mk2StationPurchased),
-                    M("finish_shift", "Produce 35 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 35, countAnyUnlockedMenuProduct: true)
+                    M("finish_shift", "Serve 50 Bacon Cheeseburgers",
+                        "Serve 50 Bacon Cheeseburgers to customers.", ServedItemEvent("Bacon Cheeseburger"), 50,
+                        missionIdOverride: "milestone_03_serve_bacon_cheeseburgers"),
+                    M("produce_classic_burger", "Serve 50 Classic Burgers",
+                        "Serve 50 Classic Burgers to customers.", ServedItemEvent("Classic Burger"), 50,
+                        missionIdOverride: "milestone_03_serve_classic_burgers")
                 },
                 questions = new[]
                 {
@@ -386,19 +382,13 @@ public static class MilestoneDatabaseSetup
                 topics = "Forecasting, supplier reliability, and inventory control",
                 missions = new[]
                 {
-                    M("restock", "Order production supplies",
-                        "Place an ingredient order before the production line runs out.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("meet_demand", "Configure cheese bacon fries",
-                        "Choose the Cheese Bacon Fries recipe at an Assembly Station.",
-                        "recipe_configured_cheese_bacon_fries"),
-                    M("multi_day", "Configure a Whipped Cream Sprinkle Shake",
-                        "Choose the Whipped Cream Sprinkle Shake recipe at a Shake Station.",
-                        "recipe_configured_whipped_cream_sprinkle_shake",
-                        missionIdOverride: "milestone_04_configure_whipped_cream_sprinkle_shake"),
-                    M("configure_recipe", "Produce 45 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 45, countAnyUnlockedMenuProduct: true)
+                    M("configure_recipe", "Serve 50 Cheese Bacon Fries",
+                        "Serve 50 Cheese Bacon Fries to customers.", ServedItemEvent("Cheese Bacon Fries"), 50,
+                        missionIdOverride: "milestone_04_serve_cheese_bacon_fries"),
+                    M("produce_whipped_cream_sprinkle_shake", "Serve 50 Whipped Cream Sprinkle Shakes",
+                        "Serve 50 Whipped Cream Sprinkle Shakes to customers.",
+                        ServedItemEvent("Whipped Cream Sprinkle Shake"), 50,
+                        missionIdOverride: "milestone_04_serve_whipped_cream_sprinkle_shakes")
                 },
                 questions = new[]
                 {
@@ -436,15 +426,9 @@ public static class MilestoneDatabaseSetup
                 topics = "Quality Engineering, Reliability Engineering",
                 missions = new[]
                 {
-                    M("finish_shift", "Produce 60 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 60, countAnyUnlockedMenuProduct: true),
-                    M("keep_stocked", "Prevent stockouts",
-                        "Replenish ingredients before they run out so production can continue throughout the shift.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("steady_service", "Maintain consistent service",
-                        "Serve 25 customers while balancing order accuracy and speed.",
-                        TutorialVoiceEventId.OrderServed, 25)
+                    M("finish_shift", "Serve 50 Super Burgers",
+                        "Serve 50 Super Burgers to customers.", ServedItemEvent("Super Burger"), 50,
+                        missionIdOverride: "milestone_05_serve_super_burgers")
                 }
             },
             new MilestoneContent
@@ -455,24 +439,16 @@ public static class MilestoneDatabaseSetup
                 topics = "Systems Engineering, Information Engineering, Engineering Management",
                 missions = new[]
                 {
-                    M("connect_process", "Connect people to the process",
-                        "Assign the worker to a station that supports the process bottleneck.",
-                        TutorialVoiceEventId.WorkerAssigned),
-                    M("link_output", "Link information flow",
-                        "Set a station Output so work is routed through the connected kitchen.",
-                        TutorialVoiceEventId.OutputLinked),
-                    M("multi_day", "Sustain the integrated operation",
-                        "Complete 2 full shifts and adjust people, process, and inventory as conditions change.",
-                        TutorialVoiceEventId.DayEnded, 2),
-                    M("staff_system", "Staff the operation",
-                        "Hire a worker and consider how people fit into the whole production system.",
-                        TutorialVoiceEventId.WorkerHired),
-                    M("supply_ops", "Supply operations",
-                        "Order ingredients and make sure upstream supply can support downstream service.",
-                        TutorialVoiceEventId.IngredientsOrdered),
-                    M("system_output", "Produce 75 unlocked menu items",
-                        "Produce any combination of finished menu recipes you have unlocked so far.",
-                        "", 75, countAnyUnlockedMenuProduct: true)
+                    M("system_output", "Serve 100 Super Burgers",
+                        "Serve 100 Super Burgers to customers.", ServedItemEvent("Super Burger"), 100,
+                        missionIdOverride: "milestone_06_serve_super_burgers"),
+                    M("produce_cheese_bacon_fries", "Serve 100 Cheese Bacon Fries",
+                        "Serve 100 Cheese Bacon Fries to customers.", ServedItemEvent("Cheese Bacon Fries"), 100,
+                        missionIdOverride: "milestone_06_serve_cheese_bacon_fries"),
+                    M("produce_whipped_cream_sprinkle_shake", "Serve 100 Whipped Cream Sprinkle Shakes",
+                        "Serve 100 Whipped Cream Sprinkle Shakes to customers.",
+                        ServedItemEvent("Whipped Cream Sprinkle Shake"), 100,
+                        missionIdOverride: "milestone_06_serve_whipped_cream_sprinkle_shakes")
                 }
             },
         };

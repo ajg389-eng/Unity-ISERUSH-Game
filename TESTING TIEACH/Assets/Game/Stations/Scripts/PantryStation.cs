@@ -9,15 +9,14 @@ using UnityEngine.Serialization;
 /// </summary>
 public partial class PantryStation : MonoBehaviour
 {
-    [Header("Stored ingredients (up to two)")]
-    [Tooltip("First ingredient this pantry can dispense. Choose ingredients in Management mode.")]
+    [Header("Stored ingredient")]
+    [Tooltip("The single ingredient this pantry can dispense. Choose it in Management mode.")]
     public ItemDefinition selectedItem;
-    public ItemDefinition secondItem;
     [FormerlySerializedAs("interactionTimeSeconds")]
     [Tooltip("Total time for one pantry operation.")]
     [Min(0f)] public float processTimeSeconds = 0f;
-    [Tooltip("Maximum combined amount this pantry can dispense per minute across both selected ingredients.")]
-    [Min(0.1f)] public float maxOutputPerMinute = 30f;
+    [Tooltip("Maximum amount of its assigned ingredient this pantry can dispense per minute.")]
+    [Min(0.1f)] public float maxOutputPerMinute = 15f;
     [Tooltip("Show a caution sign when the assigned ingredient reaches this stock level or lower.")]
     [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
@@ -40,8 +39,6 @@ public partial class PantryStation : MonoBehaviour
     readonly List<Transform> itemSpawnMarkers = new List<Transform>();
     ItemDefinition displayedItem;
     int displayedCount = -1;
-    ItemDefinition displayedSecondItem;
-    int displayedSecondCount = -1;
 
     void OnEnable()
     {
@@ -55,10 +52,7 @@ public partial class PantryStation : MonoBehaviour
         int stock = selectedItem != null && KitchenInventory.Instance != null
             ? KitchenInventory.Instance.GetCount(selectedItem)
             : 0;
-        int secondStock = secondItem != null && KitchenInventory.Instance != null
-            ? KitchenInventory.Instance.GetCount(secondItem) : 0;
-        if (displayedItem != selectedItem || displayedSecondItem != secondItem
-            || displayedCount != stock || displayedSecondCount != secondStock)
+        if (displayedItem != selectedItem || displayedCount != stock)
             RefreshItemDisplay(force: true);
     }
 
@@ -115,9 +109,8 @@ public partial class PantryStation : MonoBehaviour
         return true;
     }
 
-    public bool HasItemSelected => selectedItem != null || secondItem != null;
-    public bool HasAnyStock => (selectedItem != null && HasStoredItem(selectedItem))
-        || (secondItem != null && HasStoredItem(secondItem));
+    public bool HasItemSelected => selectedItem != null;
+    public bool HasAnyStock => selectedItem != null && HasStoredItem(selectedItem);
 
     bool HasStoredItem(ItemDefinition item)
     {
@@ -125,11 +118,9 @@ public partial class PantryStation : MonoBehaviour
         return inventory == null || inventory.GetCount(item) > 0;
     }
 
-    public string StoredItemsLabel => selectedItem == null
-        ? ItemName(secondItem)
-        : secondItem == null ? ItemName(selectedItem) : ItemName(selectedItem) + " / " + ItemName(secondItem);
+    public string StoredItemsLabel => ItemName(selectedItem);
 
-    static string ItemName(ItemDefinition item) => item == null ? "Select ingredients"
+    static string ItemName(ItemDefinition item) => item == null ? "Select ingredient"
         : string.IsNullOrEmpty(item.itemName) ? item.name : item.itemName;
 
     public bool IsAssignedIngredientLow
@@ -138,15 +129,13 @@ public partial class PantryStation : MonoBehaviour
         {
             if (KitchenInventory.Instance == null) return false;
             int threshold = Mathf.Max(0, lowStockWarningThreshold);
-            return (selectedItem != null && KitchenInventory.Instance.GetCount(selectedItem) <= threshold)
-                || (secondItem != null && KitchenInventory.Instance.GetCount(secondItem) <= threshold);
+            return selectedItem != null && KitchenInventory.Instance.GetCount(selectedItem) <= threshold;
         }
     }
 
     public void SetStoredItem(ItemDefinition item)
     {
         selectedItem = item;
-        if (secondItem == item) secondItem = null;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
         RefreshItemDisplay(force: true);
     }
@@ -156,11 +145,7 @@ public partial class PantryStation : MonoBehaviour
         if (item == null) return false;
         var config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
         if (config != null && config.IsFreezerIngredient(item)) return false;
-        if (selectedItem == item) { selectedItem = secondItem; secondItem = null; }
-        else if (secondItem == item) secondItem = null;
-        else if (selectedItem == null) selectedItem = item;
-        else if (secondItem == null) secondItem = item;
-        else return false;
+        selectedItem = selectedItem == item ? null : item;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
         RefreshItemDisplay(force: true);
         return true;
@@ -168,15 +153,16 @@ public partial class PantryStation : MonoBehaviour
 
     public void SetStoredItems(ItemDefinition first, ItemDefinition second)
     {
+        // Keep loading older save data that allowed two ingredients. A Pantry
+        // now carries one ingredient, preferring the saved primary selection.
         selectedItem = first != null ? first : second;
-        secondItem = first != null && second != first ? second : null;
         GetComponent<StationNode>()?.EnsureIoDefaults(force: true);
         RefreshItemDisplay(force: true);
     }
 
     public bool CanDispense(ItemDefinition item)
     {
-        if (item == null || (item != selectedItem && item != secondItem)) return false;
+        if (item == null || item != selectedItem) return false;
         CustomerOrderConfig config = ProductionManager.Instance != null
             ? ProductionManager.Instance.orderConfig : null;
         return config == null || !config.IsFreezerIngredient(item);
@@ -197,12 +183,7 @@ public partial class PantryStation : MonoBehaviour
             : 0;
         displayedItem = selectedItem;
         displayedCount = stock;
-        displayedSecondItem = secondItem;
-        displayedSecondCount = secondItem != null && KitchenInventory.Instance != null
-            ? KitchenInventory.Instance.GetCount(secondItem) : 0;
-        int firstSlots = secondItem != null ? (itemSpawnMarkers.Count + 1) / 2 : itemSpawnMarkers.Count;
-        SpawnIngredient(selectedItem, stock, 0, firstSlots);
-        SpawnIngredient(secondItem, displayedSecondCount, firstSlots, itemSpawnMarkers.Count - firstSlots);
+        SpawnIngredient(selectedItem, stock, 0, itemSpawnMarkers.Count);
     }
 
     void FindDisplayMarkers()
@@ -395,11 +376,6 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
             if (IsLow(pantry.selectedItem, threshold, inventory, out stock))
             {
                 item = pantry.selectedItem;
-                return !OnboardingTutorial.BlocksProgression;
-            }
-            if (IsLow(pantry.secondItem, threshold, inventory, out stock))
-            {
-                item = pantry.secondItem;
                 return !OnboardingTutorial.BlocksProgression;
             }
             return false;

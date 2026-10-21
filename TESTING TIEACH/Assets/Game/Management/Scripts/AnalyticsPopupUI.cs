@@ -56,7 +56,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
     void Build()
     {
         var overlay = GetComponent<Image>();
-        overlay.color = new Color(0.015f, 0.02f, 0.03f, 0.78f);
+        overlay.color = new Color(0.015f, 0.02f, 0.03f, 0.90f);
         overlay.raycastTarget = true;
 
         var overlayRect = (RectTransform)transform;
@@ -70,7 +70,8 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         var panelRect = (RectTransform)panel.transform;
         HudTabColors.SizeOverlayPanel(panelRect, transform as RectTransform);
         var panelImage = panel.GetComponent<Image>();
-        panelImage.color = GameUITheme.Panel;
+        panelImage.color = new Color(GameUITheme.Panel.r, GameUITheme.Panel.g,
+            GameUITheme.Panel.b, 0.995f);
         panelImage.raycastTarget = true;
 
         var title = CreateText(panel.transform, "Title", "ANALYTICS", 24f, FontStyles.Bold);
@@ -81,7 +82,9 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         title.rectTransform.offsetMax = new Vector2(-100f, -12f);
         title.alignment = TextAlignmentOptions.Left;
 
-        var hint = CreateText(panel.transform, "Hint", "Live demand, arrivals, and service performance", 12f, FontStyles.Normal);
+        var hint = CreateText(panel.transform, "Hint",
+            "Live demand and flow performance | Service rate = served orders / (served orders + walkouts)",
+            12f, FontStyles.Normal);
         hint.rectTransform.anchorMin = new Vector2(0f, 1f);
         hint.rectTransform.anchorMax = new Vector2(1f, 1f);
         hint.rectTransform.pivot = new Vector2(0.5f, 1f);

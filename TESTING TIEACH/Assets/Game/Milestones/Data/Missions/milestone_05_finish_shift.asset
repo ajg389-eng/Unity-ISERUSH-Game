@@ -12,13 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_05_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_05_finish_shift_production
-  title: Produce 60 unlocked menu items
-  description: Produce any combination of finished menu recipes you have unlocked
-    so far.
-  completionEventId: 
-  requiredCount: 60
+  missionId: milestone_05_serve_super_burgers
+  title: Serve 50 Super Burgers
+  description: Serve 50 Super Burgers to customers.
+  completionEventId: menu_item_served_super_burger
+  requiredCount: 50
   producedItem: {fileID: 0}
-  countAnyUnlockedMenuProduct: 1
+  countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

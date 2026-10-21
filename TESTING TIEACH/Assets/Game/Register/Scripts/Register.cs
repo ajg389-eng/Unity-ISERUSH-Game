@@ -124,6 +124,19 @@ public class Register : MonoBehaviour
         return true;
     }
 
+    public void RestoreCustomerQueue(CustomerAI customer, bool alreadyOrdered)
+    {
+        if (customer == null || !IsPlacedRegister || !isEnabled) return;
+        PruneQueues();
+        queue.Remove(customer);
+        pickup.Remove(customer);
+        if (alreadyOrdered)
+            pickup.Add(customer);
+        else
+            queue.Add(customer);
+        UpdateQueueTargets();
+    }
+
     void TryUnlockPickup()
     {
         if (queue.Count < 3 || queueGrowingRaised) return;
@@ -391,12 +404,17 @@ public class Register : MonoBehaviour
 
     public bool TryDeliverItem(CustomerAI customer, ItemDefinition item)
     {
+        return TryDeliverItem(customer, item, 0f);
+    }
+
+    public bool TryDeliverItem(CustomerAI customer, ItemDefinition item, float freshnessModifier)
+    {
         if (!isEnabled || customer == null || item == null) return false;
         if (!HasWorkerOnDuty()) return false;
         if (!pickup.Contains(customer) && !queue.Contains(customer))
             return false;
 
-        if (!customer.TryReceiveItem(item))
+        if (!customer.TryReceiveItem(item, freshnessModifier))
             return false;
 
         Sfx.Play(SfxId.ItemDelivered);

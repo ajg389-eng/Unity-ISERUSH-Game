@@ -10,14 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
-  m_Name: milestone_06_multi_day
+  m_Name: milestone_06_produce_whipped_cream_sprinkle_shake
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_06_multi_day
-  title: Sustain the integrated operation
-  description: Complete 2 full shifts and adjust people, process, and inventory as
-    conditions change.
-  completionEventId: day_ended
-  requiredCount: 2
+  missionId: milestone_06_serve_whipped_cream_sprinkle_shakes
+  title: Serve 100 Whipped Cream Sprinkle Shakes
+  description: Serve 100 Whipped Cream Sprinkle Shakes to customers.
+  completionEventId: menu_item_served_whipped_cream_sprinkle_shake
+  requiredCount: 100
   producedItem: {fileID: 0}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1

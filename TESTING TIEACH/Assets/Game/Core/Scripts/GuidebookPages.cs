@@ -54,7 +54,7 @@ public static class GuidebookPages
             "Recipe rates",
             "Each production cycle creates one output item. The recipe defines the station's base rate, and the target control sets its planned output up to <b>100%</b> of that rate.\n\n" +
             "At <b>15 items/min</b>, a station makes one item every <b>4 seconds</b> (60 / 15). At <b>30 items/min</b>, it makes one every <b>2 seconds</b>.\n\n" +
-            "A target is a pace, not a guarantee. Missing inputs, full output slots, or a blocked route can keep actual production below target."),
+            "A target is a pace, not a guarantee. Missing inputs, a full output buffer, or a blocked route can keep actual production below target."),
         new Page(
             "Production",
             "Balance recipe inputs",
@@ -105,7 +105,7 @@ public static class GuidebookPages
         new Page(
             "Reports",
             "Read item analytics",
-            "In the by-item section, compare these rates: <b>Target / Min</b> is scheduled demand, <b>Items Ordered / Min</b> is accepted customer demand, and <b>Completed / Min</b> is finished output.\n\n" +
+            "In the by-item section, compare these rates: <b>Target / Min</b> is scheduled demand, <b>Items Ordered / Min</b> is accepted customer demand, and <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds.\n\n" +
             "Open Demand shows requests still waiting to be accepted. Ready and Cooking are current item counts. Use the same product row when comparing demand with production.\n\n" +
             "A sustained gap between demand and completed output means customers may wait or leave. A large output surplus can build stock and increase waste."),
         new Page(
