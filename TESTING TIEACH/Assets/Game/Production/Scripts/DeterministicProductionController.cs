@@ -293,7 +293,17 @@ public sealed class DeterministicProductionController : IDisposable
         for (int i = 0; i < bindings.Count; i++)
         {
             Vector3 p = KitchenEmployee.GetInteractionPosition(bindings[i].Object);
-            points[i] = grid != null ? grid.GetCellCenter(p) : p;
+            if (grid != null)
+            {
+                // A shelf against the kitchen boundary can have its authored
+                // interaction marker inside an occupied cell. Resolve the same
+                // walkable fallback as GridManager before compiling routes, so
+                // approaching and leaving the station share one real endpoint.
+                grid.WorldToCell(p, out int x, out int y);
+                p = grid.FindNearestWalkable(x, y, out int standX, out int standY)
+                    ? grid.CellToWorld(standX, standY) : grid.GetCellCenter(p);
+            }
+            points[i] = p;
         }
         for (int i = 0; i < workers.Count; i++) points[bindings.Count + i] = workers[i].transform.position;
         BuildTravel(plan);

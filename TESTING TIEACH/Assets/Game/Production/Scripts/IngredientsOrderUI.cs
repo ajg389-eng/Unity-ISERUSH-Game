@@ -352,6 +352,10 @@ public class IngredientsOrderUI : MonoBehaviour
                 else if (menu.IsDrink(item)) shakes.Add(item);
                 else otherMenuItems.Add(item);
             }
+            MoveLockedItemsToBottom(burgers, menu.IsMenuItemUnlocked);
+            MoveLockedItemsToBottom(fries, menu.IsMenuItemUnlocked);
+            MoveLockedItemsToBottom(shakes, menu.IsMenuItemUnlocked);
+            MoveLockedItemsToBottom(otherMenuItems, menu.IsMenuItemUnlocked);
             AddMenuCategory(menu, "Burgers", burgers);
             AddMenuCategory(menu, "Fries", fries);
             AddMenuCategory(menu, "Shakes", shakes);
@@ -372,6 +376,9 @@ public class IngredientsOrderUI : MonoBehaviour
             else
                 otherSupplyItems.Add(item);
         }
+        MoveLockedItemsToBottom(pantryItems, inventory.IsOrderItemUnlocked);
+        MoveLockedItemsToBottom(freezerItems, inventory.IsOrderItemUnlocked);
+        MoveLockedItemsToBottom(otherSupplyItems, inventory.IsOrderItemUnlocked);
         AddSupplyCategory("Pantry", pantryItems);
         AddSupplyCategory("Freezer", freezerItems);
         AddSupplyCategory("Other", otherSupplyItems);
@@ -384,6 +391,18 @@ public class IngredientsOrderUI : MonoBehaviour
         builtCatalogHash = GetCatalogHash();
         GameUITheme.ApplyTo(transform);
         SelectSection(showMenu);
+    }
+
+    static void MoveLockedItemsToBottom(List<ItemDefinition> items, System.Func<ItemDefinition, bool> isUnlocked)
+    {
+        if (items == null || items.Count < 2 || isUnlocked == null) return;
+        var unlocked = new List<ItemDefinition>(items.Count);
+        var locked = new List<ItemDefinition>();
+        foreach (ItemDefinition item in items)
+            (isUnlocked(item) ? unlocked : locked).Add(item);
+        items.Clear();
+        items.AddRange(unlocked);
+        items.AddRange(locked);
     }
 
     void AddSupplyCategory(string category, List<ItemDefinition> items)
@@ -1559,7 +1578,11 @@ public class IngredientsOrderUI : MonoBehaviour
         Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
         toggle.interactable = itemUnlocked;
-        toggle.onValueChanged.AddListener(enabled => menu.SetItemEnabled(captured, enabled));
+        toggle.onValueChanged.AddListener(enabled =>
+        {
+            menu.SetItemEnabled(captured, enabled);
+            GameSaveSlots.SaveActiveSlot();
+        });
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         workflowGo.transform.SetParent(row.transform, false);
@@ -2267,7 +2290,13 @@ public class IngredientsOrderUI : MonoBehaviour
                 row.workflowText.text = unlocked
                     ? GetWorkflowDescription(inventory.orderConfig, row.item)
                     : string.Empty;
-            if (row.toggle != null) row.toggle.interactable = unlocked;
+            if (row.toggle != null)
+            {
+                // Rows survive closing this screen and loading another save.
+                // Refresh their value from the restored menu without saving it again.
+                row.toggle.SetIsOnWithoutNotify(inventory.orderConfig.IsItemEnabled(row.item));
+                row.toggle.interactable = unlocked;
+            }
             if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
                 toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
         }

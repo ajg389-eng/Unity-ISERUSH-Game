@@ -349,7 +349,8 @@ public class BuildPlacer : MonoBehaviour
     {
         if (item == null || item.prefab == null) return;
         bool shakeStationLocked = item.IsTieredStation && item.stationFamily == "Shake Station"
-            && !MilestoneFeatures.Mk2StationsUnlocked;
+            && item.stationMark == 1
+            && !MilestoneFeatures.HasReached(MilestoneFeatures.RestaurantBasics);
         bool mk2StationLocked = item.IsTieredStation && item.stationMark >= 2
             && !MilestoneFeatures.Mk2StationsUnlocked;
         if (OnboardingTutorial.IsStationLocked(item) || shakeStationLocked || mk2StationLocked) return;

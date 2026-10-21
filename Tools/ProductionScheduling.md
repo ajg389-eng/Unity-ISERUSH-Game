@@ -80,3 +80,14 @@ selects or writes a player save slot. Run its `Prepare`, enter Play Mode, run
 The test verifies advancing frames, visible worker movement and deliveries, grill
 buffer projection, and station/cargo checkpoint JSON round trips. Always clean up
 the fixture and restore any generated TMP fallback-font changes after running it.
+
+`ShakeSupplyEditorChecks.cs` reproduces the boundary-shelf placement that prevented
+one worker from fetching Empty Cups for a Shake Station already holding milk. It
+uses the real Pantry, Freezer, and Shake prefabs, verifies cup pickup and finished
+shake delivery, and confirms removing the cup connection removes that route.
+`MenuSelectionEditorChecks.cs` verifies existing menu checkboxes follow restored
+selections without firing toggle/save callbacks. Temporarily copy either file
+into `Assets/Editor` and execute `ShakeSupplyEditorChecks.Run` or
+`MenuSelectionEditorChecks.Verify` in a batch Editor. These checks use transient
+scenes/objects and never select or overwrite a player save. Remove the temporary
+Editor copies afterward.

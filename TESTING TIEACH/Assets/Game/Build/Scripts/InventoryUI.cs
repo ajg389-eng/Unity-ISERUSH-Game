@@ -351,12 +351,36 @@ public class InventoryUI : MonoBehaviour
         bool squareCards = useSquareCards || rowPrefab == null
             || rowPrefab.GetComponent<InventoryItemCardUI>() != null;
         var shownFamilies = new HashSet<string>();
+        var unlockedItems = new List<ItemDefinition>();
+        var lockedItems = new List<ItemDefinition>();
+        var orderedFamilies = new HashSet<string>();
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
             if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
                 continue;
 
+            if (squareCards && item.IsTieredStation)
+            {
+                if (!orderedFamilies.Add(item.stationFamily)) continue;
+                ItemDefinition familyItem = item;
+                foreach (ItemDefinition candidate in inventory.allItems)
+                    if (candidate != null && candidate.IsTieredStation
+                        && candidate.stationFamily == item.stationFamily && candidate.stationMark == 1)
+                    { familyItem = candidate; break; }
+                (IsMilestoneStationLocked(familyItem) ? lockedItems : unlockedItems).Add(familyItem);
+            }
+            else if (squareCards)
+                (IsMilestoneStationLocked(item) ? lockedItems : unlockedItems).Add(item);
+            else
+                (IsMilestoneStationLocked(item) ? lockedItems : unlockedItems).Add(item);
+        }
+
+        shownFamilies.Clear();
+        for (int i = 0; i < unlockedItems.Count + lockedItems.Count; i++)
+        {
+            ItemDefinition item = i < unlockedItems.Count
+                ? unlockedItems[i] : lockedItems[i - unlockedItems.Count];
             if (squareCards && item.IsTieredStation)
             {
                 if (!shownFamilies.Add(item.stationFamily)) continue;
@@ -635,7 +659,7 @@ public class InventoryUI : MonoBehaviour
         {
             ItemDefinition active = selected;
             bool shakeStationLocked = family == "Shake Station"
-                && !MilestoneFeatures.Mk2StationsUnlocked;
+                && !MilestoneFeatures.HasReached(MilestoneFeatures.RestaurantBasics);
             bool mk2Unlocked = MilestoneFeatures.Mk2StationsUnlocked;
             card.SetTutorialLocked(false);
             card.Bind(active, inventory.GetAcquiredCount(active),
@@ -679,8 +703,11 @@ public class InventoryUI : MonoBehaviour
     static bool IsMilestoneStationLocked(ItemDefinition item)
     {
         return item != null && (OnboardingTutorial.IsStationLocked(item)
-            || (item.IsTieredStation && (item.stationMark >= 2 || item.stationFamily == "Shake Station")
-                && !MilestoneFeatures.Mk2StationsUnlocked));
+            || (item.IsTieredStation && item.stationMark >= 2
+                && !MilestoneFeatures.Mk2StationsUnlocked)
+            || (item.IsTieredStation && item.stationFamily == "Shake Station"
+                && item.stationMark == 1
+                && !MilestoneFeatures.HasReached(MilestoneFeatures.RestaurantBasics)));
     }
 
     void CreateLegacyRow(ItemDefinition item)

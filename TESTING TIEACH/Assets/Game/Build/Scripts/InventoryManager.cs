@@ -102,8 +102,9 @@ public class InventoryManager : MonoBehaviour
     static bool IsResearchLocked(ItemDefinition item)
     {
         if (item == null || !item.IsTieredStation) return false;
-        return (item.stationMark >= 2 || item.stationFamily == "Shake Station")
-            && !MilestoneFeatures.Mk2StationsUnlocked;
+        if (item.stationFamily == "Shake Station" && item.stationMark == 1)
+            return !MilestoneFeatures.HasReached(MilestoneFeatures.RestaurantBasics);
+        return item.stationMark >= 2 && !MilestoneFeatures.Mk2StationsUnlocked;
     }
 
     public bool PurchaseOne(ItemDefinition item)

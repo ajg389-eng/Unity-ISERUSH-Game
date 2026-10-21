@@ -12,16 +12,18 @@ public static class StoreCustomizationTextureInstaller
         EnsureFolder("Assets/Game/Core/Resources", "StoreCustomization");
         EnsureFolder(Root, "Walls");
         EnsureFolder(Root, "Floors");
+        EnsureFolder(Root, "Roofs");
 
         Copy("Assets/Imported/Models/StoreModels/Fast Food Restaurant Kit/Common/Textures/FFK_Stone_01_A.png", "Walls/03 Dark Stone.png");
         Copy("Assets/Imported/Models/StoreModels/Fast Food Restaurant Kit/Common/Textures/FFK_Wood_01_A.png", "Walls/05 Light Wood.png");
 
         Copy("Assets/Imported/Models/StoreModels/_BPS Basic Assets/Common/Textures/Legacy/Wood Floor 01.png", "Floors/02 Warm Wood.png");
         Copy("Assets/Imported/Models/LowPolyCityProps/Textures/Road Concrete Tile.png", "Floors/05 Cream Tile.png");
+        Copy("Assets/Imported/Models/StoreModels/_BPS Basic Assets/Common/Textures/Legacy/Building Floor Tile - 01.png", "Roofs/02 Slate Tiles.png");
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("Installed store customization wall and floor textures.");
+        Debug.Log("Installed store customization wall, floor, and roof textures.");
     }
 
     static void EnsureFolder(string parent, string name)

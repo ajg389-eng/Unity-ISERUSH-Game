@@ -270,7 +270,11 @@ public sealed class StoreAppearanceController : MonoBehaviour
             renderer.SetPropertyBlock(block, i);
         }
 
-        ApplyAppearanceOverlay(renderer, tint, textureOverride);
+        // The roof is a single generated mesh with its own material. Its
+        // MaterialPropertyBlock above supports both tint and texture directly;
+        // drawing a copied overlay mesh wastes a draw call and can z-fight.
+        if (renderer.GetComponentInParent<SimsBuildingRoof>() == null)
+            ApplyAppearanceOverlay(renderer, tint, textureOverride);
     }
 
     void ApplyAppearanceOverlay(Renderer source, Color tint, Texture texture)
