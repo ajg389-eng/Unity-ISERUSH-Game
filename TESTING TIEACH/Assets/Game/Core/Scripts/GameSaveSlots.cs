@@ -112,6 +112,7 @@ public static class GameSaveSlots
             else
             {
                 // Older saves never contained a layout or clock time.
+                ShiftPlanningUI.RestoreSaveState(null);
                 if (time != null) time.RestoreDay(info.day);
                 if (money != null) money.SetMoney(info.cash);
 
@@ -122,6 +123,7 @@ public static class GameSaveSlots
         }
         else
         {
+            ShiftPlanningUI.RestoreSaveState(null);
             PlayerPrefs.SetInt(Key(slotIndex, "IntroSeen"), 0);
             PlayerPrefs.DeleteKey(Key(slotIndex, "InvestorLetterSent"));
             if (time != null) time.RestoreDay(1);

@@ -120,6 +120,14 @@ public class StoreStatisticsManager : MonoBehaviour
         OnStatisticsChanged?.Invoke();
     }
 
+    /// <summary>Starts a clean rolling throughput window when the player opens the shift.</summary>
+    public void BeginShiftThroughputTracking()
+    {
+        completedOrderTimes.Clear();
+        throughputTrackingStartedAt = Time.time;
+        OnStatisticsChanged?.Invoke();
+    }
+
     public void RestoreDailyTaskProgress(int completedOrders, int revenue, float waitTotalSeconds)
     {
         dayOrdersCompleted = Mathf.Max(0, completedOrders);

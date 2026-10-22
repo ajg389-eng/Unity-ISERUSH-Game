@@ -27,42 +27,7 @@ public static class MilestoneFeatures
 
     public static bool IsResearchComplete(string id) => Researched(id);
 
-    public static bool IsResearchProjectComplete(int numberedStage) =>
-        numberedStage <= 0 || Researched(ResearchIdForStage(numberedStage));
-
-    public static bool ResearchUnlockedForStage(int numberedStage)
-    {
-        if (numberedStage <= 0) return true;
-        ResearchProgressManager research = ResearchProgressManager.Instance;
-        if (research == null) return MilestoneProgressManager.Instance == null;
-        return IsResearchProjectComplete(numberedStage);
-    }
-
-    public static string ResearchIdForStage(int numberedStage) => numberedStage switch
-    {
-        <= RestaurantBasics => "production_basics",
-        CapacityAndOptimization => "station_capacity_1",
-        Mk2Stations => "mk2_stations",
-        AdvancedMenuRecipes => "recipe_upgrades_4",
-        QualityAndReliability => "industrial_kitchen",
-        SystemsIntegration => "expanded_capacity",
-        _ => "expanded_capacity",
-    };
-
-    public static string ResearchTitleForStage(int numberedStage) =>
-        ResearchProgressManager.Get(ResearchIdForStage(numberedStage))?.title ?? "Research";
-
     public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
     public static bool ExpertStaffingUnlocked => Researched("sixth_worker");
-    public static bool ExtraFlowStaffingUnlocked => Researched("multi_worker_flows");
-    public static int MaxWorkersPerFlow
-    {
-        get
-        {
-            if (Researched("multi_worker_flows_3")) return 4;
-            if (Researched("multi_worker_flows_2")) return 3;
-            return ExtraFlowStaffingUnlocked ? 2 : 1;
-        }
-    }
     public static bool Mk2StationsUnlocked => Researched("mk2_stations");
 }

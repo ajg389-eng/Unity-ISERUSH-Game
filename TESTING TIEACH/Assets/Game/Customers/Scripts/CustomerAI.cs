@@ -214,7 +214,7 @@ public class CustomerAI : MonoBehaviour
         return saved;
     }
 
-    public static void ClearActiveCustomersForRestore()
+    public static void DespawnAllCustomers()
     {
         var active = new List<CustomerAI>(ActiveCustomers);
         foreach (CustomerAI customer in active)

@@ -1520,7 +1520,10 @@ public static class WorkflowAnalysis
         var trackedStations = new HashSet<GameObject>();
         foreach (GameObject station in route)
         {
-            if (station == null || !trackedStations.Add(station)) continue;
+            if (station == null
+                || station.GetComponent<FreezerStation>() != null
+                || station.GetComponent<PantryStation>() != null
+                || !trackedStations.Add(station)) continue;
             StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(station);
             if (metrics == null) continue;
             trackedWorking += metrics.WorkingSeconds;

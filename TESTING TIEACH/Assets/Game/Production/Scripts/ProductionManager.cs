@@ -576,6 +576,35 @@ public partial class ProductionManager : MonoBehaviour
         RecordHistory(pickupDeliveryHistory, order);
     }
 
+    /// <summary>Delivered item rate over the current observed shift window.</summary>
+    public float GetPickupDeliveryRatePerMinute(ItemDefinition item)
+    {
+        if (item == null) return 0f;
+        PruneThroughputHistory();
+        int total = 0;
+        foreach (TimedItemCount entry in pickupDeliveryHistory)
+        {
+            if (entry == null || entry.item == null || entry.count <= 0) continue;
+            if (entry.item == item || entry.item.itemName == item.itemName)
+                total += entry.count;
+        }
+
+        float observedWindow = Mathf.Clamp(Time.time - throughputTrackingStartedAt,
+            1f, ThroughputWindowSeconds);
+        return total * 60f / observedWindow;
+    }
+
+    /// <summary>Starts a clean rolling output window for the next player-run shift.</summary>
+    public void BeginShiftThroughputTracking()
+    {
+        orderedHistory.Clear();
+        pickupDeliveryHistory.Clear();
+        completedFlowHistory.Clear();
+        workerTripHistory.Clear();
+        workerWaitHistory.Clear();
+        throughputTrackingStartedAt = Time.time;
+    }
+
     public void RecordFlowCompletedOutput(KitchenEmployee worker, ItemDefinition item, int count)
     {
         if (worker == null || item == null || count <= 0) return;
@@ -1270,8 +1299,6 @@ public partial class ProductionManager : MonoBehaviour
             lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
             return;
         }
-        if (!CanAddWorkerToFlow(targetFlow))
-            return;
         var affectedFlows = new List<ProductionFlowPlan>();
         foreach (ProductionFlowPlan other in productionFlows)
             if (other != null && other.workers != null)
@@ -1385,13 +1412,6 @@ public partial class ProductionManager : MonoBehaviour
 
     public bool ExtraHireLocked => HiredWorkerCount >= MaxHiredWorkers
         && !MilestoneFeatures.ExpertStaffingUnlocked;
-
-    public bool CanAddWorkerToFlow(ProductionFlowPlan targetFlow)
-    {
-        if (targetFlow == null) return false;
-        targetFlow.Clean();
-        return targetFlow.workers.Count < MilestoneFeatures.MaxWorkersPerFlow;
-    }
 
     static bool raisedFirstWorkerEvent;
 

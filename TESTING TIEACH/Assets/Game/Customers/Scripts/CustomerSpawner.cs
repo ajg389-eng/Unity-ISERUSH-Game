@@ -236,6 +236,11 @@ public class CustomerSpawner : MonoBehaviour
         LastSpawnError = null;
     }
 
+    void HandleDayEnded()
+    {
+        ResetArrivalScheduleForSaveRestore();
+    }
+
     void ClearPendingDemandForMenuChange()
     {
         // Unsent arrivals were generated from the previous menu. Keep customers
@@ -254,6 +259,7 @@ public class CustomerSpawner : MonoBehaviour
         GameTimeManager clock = GameTimeManager.Instance;
         if (clock == null) return;
         clock.OnDayStarted += HandleDayStarted;
+        clock.OnDayEnded += HandleDayEnded;
         clockHooked = true;
     }
 
@@ -304,6 +310,7 @@ public class CustomerSpawner : MonoBehaviour
         if (clockHooked && GameTimeManager.Instance != null)
         {
             GameTimeManager.Instance.OnDayStarted -= HandleDayStarted;
+            GameTimeManager.Instance.OnDayEnded -= HandleDayEnded;
             clockHooked = false;
         }
         if (Instance == this) Instance = null;
@@ -317,6 +324,14 @@ public class CustomerSpawner : MonoBehaviour
     void Update()
     {
         EnsureDayHook();
+        GameTimeManager clock = GameTimeManager.Instance;
+        if (clock != null && clock.IsShiftOver)
+        {
+            if (arrivalScheduled || activeDemandBatch != null || pendingScheduledRequestCount > 0)
+                ResetArrivalScheduleForSaveRestore();
+            return;
+        }
+
         if (OnboardingTutorial.BlocksAutoCustomers)
         {
             arrivalScheduled = false;

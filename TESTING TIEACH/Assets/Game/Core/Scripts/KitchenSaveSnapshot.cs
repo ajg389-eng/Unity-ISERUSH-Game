@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 22;
+    public const int CurrentVersion = 23;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -16,6 +16,7 @@ public class KitchenSaveSnapshot
     public float dailyWaitTotalSeconds;
     public bool tutorialComplete;
     public bool tutorialOrderServed;
+    public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
     public List<IngredientShipment> ingredientShipments = new List<IngredientShipment>();
@@ -48,6 +49,7 @@ public class KitchenSaveSnapshot
             s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.PlacementPosition });
         var clock = GameTimeManager.Instance;
         s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
+        s.shiftPlanningState = ShiftPlanningUI.CaptureSaveState();
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
         var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
         s.tutorialComplete = OnboardingTutorial.IsComplete;
@@ -244,7 +246,7 @@ public class KitchenSaveSnapshot
                     || !AreSavedOrderItemsAvailable(customer.originalOrder, definitions)
                     || !AreSavedDeliveredItemsAvailable(customer.deliveredItems, definitions))) return false;
         customerSpawner?.ResetArrivalScheduleForSaveRestore();
-        CustomerAI.ClearActiveCustomersForRestore();
+        CustomerAI.DespawnAllCustomers();
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
         pm.ResetTransientProductionState();
         pm.employees.Clear(); pm.productionFlows.Clear();
@@ -503,6 +505,7 @@ public class KitchenSaveSnapshot
         else
             appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
+        ShiftPlanningUI.RestoreSaveState(version >= 23 ? shiftPlanningState : null);
         if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
         if (statistics != null)

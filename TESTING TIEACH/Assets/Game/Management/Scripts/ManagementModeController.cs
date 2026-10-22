@@ -59,6 +59,10 @@ public class ManagementModeController : MonoBehaviour
     GameObject productionThirdInputCard;
     GameObject productionConversionRoot;
     GameObject productionOutputCard;
+    Button productionOutputSelectButton;
+    GameObject recipePickerRoot;
+    Transform recipePickerContent;
+    bool recipePickerOpen;
     RawImage productionInputPreview;
     RawImage productionSecondInputPreview;
     RawImage productionThirdInputPreview;
@@ -192,6 +196,18 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode || flow == null) return;
 
+        // Keep the management selection and the production-flow selection in
+        // sync. The flow screen's runtime summary reads ProductionManager's
+        // selected flow, so a management-only selection would otherwise leave
+        // its efficiency bar showing a different flow.
+        ProductionManager production = ProductionManager.Instance;
+        if (production != null && production.productionFlows != null)
+        {
+            int flowIndex = production.productionFlows.IndexOf(flow);
+            if (flowIndex >= 0)
+                production.SelectProductionFlow(flowIndex);
+        }
+
         if (selectedWorkerHighlight != null)
         {
             selectedWorkerHighlight.SetHovered(false);
@@ -200,6 +216,36 @@ public class ManagementModeController : MonoBehaviour
         selectedEmployee = null;
         SetWorkflowDecisionHudVisible(false);
         WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
+    }
+
+    /// <summary>Opens Management and selects a station from a shift diagnosis.</summary>
+    public bool FocusStationFromReview(StationNode station)
+    {
+        if (station == null) return false;
+
+        // Open the top-level Business page first so the selected station and
+        // its card are presented in the same context as normal station review.
+        MainHudTabs mainHud = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        ManagementScreenController businessScreen = FindFirstObjectByType<ManagementScreenController>(
+            FindObjectsInactive.Include);
+        if (mainHud != null)
+            mainHud.OpenBusinessPage();
+        else if (businessScreen != null)
+        {
+            businessScreen.SetUnifiedPrimaryPage(true);
+            businessScreen.Open();
+        }
+
+        if (modeManager == null)
+            modeManager = FindFirstObjectByType<GameModeManager>();
+        modeManager?.SetMode(GameModeManager.Mode.Manage);
+        PlayerCameraController cameraController = FindFirstObjectByType<PlayerCameraController>();
+        if (cameraController != null)
+            cameraController.PanTo(station.transform);
+        SelectStation(station);
+        if (stationPopup != null)
+            stationPopup.transform.SetAsLastSibling();
+        return true;
     }
 
     void Update()
@@ -960,6 +1006,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SelectStation(StationNode node)
     {
+        CloseRecipePicker();
         Sfx.Play(SfxId.StationSelect);
         SetSelectedStation(node);
         pending = PendingAction.None;
@@ -1009,6 +1056,16 @@ public class ManagementModeController : MonoBehaviour
         }
 
         RefreshProductSection();
+        bool hasOutputChoices = productListContainer != null && productListContainer.childCount > 0;
+        if (productInfoText != null && hasOutputChoices)
+        {
+            productInfoText.text = "CLICK OUTPUT TO CHANGE";
+            productInfoText.gameObject.SetActive(true);
+        }
+        if (!recipePickerOpen && productListContainer != null)
+            productListContainer.gameObject.SetActive(false);
+        if (productionOutputSelectButton != null)
+            productionOutputSelectButton.interactable = hasOutputChoices && !recipePickerOpen;
         RefreshHeatLampInventory();
         RefreshStationSummary();
         ApplyPanelLayout(isHeatLamp);
@@ -1114,7 +1171,11 @@ public class ManagementModeController : MonoBehaviour
     {
         EnsureStationSummaryUI();
         if (stationSummaryRoot == null || stationStateExplanationText == null) return;
-        bool show = selectedStation != null;
+        bool show = selectedStation != null
+            && selectedStation.GetComponent<HeatLampStation>() == null
+            && selectedStation.GetComponent<Register>() == null
+            && selectedStation.GetComponent<FreezerStation>() == null
+            && selectedStation.GetComponent<PantryStation>() == null;
         stationSummaryRoot.SetActive(show);
         if (!show) return;
 
@@ -1328,6 +1389,9 @@ public class ManagementModeController : MonoBehaviour
         productionCycleText.fontStyle = FontStyles.Bold;
         productionOutputCard = CreateProductionCard(productionDiagramRoot.transform, "Output", out productionOutputPreview,
             out productionOutputName, out productionOutputHeld, out productionOutputRate);
+        productionOutputSelectButton = productionOutputCard.AddComponent<Button>();
+        productionOutputSelectButton.targetGraphic = productionOutputCard.GetComponent<Image>();
+        productionOutputSelectButton.onClick.AddListener(OpenRecipePicker);
         productionDiagramRoot.SetActive(false);
         EnsureProductionRateControls();
     }
@@ -2065,7 +2129,7 @@ public class ManagementModeController : MonoBehaviour
     {
         if (stationPopup == null) return;
 
-        bool hasRecipeControls = productListContainer != null
+        bool hasRecipeControls = !recipePickerOpen && productListContainer != null
             && productListContainer.gameObject.activeSelf;
 
         var rt = (RectTransform)stationPopup.transform;
@@ -2148,7 +2212,8 @@ public class ManagementModeController : MonoBehaviour
             if (productionDiagramRoot != null) productionDiagramRoot.transform.SetSiblingIndex(1);
             if (productionRateControlRoot != null) productionRateControlRoot.transform.SetSiblingIndex(2);
             if (productInfoText != null) productInfoText.transform.SetSiblingIndex(3);
-            if (productListContainer != null) productListContainer.SetSiblingIndex(4);
+            if (productListContainer != null && productListContainer.parent == stationPopup.transform)
+                productListContainer.SetSiblingIndex(4);
             if (stationSummaryRoot != null) stationSummaryRoot.transform.SetSiblingIndex(5);
             if (statusText != null) statusText.transform.SetSiblingIndex(6);
         }
@@ -2168,7 +2233,8 @@ public class ManagementModeController : MonoBehaviour
             ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool hasThreeInputRecipe = selectedAssembly != null
             && selectedAssembly.GetSelectedRecipe()?.thirdInput != null;
-        float width = hasRecipeControls ? 500f : 360f;
+        bool needsWideProductionDiagram = productionInputCard != null && productionInputCard.activeSelf;
+        float width = hasRecipeControls || needsWideProductionDiagram ? 500f : 360f;
         if (!usingScenePopup)
             ApplyPopupLayout(rt, width, rt.sizeDelta.y);
         else
@@ -2469,7 +2535,17 @@ public class ManagementModeController : MonoBehaviour
 
         int currentProductHash = GetProductBuildHash(current, assembly);
         if (currentProductHash == productBuildHash && productListContainer.childCount > 0)
+        {
+            LayoutElement cachedListSize = productListContainer.GetComponent<LayoutElement>();
+            if (cachedListSize != null)
+            {
+                float cachedHeight = Mathf.Max(122f, productListContainer.childCount * 117f
+                    + Mathf.Max(0, productListContainer.childCount - 1) * 5f);
+                cachedListSize.minHeight = cachedHeight;
+                cachedListSize.preferredHeight = cachedHeight;
+            }
             return;
+        }
 
         // Destroy is deferred until the end of the frame. Disable outgoing cards
         // first so the layout system never measures old and new recipe rows together.
@@ -2505,6 +2581,7 @@ public class ManagementModeController : MonoBehaviour
             Transform recipeRow = null;
             int recipeCount = 0;
             int recipeRows = 0;
+            int columnsPerRow = GetRecipeColumnsPerRow();
             AssemblyRecipeDefinition currentRecipe = assembly.GetSelectedRecipe();
             bool shakeStation = assembly.GetComponent<ShakeStation>() != null;
             productInfoText.text = assembly.IsMk2
@@ -2516,7 +2593,7 @@ public class ManagementModeController : MonoBehaviour
                 if (recipe.RequiresMk2 && !assembly.IsMk2) continue;
                 bool shakeRecipe = config.IsDrink(recipe.output);
                 if (shakeStation != shakeRecipe) continue;
-                if (recipeCount % 3 == 0)
+                if (recipeCount % columnsPerRow == 0)
                 {
                     recipeRow = CreateRecipeRow();
                     recipeRows++;
@@ -2525,7 +2602,7 @@ public class ManagementModeController : MonoBehaviour
                 bool selectedRecipe = currentRecipe == recipe;
                 Button recipeButton = CreateRecipeCard(recipeRow, recipe, selectedRecipe);
                 AssemblyRecipeDefinition capturedRecipe = recipe;
-                recipeButton.onClick.AddListener(() => SetSelectedAssemblyRecipe(capturedRecipe));
+                recipeButton.onClick.AddListener(() => ChooseAssemblyRecipe(capturedRecipe));
             }
 
             LayoutElement listSize = productListContainer.GetComponent<LayoutElement>();
@@ -2555,11 +2632,12 @@ public class ManagementModeController : MonoBehaviour
         Transform optionRow = null;
         int optionCount = 0;
         int rowCount = 0;
+        int optionColumnsPerRow = GetRecipeColumnsPerRow();
         foreach (var item in options)
         {
             if (item == null) continue;
             if ((freezer != null || pantry != null) && config.IsDrink(item)) continue;
-            if (optionCount % 3 == 0)
+            if (optionCount % optionColumnsPerRow == 0)
             {
                 optionRow = CreateRecipeRow();
                 rowCount++;
@@ -2568,7 +2646,7 @@ public class ManagementModeController : MonoBehaviour
             bool selected = pantry != null ? pantry.CanDispense(item) : current == item;
             Button btn = CreateRecipeCard(optionRow, item, selected);
             var captured = item;
-            btn.onClick.AddListener(() => SetSelectedProduct(captured));
+            btn.onClick.AddListener(() => ChooseStationProduct(captured));
         }
 
         LayoutElement grillListSize = productListContainer.GetComponent<LayoutElement>();
@@ -2579,6 +2657,208 @@ public class ManagementModeController : MonoBehaviour
             grillListSize.preferredHeight = height;
         }
         productListContainer.gameObject.SetActive(optionCount > 0);
+    }
+
+    void OpenRecipePicker()
+    {
+        if (selectedStation == null) return;
+        EnsureRecipePickerUI();
+        if (recipePickerRoot == null || recipePickerContent == null) return;
+
+        // Rebuild the options for the picker width so its full space is used
+        // efficiently instead of retaining the compact three-column card grid.
+        recipePickerOpen = true;
+        productBuildHash = int.MinValue;
+        EnsureProductUI();
+        RefreshProductSection();
+        if (productListContainer == null || productListContainer.childCount == 0)
+        {
+            recipePickerOpen = false;
+            if (productionOutputSelectButton != null)
+                productionOutputSelectButton.interactable = false;
+            return;
+        }
+        productListContainer.gameObject.SetActive(true);
+        productListContainer.SetParent(recipePickerContent, false);
+        productListContainer.SetAsLastSibling();
+        LayoutElement listSize = productListContainer.GetComponent<LayoutElement>();
+        RectTransform pickerPanelRect = recipePickerRoot.transform.Find("Panel") as RectTransform;
+        if (listSize != null && pickerPanelRect != null)
+        {
+            RectTransform pickerCanvasRect = recipePickerRoot.transform.parent as RectTransform;
+            float canvasHeight = pickerCanvasRect != null ? pickerCanvasRect.rect.height : Screen.height;
+            float maxHeight = Mathf.Max(320f, Mathf.Min(720f, canvasHeight - 48f));
+            float desiredHeight = listSize.preferredHeight + 94f;
+            pickerPanelRect.sizeDelta = new Vector2(pickerPanelRect.sizeDelta.x,
+                Mathf.Clamp(desiredHeight, 320f, maxHeight));
+        }
+        recipePickerRoot.SetActive(true);
+        recipePickerRoot.transform.SetAsLastSibling();
+        if (productionOutputSelectButton != null)
+            productionOutputSelectButton.interactable = false;
+        Canvas.ForceUpdateCanvases();
+        Sfx.Play(SfxId.UiOpen);
+    }
+
+    void ChooseStationProduct(ItemDefinition item)
+    {
+        SetSelectedProduct(item);
+        CloseRecipePicker();
+    }
+
+    void ChooseAssemblyRecipe(AssemblyRecipeDefinition recipe)
+    {
+        SetSelectedAssemblyRecipe(recipe);
+        CloseRecipePicker();
+    }
+
+    void CloseRecipePicker()
+    {
+        if (!recipePickerOpen && (productListContainer == null || stationPopup == null
+            || productListContainer.parent == stationPopup.transform))
+            return;
+
+        recipePickerOpen = false;
+        if (recipePickerRoot != null)
+            recipePickerRoot.SetActive(false);
+        if (productListContainer != null && stationPopup != null)
+        {
+            productListContainer.SetParent(stationPopup.transform, false);
+            productListContainer.SetSiblingIndex(4);
+            productListContainer.gameObject.SetActive(false);
+            productBuildHash = int.MinValue;
+        }
+        if (productInfoText != null && productInfoText.gameObject.activeSelf)
+            productInfoText.text = "CLICK OUTPUT TO CHANGE";
+
+        if (selectedStation != null && stationPopup != null && stationPopup.activeSelf)
+            ApplyPanelLayout(selectedStation.GetComponent<HeatLampStation>() != null);
+        if (productionOutputSelectButton != null && productListContainer != null)
+            productionOutputSelectButton.interactable = productListContainer.childCount > 0;
+    }
+
+    void EnsureRecipePickerUI()
+    {
+        if (recipePickerRoot != null) return;
+        Canvas canvas = ResolvePlayerUICanvas();
+        if (canvas == null) return;
+
+        recipePickerRoot = new GameObject("StationRecipePicker", typeof(RectTransform), typeof(Image));
+        recipePickerRoot.transform.SetParent(canvas.transform, false);
+        RectTransform overlayRect = (RectTransform)recipePickerRoot.transform;
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+        Image overlayImage = recipePickerRoot.GetComponent<Image>();
+        overlayImage.color = new Color(0f, 0f, 0f, 0.72f);
+        overlayImage.raycastTarget = true;
+
+        GameObject panel = new GameObject("Panel", typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup));
+        panel.transform.SetParent(recipePickerRoot.transform, false);
+        RectTransform panelRect = (RectTransform)panel.transform;
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
+        RectTransform canvasRect = canvas.transform as RectTransform;
+        float canvasHeight = canvasRect != null ? canvasRect.rect.height : Screen.height;
+        float canvasWidth = canvasRect != null ? canvasRect.rect.width : Screen.width;
+        float panelHeight = Mathf.Clamp(canvasHeight - 48f, 360f, 720f);
+        float panelWidth = Mathf.Clamp(canvasWidth - 48f, 320f, 700f);
+        panelRect.sizeDelta = new Vector2(panelWidth, panelHeight);
+        Image panelImage = panel.GetComponent<Image>();
+        panelImage.color = GameUITheme.Panel;
+        panelImage.raycastTarget = true;
+
+        VerticalLayoutGroup panelLayout = panel.GetComponent<VerticalLayoutGroup>();
+        panelLayout.padding = new RectOffset(14, 14, 12, 12);
+        panelLayout.spacing = 8f;
+        panelLayout.childAlignment = TextAnchor.UpperCenter;
+        panelLayout.childControlWidth = true;
+        panelLayout.childControlHeight = true;
+        panelLayout.childForceExpandWidth = true;
+        panelLayout.childForceExpandHeight = false;
+
+        GameObject header = new GameObject("Header", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.transform.SetParent(panel.transform, false);
+        LayoutElement headerSize = header.GetComponent<LayoutElement>();
+        headerSize.minHeight = 42f;
+        headerSize.preferredHeight = 42f;
+        headerSize.flexibleHeight = 0f;
+        HorizontalLayoutGroup headerLayout = header.GetComponent<HorizontalLayoutGroup>();
+        headerLayout.spacing = 8f;
+        headerLayout.childAlignment = TextAnchor.MiddleCenter;
+        headerLayout.childControlWidth = true;
+        headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandWidth = false;
+        headerLayout.childForceExpandHeight = true;
+
+        TextMeshProUGUI heading = CreateDiagramText(header.transform, "Title",
+            "SELECT RECIPE OR OUTPUT", 20f, 34f);
+        heading.alignment = TextAlignmentOptions.MidlineLeft;
+        heading.fontStyle = FontStyles.Bold;
+        LayoutElement headingSize = heading.GetComponent<LayoutElement>();
+        headingSize.flexibleWidth = 1f;
+
+        Button closeButton = CreateButton(header.transform, "Close", CloseRecipePicker);
+        closeButton.GetComponentInChildren<TextMeshProUGUI>(true).text = "CLOSE";
+        LayoutElement closeSize = closeButton.GetComponent<LayoutElement>();
+        closeSize.minWidth = 90f;
+        closeSize.preferredWidth = 90f;
+        closeSize.minHeight = 42f;
+        closeSize.preferredHeight = 42f;
+        closeSize.flexibleHeight = 0f;
+
+        GameObject scrollObject = new GameObject("RecipeScroll", typeof(RectTransform),
+            typeof(Image), typeof(Mask), typeof(ScrollRect), typeof(LayoutElement));
+        scrollObject.transform.SetParent(panel.transform, false);
+        scrollObject.GetComponent<Image>().color = GameUITheme.Charcoal;
+        scrollObject.GetComponent<Image>().raycastTarget = true;
+        scrollObject.GetComponent<Mask>().showMaskGraphic = true;
+        LayoutElement scrollSize = scrollObject.GetComponent<LayoutElement>();
+        scrollSize.minHeight = 240f;
+        scrollSize.flexibleHeight = 1f;
+
+        GameObject content = new GameObject("Content", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        content.transform.SetParent(scrollObject.transform, false);
+        RectTransform contentRect = (RectTransform)content.transform;
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.offsetMin = Vector2.zero;
+        contentRect.offsetMax = Vector2.zero;
+        VerticalLayoutGroup contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(10, 10, 10, 10);
+        contentLayout.spacing = 8f;
+        contentLayout.childAlignment = TextAnchor.UpperCenter;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        ContentSizeFitter contentFitter = content.GetComponent<ContentSizeFitter>();
+        contentFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        ScrollRect scroll = scrollObject.GetComponent<ScrollRect>();
+        scroll.content = contentRect;
+        scroll.viewport = (RectTransform)scrollObject.transform;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 30f;
+        recipePickerContent = content.transform;
+        recipePickerRoot.SetActive(false);
+    }
+
+    int GetRecipeColumnsPerRow()
+    {
+        if (!recipePickerOpen || recipePickerRoot == null) return 3;
+        RectTransform panelRect = recipePickerRoot.transform.Find("Panel") as RectTransform;
+        float width = panelRect != null ? panelRect.sizeDelta.x : 700f;
+        return Mathf.Clamp(Mathf.FloorToInt((width - 48f) / 116f), 1, 6);
     }
 
     int GetProductBuildHash(ItemDefinition current, AssemblyStation assembly)
@@ -3012,6 +3292,7 @@ public class ManagementModeController : MonoBehaviour
 
     void HidePopup()
     {
+        CloseRecipePicker();
         if (stationPopup != null) stationPopup.SetActive(false);
     }
 

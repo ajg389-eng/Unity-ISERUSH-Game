@@ -305,40 +305,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
                 : item.ToUpperInvariant() + " LOW (" + stock + " LEFT)\nOrder more stock.";
             return true;
         }
-        return TryGetBottleneckDetails(out details);
-    }
-
-    bool TryGetBottleneckDetails(out string details)
-    {
         details = "";
-        ProductionManager production = ProductionManager.Instance;
-        StationNode ownNode = GetComponent<StationNode>();
-        if (production == null || ownNode == null
-            || production.productionFlows == null) return false;
-
-        foreach (ProductionFlowPlan flow in production.productionFlows)
-        {
-            if (flow?.stations == null || !flow.stations.Contains(gameObject)
-                || flow.workers == null || flow.workers.Count == 0) continue;
-            flow.EnsureLegacyConnections();
-
-            foreach (ProductionFlowConnection connection in flow.connections)
-            {
-                if (connection?.to != gameObject || connection.from == null) continue;
-                StationRuntimeMetrics upstream = connection.from.GetComponent<StationRuntimeMetrics>();
-                if (upstream == null || upstream.CurrentState != StationRuntimeState.Blocked
-                    || upstream.CurrentStateSeconds < 4f) continue;
-                details = "INPUT BLOCKED " + upstream.CurrentStateSeconds.ToString("0") + "s\n"
-                    + "Free space at " + ownNode.DisplayName + ".";
-                return true;
-            }
-
-            // Capacity is determined by connected, recipe-compatible supply.
-            // A low-rate parallel station can still contribute to a merge, so
-            // comparing this station against the lowest rate in the whole flow
-            // produces false bottleneck warnings. Runtime input-blocked states
-            // above remain the reliable local warning for this overlay.
-        }
         return false;
     }
 

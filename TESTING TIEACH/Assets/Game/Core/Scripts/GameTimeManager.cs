@@ -35,8 +35,10 @@ public class GameTimeManager : MonoBehaviour
     [Header("Timing")]
     [Tooltip("Real seconds per in-game hour at 1x speed.")]
     public float realSecondsPerGameHour = 60f;
-    [Tooltip("Unity time scale while fast-forwarding.")]
+    [Tooltip("Fallback rate used only if the fast-forward rate list is empty. Configure fastForwardRates for the rate selector.")]
     public float fastForwardTimeScale = 3f;
+    [Tooltip("Rates cycled through by the fast-forward button. Normal speed remains available on Play.")]
+    public float[] fastForwardRates = { 2f, 3f, 5f, 10f };
     [Tooltip("Unity time scale for debug super-speed.")]
     public float superFastTimeScale = 20f;
     [Tooltip("Pause automatically when the shift ends.")]
@@ -51,14 +53,19 @@ public class GameTimeManager : MonoBehaviour
 
     public event Action OnSpeedChanged;
     public event Action OnTimeChanged;
+    public event Action OnShiftEnding;
     public event Action OnDayEnded;
     public event Action OnDayStarted;
 
     readonly HashSet<string> externalPauseSources = new HashSet<string>();
+    int selectedFastForwardRateIndex;
+    int activeFastForwardRateIndex;
 
     float DayStartMinutes => dayStartHour * 60f;
     float DayEndMinutes => dayEndHour * 60f;
     float GameMinutesPerRealSecond => 60f / Mathf.Max(1f, realSecondsPerGameHour);
+    public float CurrentFastForwardRate => GetFastForwardRate(activeFastForwardRateIndex);
+    public float SelectedFastForwardRate => GetFastForwardRate(selectedFastForwardRateIndex);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -141,7 +148,7 @@ public class GameTimeManager : MonoBehaviour
         IsShiftOver = false;
         SetSpeed(SpeedMode.Play);
         OnTimeChanged?.Invoke();
-        if (CurrentMinutes >= DayEndMinutes) EndShift();
+        if (CurrentMinutes >= DayEndMinutes) EndShift(false);
     }
 
     /// <summary>Debug helper that ends the shift through the normal day-end path.</summary>
@@ -159,7 +166,13 @@ public class GameTimeManager : MonoBehaviour
         if (IsShiftOver && mode != SpeedMode.Paused)
             return;
 
-        if (CurrentSpeed == mode) return;
+        bool rateChanged = mode == SpeedMode.FastForward
+            && activeFastForwardRateIndex != selectedFastForwardRateIndex;
+        if (mode == SpeedMode.FastForward)
+            activeFastForwardRateIndex = selectedFastForwardRateIndex;
+
+        bool speedChanged = CurrentSpeed != mode;
+        if (!speedChanged && !rateChanged) return;
         CurrentSpeed = mode;
         ApplyTimeScale();
         OnSpeedChanged?.Invoke();
@@ -171,6 +184,29 @@ public class GameTimeManager : MonoBehaviour
             SetSpeed(SpeedMode.Play);
         else
             SetSpeed(SpeedMode.Paused);
+    }
+
+    /// <summary>Cycles the selected fast-forward rate without starting the simulation.</summary>
+    public void CycleFastForwardRate()
+    {
+        int rateCount = GetFastForwardRateCount();
+        selectedFastForwardRateIndex = (selectedFastForwardRateIndex + 1) % rateCount;
+        OnSpeedChanged?.Invoke();
+    }
+
+    int GetFastForwardRateCount()
+    {
+        if (fastForwardRates == null || fastForwardRates.Length == 0)
+            return 1;
+        return fastForwardRates.Length;
+    }
+
+    float GetFastForwardRate(int index)
+    {
+        if (fastForwardRates == null || fastForwardRates.Length == 0)
+            return Mathf.Max(1f, fastForwardTimeScale);
+        index = Mathf.Clamp(index, 0, fastForwardRates.Length - 1);
+        return Mathf.Max(1f, fastForwardRates[index]);
     }
 
     public void RequestExternalPause(string source)
@@ -222,7 +258,7 @@ public class GameTimeManager : MonoBehaviour
         if (CurrentSpeed == SpeedMode.SuperFast)
             Time.timeScale = Mathf.Max(1f, superFastTimeScale);
         else if (CurrentSpeed == SpeedMode.FastForward)
-            Time.timeScale = Mathf.Max(1f, fastForwardTimeScale);
+            Time.timeScale = CurrentFastForwardRate;
         else
             Time.timeScale = 1f;
     }
@@ -233,18 +269,23 @@ public class GameTimeManager : MonoBehaviour
         {
             case SpeedMode.Paused: return "Paused";
             case SpeedMode.Play: return "1x";
-            case SpeedMode.FastForward: return $"{fastForwardTimeScale:0.##}x";
+            case SpeedMode.FastForward: return $"{CurrentFastForwardRate:0.##}x";
             case SpeedMode.SuperFast: return $"{superFastTimeScale:0.##}x";
             default: return CurrentSpeed.ToString();
         }
     }
 
-    void EndShift()
+    void EndShift(bool recordShiftResult = true)
     {
         if (IsShiftOver) return;
         IsShiftOver = true;
         if (pauseAtDayEnd)
             SetSpeed(SpeedMode.Paused);
+        if (recordShiftResult)
+            OnShiftEnding?.Invoke();
+        // Clear customers before the end-of-day event so the autosave stores a
+        // clean next-day state and the summary reads only the day's statistics.
+        CustomerAI.DespawnAllCustomers();
         OnDayEnded?.Invoke();
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.DayEnded);
     }

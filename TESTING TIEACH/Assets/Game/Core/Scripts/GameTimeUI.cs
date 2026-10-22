@@ -15,10 +15,12 @@ public class GameTimeUI : MonoBehaviour
     public TextMeshProUGUI rushText;
     public Button pauseButton;
     public Button playButton;
+    public Button fastForwardRateButton;
     public Button fastForwardButton;
 
     Image pauseHighlight;
     Image playHighlight;
+    Image fastForwardRateHighlight;
     Image fastHighlight;
 
     void Awake()
@@ -216,11 +218,15 @@ public class GameTimeUI : MonoBehaviour
             playButton = FindNamedButton(strip.transform, "PlayButton");
         if (fastForwardButton == null)
             fastForwardButton = FindNamedButton(strip.transform, "FastButton") ?? FindNamedButton(strip.transform, "FastForwardButton");
+        if (fastForwardRateButton == null)
+            fastForwardRateButton = FindNamedButton(strip.transform, "FastForwardRateButton");
 
         if (pauseButton != null && pauseButton.transform.parent != strip.transform)
             pauseButton.transform.SetParent(strip.transform, false);
         if (playButton != null && playButton.transform.parent != strip.transform)
             playButton.transform.SetParent(strip.transform, false);
+        if (fastForwardRateButton != null && fastForwardRateButton.transform.parent != strip.transform)
+            fastForwardRateButton.transform.SetParent(strip.transform, false);
         if (fastForwardButton != null && fastForwardButton.transform.parent != strip.transform)
             fastForwardButton.transform.SetParent(strip.transform, false);
 
@@ -228,11 +234,25 @@ public class GameTimeUI : MonoBehaviour
             pauseButton = CreateSpeedButton(strip.transform, "PauseButton", "||", out pauseHighlight);
         if (playButton == null)
             playButton = CreateSpeedButton(strip.transform, "PlayButton", ">", out playHighlight);
+        if (fastForwardRateButton == null)
+            fastForwardRateButton = CreateSpeedButton(strip.transform, "FastForwardRateButton", "2x", out fastForwardRateHighlight);
         if (fastForwardButton == null)
             fastForwardButton = CreateSpeedButton(strip.transform, "FastForwardButton", ">>", out fastHighlight);
 
+        if (fastForwardRateHighlight == null && fastForwardRateButton != null)
+            fastForwardRateHighlight = fastForwardRateButton.GetComponent<Image>();
+        if (fastForwardRateButton != null)
+        {
+            LayoutElement rateSize = fastForwardRateButton.GetComponent<LayoutElement>()
+                ?? fastForwardRateButton.gameObject.AddComponent<LayoutElement>();
+            rateSize.minWidth = 42f;
+            rateSize.preferredWidth = 42f;
+            rateSize.flexibleWidth = 0f;
+        }
+
         GameUITheme.ApplyCompactControlEffects(pauseButton);
         GameUITheme.ApplyCompactControlEffects(playButton);
+        GameUITheme.ApplyCompactControlEffects(fastForwardRateButton);
         GameUITheme.ApplyCompactControlEffects(fastForwardButton);
         GameIconLibrary.ApplyToButton(pauseButton, GameIconId.Pause, 21f, 0f, true);
         GameIconLibrary.ApplyToButton(playButton, GameIconId.Play, 21f, 0f, true);
@@ -240,7 +260,8 @@ public class GameTimeUI : MonoBehaviour
 
         pauseButton.transform.SetSiblingIndex(0);
         playButton.transform.SetSiblingIndex(1);
-        fastForwardButton.transform.SetSiblingIndex(2);
+        fastForwardRateButton.transform.SetSiblingIndex(2);
+        fastForwardButton.transform.SetSiblingIndex(3);
 
         var leftover = transform.Find("Row/Controls");
         if (leftover != null)
@@ -279,7 +300,7 @@ public class GameTimeUI : MonoBehaviour
         strip.anchorMin = new Vector2(0.5f, 1f);
         strip.anchorMax = new Vector2(0.5f, 1f);
         strip.pivot = new Vector2(0.5f, 1f);
-        strip.sizeDelta = new Vector2(158f, 36f);
+        strip.sizeDelta = new Vector2(202f, 36f);
 
         float y = -62f;
         if (bar != null)
@@ -370,6 +391,17 @@ public class GameTimeUI : MonoBehaviour
                 timeManager?.SetSpeed(GameTimeManager.SpeedMode.FastForward);
             });
         }
+
+        if (fastForwardRateButton != null)
+        {
+            fastForwardRateButton.onClick.RemoveAllListeners();
+            fastForwardRateButton.onClick.AddListener(() =>
+            {
+                Sfx.Play(SfxId.UiClick);
+                timeManager?.CycleFastForwardRate();
+                Refresh();
+            });
+        }
     }
 
     void Refresh()
@@ -384,12 +416,24 @@ public class GameTimeUI : MonoBehaviour
         SetHighlight(pauseHighlight, timeManager.CurrentSpeed == GameTimeManager.SpeedMode.Paused);
         SetHighlight(playHighlight, timeManager.CurrentSpeed == GameTimeManager.SpeedMode.Play && !timeManager.IsShiftOver);
         SetHighlight(fastHighlight, timeManager.CurrentSpeed == GameTimeManager.SpeedMode.FastForward);
+        SetHighlight(fastForwardRateHighlight, false);
 
         if (playButton != null)
         {
             var label = playButton.GetComponentInChildren<TextMeshProUGUI>();
             if (label != null)
                 label.text = timeManager.IsShiftOver ? "Next" : ">";
+        }
+
+        if (fastForwardRateButton != null)
+        {
+            TextMeshProUGUI label = fastForwardRateButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null)
+            {
+                label.text = timeManager.SelectedFastForwardRate.ToString("0.##") + "x";
+                label.fontSize = 13f;
+            }
+            fastForwardRateButton.interactable = !timeManager.IsShiftOver;
         }
     }
 

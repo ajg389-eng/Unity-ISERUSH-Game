@@ -33,6 +33,13 @@ public class WorkersUI : MonoBehaviour
     TMP_InputField flowNameInput;
     Button createFlowButton;
     TextMeshProUGUI flowStatus;
+    Transform systemEfficiencyRoot;
+    TextMeshProUGUI systemEfficiencyHeading;
+    TextMeshProUGUI systemEfficiencyExplanation;
+    readonly Button[] systemEfficiencyButtons = new Button[4];
+    readonly TextMeshProUGUI[] systemEfficiencyButtonLabels = new TextMeshProUGUI[4];
+    int expandedSystemEfficiencyState = -1;
+    float nextSystemEfficiencyRefresh;
     Button flowExpandButton;
     TextMeshProUGUI flowExpandArrowLabel;
     TextMeshProUGUI flowHeaderLabel;
@@ -71,6 +78,15 @@ public class WorkersUI : MonoBehaviour
         // Leaving the Workers/Flows UI is an explicit flow deselection. Ordinary
         // world clicks are handled separately and keep the selected route pinned.
         WorkerAssignmentLinkVisuals.ClearFocusedFlow();
+    }
+
+    void Update()
+    {
+        if (systemEfficiencyRoot == null || !systemEfficiencyRoot.gameObject.activeInHierarchy
+            || Time.unscaledTime < nextSystemEfficiencyRefresh)
+            return;
+        nextSystemEfficiencyRefresh = Time.unscaledTime + 0.5f;
+        RefreshSystemEfficiency();
     }
 
     void EnsureRefs()
@@ -409,7 +425,7 @@ public class WorkersUI : MonoBehaviour
     {
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
-        if (existing != null && existing.Find("LayoutV8") == null)
+        if (existing != null && existing.Find("LayoutV9") == null)
         {
             Destroy(existing.gameObject);
             existing = null;
@@ -441,6 +457,7 @@ public class WorkersUI : MonoBehaviour
             flowStatus = existing.Find("EconomicsPanel/FlowStats")?.GetComponent<TextMeshProUGUI>()
                 ?? existing.Find("FlowStats")?.GetComponent<TextMeshProUGUI>()
                 ?? existing.Find("Status")?.GetComponent<TextMeshProUGUI>();
+            BindSystemEfficiencyBar(existing.Find("EconomicsPanel/SystemEfficiency"));
             WireFlowActionButtons();
             LayoutFlowPanel();
             return;
@@ -454,7 +471,7 @@ public class WorkersUI : MonoBehaviour
         bg.raycastTarget = true;
 
         // Version marker — presence means this panel has the cleaned layout.
-        var version = new GameObject("LayoutV8", typeof(RectTransform), typeof(LayoutElement));
+        var version = new GameObject("LayoutV9", typeof(RectTransform), typeof(LayoutElement));
         version.transform.SetParent(flowPanel, false);
         var versionLe = version.GetComponent<LayoutElement>();
         versionLe.ignoreLayout = true;
@@ -653,6 +670,8 @@ public class WorkersUI : MonoBehaviour
         panelVlg.childForceExpandWidth = true;
         panelVlg.childForceExpandHeight = false;
 
+        BuildSystemEfficiencyBar(panel.transform);
+
         var statusGo = new GameObject("FlowStats", typeof(RectTransform));
         statusGo.transform.SetParent(panel.transform, false);
         flowStatus = statusGo.AddComponent<TextMeshProUGUI>();
@@ -669,6 +688,267 @@ public class WorkersUI : MonoBehaviour
         var statusFitter = statusGo.AddComponent<ContentSizeFitter>();
         statusFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
         statusFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+    }
+
+    void BuildSystemEfficiencyBar(Transform parent)
+    {
+        var root = new GameObject("SystemEfficiency", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        root.transform.SetParent(parent, false);
+        LayoutElement rootSize = root.GetComponent<LayoutElement>();
+        rootSize.minHeight = 46f;
+        rootSize.preferredHeight = 46f;
+        rootSize.flexibleWidth = 1f;
+
+        VerticalLayoutGroup rootLayout = root.GetComponent<VerticalLayoutGroup>();
+        rootLayout.spacing = 2f;
+        rootLayout.childAlignment = TextAnchor.UpperLeft;
+        rootLayout.childControlWidth = true;
+        rootLayout.childControlHeight = true;
+        rootLayout.childForceExpandWidth = true;
+        rootLayout.childForceExpandHeight = false;
+
+        var headingObject = new GameObject("Heading", typeof(RectTransform),
+            typeof(TextMeshProUGUI), typeof(LayoutElement));
+        headingObject.transform.SetParent(root.transform, false);
+        systemEfficiencyHeading = headingObject.GetComponent<TextMeshProUGUI>();
+        systemEfficiencyHeading.text = "SELECTED FLOW EFFICIENCY";
+        systemEfficiencyHeading.fontSize = 10f;
+        systemEfficiencyHeading.fontStyle = FontStyles.Bold;
+        systemEfficiencyHeading.color = GameUITheme.TextSecondary;
+        systemEfficiencyHeading.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null)
+            systemEfficiencyHeading.font = TMP_Settings.defaultFontAsset;
+        LayoutElement headingSize = headingObject.GetComponent<LayoutElement>();
+        headingSize.minHeight = 16f;
+        headingSize.preferredHeight = 16f;
+
+        var row = new GameObject("StateButtons", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(root.transform, false);
+        LayoutElement rowSize = row.GetComponent<LayoutElement>();
+        rowSize.minHeight = 28f;
+        rowSize.preferredHeight = 28f;
+        HorizontalLayoutGroup rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+        rowLayout.spacing = 4f;
+        rowLayout.childAlignment = TextAnchor.MiddleCenter;
+        rowLayout.childControlWidth = true;
+        rowLayout.childControlHeight = true;
+        rowLayout.childForceExpandWidth = true;
+        rowLayout.childForceExpandHeight = false;
+
+        string[] labels = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
+        string[] colors = { "#55C9A5", "#E27676", "#E2B455", "#B7BEC5" };
+        for (int i = 0; i < systemEfficiencyButtons.Length; i++)
+        {
+            int category = i;
+            var buttonObject = new GameObject("StateButton" + i,
+                typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            buttonObject.transform.SetParent(row.transform, false);
+            Image buttonImage = buttonObject.GetComponent<Image>();
+            buttonImage.color = GameUITheme.Charcoal;
+            Button button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = buttonImage;
+            LayoutElement buttonSize = buttonObject.GetComponent<LayoutElement>();
+            buttonSize.minWidth = 66f;
+            buttonSize.flexibleWidth = 1f;
+            buttonSize.minHeight = 28f;
+            buttonSize.preferredHeight = 28f;
+
+            var labelObject = new GameObject("Label", typeof(RectTransform),
+                typeof(TextMeshProUGUI));
+            labelObject.transform.SetParent(buttonObject.transform, false);
+            RectTransform labelRect = (RectTransform)labelObject.transform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = new Vector2(2f, 1f);
+            labelRect.offsetMax = new Vector2(-2f, -1f);
+            TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
+            label.fontSize = 10f;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 8f;
+            label.fontSizeMax = 10f;
+            label.text = labels[i] + "  0%";
+            label.color = ColorUtility.TryParseHtmlString(colors[i], out Color parsed)
+                ? parsed : Color.white;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.alignment = TextAlignmentOptions.Center;
+            label.fontStyle = FontStyles.Bold;
+            label.raycastTarget = false;
+            if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
+            systemEfficiencyButtons[i] = button;
+            systemEfficiencyButtonLabels[i] = label;
+            button.onClick.AddListener(() => ToggleSystemEfficiencyExplanation(category));
+        }
+
+        var explanationObject = new GameObject("StateExplanation", typeof(RectTransform),
+            typeof(TextMeshProUGUI), typeof(LayoutElement));
+        explanationObject.transform.SetParent(root.transform, false);
+        systemEfficiencyExplanation = explanationObject.GetComponent<TextMeshProUGUI>();
+        systemEfficiencyExplanation.fontSize = 10f;
+        systemEfficiencyExplanation.textWrappingMode = TextWrappingModes.Normal;
+        systemEfficiencyExplanation.alignment = TextAlignmentOptions.Center;
+        systemEfficiencyExplanation.color = GameUITheme.TextPrimary;
+        systemEfficiencyExplanation.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null)
+            systemEfficiencyExplanation.font = TMP_Settings.defaultFontAsset;
+        LayoutElement explanationSize = explanationObject.GetComponent<LayoutElement>();
+        explanationSize.minHeight = 0f;
+        explanationSize.preferredHeight = 0f;
+        explanationObject.SetActive(false);
+        BindSystemEfficiencyBar(root.transform);
+    }
+
+    void BindSystemEfficiencyBar(Transform root)
+    {
+        systemEfficiencyRoot = root;
+        if (root == null) return;
+        systemEfficiencyHeading = root.Find("Heading")?.GetComponent<TextMeshProUGUI>();
+        systemEfficiencyExplanation = root.Find("StateExplanation")?.GetComponent<TextMeshProUGUI>();
+        Transform row = root.Find("StateButtons");
+        for (int i = 0; i < systemEfficiencyButtons.Length; i++)
+        {
+            Transform buttonTransform = row != null ? row.Find("StateButton" + i) : null;
+            systemEfficiencyButtons[i] = buttonTransform != null
+                ? buttonTransform.GetComponent<Button>() : null;
+            systemEfficiencyButtonLabels[i] = buttonTransform != null
+                ? buttonTransform.Find("Label")?.GetComponent<TextMeshProUGUI>() : null;
+            if (systemEfficiencyButtons[i] == null) continue;
+            int category = i;
+            systemEfficiencyButtons[i].onClick.RemoveAllListeners();
+            systemEfficiencyButtons[i].onClick.AddListener(
+                () => ToggleSystemEfficiencyExplanation(category));
+        }
+    }
+
+    void ToggleSystemEfficiencyExplanation(int category)
+    {
+        if (systemEfficiencyExplanation == null) return;
+        bool show = expandedSystemEfficiencyState != category;
+        expandedSystemEfficiencyState = show ? category : -1;
+        systemEfficiencyExplanation.gameObject.SetActive(show);
+        if (show)
+        {
+            switch (category)
+            {
+                case 0:
+                    systemEfficiencyExplanation.text = "Working: Share of tracked station time spent processing items.";
+                    break;
+                case 1:
+                    systemEfficiencyExplanation.text = "Blocked: Share of time stations could not move work forward.";
+                    break;
+                case 2:
+                    systemEfficiencyExplanation.text = "Starved: Share of time stations lacked required inputs.";
+                    break;
+                default:
+                    systemEfficiencyExplanation.text = "Idle: Share of time no active work was needed.";
+                    break;
+            }
+            LayoutElement explanationSize = systemEfficiencyExplanation.GetComponent<LayoutElement>();
+            if (explanationSize != null)
+            {
+                explanationSize.minHeight = 34f;
+                explanationSize.preferredHeight = 34f;
+            }
+            LayoutElement rootSize = systemEfficiencyRoot.GetComponent<LayoutElement>();
+            if (rootSize != null)
+            {
+                rootSize.minHeight = 82f;
+                rootSize.preferredHeight = 82f;
+            }
+        }
+        else
+        {
+            LayoutElement explanationSize = systemEfficiencyExplanation.GetComponent<LayoutElement>();
+            if (explanationSize != null)
+            {
+                explanationSize.minHeight = 0f;
+                explanationSize.preferredHeight = 0f;
+            }
+            LayoutElement rootSize = systemEfficiencyRoot.GetComponent<LayoutElement>();
+            if (rootSize != null)
+            {
+                rootSize.minHeight = 46f;
+                rootSize.preferredHeight = 46f;
+            }
+        }
+        LayoutFlowPanel();
+    }
+
+    void RefreshSystemEfficiency()
+    {
+        if (systemEfficiencyRoot == null || production == null) return;
+        var stations = new HashSet<StationNode>();
+        ProductionFlowPlan flow = production.SelectedFlow;
+        if (flow?.stations != null)
+        {
+            foreach (GameObject stationObject in flow.stations)
+            {
+                if (stationObject == null
+                    || stationObject.GetComponent<HeatLampStation>() != null
+                    || stationObject.GetComponent<Register>() != null
+                    || stationObject.GetComponent<FreezerStation>() != null
+                    || stationObject.GetComponent<PantryStation>() != null)
+                    continue;
+                StationNode node = stationObject.GetComponent<StationNode>();
+                if (node != null) stations.Add(node);
+            }
+        }
+
+        float workingSeconds = 0f;
+        float blockedSeconds = 0f;
+        float starvedSeconds = 0f;
+        float idleSeconds = 0f;
+        foreach (StationNode node in stations)
+        {
+            StationRuntimeMetrics metrics = node != null
+                ? node.GetComponent<StationRuntimeMetrics>() : null;
+            if (metrics == null) continue;
+            workingSeconds += metrics.WorkingSeconds;
+            blockedSeconds += metrics.BlockedSeconds;
+            starvedSeconds += metrics.StarvedSeconds;
+            idleSeconds += metrics.IdleSeconds;
+        }
+
+        float total = workingSeconds + blockedSeconds + starvedSeconds + idleSeconds;
+        var exact = total > 0.001f
+            ? new[]
+            {
+                workingSeconds * 100f / total,
+                blockedSeconds * 100f / total,
+                starvedSeconds * 100f / total,
+                idleSeconds * 100f / total
+            }
+            : new[] { 0f, 0f, 0f, 100f };
+        var percents = new int[4];
+        var remainders = new float[4];
+        int assigned = 0;
+        for (int i = 0; i < exact.Length; i++)
+        {
+            percents[i] = Mathf.FloorToInt(exact[i]);
+            remainders[i] = exact[i] - percents[i];
+            assigned += percents[i];
+        }
+        for (int left = 100 - assigned; left > 0; left--)
+        {
+            int largest = 0;
+            for (int i = 1; i < remainders.Length; i++)
+                if (remainders[i] > remainders[largest]) largest = i;
+            percents[largest]++;
+            remainders[largest] = -1f;
+        }
+
+        string[] names = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
+        if (systemEfficiencyHeading != null)
+        {
+            string flowName = flow != null && !string.IsNullOrWhiteSpace(flow.flowName)
+                ? flow.flowName.ToUpperInvariant() : "SELECTED FLOW";
+            systemEfficiencyHeading.text = flowName + " EFFICIENCY  ("
+                + stations.Count + " stations)";
+        }
+        for (int i = 0; i < systemEfficiencyButtonLabels.Length; i++)
+            if (systemEfficiencyButtonLabels[i] != null)
+                systemEfficiencyButtonLabels[i].text = names[i] + "  " + percents[i] + "%";
     }
 
     void LayoutFlowPanel()
@@ -1058,10 +1338,7 @@ public class WorkersUI : MonoBehaviour
     void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
-        string dropLabel = "+  Drop Worker";
-        if (flow != null && flow.workers != null && flow.workers.Count >= MilestoneFeatures.MaxWorkersPerFlow)
-            dropLabel = "Flow Full";
-        Button dropZone = MakeChip(parent, dropLabel, 126f);
+        Button dropZone = MakeChip(parent, "+  Drop Worker", 126f);
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
         if (image != null) image.color = idleColor;
@@ -1084,6 +1361,7 @@ public class WorkersUI : MonoBehaviour
             if (production == null) return;
 
             production.EnsureProductionFlows();
+            RefreshSystemEfficiency();
             ProductionFlowPlan flow = production.SelectedFlow;
             UpdateFlowHeader();
             if (flow != null
@@ -1282,11 +1560,6 @@ public class WorkersUI : MonoBehaviour
     public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
     {
         if (production == null || employee == null || flow == null) return;
-        if (!production.CanAddWorkerToFlow(flow) && (flow.workers == null || !flow.workers.Contains(employee)))
-        {
-            Sfx.Play(SfxId.UiError);
-            return;
-        }
         production.AddWorkerToFlow(flow, employee);
         int flowIndex = production.productionFlows.IndexOf(flow);
         if (flowIndex >= 0)

@@ -18,6 +18,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
     public TextMeshProUGUI titleText;
     public TextMeshProUGUI summaryText;
     public Button continueButton;
+    Button inspectDiagnosisButton;
 
     TextMeshProUGUI revenueValue;
     TextMeshProUGUI cashChangeValue;
@@ -153,9 +154,10 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
         string cashSign = cashChange > 0 ? "+" : "";
         string cashColor = cashChange >= 0 ? "#7DDB8A" : "#E07A7A";
-        string diagnosis = BuildOperationsDiagnosis(stats, cashChange, avgWait, lost, waste, visited, unserved, orders);
+        string diagnosis = BuildOperationsDiagnosis();
         string shiftGoals = BuildShiftGoals(stats, tm);
         string gradeBreakdown = BuildGradeBreakdown(grade);
+        RefreshDiagnosisButton();
 
         if (gradeValue != null)
         {
@@ -300,51 +302,52 @@ public class EndOfDaySummaryUI : MonoBehaviour
             + (orders > 0 ? "  (" + wait.ToString("0") + "s)" : "");
     }
 
-    static string BuildOperationsDiagnosis(StoreStatisticsManager stats, int cashChange, float avgWait, int lost, int waste,
-        int visited, int unserved, int orders)
+    static string BuildOperationsDiagnosis()
     {
-        var notes = new System.Collections.Generic.List<string>();
-
-        float serviceRate = visited > 0 ? orders / (float)visited : 0f;
-        if (lost > 0 || avgWait >= 35f || unserved > 0)
-            notes.Add("<color=#F2C66D><b>Service:</b></color> " + lost + " walked out, " + unserved +
-                " were still in service at close. Check the register queue and the station with the longest backlog.");
-        else if (orders > 0)
-            notes.Add("<color=#7DDB8A><b>Service:</b></color> All " + visited + " visits were served. Average wait was " + avgWait.ToString("F0") + "s.");
-
-        if (waste > 0)
-            notes.Add("<color=#F2C66D><b>Waste:</b></color> Lower pickup stock or match output to demand.");
-        if (cashChange < 0)
-            notes.Add("<color=#F2C66D><b>Cash:</b></color> Balance changed by -$" + Mathf.Abs(cashChange) +
-                ". Delay optional purchases until sales cover the next upgrade.");
-        else if (cashChange > 0)
-            notes.Add("<color=#7DDB8A><b>Cash:</b></color> Balance grew by $" + cashChange +
-                ". Compare another worker or station upgrade against the busiest queue before investing.");
-
-        if (visited > 0 && serviceRate < 0.7f && notes.Count < 3)
-            notes.Add("<color=#83D9ED><b>Next shift:</b></color> Prioritize service capacity before expanding the menu.");
-        else if (visited == 0 && notes.Count < 3)
-            notes.Add("<color=#83D9ED><b>Next shift:</b></color> Open the doors and make sure a register is available to receive orders.");
-
-        var workflowNotes = WorkflowAnalysis.GetSystemDiagnostics();
-        if (workflowNotes.Count > 0 && notes.Count < 3)
-            notes.Add("<color=#83D9ED><b>System:</b></color> " + workflowNotes[0]);
-
-        if (notes.Count == 0)
-            notes.Add("<color=#7DDB8A><b>Stable:</b></color> No major operational loss detected.");
-
+        string comparison = ShiftPlanningUI.GetShiftComparisonSummary();
+        string production = ShiftPlanningUI.GetShiftProductionDiagnosis();
         var lines = new System.Text.StringBuilder();
-        int noteCount = Mathf.Min(notes.Count, 3);
-        for (int i = 0; i < noteCount; i++)
-            lines.Append("\u2022 ").Append(notes[i]).Append(i + 1 < noteCount ? "\n" : "");
+
+        if (!string.IsNullOrEmpty(comparison))
+            lines.Append("<color=#83D9ED><b>Shift goal:</b></color> ").Append(comparison);
+        if (!string.IsNullOrEmpty(production))
+        {
+            if (lines.Length > 0) lines.Append('\n');
+            lines.Append("<color=#F2C66D><b>Next improvement:</b></color> ").Append(production);
+        }
+        if (lines.Length == 0)
+            lines.Append("<color=#7DDB8A><b>Stable:</b></color> No major station delay stood out this shift.");
         return lines.ToString();
     }
-
     void WireContinue()
     {
-        if (continueButton == null) return;
-        continueButton.onClick.RemoveListener(ContinueToNextDay);
-        continueButton.onClick.AddListener(ContinueToNextDay);
+        if (continueButton != null)
+        {
+            continueButton.onClick.RemoveListener(ContinueToNextDay);
+            continueButton.onClick.AddListener(ContinueToNextDay);
+        }
+        if (inspectDiagnosisButton != null)
+        {
+            inspectDiagnosisButton.onClick.RemoveListener(InspectDiagnosis);
+            inspectDiagnosisButton.onClick.AddListener(InspectDiagnosis);
+        }
+    }
+
+    void InspectDiagnosis()
+    {
+        Hide();
+        ShiftPlanningUI.FocusDiagnosedStation();
+    }
+
+    void RefreshDiagnosisButton()
+    {
+        if (inspectDiagnosisButton == null) return;
+        bool hasStation = ShiftPlanningUI.HasDiagnosedStation;
+        inspectDiagnosisButton.gameObject.SetActive(hasStation);
+        if (!hasStation) return;
+        TextMeshProUGUI label = inspectDiagnosisButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (label != null)
+            label.text = "Pause & Inspect " + ShiftPlanningUI.DiagnosedStationName;
     }
 
     void EnsurePanel()
@@ -382,6 +385,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
         if (continueButton == null)
             continueButton = panelRoot.transform.Find("ContinueButton")?.GetComponent<Button>()
                 ?? panelRoot.transform.Find("Card/ContinueButton")?.GetComponent<Button>();
+        if (inspectDiagnosisButton == null)
+            inspectDiagnosisButton = panelRoot.transform.Find("Card/SummaryPanel/InspectDiagnosis")?.GetComponent<Button>();
         revenueValue = FindText("Card/HeadlineMetrics/Revenue/Value");
         cashChangeValue = FindText("Card/HeadlineMetrics/CashChange/Value");
         ordersValue = FindText("Card/HeadlineMetrics/Orders/Value");
@@ -468,7 +473,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
         summaryPanel.GetComponent<Image>().color = new Color(0.075f, 0.085f, 0.12f, 0.92f);
         summaryPanel.GetComponent<Image>().raycastTarget = false;
         var summaryPanelLayout = summaryPanel.GetComponent<LayoutElement>();
-        summaryPanelLayout.minHeight = 270f;
+        summaryPanelLayout.minHeight = 300f;
         summaryPanelLayout.flexibleHeight = 1f;
 
         TextMeshProUGUI reviewTitle = CreateLabel(summaryPanel.transform, "ReviewTitle", "SHIFT RESULTS & PROCESS REVIEW", 13,
@@ -488,8 +493,20 @@ public class EndOfDaySummaryUI : MonoBehaviour
         var summaryRt = (RectTransform)summaryText.transform;
         summaryRt.anchorMin = Vector2.zero;
         summaryRt.anchorMax = Vector2.one;
-        summaryRt.offsetMin = new Vector2(18f, 14f);
+        summaryRt.offsetMin = new Vector2(18f, 58f);
         summaryRt.offsetMax = new Vector2(-18f, -48f);
+
+        inspectDiagnosisButton = CreateButton(summaryPanel.transform, "InspectDiagnosis", "Pause & Inspect Limiting Station");
+        RectTransform inspectRt = (RectTransform)inspectDiagnosisButton.transform;
+        inspectRt.anchorMin = new Vector2(0.5f, 0f);
+        inspectRt.anchorMax = new Vector2(0.5f, 0f);
+        inspectRt.pivot = new Vector2(0.5f, 0f);
+        inspectRt.anchoredPosition = new Vector2(0f, 10f);
+        inspectRt.sizeDelta = new Vector2(300f, 38f);
+        LayoutElement inspectLayout = inspectDiagnosisButton.GetComponent<LayoutElement>();
+        inspectLayout.minHeight = 38f;
+        inspectLayout.preferredHeight = 38f;
+        inspectDiagnosisButton.gameObject.SetActive(false);
 
         continueButton = CreateButton(card.transform, "ContinueButton", "Continue to Next Day");
         panelRoot.transform.SetAsLastSibling();

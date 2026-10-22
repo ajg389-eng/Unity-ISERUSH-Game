@@ -140,13 +140,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public static void SetFocusedStation(StationNode station)
     {
         if (Instance == null) return;
-        if (Instance.focusedFlow != null)
-        {
-            Instance.focusedWorker = null;
-            Instance.focusedStation = null;
-            Instance.ApplyFocus();
-            return;
-        }
         Instance.focusedStation = station;
         Instance.focusedWorker = null;
         Instance.ApplyFocus();
@@ -216,6 +209,14 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
         DrawAllStationPreviews();
 
+        // A highlighted station narrows the grid overlay to its direct
+        // incoming and outgoing connections, even when a flow is selected.
+        if (focusedStation != null)
+        {
+            DrawStationConnections(focusedStation);
+            return;
+        }
+
         if (focusedWorker != null)
         {
             DrawWorkerFlow(focusedWorker, routeColor, false);
@@ -229,6 +230,93 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
+    }
+
+    void DrawStationConnections(StationNode station)
+    {
+        GridManager grid = GridManager.Instance;
+        ProductionManager production = ProductionManager.Instance;
+        if (grid == null || station == null || production == null
+            || production.productionFlows == null)
+            return;
+
+        var edgePaths = new List<List<Vector3>>();
+        var edgeNames = new List<string>();
+        var markedStations = new HashSet<GameObject>();
+        GameObject selected = station.gameObject;
+        for (int flowIndex = 0; flowIndex < production.productionFlows.Count; flowIndex++)
+        {
+            ProductionFlowPlan flow = production.productionFlows[flowIndex];
+            if (flow == null) continue;
+            flow.EnsureLegacyConnections();
+            if (flow.connections == null) continue;
+
+            var incoming = new HashSet<GameObject>();
+            var outgoing = new HashSet<GameObject>();
+            var incomingCount = new Dictionary<GameObject, int>();
+            var outgoingCount = new Dictionary<GameObject, int>();
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection == null || connection.from == null || connection.to == null) continue;
+                outgoing.Add(connection.from);
+                incoming.Add(connection.to);
+                outgoingCount[connection.from] = outgoingCount.TryGetValue(connection.from,
+                    out int outCount) ? outCount + 1 : 1;
+                incomingCount[connection.to] = incomingCount.TryGetValue(connection.to,
+                    out int inCount) ? inCount + 1 : 1;
+            }
+
+            for (int edgeIndex = 0; edgeIndex < flow.connections.Count; edgeIndex++)
+            {
+                ProductionFlowConnection connection = flow.connections[edgeIndex];
+                if (connection == null || connection.from == null || connection.to == null
+                    || (connection.from != selected && connection.to != selected))
+                    continue;
+
+                if (markedStations.Add(connection.from))
+                    CreateStationConnectionMarker(connection.from, grid, incoming, outgoing,
+                        incomingCount, outgoingCount);
+                if (markedStations.Add(connection.to))
+                    CreateStationConnectionMarker(connection.to, grid, incoming, outgoing,
+                        incomingCount, outgoingCount);
+
+                Vector3 from = grid.GetCellCenter(
+                    KitchenEmployee.GetInteractionPosition(connection.from));
+                Vector3 to = grid.GetCellCenter(
+                    KitchenEmployee.GetInteractionPosition(connection.to));
+                var points = new List<Vector3>();
+                AppendGridLeg(points, grid, from, to);
+                if (points.Count < 2) continue;
+
+                edgePaths.Add(points);
+                edgeNames.Add((string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
+                    + "_Station_Connection_" + flowIndex + "_" + edgeIndex);
+            }
+        }
+
+        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(edgePaths, grid.cellSize);
+        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
+        for (int i = 0; i < edgePaths.Count; i++)
+        {
+            List<Vector3> points = ApplySharedLaneOffsets(edgePaths[i], i,
+                overlapGroups, grid.cellSize, laneSpacing);
+            CreateGridLine(points, edgeNames[i], FlowBranchColors[i % FlowBranchColors.Length]);
+        }
+    }
+
+    void CreateStationConnectionMarker(GameObject station, GridManager grid,
+        HashSet<GameObject> incoming, HashSet<GameObject> outgoing,
+        Dictionary<GameObject, int> incomingCount, Dictionary<GameObject, int> outgoingCount)
+    {
+        Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
+        position.y = grid.Origin.y + floorOffset;
+        bool root = !incoming.Contains(station);
+        bool end = !outgoing.Contains(station);
+        bool split = outgoingCount.TryGetValue(station, out int branches) && branches > 1;
+        bool merge = incomingCount.TryGetValue(station, out int sources) && sources > 1;
+        string role = root ? "START" : end ? "END" : split ? "SPLIT" : merge ? "MERGE" : "STOP";
+        Color color = root ? startColor : end ? endColor : stopColor;
+        CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
     }
 
     void RefreshFlowWorkerHighlights()
@@ -276,7 +364,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             GameObject station = flow.stations[i];
             if (station == null) continue;
 
-            Vector3 position = KitchenEmployee.GetInteractionPosition(station);
+            // Route markers sit at the same tile center the workers use. Using
+            // the model's interaction point here left short diagonal stubs at
+            // the start and end of otherwise grid-aligned routes.
+            Vector3 position = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
             position.y = grid.Origin.y + floorOffset;
             bool root = !incoming.Contains(station);
             bool end = !outgoing.Contains(station);
@@ -292,8 +383,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         {
             if (connection == null || connection.from == null || connection.to == null) continue;
             var points = new List<Vector3>();
-            Vector3 from = KitchenEmployee.GetInteractionPosition(connection.from);
-            Vector3 to = KitchenEmployee.GetInteractionPosition(connection.to);
+            Vector3 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.from));
+            Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
             AppendGridLeg(points, grid, from, to);
             if (points.Count >= 2) edgePaths.Add(points);
         }
@@ -425,69 +516,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         // terminate at the exact center of its station marker.
         result[0] = source[0];
         result[result.Count - 1] = source[source.Count - 1];
-        return PolishRoute(CardinalizePolyline(result), cellSize);
-    }
-
-    static List<Vector3> PolishRoute(List<Vector3> source, float cellSize)
-    {
-        if (source == null || source.Count < 2) return source;
-        var simplified = new List<Vector3>();
-        foreach (Vector3 point in source)
-        {
-            AddPointIfDistinct(simplified, point);
-            while (simplified.Count >= 3)
-            {
-                int last = simplified.Count - 1;
-                Vector3 before = simplified[last - 1] - simplified[last - 2];
-                Vector3 after = simplified[last] - simplified[last - 1];
-                before.y = 0f;
-                after.y = 0f;
-                if (before.sqrMagnitude <= 0.000001f || after.sqrMagnitude <= 0.000001f
-                    || Vector3.Dot(before.normalized, after.normalized) < 0.9999f)
-                    break;
-                Vector3 end = simplified[last];
-                simplified.RemoveAt(last);
-                simplified[last - 1] = end;
-            }
-        }
-        if (simplified.Count < 3) return simplified;
-
-        float standardChamfer = Mathf.Max(0.04f, cellSize * 0.16f);
-        var polished = new List<Vector3> { simplified[0] };
-        for (int i = 1; i < simplified.Count - 1; i++)
-        {
-            Vector3 previous = simplified[i - 1];
-            Vector3 corner = simplified[i];
-            Vector3 next = simplified[i + 1];
-            Vector3 incoming = corner - previous;
-            Vector3 outgoing = next - corner;
-            incoming.y = 0f;
-            outgoing.y = 0f;
-            float incomingLength = incoming.magnitude;
-            float outgoingLength = outgoing.magnitude;
-            if (incomingLength <= 0.001f || outgoingLength <= 0.001f
-                || Mathf.Abs(Vector3.Dot(incoming.normalized, outgoing.normalized)) > 0.999f
-                || !IsCardinalDirection(incoming) || !IsCardinalDirection(outgoing))
-            {
-                AddPointIfDistinct(polished, corner);
-                continue;
-            }
-
-            float chamfer = Mathf.Min(standardChamfer,
-                incomingLength * 0.35f, outgoingLength * 0.35f);
-            AddPointIfDistinct(polished, corner - incoming.normalized * chamfer);
-            AddPointIfDistinct(polished, corner + outgoing.normalized * chamfer);
-        }
-        AddPointIfDistinct(polished, simplified[simplified.Count - 1]);
-        return polished;
-    }
-
-    static bool IsCardinalDirection(Vector3 direction)
-    {
-        direction.y = 0f;
-        if (direction.sqrMagnitude <= 0.000001f) return false;
-        direction.Normalize();
-        return Mathf.Abs(direction.x) < 0.001f || Mathf.Abs(direction.z) < 0.001f;
+        return EnsureOrthogonalPolyline(result);
     }
 
     static float GetPathLaneDistance(int pathIndex,
@@ -507,7 +536,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         return new Vector3(-direction.z, 0f, direction.x).normalized * laneDistance;
     }
 
-    static List<Vector3> CardinalizePolyline(List<Vector3> source)
+    static List<Vector3> EnsureOrthogonalPolyline(List<Vector3> source)
     {
         if (source == null || source.Count < 2) return source;
         var result = new List<Vector3> { source[0] };
@@ -520,12 +549,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             float dz = to.z - from.z;
             float ax = Mathf.Abs(dx);
             float az = Mathf.Abs(dz);
-            if (ax > epsilon && az > epsilon && Mathf.Abs(ax - az) > epsilon)
+            if (ax > epsilon && az > epsilon)
             {
-                float diagonal = Mathf.Min(ax, az);
-                Vector3 bend = new Vector3(from.x + Mathf.Sign(dx) * diagonal,
-                    Mathf.Lerp(from.y, to.y, 0.5f),
-                    from.z + Mathf.Sign(dz) * diagonal);
+                // Every route segment must run along one grid axis. Prefer an
+                // X leg followed by a Z leg for a stable, repeatable elbow.
+                Vector3 bend = new Vector3(to.x, from.y, from.z);
                 AddPointIfDistinct(result, bend);
             }
             AddPointIfDistinct(result, to);
@@ -728,40 +756,33 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     {
         if (points == null || points.Count < 2) return;
 
-        float totalLength = 0f;
-        for (int i = 1; i < points.Count; i++)
-            totalLength += Vector3.Distance(points[i - 1], points[i]);
-        if (totalLength < 0.2f) return;
-
-        int bestSegment = 1;
-        float bestScore = -1f;
+        float cellSize = GridManager.Instance != null ? GridManager.Instance.cellSize : 1f;
+        float minArrowSegmentLength = Mathf.Max(0.2f, cellSize * 0.65f);
+        int arrowIndex = 0;
         for (int i = 1; i < points.Count; i++)
         {
             Vector3 segment = points[i] - points[i - 1];
             segment.y = 0f;
             float length = segment.magnitude;
-            if (length < 0.01f) continue;
-            float endpointPenalty = i == 1 || i == points.Count - 1 ? 0.72f : 1f;
-            float score = length * endpointPenalty;
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestSegment = i;
-            }
-        }
-        Vector3 position = Vector3.Lerp(points[bestSegment - 1], points[bestSegment], 0.5f);
-        Vector3 direction = points[bestSegment] - points[bestSegment - 1];
-        direction.y = 0f;
-        direction = direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
+            if (length < minArrowSegmentLength) continue;
 
-        float cellSize = GridManager.Instance != null ? GridManager.Instance.cellSize : 1f;
-        CreateArrowMesh(arrowName + "_Outline", position + Vector3.up * 0.004f, direction,
-            cellSize * (arrowTileScale + 0.06f), GetArrowOutlineMaterial());
-        CreateArrowMesh(arrowName, position + Vector3.up * 0.012f, direction,
-            cellSize * arrowTileScale, GetArrowMaterial(color));
+            // A direction cue on every straight leg makes the route readable
+            // through turns, instead of showing one arrow somewhere on the
+            // longest segment and leaving the bend ambiguous.
+            Vector3 position = Vector3.Lerp(points[i - 1], points[i], 0.5f);
+            Vector3 direction = segment.normalized;
+            CreateArrowMesh(arrowName + "_Outline_" + arrowIndex,
+                position + Vector3.up * 0.004f, direction,
+                cellSize * (arrowTileScale + 0.06f), GetArrowOutlineMaterial(), routeOutlineColor);
+            CreateArrowMesh(arrowName + "_" + arrowIndex,
+                position + Vector3.up * 0.012f, direction,
+                cellSize * arrowTileScale, GetArrowMaterial(), color);
+            arrowIndex++;
+        }
     }
 
-    void CreateArrowMesh(string objectName, Vector3 position, Vector3 direction, float size, Material material)
+    void CreateArrowMesh(string objectName, Vector3 position, Vector3 direction, float size,
+        Material material, Color color)
     {
         var arrow = new GameObject(objectName, typeof(MeshFilter), typeof(MeshRenderer));
         arrow.transform.SetParent(visualsRoot, false);
@@ -781,6 +802,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         arrow.GetComponent<MeshFilter>().sharedMesh = mesh;
         var renderer = arrow.GetComponent<MeshRenderer>();
         renderer.sharedMaterial = material;
+        var colorBlock = new MaterialPropertyBlock();
+        colorBlock.SetColor("_Color", color);
+        colorBlock.SetColor("_BaseColor", color);
+        renderer.SetPropertyBlock(colorBlock);
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         renderer.sortingOrder = 5;
@@ -1156,12 +1181,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         return labelBackgroundMaterial;
     }
 
-    Material GetArrowMaterial(Color color)
+    Material GetArrowMaterial()
     {
         if (arrowMaterial == null)
-            arrowMaterial = CreateMaterial(color);
-        arrowMaterial.color = color;
-        if (arrowMaterial.HasProperty("_BaseColor")) arrowMaterial.SetColor("_BaseColor", color);
+            arrowMaterial = CreateMaterial(Color.white);
         return arrowMaterial;
     }
 
