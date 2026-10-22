@@ -30,6 +30,8 @@ public sealed class DelayedTooltip : MonoBehaviour, IPointerEnterHandler, IPoint
     Coroutine showRoutine;
     bool pointerInside;
 
+    public string HelpText => message;
+
     void Update()
     {
         // Runtime-built management controls can sit under nested canvases or

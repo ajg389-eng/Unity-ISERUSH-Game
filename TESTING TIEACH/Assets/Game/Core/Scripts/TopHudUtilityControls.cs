@@ -287,12 +287,10 @@ public class TopHudUtilityControls : MonoBehaviour
         button.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
-            if (!ManagementTabInfoUI.OpenActiveHelp())
-                NotificationCenter.Post("Open a management tab to get Gus's advice about it.",
-                    GameNotificationKind.Message, "gus-help-no-tab", 2f);
+            GusButtonHelpMode.ShowConfirmation();
         });
         GameUITheme.ApplyCompactControlEffects(button);
-        DelayedTooltip.Attach(button, "Ask Gus about the open management screen");
+        DelayedTooltip.Attach(button, "Ask Gus for help");
     }
 
     void EnsureGuidebookSection()

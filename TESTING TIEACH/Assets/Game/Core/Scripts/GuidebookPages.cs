@@ -22,7 +22,7 @@ public static class GuidebookPages
         new Page(
             "Start Here",
             "Find the right help",
-            "<b>Ask Gus</b> explains the management tab you have open and suggests one next step. Use his <b>Read Guidebook</b> button to jump to the related chapter.\n\n" +
+            "Click <b>Gus</b> once to enter button help, then click any control to hear what it does. The help click will not activate that control. Click Gus again or choose <b>Done</b> to exit.\n\n" +
             "The <b>Guidebook</b> is the reference for rules, rates, and examples. Open it with the HUD information icon. Use the chapter tabs, page arrows, or A and D to browse.\n\n" +
             "The <b>tutorial</b> teaches the first actions in order. Return to the Guidebook when you need a rule or want to understand the ISE idea behind it."),
         new Page(

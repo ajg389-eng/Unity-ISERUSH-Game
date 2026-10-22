@@ -630,17 +630,22 @@ public sealed class GusCutscenePreview : MonoBehaviour
         previewCamera.transform.position = framedCenter + Vector3.forward * orthographicSize * 3f;
         previewCamera.transform.LookAt(framedCenter);
 
-        CreateLight("GusKeyLight", new Vector3(35f, 145f, 0f), 1.25f);
-        CreateLight("GusFillLight", new Vector3(20f, -35f, 0f), 0.55f);
+        CreateLight("GusKeyLight", new Vector3(-1.5f, 2.5f, -1.5f), 3.5f);
+        CreateLight("GusFillLight", new Vector3(1.5f, 1.5f, 1.5f), 1.5f);
     }
 
-    void CreateLight(string objectName, Vector3 rotation, float intensity)
+    void CreateLight(string objectName, Vector3 localPosition, float intensity)
     {
         var lightObject = new GameObject(objectName, typeof(Light));
         lightObject.transform.SetParent(previewWorld.transform, false);
-        lightObject.transform.localRotation = Quaternion.Euler(rotation);
+        lightObject.transform.localPosition = localPosition;
         var light = lightObject.GetComponent<Light>();
-        light.type = LightType.Directional;
+        // Directional lights affect every scene object in some render pipelines,
+        // even when this preview is rendered into a private camera. Keep preview
+        // illumination local so opening a Gus card cannot relight the restaurant.
+        light.type = LightType.Point;
+        light.range = 6f;
+        light.shadows = LightShadows.None;
         light.intensity = intensity;
         light.color = new Color(1f, 0.92f, 0.82f);
         light.cullingMask = 1 << PreviewLayer;
