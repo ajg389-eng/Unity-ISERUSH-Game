@@ -1552,7 +1552,7 @@ public class IngredientsOrderUI : MonoBehaviour
         preview.color = itemUnlocked ? Color.white : Color.clear;
         nameText.alignment = TextAlignmentOptions.MidlineLeft;
         nameText.textWrappingMode = TextWrappingModes.NoWrap;
-        nameText.overflowMode = TextOverflowModes.Ellipsis;
+        nameText.overflowMode = TextOverflowModes.Truncate;
         nameText.enableAutoSizing = true;
         nameText.fontSizeMin = 11f;
         nameText.fontSizeMax = 14f;
@@ -1607,7 +1607,7 @@ public class IngredientsOrderUI : MonoBehaviour
         workflowText.color = GameUITheme.TextSecondary;
         workflowText.alignment = TextAlignmentOptions.MidlineLeft;
         workflowText.textWrappingMode = TextWrappingModes.Normal;
-        workflowText.overflowMode = TextOverflowModes.Ellipsis;
+        workflowText.overflowMode = TextOverflowModes.Truncate;
         workflowText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) workflowText.font = TMP_Settings.defaultFontAsset;
         workflowGo.SetActive(false);
@@ -2098,7 +2098,7 @@ public class IngredientsOrderUI : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.white;
         text.textWrappingMode = TextWrappingModes.NoWrap;
-        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.overflowMode = TextOverflowModes.Truncate;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         Button button = go.GetComponent<Button>();
         switch (objectName)

@@ -207,7 +207,7 @@ public class TopHudBar : MonoBehaviour
 
         if (moneyText != null)
         {
-            moneyText.overflowMode = TextOverflowModes.Ellipsis;
+            moneyText.overflowMode = TextOverflowModes.Truncate;
             moneyText.alignment = TextAlignmentOptions.MidlineLeft;
             moneyText.enableAutoSizing = true;
             moneyText.fontSizeMin = 18;
@@ -427,7 +427,7 @@ public class TopHudBar : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
         tmp.color = new Color(0.55f, 0.95f, 0.55f, 1f);
         tmp.raycastTarget = false;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
     }

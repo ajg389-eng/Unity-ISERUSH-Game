@@ -96,7 +96,7 @@ public class CustomersUI : MonoBehaviour
         demandHelp.fontSizeMin = 11f;
         demandHelp.fontSizeMax = 12f;
         demandHelp.textWrappingMode = TextWrappingModes.Normal;
-        demandHelp.overflowMode = TextOverflowModes.Ellipsis;
+        demandHelp.overflowMode = TextOverflowModes.Truncate;
         demandHelp.color = new Color(0.72f, 0.77f, 0.86f, 1f);
 
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
@@ -341,7 +341,7 @@ public class CustomersUI : MonoBehaviour
         tmp.alignment = align;
         tmp.color = Color.white;
         tmp.enableWordWrapping = true;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         return tmp;
     }
 

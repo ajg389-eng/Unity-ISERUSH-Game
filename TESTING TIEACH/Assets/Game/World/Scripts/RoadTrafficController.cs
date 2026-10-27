@@ -24,10 +24,18 @@ public class RoadTrafficController : MonoBehaviour
     public static float HighwayZ { get; private set; }
     public static float HighwayY { get; private set; }
     public static bool HasHighway { get; private set; }
+    internal static HashSet<DeliveryVan> ActiveDeliveryVans => activeDeliveryVans;
+    internal static HashSet<LotArrivalVehicle> ActiveArrivalVehicles => activeArrivalVehicles;
+    internal static HashSet<DrivingCar> ActiveDrivingCars => activeDrivingCars;
 
     static RoadTrafficController instance;
+    static readonly HashSet<DeliveryVan> activeDeliveryVans = new HashSet<DeliveryVan>();
+    static readonly HashSet<LotArrivalVehicle> activeArrivalVehicles = new HashSet<LotArrivalVehicle>();
+    static readonly HashSet<DrivingCar> activeDrivingCars = new HashSet<DrivingCar>();
     int eastboundHold;
     float eastboundHoldUntil;
+    bool eastboundCarsPaused;
+    bool hasAppliedEastboundPause;
 
     public static bool TryGetHighway(out float westX, out float eastX, out float roadZ, out float roadY)
     {
@@ -46,9 +54,46 @@ public class RoadTrafficController : MonoBehaviour
     float roadY;
     float nextEastbound;
     float nextWestbound;
-    DeliveryVan[] cachedDeliveryVans;
-    LotArrivalVehicle[] cachedArrivalVehicles;
-    float nextLaneVehicleScan;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetLaneVehicleRegistry()
+    {
+        activeDeliveryVans.Clear();
+        activeArrivalVehicles.Clear();
+        activeDrivingCars.Clear();
+        instance = null;
+        HasHighway = false;
+    }
+
+    public static void RegisterLaneVehicle(DeliveryVan vehicle)
+    {
+        if (vehicle != null) activeDeliveryVans.Add(vehicle);
+    }
+
+    public static void UnregisterLaneVehicle(DeliveryVan vehicle)
+    {
+        if (vehicle != null) activeDeliveryVans.Remove(vehicle);
+    }
+
+    public static void RegisterLaneVehicle(LotArrivalVehicle vehicle)
+    {
+        if (vehicle != null) activeArrivalVehicles.Add(vehicle);
+    }
+
+    public static void UnregisterLaneVehicle(LotArrivalVehicle vehicle)
+    {
+        if (vehicle != null) activeArrivalVehicles.Remove(vehicle);
+    }
+
+    public static void RegisterTrafficCar(DrivingCar vehicle)
+    {
+        if (vehicle != null) activeDrivingCars.Add(vehicle);
+    }
+
+    public static void UnregisterTrafficCar(DrivingCar vehicle)
+    {
+        if (vehicle != null) activeDrivingCars.Remove(vehicle);
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -102,8 +147,7 @@ public class RoadTrafficController : MonoBehaviour
         nextEastbound -= trafficDelta;
         nextWestbound -= trafficDelta;
         bool deliveryManeuvering = false;
-        RefreshLaneVehicleCache();
-        foreach (DeliveryVan van in cachedDeliveryVans)
+        foreach (DeliveryVan van in activeDeliveryVans)
             if (van != null && !van.IsParked) { deliveryManeuvering = true; break; }
         SpawnWindow(out float minInterval, out float maxInterval);
         if (nextEastbound <= 0f)
@@ -320,6 +364,9 @@ public class RoadTrafficController : MonoBehaviour
 
     void SetEastboundPaused(bool paused)
     {
+        if (hasAppliedEastboundPause && eastboundCarsPaused == paused) return;
+        eastboundCarsPaused = paused;
+        hasAppliedEastboundPause = true;
         PruneCars();
         for (int i = 0; i < liveCars.Count; i++)
         {
@@ -387,6 +434,7 @@ public class RoadTrafficController : MonoBehaviour
     void RecycleCar(DrivingCar car)
     {
         if (car == null) return;
+        UnregisterTrafficCar(car);
         liveCars.Remove(car);
         car.enabled = false;
         car.gameObject.SetActive(false);
@@ -421,31 +469,15 @@ public class RoadTrafficController : MonoBehaviour
 
     bool DeliveryVanBlocksLane(float spawnX, float laneZ, float direction, float gap)
     {
-        RefreshLaneVehicleCache(true);
-        if (BlocksLane(spawnX, laneZ, direction, gap, cachedDeliveryVans))
+        if (BlocksLane(spawnX, laneZ, direction, gap, activeDeliveryVans))
             return true;
-        return BlocksLane(spawnX, laneZ, direction, gap, cachedArrivalVehicles);
+        return BlocksLane(spawnX, laneZ, direction, gap, activeArrivalVehicles);
     }
 
-    void RefreshLaneVehicleCache(bool force = false)
+    static bool BlocksLane<T>(float spawnX, float laneZ, float direction, float gap, HashSet<T> vehicles) where T : Component
     {
-        if (!force && Time.unscaledTime < nextLaneVehicleScan
-            && cachedDeliveryVans != null && cachedArrivalVehicles != null)
-            return;
-
-        nextLaneVehicleScan = Time.unscaledTime + 0.25f;
-        cachedDeliveryVans = FindObjectsByType<DeliveryVan>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        cachedArrivalVehicles = FindObjectsByType<LotArrivalVehicle>(
-            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-    }
-
-    static bool BlocksLane<T>(float spawnX, float laneZ, float direction, float gap, T[] vehicles) where T : Component
-    {
-        if (vehicles == null) return false;
-        for (int i = 0; i < vehicles.Length; i++)
+        foreach (T vehicle in vehicles)
         {
-            T vehicle = vehicles[i];
             if (vehicle == null) continue;
             if (Mathf.Abs(vehicle.transform.position.z - laneZ) > 2.8f) continue;
             float along = (vehicle.transform.position.x - spawnX) * direction;

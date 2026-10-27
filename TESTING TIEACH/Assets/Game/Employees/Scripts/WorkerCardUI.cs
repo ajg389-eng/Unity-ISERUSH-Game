@@ -352,7 +352,7 @@ public class WorkerCardUI : MonoBehaviour
             dropdown.captionText.fontStyle = FontStyles.Bold;
             dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
             dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
-            dropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+            dropdown.captionText.overflowMode = TextOverflowModes.Truncate;
         }
         if (dropdown.itemText != null)
         {
@@ -390,7 +390,7 @@ public class WorkerCardUI : MonoBehaviour
             dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
             dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
             dropdown.captionText.textWrappingMode = TextWrappingModes.NoWrap;
-            dropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+            dropdown.captionText.overflowMode = TextOverflowModes.Truncate;
             dropdown.captionText.raycastTarget = false;
             if (TMP_Settings.defaultFontAsset != null)
                 dropdown.captionText.font = TMP_Settings.defaultFontAsset;
@@ -775,7 +775,7 @@ public class WorkerCardUI : MonoBehaviour
             {
                 taskText.enableAutoSizing = false;
                 taskText.textWrappingMode = TextWrappingModes.NoWrap;
-                taskText.overflowMode = TextOverflowModes.Ellipsis;
+                taskText.overflowMode = TextOverflowModes.Truncate;
                 var fitter = taskText.GetComponent<ContentSizeFitter>();
                 if (fitter != null)
                     fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;

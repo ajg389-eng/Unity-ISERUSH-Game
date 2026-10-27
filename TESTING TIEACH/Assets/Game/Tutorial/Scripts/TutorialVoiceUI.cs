@@ -130,7 +130,7 @@ public class TutorialVoiceUI : MonoBehaviour
             subtitleText.fontSizeMax = Mathf.Max(16f, fontSize);
             subtitleText.color = textColor;
             subtitleText.alignment = TextAlignmentOptions.TopLeft;
-            subtitleText.overflowMode = TextOverflowModes.Ellipsis;
+            subtitleText.overflowMode = TextOverflowModes.Truncate;
             GameUITheme.ApplyTitleScreenFont(subtitleText);
 
             var textRt = subtitleText.rectTransform;

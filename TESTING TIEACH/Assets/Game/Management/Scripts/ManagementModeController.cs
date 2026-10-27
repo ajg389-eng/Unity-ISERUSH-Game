@@ -3912,7 +3912,7 @@ public class ManagementModeController : MonoBehaviour
         foreach (TextMeshProUGUI label in new[] { flowCaptureTitle, flowCapturePath })
         {
             if (label == null) continue;
-            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.overflowMode = TextOverflowModes.Truncate;
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.GetComponent<LayoutElement>().minHeight = 22f;
             label.GetComponent<LayoutElement>().preferredHeight = 22f;

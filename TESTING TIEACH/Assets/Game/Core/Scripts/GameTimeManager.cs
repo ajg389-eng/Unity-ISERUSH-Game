@@ -379,6 +379,7 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     Material originalSkybox;
     Material runtimeSkybox;
     GameTimeManager clock;
+    const float EnvironmentRefreshInterval = 5f;
     float lastAppliedMinutes = float.MinValue;
     float nextEnvironmentRefresh;
     Light daylightSource;
@@ -550,7 +551,7 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         if (forceEnvironmentRefresh || Time.unscaledTime >= nextEnvironmentRefresh)
         {
             DynamicGI.UpdateEnvironment();
-            nextEnvironmentRefresh = Time.unscaledTime + 0.5f;
+            nextEnvironmentRefresh = Time.unscaledTime + EnvironmentRefreshInterval;
         }
     }
 

@@ -686,14 +686,15 @@ public class WorkerCustomizePopup : MonoBehaviour
         tmp.color = Color.white;
         tmp.raycastTarget = false;
         tmp.enableWordWrapping = false;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
     }
 
     static string Shorten(string text, int max)
     {
         if (string.IsNullOrEmpty(text) || text.Length <= max) return text;
-        return text.Substring(0, max - 1) + "…";
+        if (max <= 3) return text.Substring(0, max);
+        return text.Substring(0, max - 3) + "...";
     }
 
     static void ClearChildren(Transform parent)

@@ -149,7 +149,7 @@ public static class InventoryItemCardBuilder
         tmp.color = color;
         tmp.raycastTarget = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         tmp.enableAutoSizing = true;
         tmp.fontSizeMin = 10f;
         tmp.fontSizeMax = size;

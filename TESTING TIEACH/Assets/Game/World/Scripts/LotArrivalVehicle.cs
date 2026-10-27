@@ -28,6 +28,16 @@ public class LotArrivalVehicle : MonoBehaviour
     int boardingIndex;
     bool claimReleased;
 
+    void OnEnable()
+    {
+        RoadTrafficController.RegisterLaneVehicle(this);
+    }
+
+    void OnDisable()
+    {
+        RoadTrafficController.UnregisterLaneVehicle(this);
+    }
+
     public int StallId = -1;
     public bool HoldsBusBay;
     public bool SideDoor = true;
@@ -378,29 +388,13 @@ public static class VehiclePathMotion
     static readonly Dictionary<Transform, float> noseLengths = new Dictionary<Transform, float>();
     static int noseCacheFrame = -1;
     static readonly List<Renderer> clearanceRenderers = new List<Renderer>();
-    static LotArrivalVehicle[] arrivalVehicles = System.Array.Empty<LotArrivalVehicle>();
-    static DeliveryVan[] deliveryVehicles = System.Array.Empty<DeliveryVan>();
-    static DrivingCar[] roadVehicles = System.Array.Empty<DrivingCar>();
-    static int vehicleCacheFrame = -1;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetClearanceCaches()
     {
-        vehicleCacheFrame = noseCacheFrame = -1;
-        arrivalVehicles = System.Array.Empty<LotArrivalVehicle>();
-        deliveryVehicles = System.Array.Empty<DeliveryVan>();
-        roadVehicles = System.Array.Empty<DrivingCar>();
+        noseCacheFrame = -1;
         noseLengths.Clear();
         clearanceRenderers.Clear();
-    }
-
-    static void RefreshVehicleSnapshot()
-    {
-        if (vehicleCacheFrame == Time.frameCount) return;
-        arrivalVehicles = UnityEngine.Object.FindObjectsByType<LotArrivalVehicle>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        deliveryVehicles = UnityEngine.Object.FindObjectsByType<DeliveryVan>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        roadVehicles = UnityEngine.Object.FindObjectsByType<DrivingCar>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        vehicleCacheFrame = Time.frameCount;
     }
     public static void RoundCorners(List<Vector3> path, float radius)
     {
@@ -588,20 +582,15 @@ public static class VehiclePathMotion
 
     static bool DrivewayOccupied(Transform self, float aisleX)
     {
-        RefreshVehicleSnapshot();
-        LotArrivalVehicle[] cars = arrivalVehicles;
-        for (int i = 0; i < cars.Length; i++)
+        foreach (LotArrivalVehicle car in RoadTrafficController.ActiveArrivalVehicles)
         {
-            LotArrivalVehicle car = cars[i];
             if (car == null || car.transform == self || car.IsParked) continue;
             if (Mathf.Abs(car.transform.position.x - aisleX) < 3.2f)
                 return true;
         }
 
-        DeliveryVan[] vans = deliveryVehicles;
-        for (int i = 0; i < vans.Length; i++)
+        foreach (DeliveryVan van in RoadTrafficController.ActiveDeliveryVans)
         {
-            DeliveryVan van = vans[i];
             if (van == null || van.transform == self || van.IsParked) continue;
             if (Mathf.Abs(van.transform.position.x - aisleX) < 3.2f)
                 return true;
@@ -618,27 +607,20 @@ public static class VehiclePathMotion
         float best = 80f;
         float nose = NoseLength(self);
 
-        RefreshVehicleSnapshot();
-        LotArrivalVehicle[] cars = arrivalVehicles;
-        for (int i = 0; i < cars.Length; i++)
+        foreach (LotArrivalVehicle car in RoadTrafficController.ActiveArrivalVehicles)
         {
-            LotArrivalVehicle car = cars[i];
             if (car == null || car.IsParked) continue;
             NoteAhead(self, car.transform, forward, sideLimit, nose, ref best);
         }
 
-        DeliveryVan[] vans = deliveryVehicles;
-        for (int i = 0; i < vans.Length; i++)
+        foreach (DeliveryVan van in RoadTrafficController.ActiveDeliveryVans)
         {
-            DeliveryVan van = vans[i];
             if (van == null || van.IsParked) continue;
             NoteAhead(self, van.transform, forward, sideLimit, nose, ref best);
         }
 
-        DrivingCar[] traffic = roadVehicles;
-        for (int i = 0; i < traffic.Length; i++)
+        foreach (DrivingCar trafficCar in RoadTrafficController.ActiveDrivingCars)
         {
-            DrivingCar trafficCar = traffic[i];
             if (trafficCar == null) continue;
             NoteAhead(self, trafficCar.transform, forward, sideLimit, nose, ref best);
         }
@@ -699,11 +681,8 @@ public static class VehiclePathMotion
     public static bool PathIsBlocked(Transform self, Vector3 from, Vector3 to, float clearance)
     {
         clearance = Mathf.Max(0.5f, clearance);
-        RefreshVehicleSnapshot();
-        LotArrivalVehicle[] cars = arrivalVehicles;
-        for (int i = 0; i < cars.Length; i++)
+        foreach (LotArrivalVehicle car in RoadTrafficController.ActiveArrivalVehicles)
         {
-            LotArrivalVehicle car = cars[i];
             if (car == null || car.transform == self) continue;
             // A parked car is in its stall, not in the exit lane. A parked bus
             // still fills the bay, so the pull-out has to go around it.
@@ -715,10 +694,8 @@ public static class VehiclePathMotion
                 return true;
         }
 
-        DeliveryVan[] vans = deliveryVehicles;
-        for (int i = 0; i < vans.Length; i++)
+        foreach (DeliveryVan van in RoadTrafficController.ActiveDeliveryVans)
         {
-            DeliveryVan van = vans[i];
             if (van == null || van.transform == self || van.IsParked) continue;
             if (DistanceToSegment(van.transform.position, from, to) < clearance)
                 return true;
@@ -756,19 +733,16 @@ public static class VehiclePathMotion
     static float NearestVehicle(Transform self, Vector3 world)
     {
         float best = 99f;
-        RefreshVehicleSnapshot();
-        LotArrivalVehicle[] cars = arrivalVehicles;
-        for (int i = 0; i < cars.Length; i++)
+        foreach (LotArrivalVehicle car in RoadTrafficController.ActiveArrivalVehicles)
         {
-            if (cars[i] == null || cars[i].transform == self) continue;
-            float d = HorizontalDistance(world, cars[i].transform.position);
+            if (car == null || car.transform == self) continue;
+            float d = HorizontalDistance(world, car.transform.position);
             if (d < best) best = d;
         }
-        DeliveryVan[] vans = deliveryVehicles;
-        for (int i = 0; i < vans.Length; i++)
+        foreach (DeliveryVan van in RoadTrafficController.ActiveDeliveryVans)
         {
-            if (vans[i] == null || vans[i].transform == self) continue;
-            float d = HorizontalDistance(world, vans[i].transform.position);
+            if (van == null || van.transform == self) continue;
+            float d = HorizontalDistance(world, van.transform.position);
             if (d < best) best = d;
         }
         return best;

@@ -96,7 +96,7 @@ public static class WorkerCardPrefabBuilder
         CreateSectionHeader(taskSection, "CURRENT TASK");
         currentTask = CreateBodyLabel(taskSection, "CurrentTask", "—", 14, TaskColor, minHeight: 22);
         currentTask.textWrappingMode = TextWrappingModes.NoWrap;
-        currentTask.overflowMode = TextOverflowModes.Ellipsis;
+        currentTask.overflowMode = TextOverflowModes.Truncate;
         var taskFitter = currentTask.GetComponent<ContentSizeFitter>();
         if (taskFitter != null) taskFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
 

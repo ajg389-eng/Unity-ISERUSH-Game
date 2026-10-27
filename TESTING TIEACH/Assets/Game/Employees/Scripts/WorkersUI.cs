@@ -1052,7 +1052,7 @@ public class WorkersUI : MonoBehaviour
         phRect.offsetMax = new Vector2(-8f, -2f);
         var placeholder = placeholderGo.AddComponent<TextMeshProUGUI>();
         if (TMP_Settings.defaultFontAsset != null) placeholder.font = TMP_Settings.defaultFontAsset;
-        placeholder.text = "Click to name this flow…";
+        placeholder.text = "Click to name this flow...";
         placeholder.fontSize = 13f;
         placeholder.fontStyle = FontStyles.Italic;
         placeholder.color = new Color(1f, 1f, 1f, 0.35f);
@@ -1113,7 +1113,7 @@ public class WorkersUI : MonoBehaviour
         tmp.color = Color.white;
         tmp.raycastTarget = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         tmp.enableAutoSizing = true;
         tmp.fontSizeMin = 9f;
         tmp.fontSizeMax = 12f;

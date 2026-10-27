@@ -1830,7 +1830,7 @@ public class PauseMenuUI : MonoBehaviour
         tmp.raycastTarget = false;
         tmp.enableAutoSizing = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
-        tmp.overflowMode = TextOverflowModes.Ellipsis;
+        tmp.overflowMode = TextOverflowModes.Truncate;
         GameUITheme.ApplyTitleScreenFont(tmp);
         return tmp;
     }

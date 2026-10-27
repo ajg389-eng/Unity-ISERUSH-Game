@@ -178,6 +178,7 @@ public class OnboardingTutorial : MonoBehaviour
     Transform secondaryHighlightTarget;
     GameObject secondaryHighlight;
     Highlight currentHighlight;
+    const string HighlightMaterialResourcePath = "Materials/OnboardingHighlight";
 
     enum Highlight
     {
@@ -1570,17 +1571,16 @@ public class OnboardingTutorial : MonoBehaviour
             var rend = highlight.GetComponent<MeshRenderer>();
             if (rend != null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
-                if (shader != null)
+                // This must be a project asset, rather than a material created with Shader.Find.
+                // Runtime-created URP shaders can be stripped from player builds, rendering pink.
+                var material = Resources.Load<Material>(HighlightMaterialResourcePath);
+                if (material != null)
                 {
-                    var mat = new Material(shader) { name = "OnboardingHighlight" };
-                    if (mat.HasProperty("_BaseColor"))
-                        mat.SetColor("_BaseColor", new Color(1f, 0.85f, 0.2f, 0.85f));
-                    if (mat.HasProperty("_Color"))
-                        mat.SetColor("_Color", new Color(1f, 0.85f, 0.2f, 0.85f));
-                    rend.sharedMaterial = mat;
+                    rend.sharedMaterial = material;
                     rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 }
+                else
+                    Debug.LogError("Tutorial highlight material is missing from Resources/Materials.");
             }
         }
 

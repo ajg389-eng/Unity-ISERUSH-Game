@@ -103,7 +103,7 @@ public static class HudTabColors
                 label.fontStyle = FontStyles.Bold;
                 label.characterSpacing = 0.8f;
                 label.textWrappingMode = TextWrappingModes.NoWrap;
-                label.overflowMode = TextOverflowModes.Ellipsis;
+                label.overflowMode = TextOverflowModes.Truncate;
                 label.raycastTarget = false;
             }
 

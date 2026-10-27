@@ -431,7 +431,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         titleRect.pivot = new Vector2(0.5f, 1f); titleRect.anchoredPosition = new Vector2(0f, -12f);
         titleRect.sizeDelta = new Vector2(-32f, 28f);
         title.textWrappingMode = TextWrappingModes.NoWrap;
-        title.overflowMode = TextOverflowModes.Ellipsis;
+        title.overflowMode = TextOverflowModes.Truncate;
         TextMeshProUGUI description = CreateText(node.transform, "Description", definition.description, 18f, FontStyles.Normal,
             new Vector2(14f, -20f), new Vector2(-12f, 34f), TextAlignmentOptions.TopLeft);
         RectTransform descriptionRect = description.rectTransform;
@@ -440,7 +440,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         descriptionRect.sizeDelta = new Vector2(-32f, 72f);
         description.color = new Color(0.76f, 0.79f, 0.81f, 1f);
         description.textWrappingMode = TextWrappingModes.Normal;
-        description.overflowMode = TextOverflowModes.Ellipsis;
+        description.overflowMode = TextOverflowModes.Truncate;
         TextMeshProUGUI meta = CreateText(node.transform, "Meta", "", 15f, FontStyles.Bold,
             new Vector2(14f, -58f), new Vector2(-12f, -40f), TextAlignmentOptions.Left);
         RectTransform metaRect = meta.rectTransform;
@@ -448,7 +448,7 @@ public sealed class ResearchTreeUI : MonoBehaviour
         metaRect.pivot = new Vector2(0.5f, 0f); metaRect.anchoredPosition = new Vector2(0f, 10f);
         metaRect.sizeDelta = new Vector2(-32f, 22f);
         meta.textWrappingMode = TextWrappingModes.NoWrap;
-        meta.overflowMode = TextOverflowModes.Ellipsis;
+        meta.overflowMode = TextOverflowModes.Truncate;
 
         var track = new GameObject("ProgressTrack", typeof(RectTransform), typeof(Image));
         track.transform.SetParent(node.transform, false);

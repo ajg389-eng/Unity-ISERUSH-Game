@@ -30,6 +30,16 @@ public class DeliveryVan : MonoBehaviour
     public bool IsParked => parked && !leaving;
     bool stallReleased;
 
+    void OnEnable()
+    {
+        RoadTrafficController.RegisterLaneVehicle(this);
+    }
+
+    void OnDisable()
+    {
+        RoadTrafficController.UnregisterLaneVehicle(this);
+    }
+
     public Vector3 DriverDoorPosition
     {
         get

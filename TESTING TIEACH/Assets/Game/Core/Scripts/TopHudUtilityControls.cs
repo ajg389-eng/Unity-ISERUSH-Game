@@ -178,7 +178,7 @@ public class TopHudUtilityControls : MonoBehaviour
         trackLayout.preferredWidth = 116f;
         trackLayout.flexibleWidth = 0f;
         trackText.alignment = TextAlignmentOptions.Center;
-        trackText.overflowMode = TextOverflowModes.Ellipsis;
+        trackText.overflowMode = TextOverflowModes.Truncate;
         trackText.enableWordWrapping = false;
         EnsureTrackBox(section.transform);
         Button picker = trackText.transform.parent.GetComponent<Button>();
@@ -557,7 +557,7 @@ public class TopHudUtilityControls : MonoBehaviour
             title.fontStyle = active ? FontStyles.Bold : FontStyles.Normal;
             title.color = active ? new Color(0.48f, 0.91f, 0.66f, 1f) : Color.white;
             title.alignment = TextAlignmentOptions.MidlineLeft;
-            title.overflowMode = TextOverflowModes.Ellipsis;
+            title.overflowMode = TextOverflowModes.Truncate;
             SetRect(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(12f, 2f), new Vector2(-34f, -2f));
             if (active)
             {
@@ -617,7 +617,7 @@ public class TopHudUtilityControls : MonoBehaviour
             SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(10f, 5f), new Vector2(-32f, -5f));
             label.alignment = expanded ? TextAlignmentOptions.TopLeft : TextAlignmentOptions.MidlineLeft;
             label.enableWordWrapping = expanded;
-            label.overflowMode = expanded ? TextOverflowModes.Overflow : TextOverflowModes.Ellipsis;
+            label.overflowMode = expanded ? TextOverflowModes.Overflow : TextOverflowModes.Truncate;
 
             var toggle = CreateLabel(row.transform, "ExpandIndicator", expanded ? "−" : "+", 16);
             SetRect(toggle.rectTransform, new Vector2(1f, 0f), Vector2.one,
@@ -653,7 +653,7 @@ public class TopHudUtilityControls : MonoBehaviour
         const int previewLength = 46;
         return message.Length <= previewLength
             ? message
-            : message.Substring(0, previewLength - 1).TrimEnd() + "…";
+            : message.Substring(0, previewLength - 3).TrimEnd() + "...";
     }
 
     static Button CreateButton(Transform parent, string name, string label, float width, out TextMeshProUGUI text)

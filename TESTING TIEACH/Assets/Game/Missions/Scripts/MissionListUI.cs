@@ -1033,7 +1033,7 @@ public class MissionListUI : MonoBehaviour
             text.color = Color.white;
             text.raycastTarget = false;
             text.textWrappingMode = TextWrappingModes.NoWrap;
-            text.overflowMode = TextOverflowModes.Ellipsis;
+            text.overflowMode = TextOverflowModes.Truncate;
             if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         }
 

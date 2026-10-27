@@ -25,6 +25,7 @@ public class DrivingCar : MonoBehaviour
 
     public void Configure(float driveSpeed, float driveDirection, float stopX)
     {
+        RoadTrafficController.RegisterTrafficCar(this);
         speed = Mathf.Max(1f, driveSpeed);
         direction = Mathf.Sign(driveDirection);
         endX = stopX;

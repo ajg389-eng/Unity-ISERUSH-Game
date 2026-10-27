@@ -135,7 +135,7 @@ public sealed class StoreAppearanceUI : MonoBehaviour
                 10f, FontStyles.Bold, 22f, Color.white);
             name.alignment = TextAlignmentOptions.Center;
             name.textWrappingMode = TextWrappingModes.NoWrap;
-            name.overflowMode = TextOverflowModes.Ellipsis;
+            name.overflowMode = TextOverflowModes.Truncate;
 
             var outline = tile.GetComponent<Outline>();
             outline.effectColor = GameUITheme.Accent;

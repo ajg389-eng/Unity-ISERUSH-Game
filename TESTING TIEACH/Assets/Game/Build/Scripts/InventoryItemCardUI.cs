@@ -104,7 +104,7 @@ public class InventoryItemCardUI : MonoBehaviour
         text.fontSizeMin = minimum;
         text.fontSizeMax = maximum;
         text.textWrappingMode = TextWrappingModes.NoWrap;
-        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.overflowMode = TextOverflowModes.Truncate;
     }
 
     public void Bind(
@@ -444,7 +444,7 @@ public class InventoryItemCardUI : MonoBehaviour
             label.fontSizeMin = 9f;
             label.fontSizeMax = 11f;
             label.textWrappingMode = TextWrappingModes.NoWrap;
-            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.overflowMode = TextOverflowModes.Truncate;
             label.color = unlocked ? TextColor
                 : selected ? new Color(1f, 0.84f, 0.48f, 1f)
                 : new Color(0.62f, 0.66f, 0.72f, 1f);

@@ -385,7 +385,7 @@ public class GameUITheme : MonoBehaviour
             tmp.characterSpacing = 0.8f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.textWrappingMode = TextWrappingModes.NoWrap;
-            tmp.overflowMode = TextOverflowModes.Ellipsis;
+            tmp.overflowMode = TextOverflowModes.Truncate;
             tmp.raycastTarget = false;
         }
 

@@ -20,6 +20,12 @@ public class CameraWallCutaway : MonoBehaviour
     static readonly List<CameraOcclusionWall> Walls = new List<CameraOcclusionWall>();
     static readonly bool[] LockedSides = new bool[4];
     static bool locksLoaded;
+    static bool wallTargetsDirty = true;
+
+    const float CameraMoveThresholdSqr = 0.0001f;
+    const float FocusMoveThresholdSqr = 0.0001f;
+    const float CameraRotationThreshold = 0.1f;
+    const float IdleRefreshInterval = 0.05f;
 
     const string PrefLockNorth = "PauseMenu.LockWall.North";
     const string PrefLockEast = "PauseMenu.LockWall.East";
@@ -59,10 +65,22 @@ public class CameraWallCutaway : MonoBehaviour
     [Min(0f)] public float lineOfSightHalfWidth = 3f;
 
     Transform customerFloor;
+    Renderer customerFloorRenderer;
+    bool hasCachedView;
+    Vector3 cachedCameraPosition;
+    Quaternion cachedCameraRotation;
+    Vector3 cachedFocus;
+    Camera cachedViewCamera;
+    float cachedFieldOfView;
+    float cachedOrthographicSize;
+    float cachedAspect;
+    bool cachedOrthographic;
+    float nextIdleRefresh;
 
     void Awake()
     {
         Instance = this;
+        wallTargetsDirty = true;
         LoadLocks();
         if (grid == null)
             grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
@@ -91,13 +109,17 @@ public class CameraWallCutaway : MonoBehaviour
         if (wall.name.StartsWith("KitchenWallGroup_", System.StringComparison.OrdinalIgnoreCase))
             wall.sectionContainer = true;
         if (!Walls.Contains(wall))
+        {
             Walls.Add(wall);
+            wallTargetsDirty = true;
+        }
         EnsureExists();
     }
 
     public static void Unregister(CameraOcclusionWall wall)
     {
-        Walls.Remove(wall);
+        if (Walls.Remove(wall))
+            wallTargetsDirty = true;
     }
 
     public static void EnsureExists()
@@ -116,8 +138,34 @@ public class CameraWallCutaway : MonoBehaviour
         }
 
         Vector3 focus = GetFocus();
+        Transform cameraTransform = targetCamera.transform;
+        Vector3 cameraPosition = cameraTransform.position;
+        Quaternion cameraRotation = cameraTransform.rotation;
+        bool viewChanged = !hasCachedView || wallTargetsDirty
+            || cachedViewCamera != targetCamera
+            || (cameraPosition - cachedCameraPosition).sqrMagnitude > CameraMoveThresholdSqr
+            || Quaternion.Angle(cameraRotation, cachedCameraRotation) > CameraRotationThreshold
+            || (focus - cachedFocus).sqrMagnitude > FocusMoveThresholdSqr
+            || !Mathf.Approximately(targetCamera.fieldOfView, cachedFieldOfView)
+            || !Mathf.Approximately(targetCamera.orthographicSize, cachedOrthographicSize)
+            || !Mathf.Approximately(targetCamera.aspect, cachedAspect)
+            || targetCamera.orthographic != cachedOrthographic
+            || Time.unscaledTime >= nextIdleRefresh;
+        if (!viewChanged) return;
+
+        hasCachedView = true;
+        wallTargetsDirty = false;
+        cachedViewCamera = targetCamera;
+        cachedCameraPosition = cameraPosition;
+        cachedCameraRotation = cameraRotation;
+        cachedFocus = focus;
+        cachedFieldOfView = targetCamera.fieldOfView;
+        cachedOrthographicSize = targetCamera.orthographicSize;
+        cachedAspect = targetCamera.aspect;
+        cachedOrthographic = targetCamera.orthographic;
+        nextIdleRefresh = Time.unscaledTime + IdleRefreshInterval;
+
         Vector3 viewTarget = GetViewTarget(focus);
-        Vector3 cameraPosition = targetCamera.transform.position;
         Vector3 cameraToTarget = viewTarget - cameraPosition;
         float targetDistance = cameraToTarget.magnitude;
         if (targetDistance < 0.01f)
@@ -131,6 +179,7 @@ public class CameraWallCutaway : MonoBehaviour
             var wall = Walls[i];
             if (wall == null)
             {
+                wallTargetsDirty = true;
                 Walls.RemoveAt(i);
                 continue;
             }
@@ -247,6 +296,7 @@ public class CameraWallCutaway : MonoBehaviour
         int index = (int)side;
         if (index < 0 || index >= LockedSides.Length) return;
         LockedSides[index] = locked;
+        wallTargetsDirty = true;
         PlayerPrefs.SetInt(PrefKey(side), locked ? 1 : 0);
         PlayerPrefs.Save();
         if (locked)
@@ -342,8 +392,10 @@ public class CameraWallCutaway : MonoBehaviour
         }
         if (customerFloor != null)
         {
-            var rend = customerFloor.GetComponentInChildren<Renderer>();
-            Vector3 cCenter = rend != null ? rend.bounds.center : customerFloor.position;
+            if (customerFloorRenderer == null)
+                customerFloorRenderer = customerFloor.GetComponentInChildren<Renderer>();
+            Vector3 cCenter = customerFloorRenderer != null
+                ? customerFloorRenderer.bounds.center : customerFloor.position;
             cCenter.y = 0f;
             if (any)
                 focus = (focus + cCenter) * 0.5f;
