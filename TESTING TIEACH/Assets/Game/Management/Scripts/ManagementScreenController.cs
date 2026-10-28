@@ -193,6 +193,14 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        if (selectedTabIndex == index && tabPanels[index] != null && tabPanels[index].activeSelf)
+        {
+            var ingredients = tabPanels[index].GetComponentInChildren<IngredientsOrderUI>(true);
+            if (ingredients != null)
+                ingredients.ConfigureBusinessSection(index == FindButtonIndex("Tab_Menu"));
+            AlignBusinessContentArea();
+            return;
+        }
         selectedTabIndex = index;
         AlignBusinessContentArea();
 
@@ -237,6 +245,10 @@ public class ManagementScreenController : MonoBehaviour
     void AlignBusinessContentArea()
     {
         if (managementPanel == null) return;
+        if (Application.isPlaying && !managementPanel.activeInHierarchy) return;
+        if (businessContentAreaAligned && alignedScreenWidth == Screen.width
+            && alignedScreenHeight == Screen.height)
+            return;
         Transform contentBox = FindDeep(managementPanel.transform, "ContentBox");
         if (contentBox == null) return;
 
@@ -244,11 +256,7 @@ public class ManagementScreenController : MonoBehaviour
         RectTransform tabBar = FindDeep(contentBox, "TabBar") as RectTransform;
         RectTransform contentArea = FindDeep(contentBox, "TabContentArea") as RectTransform;
         if (contentRect == null || tabBar == null || contentArea == null) return;
-        if (businessContentAreaAligned && alignedScreenWidth == Screen.width
-            && alignedScreenHeight == Screen.height)
-            return;
-
-        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
         Vector3[] corners = new Vector3[4];
         tabBar.GetWorldCorners(corners);
         float topInset = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y;
@@ -466,7 +474,6 @@ public class ManagementScreenController : MonoBehaviour
             modeManager.SetMode(GameModeManager.Mode.Manage);
 
         managementPanel.SetActive(true);
-        Canvas.ForceUpdateCanvases();
         AlignBusinessContentArea();
 
         if (pauseWhileOpen)

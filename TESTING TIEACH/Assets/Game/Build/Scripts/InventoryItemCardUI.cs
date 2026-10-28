@@ -31,6 +31,16 @@ public class InventoryItemCardUI : MonoBehaviour
     TextMeshProUGUI tutorialPrompt;
     TextMeshProUGUI unlockRequirementText;
     ItemDefinition boundItem;
+    InventoryManager boundInventory;
+
+    public void SetInventory(InventoryManager source) => boundInventory = source;
+
+    InventoryManager GetInventory()
+    {
+        if (boundInventory == null)
+            boundInventory = FindFirstObjectByType<InventoryManager>();
+        return boundInventory;
+    }
 
     void Awake()
     {
@@ -116,8 +126,11 @@ public class InventoryItemCardUI : MonoBehaviour
         int? displayPrice = null)
     {
         if (item == null) return;
-        ApplyCompactLayout();
-        ApplyPalette();
+        if (boundItem == null)
+        {
+            ApplyCompactLayout();
+            ApplyPalette();
+        }
         boundItem = item;
 
         if (nameText != null)
@@ -147,7 +160,7 @@ public class InventoryItemCardUI : MonoBehaviour
             if (onBuy != null)
                 buyButton.onClick.AddListener(() =>
                 {
-                    var inventory = FindFirstObjectByType<InventoryManager>();
+                    var inventory = GetInventory();
                     if (inventory != null && inventory.GetCount(boundItem) > 0)
                         onSelect?.Invoke();
                     else
@@ -267,7 +280,7 @@ public class InventoryItemCardUI : MonoBehaviour
 
     public void SetOwnedCount(int owned)
     {
-        var inventory = FindFirstObjectByType<InventoryManager>();
+        var inventory = GetInventory();
         bool canPlace = boundItem != null && inventory != null && inventory.GetCount(boundItem) > 0;
         bool atUniquePlacementLimit = boundItem != null && inventory != null
             && inventory.IsAtUniquePlacementLimit(boundItem);
@@ -315,7 +328,7 @@ public class InventoryItemCardUI : MonoBehaviour
         }
         if (boundItem != null)
         {
-            var inventory = FindFirstObjectByType<InventoryManager>();
+            var inventory = GetInventory();
             SetOwnedCount(inventory != null ? inventory.GetAcquiredCount(boundItem) : 0);
         }
         if (selectButtons != null)

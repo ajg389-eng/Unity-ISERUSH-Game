@@ -68,6 +68,11 @@ public class InventoryUI : MonoBehaviour
     int displayedFloorWidth, displayedFloorHeight, displayedExpandWidth, displayedExpandHeight, displayedExpandCost;
     bool displayedGridAvailable, displayedCanExpand;
     bool displayedShiftInProgress;
+    bool cardsSnapshotValid;
+    int displayedCardsSignature;
+    Transform displayedCardsParent;
+    readonly List<GameObject> displayedCardRows = new List<GameObject>();
+    GameObject boundTabsPanel;
 
     void Start()
     {
@@ -218,7 +223,6 @@ public class InventoryUI : MonoBehaviour
             WireTabButtons();
             SelectTab(activeTab);
             RefreshExpandButton();
-            Canvas.ForceUpdateCanvases();
             panel.SetActive(true);
         }
         else panel.SetActive(false);
@@ -344,13 +348,24 @@ public class InventoryUI : MonoBehaviour
         displayedStationUnlockProgress = OnboardingTutorial.StationUnlockProgress;
         if (!inventory || !contentParent) return;
 
+        int signature = GetCardsSignature();
+        if (cardsSnapshotValid && displayedCardsSignature == signature
+            && displayedCardsParent == contentParent && HasDisplayedRows())
+            return;
+
         EnsureStationsScrollSetup();
         EnsureStationsGrid();
+
+        // Scroll setup can repair the authored hierarchy and replace Content.
+        signature = GetCardsSignature();
+        displayedCardRows.Clear();
 
         for (int i = contentParent.childCount - 1; i >= 0; i--)
         {
             var child = contentParent.GetChild(i);
             if (child != null && child.name == "ExpandFloorRow") continue;
+            child.gameObject.SetActive(false);
+            if (Application.isPlaying) child.SetParent(null, false);
             DestroyObject(child.gameObject);
         }
 
@@ -398,7 +413,6 @@ public class InventoryUI : MonoBehaviour
                 CreateLegacyRow(item);
         }
 
-        Canvas.ForceUpdateCanvases();
         if (contentParent is RectTransform contentRt)
             LayoutRebuilder.ForceRebuildLayoutImmediate(contentRt);
 
@@ -415,6 +429,61 @@ public class InventoryUI : MonoBehaviour
         // after layout has its real dimensions, so there is no unstyled frame or delayed
         // second theme pass when returning to this tab.
         GameUITheme.ApplyTo(transform);
+        displayedCardsSignature = signature;
+        displayedCardsParent = contentParent;
+        for (int i = 0; i < contentParent.childCount; i++)
+            displayedCardRows.Add(contentParent.GetChild(i).gameObject);
+        cardsSnapshotValid = true;
+    }
+
+    bool HasDisplayedRows()
+    {
+        if (contentParent.childCount != displayedCardRows.Count) return false;
+        for (int i = 0; i < displayedCardRows.Count; i++)
+            if (displayedCardRows[i] == null || displayedCardRows[i].transform.parent != contentParent)
+                return false;
+        return true;
+    }
+
+    int GetCardsSignature()
+    {
+        // Reopening an unchanged shop must not destroy its cards, re-render
+        // previews, reset the scroll position, or re-theme the whole menu.
+        unchecked
+        {
+            int value = inventory.GetInstanceID();
+            value = value * 31 + (rowPrefab != null ? rowPrefab.GetInstanceID() : 0);
+            value = value * 31 + (useSquareCards ? 1 : 0);
+            value = value * 31 + (useSceneGridLayout ? 1 : 0);
+            value = value * 31 + cardSpacing.GetHashCode();
+            value = value * 31 + (IsShiftInProgress ? 1 : 0);
+            value = value * 31 + OnboardingTutorial.StationUnlockProgress;
+            value = value * 31 + (MilestoneProgressManager.Instance != null
+                ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0);
+            value = value * 31 + (ResearchProgressManager.Instance != null
+                ? ResearchProgressManager.Instance.CompletedCount : 0);
+            var viewport = contentParent.parent as RectTransform;
+            value = value * 31 + (viewport != null ? Mathf.RoundToInt(viewport.rect.width) : 0);
+            foreach (ItemDefinition item in inventory.allItems)
+            {
+                value = value * 31 + (item != null ? item.GetInstanceID() : 0);
+                if (item == null) continue;
+                value = value * 31 + inventory.GetCount(item);
+                value = value * 31 + inventory.GetAcquiredCount(item);
+                value = value * 31 + (OnboardingTutorial.ShouldHighlightInventoryItem(item) ? 1 : 0);
+                value = value * 31 + (IsMilestoneStationLocked(item) ? 1 : 0);
+                value = value * 31 + item.price;
+                value = value * 31 + (item.prefab != null ? item.prefab.GetInstanceID() : 0);
+                value = value * 31 + (item.previewIcon != null ? item.previewIcon.GetInstanceID() : 0);
+                value = value * 31 + item.placementScale.GetHashCode();
+                value = value * 31 + (item.itemName != null ? item.itemName.GetHashCode() : 0);
+                value = value * 31 + (item.stationFamily != null ? item.stationFamily.GetHashCode() : 0);
+                value = value * 31 + item.stationMark;
+                value = value * 31 + (int)item.buildFunction;
+                value = value * 31 + (int)item.placementSurface;
+            }
+            return value;
+        }
     }
 
     public void OpenBuildPage()
@@ -610,6 +679,7 @@ public class InventoryUI : MonoBehaviour
         }
 
         ItemDefinition captured = item;
+        card.SetInventory(inventory);
         card.Bind(
             captured,
             inventory.GetAcquiredCount(captured),
@@ -660,6 +730,7 @@ public class InventoryUI : MonoBehaviour
             ? Object.Instantiate(rowPrefab, contentParent).GetComponent<InventoryItemCardUI>()
             : InventoryItemCardBuilder.Create(contentParent);
         card.gameObject.SetActive(true);
+        card.SetInventory(inventory);
 
         ItemDefinition selected = mk1 != null ? mk1 : mk2;
         System.Action refresh = null;
@@ -792,12 +863,20 @@ public class InventoryUI : MonoBehaviour
     void BindOrBuildTabs(bool forceDefaultLayout)
     {
         if (panel == null) return;
+        if (Application.isPlaying && !forceDefaultLayout && boundTabsPanel == panel
+            && tabButtons != null && tabButtons.Length == 3
+            && tabPanels != null && tabPanels.Length == 3
+            && tabButtons[0] != null && tabButtons[1] != null && tabButtons[2] != null
+            && tabPanels[0] != null && tabPanels[1] != null && tabPanels[2] != null
+            && contentParent != null)
+            return;
         RemoveLegacyCustomerManagement();
 
         if (TryBindExistingTabs() && useSceneLayout && !forceDefaultLayout)
         {
             ApplyConnectedHudBackdrop();
             KeepPanelsBelowTabBar();
+            boundTabsPanel = panel;
             return;
         }
 
@@ -805,6 +884,7 @@ public class InventoryUI : MonoBehaviour
         TryBindExistingTabs();
         ApplyConnectedHudBackdrop();
         KeepPanelsBelowTabBar();
+        boundTabsPanel = panel;
     }
 
     void KeepPanelsBelowTabBar()
@@ -832,7 +912,7 @@ public class InventoryUI : MonoBehaviour
         if (page == null) return;
         Vector2 max = page.offsetMax;
         max.y = -topInset;
-        page.offsetMax = max;
+        if (page.offsetMax != max) page.offsetMax = max;
     }
 
     bool TryBindExistingTabs()

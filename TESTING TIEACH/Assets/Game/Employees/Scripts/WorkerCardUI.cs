@@ -137,12 +137,16 @@ public class WorkerCardUI : MonoBehaviour
 
         if (selectionOutline != null)
         {
-            selectionOutline.enabled = selected;
-            selectionOutline.effectColor = primarySelected
+            if (selectionOutline.enabled != selected) selectionOutline.enabled = selected;
+            Color outlineColor = primarySelected
                 ? new Color(0.25f, 0.88f, 1f, 1f)
                 : new Color(0.20f, 0.72f, 0.88f, 0.95f);
+            // Shadow/Outline setters dirty the mesh even for the same value.
+            // Selection polling must not rebuild every card's menu geometry.
+            if (selectionOutline.effectColor != outlineColor)
+                selectionOutline.effectColor = outlineColor;
             selectionOutline.effectDistance = new Vector2(3f, -3f);
-            selectionOutline.useGraphicAlpha = false;
+            if (selectionOutline.useGraphicAlpha) selectionOutline.useGraphicAlpha = false;
         }
     }
 
@@ -309,6 +313,9 @@ public class WorkerCardUI : MonoBehaviour
         if (priorityDropdown == null || priorityDropdown.options.Count == 0) return;
         int value = employee != null ? (int)employee.taskPriority : 0;
         value = Mathf.Clamp(value, 0, priorityDropdown.options.Count - 1);
+        if (priorityDropdown.value == value && (priorityDropdown.captionText == null
+            || priorityDropdown.captionText.text == priorityDropdown.options[value].text))
+            return;
         settingPriorityDropdown = true;
         priorityDropdown.SetValueWithoutNotify(value);
         priorityDropdown.RefreshShownValue();

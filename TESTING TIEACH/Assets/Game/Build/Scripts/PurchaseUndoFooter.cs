@@ -13,7 +13,21 @@ public class PurchaseUndoFooter : MonoBehaviour
     public TextMeshProUGUI label;
     [Tooltip("When true, only undoes kitchen floor expansions.")]
     public bool floorOnly;
-    bool IngredientOnly => GetComponentInParent<IngredientsOrderUI>() != null;
+    bool ingredientParentResolved;
+    bool ingredientOnly;
+    float nextRefresh;
+    bool IngredientOnly
+    {
+        get
+        {
+            if (!ingredientParentResolved)
+            {
+                ingredientOnly = GetComponentInParent<IngredientsOrderUI>() != null;
+                ingredientParentResolved = true;
+            }
+            return ingredientOnly;
+        }
+    }
 
     public static PurchaseUndoFooter EnsureOnPanel(Transform panel)
     {
@@ -114,7 +128,16 @@ public class PurchaseUndoFooter : MonoBehaviour
 
     void Update()
     {
-        Refresh();
+        if (Time.unscaledTime >= nextRefresh)
+            Refresh();
+    }
+
+    void OnEnable() => nextRefresh = 0f;
+
+    void OnTransformParentChanged()
+    {
+        ingredientParentResolved = false;
+        nextRefresh = 0f;
     }
 
     void Bind()
@@ -135,18 +158,19 @@ public class PurchaseUndoFooter : MonoBehaviour
 
     void Refresh()
     {
+        nextRefresh = Time.unscaledTime + 0.1f;
         var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
         bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
         bool can = undo != null && (IngredientOnly || planPhase)
             && (floorOnly ? undo.CanUndoFloor : IngredientOnly ? undo.CanUndoIngredient : undo.CanUndo);
-        if (button != null)
+        if (button != null && button.interactable != can)
             button.interactable = can;
         if (label != null)
         {
-            if (!can)
-                label.text = floorOnly ? "Undo Floor" : "Undo";
-            else
-                label.text = floorOnly ? undo.PeekFloorLabel : undo.PeekLabel;
+            string desiredLabel = !can ? floorOnly ? "Undo Floor" : "Undo"
+                : floorOnly ? undo.PeekFloorLabel : undo.PeekLabel;
+            if (label.text != desiredLabel)
+                label.text = desiredLabel;
         }
     }
 

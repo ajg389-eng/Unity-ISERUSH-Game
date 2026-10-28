@@ -2662,6 +2662,10 @@ public sealed class BuildStationActionBar : MonoBehaviour
     float messageUntil;
     bool placementInstructionActive;
     float lastCanvasWidth = -1f;
+    CanvasGroup canvasGroup;
+    bool buildVisibilityKnown;
+    bool displayedBuildMode;
+    int displayedSelectionCount = -1;
 
     public bool IsPointerOver
     {
@@ -2703,11 +2707,19 @@ public sealed class BuildStationActionBar : MonoBehaviour
         FitToCanvasWidth();
         bool buildMode = placer != null && placer.modeManager != null
             && placer.modeManager.CurrentMode == GameModeManager.Mode.Build;
-        CanvasGroup group = GetComponent<CanvasGroup>();
-        if (group == null) group = gameObject.AddComponent<CanvasGroup>();
-        group.alpha = buildMode ? 1f : 0f;
-        group.interactable = buildMode;
-        group.blocksRaycasts = buildMode;
+        if (canvasGroup == null)
+        {
+            canvasGroup = GetComponent<CanvasGroup>();
+            if (canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
+        if (!buildVisibilityKnown || displayedBuildMode != buildMode)
+        {
+            buildVisibilityKnown = true;
+            displayedBuildMode = buildMode;
+            canvasGroup.alpha = buildMode ? 1f : 0f;
+            canvasGroup.interactable = buildMode;
+            canvasGroup.blocksRaycasts = buildMode;
+        }
         if (!buildMode) return;
         if (messageLabel != null && messageLabel.gameObject.activeSelf && Time.unscaledTime >= messageUntil)
         {
@@ -2717,13 +2729,9 @@ public sealed class BuildStationActionBar : MonoBehaviour
         Refresh();
     }
 
-    void LateUpdate()
-    {
-        if (gameObject.activeInHierarchy) transform.SetAsLastSibling();
-    }
-
     void EnsureBuilt()
     {
+        GameUITheme.EnsureHudCanvas(transform, 20);
         RectTransform rt = (RectTransform)transform;
         rt.anchorMin = new Vector2(0.5f, 0f);
         rt.anchorMax = new Vector2(0.5f, 0f);
@@ -2886,11 +2894,15 @@ public sealed class BuildStationActionBar : MonoBehaviour
     {
         if (placer == null || selectionLabel == null) return;
         int count = placer.SelectedStationCount;
-        if (!placementInstructionActive && (messageLabel == null || !messageLabel.gameObject.activeSelf))
+        if (!placementInstructionActive && (messageLabel == null || !messageLabel.gameObject.activeSelf)
+            && displayedSelectionCount != count)
+        {
+            displayedSelectionCount = count;
             selectionLabel.text = count == 0
                 ? "Select a station"
                 : count == 1 ? "1 selected  |  Double-click or Move"
                 : count + " selected  |  Double-click or Move";
+        }
         if (instructionPanel != null)
             instructionPanel.SetActive(count > 0 || placementInstructionActive
                 || (messageLabel != null && messageLabel.gameObject.activeSelf));
@@ -2902,6 +2914,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     public void SetPlacementInstruction(string instruction)
     {
         placementInstructionActive = !string.IsNullOrWhiteSpace(instruction);
+        displayedSelectionCount = -1;
         if (selectionLabel != null)
         {
             selectionLabel.gameObject.SetActive(true);

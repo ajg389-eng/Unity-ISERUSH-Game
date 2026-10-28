@@ -95,10 +95,6 @@ public class MainHudTabs : MonoBehaviour
     {
         HideSourceButtons();
         RefreshVisuals();
-        // Stay above full-screen overlays that use raycastTarget=false parents
-        // but still have opaque children.
-        if (transform.parent != null && transform.GetSiblingIndex() != transform.parent.childCount - 1)
-            transform.SetAsLastSibling();
     }
 
     void Update()
@@ -127,6 +123,7 @@ public class MainHudTabs : MonoBehaviour
     public void Build(bool forceDefaultLayout = false)
     {
         RefreshPageControllerReferences();
+        GameUITheme.EnsureHudCanvas(transform, 10);
         var rt = (RectTransform)transform;
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayout(rt);

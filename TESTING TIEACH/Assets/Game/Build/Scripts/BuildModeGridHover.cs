@@ -11,6 +11,7 @@ public class BuildModeGridHover : MonoBehaviour
     private Vector3 highlightBaseScale;
     private Quaternion highlightBaseRotation;
     private BuildPlacer buildPlacer;
+    RaycastHit[] counterHits = new RaycastHit[32];
 
     [Header("Raycast")]
     public LayerMask floorLayer;         // set to Floor layer
@@ -38,7 +39,7 @@ public class BuildModeGridHover : MonoBehaviour
         bool build = modeManager.CurrentMode == GameModeManager.Mode.Build;
 
         // Only show highlight in Build Mode
-        if (!build)
+        if (!build || Input.GetMouseButton(1))
         {
             if (highlightInstance) highlightInstance.SetActive(false);
             return;
@@ -53,8 +54,9 @@ public class BuildModeGridHover : MonoBehaviour
         }
 
         // Mouse → Raycast to floor → World pos → Grid cell
-        if (Camera.main == null) return;
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Camera viewCamera = Camera.main;
+        if (viewCamera == null) return;
+        Ray ray = viewCamera.ScreenPointToRay(Input.mousePosition);
         if (TryShowCounterHighlight(ray)) return;
         if (TryShowCustomerDoorHighlight()) return;
 
@@ -96,31 +98,44 @@ public class BuildModeGridHover : MonoBehaviour
     bool TryShowCounterHighlight(Ray ray)
     {
         if (highlightInstance == null) return false;
-        RaycastHit[] hits = Physics.RaycastAll(ray, 200f, -1);
-        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        int hitCount = Physics.RaycastNonAlloc(ray, counterHits, 200f, -1);
+        // A full NonAlloc buffer can omit the nearest valid counter. Grow and
+        // repeat the query until every hit fits, retaining the buffer for later frames.
+        while (hitCount == counterHits.Length)
+        {
+            System.Array.Resize(ref counterHits, counterHits.Length * 2);
+            hitCount = Physics.RaycastNonAlloc(ray, counterHits, 200f, -1);
+        }
 
         int span = buildPlacer != null ? buildPlacer.CounterHoverSpan : 1;
         bool requireAvailable = buildPlacer != null && buildPlacer.IsCounterPlacementActive;
-        for (int i = 0; i < hits.Length; i++)
+        CounterSurface nearestCounter = null;
+        int nearestSlot = -1;
+        float nearestDistance = float.PositiveInfinity;
+        for (int i = 0; i < hitCount; i++)
         {
-            CounterSurface counter = hits[i].collider.GetComponentInParent<CounterSurface>();
+            RaycastHit hit = counterHits[i];
+            if (hit.distance >= nearestDistance) continue;
+            CounterSurface counter = hit.collider.GetComponentInParent<CounterSurface>();
             if (counter == null) continue;
 
-            int slot = counter.GetNearestSlot(hits[i].point, span, requireAvailable);
+            int slot = counter.GetNearestSlot(hit.point, span, requireAvailable);
             if (slot < 0) continue;
-
-            Vector3 center = counter.GetSlotWorldCenter(slot, span);
-            Vector2 size = counter.GetSlotWorldSize(span);
-            highlightInstance.transform.rotation = highlightBaseRotation;
-            highlightInstance.transform.localScale = new Vector3(
-                size.x * 0.92f,
-                size.y * 0.92f,
-                highlightBaseScale.z);
-            highlightInstance.transform.position = center + Vector3.up * 0.04f;
-            highlightInstance.SetActive(true);
-            return true;
+            nearestCounter = counter;
+            nearestSlot = slot;
+            nearestDistance = hit.distance;
         }
 
-        return false;
+        if (nearestCounter == null) return false;
+        Vector3 center = nearestCounter.GetSlotWorldCenter(nearestSlot, span);
+        Vector2 size = nearestCounter.GetSlotWorldSize(span);
+        highlightInstance.transform.rotation = highlightBaseRotation;
+        highlightInstance.transform.localScale = new Vector3(
+            size.x * 0.92f,
+            size.y * 0.92f,
+            highlightBaseScale.z);
+        highlightInstance.transform.position = center + Vector3.up * 0.04f;
+        highlightInstance.SetActive(true);
+        return true;
     }
 }

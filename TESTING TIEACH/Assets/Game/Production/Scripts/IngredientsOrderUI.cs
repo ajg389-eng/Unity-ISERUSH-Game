@@ -25,14 +25,25 @@ public class IngredientsOrderUI : MonoBehaviour
     const float SupplyCardHeight = 54f;
     const float SupplyGridGap = 4f;
     float nextRefresh;
+    float nextCatalogCheck;
+    const float CatalogCheckInterval = 2f;
     bool built;
     bool showMenu;
+    bool sectionSelected;
     bool standaloneBusinessTabs;
     GameObject navigation;
     readonly List<GameObject> menuRows = new List<GameObject>();
     readonly List<GameObject> menuLayoutRows = new List<GameObject>();
     readonly List<GameObject> supplyRows = new List<GameObject>();
     readonly List<GameObject> supplyLayoutRows = new List<GameObject>();
+    readonly List<MilestoneLockedMenuRow> menuRowBindings = new List<MilestoneLockedMenuRow>();
+    readonly List<IngredientOrderRow> supplyRowBindings = new List<IngredientOrderRow>();
+    readonly List<ItemDefinition> ingredientCatalog = new List<ItemDefinition>();
+    bool deliveryDisplayValid;
+    bool displayedDeliveryActive;
+    int displayedDeliveryCountdown;
+    int displayedCartPackCount = -1;
+    int displayedCartTotal = -1;
     Button suppliesTab, menuTab;
     int builtCatalogHash = int.MinValue;
     readonly Dictionary<ItemDefinition, int> cartPacks = new Dictionary<ItemDefinition, int>();
@@ -118,24 +129,22 @@ public class IngredientsOrderUI : MonoBehaviour
     void OnEnable()
     {
         EnsureRefs();
-        EnsureList();
         // Keep the generated hierarchy alive while the Business screen is
         // opened and closed. Rebuild only when the actual item catalog changes.
         if (!built || builtCatalogHash != GetCatalogHash())
             RebuildRows();
         else
-        {
-            ClearListBackgrounds();
-            FitListArea();
-        }
+            EnsureList();
         PurchaseUndoFooter.RemoveFromPanel(transform);
+        nextCatalogCheck = Time.unscaledTime + CatalogCheckInterval;
+        nextRefresh = Time.unscaledTime + Mathf.Max(0.1f, refreshInterval);
         RefreshAll();
     }
 
     void Update()
     {
         if (Time.unscaledTime < nextRefresh) return;
-        nextRefresh = Time.unscaledTime + refreshInterval;
+        nextRefresh = Time.unscaledTime + Mathf.Max(0.1f, refreshInterval);
         RefreshAll();
     }
 
@@ -304,6 +313,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void RebuildRows()
     {
+        built = false;
         EnsureRefs();
         EnsureList();
         if (listContainer == null) return;
@@ -314,6 +324,13 @@ public class IngredientsOrderUI : MonoBehaviour
         menuLayoutRows.Clear();
         supplyRows.Clear();
         supplyLayoutRows.Clear();
+        menuRowBindings.Clear();
+        supplyRowBindings.Clear();
+        ingredientCatalog.Clear();
+        sectionSelected = false;
+        deliveryDisplayValid = false;
+        displayedCartPackCount = -1;
+        displayedCartTotal = -1;
         if (deliveryStatusText != null) { var old = deliveryStatusText.transform.parent.gameObject; old.SetActive(false); Destroy(old); }
         if (placeOrderButton != null) { var old = placeOrderButton.transform.parent.gameObject; old.SetActive(false); Destroy(old); }
         deliveryStatusText = null;
@@ -338,6 +355,7 @@ public class IngredientsOrderUI : MonoBehaviour
         }
 
         CustomerOrderConfig menu = inventory.orderConfig;
+        ingredientCatalog.AddRange(inventory.GetIngredientCatalogItems());
         if (menu != null)
         {
             var burgers = new List<ItemDefinition>();
@@ -365,7 +383,7 @@ public class IngredientsOrderUI : MonoBehaviour
         var pantryItems = new List<ItemDefinition>();
         var freezerItems = new List<ItemDefinition>();
         var otherSupplyItems = new List<ItemDefinition>();
-        foreach (ItemDefinition item in inventory.GetIngredientCatalogItems())
+        foreach (ItemDefinition item in ingredientCatalog)
         {
             if (item == null) continue;
             StationType? supplyStation = menu != null ? menu.GetVendorSupplyStation(item) : null;
@@ -389,6 +407,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
         built = true;
         builtCatalogHash = GetCatalogHash();
+        nextCatalogCheck = Time.unscaledTime + CatalogCheckInterval;
         GameUITheme.ApplyTo(transform);
         SelectSection(showMenu);
     }
@@ -529,9 +548,14 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void SelectSection(bool menu)
     {
+        if (menu) OnboardingTutorial.NotifyMenuScreenOpened();
+        if (sectionSelected && showMenu == menu)
+        {
+            UpdateNavigationTabs();
+            return;
+        }
+        sectionSelected = true;
         showMenu = menu;
-        if (menu)
-            OnboardingTutorial.NotifyMenuScreenOpened();
         foreach (var row in menuLayoutRows) if (row != null) row.SetActive(menu);
         foreach (var row in menuRows) if (row != null) row.SetActive(menu);
         foreach (var row in supplyRows) if (row != null) row.SetActive(!menu);
@@ -548,6 +572,7 @@ public class IngredientsOrderUI : MonoBehaviour
             LayoutRebuilder.ForceRebuildLayoutImmediate(listRect);
         var scroll = listContainer.GetComponentInParent<ScrollRect>();
         if (scroll != null) { scroll.StopMovement(); scroll.verticalNormalizedPosition = 1f; }
+        if (built) RefreshAll();
     }
 
     void FitSupplyGrids()
@@ -1631,6 +1656,8 @@ public class IngredientsOrderUI : MonoBehaviour
         rowState.rowBackground = row.GetComponent<Image>();
         rowState.toggle = toggle;
         rowState.lockedOverlay = lockedOverlay;
+        rowState.workflowUnlockedStateCached = false;
+        menuRowBindings.Add(rowState);
         return row;
     }
 
@@ -1898,7 +1925,7 @@ public class IngredientsOrderUI : MonoBehaviour
     bool HasLockedIngredient()
     {
         if (inventory == null) return false;
-        foreach (ItemDefinition ingredient in inventory.GetIngredientCatalogItems())
+        foreach (ItemDefinition ingredient in ingredientCatalog)
             if (ingredient != null && !inventory.IsOrderItemUnlocked(ingredient)) return true;
         return false;
     }
@@ -2014,6 +2041,7 @@ public class IngredientsOrderUI : MonoBehaviour
         binder.addButton = addButton;
         binder.cartCountText = countTmp;
         binder.lockedOverlay = lockedOverlay;
+        supplyRowBindings.Add(binder);
         return row;
     }
 
@@ -2254,125 +2282,40 @@ public class IngredientsOrderUI : MonoBehaviour
         }
     }
 
-    public void Refresh() => RefreshAll();
+    public void Refresh()
+    {
+        nextCatalogCheck = 0f;
+        RefreshAll();
+    }
 
     void RefreshAll()
     {
-        EnsureRefs();
+        if (inventory == null || money == null) EnsureRefs();
         if (!built) RebuildRows();
-        else if (builtCatalogHash != GetCatalogHash())
+        else if (Time.unscaledTime >= nextCatalogCheck)
         {
-            RebuildRows();
-            return;
+            nextCatalogCheck = Time.unscaledTime + CatalogCheckInterval;
+            if (builtCatalogHash != GetCatalogHash()) RebuildRows();
         }
-
-        if (moneyHintText != null)
-            moneyHintText.text = money != null ? ("Money: $" + money.CurrentMoney) : "Money: —";
 
         if (listContainer == null || inventory == null) return;
-        listContainer.gameObject.SetActive(true);
-        ClearListBackgrounds();
-        foreach (GameObject child in menuRows)
-        {
-            if (child == null) continue;
-            MilestoneLockedMenuRow row = child.GetComponent<MilestoneLockedMenuRow>();
-            if (row == null || row.item == null || inventory.orderConfig == null) continue;
-            bool unlocked = inventory.orderConfig.IsMenuItemUnlocked(row.item);
-            if (row.label != null)
-            {
-                row.label.text = unlocked ? inventory.GetDisplayName(row.item) : string.Empty;
-                row.label.color = GameUITheme.TextPrimary;
-            }
-            if (row.rowBackground != null)
-                row.rowBackground.color = GameUITheme.Surface;
-            if (row.preview != null)
-                row.preview.color = unlocked ? Color.white : Color.clear;
-            if (row.lockVisual != null) row.lockVisual.alpha = 0f;
-            if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!unlocked);
-            if (row.workflowText != null && (!row.workflowUnlockedStateCached
-                || row.workflowWasUnlocked != unlocked))
-            {
-                row.workflowText.text = unlocked
-                    ? (HasLockedIngredient()
-                        ? "Recipe details unlock when the required ingredients are available."
-                        : GetWorkflowDescription(inventory.orderConfig, row.item))
-                    : string.Empty;
-                row.workflowWasUnlocked = unlocked;
-                row.workflowUnlockedStateCached = true;
-            }
-            if (row.toggle != null)
-            {
-                // Rows survive closing this screen and loading another save.
-                // Refresh their value from the restored menu without saving it again.
-                row.toggle.SetIsOnWithoutNotify(inventory.orderConfig.IsItemEnabled(row.item));
-                row.toggle.interactable = unlocked
-                    && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
-            }
-            if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
-                toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
-        }
+        if (!listContainer.gameObject.activeSelf) listContainer.gameObject.SetActive(true);
 
-        // The Menu and Supply sections share this component, but only the
-        // visible section needs a refresh. In particular, avoid walking and
-        // rewriting every supply row while the player is changing menu items.
-        if (showMenu) return;
+        // Menu and supply hierarchies survive tab switches. Only visit the
+        // visible section and only rewrite rows whose displayed values changed.
+        if (showMenu)
+        {
+            RefreshMenuRows();
+            return;
+        }
 
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
         bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
         if (addAllButton != null) addAllButton.interactable = !deliveryActive;
-        int cartTotal = 0;
-        int cartPackCount = 0;
+        RefreshSupplyRows(delivery, deliveryActive, automaticOrderingUnlocked,
+            out int cartTotal, out int cartPackCount);
         int cartLockMilestone = 0;
-        foreach (GameObject child in supplyRows)
-        {
-            if (child == null) continue;
-            var row = child.GetComponent<IngredientOrderRow>();
-            if (row == null || row.item == null) continue;
-
-            string name = inventory.GetDisplayName(row.item);
-            int pack = inventory.GetPackSize(row.item);
-            int price = inventory.GetPackPrice(row.item);
-            bool itemUnlocked = inventory.IsOrderItemUnlocked(row.item);
-            int stock = inventory.GetCount(row.item);
-
-            int incoming = 0;
-            if (delivery != null)
-                incoming = delivery.GetIncomingCount(row.item);
-
-            if (row.infoText != null)
-            {
-                row.infoText.text = itemUnlocked ? name + "\nPack of " + pack + "  |  $" + price : string.Empty;
-                row.infoText.color = GameUITheme.TextPrimary;
-            }
-            Image rowImage = child.GetComponent<Image>();
-            if (rowImage != null)
-                rowImage.color = GameUITheme.Surface;
-            if (row.lockVisual != null) row.lockVisual.alpha = 0f;
-            if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!itemUnlocked);
-            int reorderTarget = inventory.GetReorderTarget(row.item);
-            if (row.stockText != null)
-            {
-                string stockValue = stock + (incoming > 0 ? " (+" + incoming + ")" : string.Empty);
-                string autoValue = !automaticOrderingUnlocked ? "Locked"
-                    : reorderTarget > 0 ? "Tgt " + reorderTarget : "Off";
-                row.stockText.text = !itemUnlocked ? string.Empty
-                    : "Stock\n" + stockValue + "\n" + autoValue;
-                row.stockText.color = GameUITheme.TextSecondary;
-            }
-            if (row.autoOrderLabel != null)
-                row.autoOrderLabel.text = "Auto";
-            SetButtonState(row.autoOrderButton, itemUnlocked && automaticOrderingUnlocked,
-                reorderTarget > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
-            if (!itemUnlocked) SetCartPacks(row.item, 0);
-            int selected = itemUnlocked ? GetCartPacks(row.item) : 0;
-            cartPackCount += selected;
-            cartTotal += selected * price;
-            if (row.cartCountText != null) row.cartCountText.text = itemUnlocked ? "x" + selected : string.Empty;
-            SetButtonState(row.removeButton, !deliveryActive && itemUnlocked && selected > 0, GameUITheme.Danger);
-            SetButtonState(row.addButton, !deliveryActive && itemUnlocked, GameUITheme.Positive);
-        }
-
 
         bool affordable = money == null || money.CanAfford(cartTotal);
         int expressTotal = cartTotal + KitchenInventory.ExpressDeliveryFee;
@@ -2380,14 +2323,26 @@ public class IngredientsOrderUI : MonoBehaviour
         if (deliveryStatusText != null)
         {
             float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
-            deliveryStatusText.text = deliveryActive
-                ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(Mathf.Max(0f, remaining))
-                : "Build cart, then order.";
-            deliveryStatusText.color = deliveryActive
-                ? GameUITheme.Accent : GameUITheme.TextSecondary;
+            int countdown = Mathf.Max(0, Mathf.CeilToInt(remaining));
+            if (!deliveryDisplayValid || deliveryActive != displayedDeliveryActive
+                || (deliveryActive && countdown != displayedDeliveryCountdown))
+            {
+                deliveryStatusText.text = deliveryActive
+                    ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
+                    : "Build cart, then order.";
+                deliveryStatusText.color = deliveryActive
+                    ? GameUITheme.Accent : GameUITheme.TextSecondary;
+                deliveryDisplayValid = true;
+                displayedDeliveryActive = deliveryActive;
+                displayedDeliveryCountdown = countdown;
+            }
         }
-        if (cartSummaryText != null)
+        if (cartSummaryText != null && (cartPackCount != displayedCartPackCount || cartTotal != displayedCartTotal))
+        {
             cartSummaryText.text = cartPackCount == 0 ? "Empty" : "x" + cartPackCount + "  $" + cartTotal;
+            displayedCartPackCount = cartPackCount;
+            displayedCartTotal = cartTotal;
+        }
         if (clearCartButton != null)
             clearCartButton.interactable = !deliveryActive && cartPackCount > 0;
         if (placeOrderButton != null)
@@ -2398,7 +2353,7 @@ public class IngredientsOrderUI : MonoBehaviour
                 : cartLockMilestone > 0 ? "Research"
                 : !affordable && cartPackCount > 0 ? "Funds" : "Order";
         bool expressUnlocked = MilestoneFeatures.IsResearchComplete("express_ordering");
-        if (expressLockedOverlay != null)
+        if (expressLockedOverlay != null && expressLockedOverlay.activeSelf == expressUnlocked)
             expressLockedOverlay.SetActive(!expressUnlocked);
         if (expressOrderButton != null)
             expressOrderButton.interactable = expressUnlocked && !deliveryActive && cartPackCount > 0 && expressAffordable
@@ -2409,6 +2364,130 @@ public class IngredientsOrderUI : MonoBehaviour
                 : cartLockMilestone > 0 ? "Research"
                 : !expressAffordable && cartPackCount > 0 ? "Funds"
                 : "Express";
+    }
+
+    void RefreshMenuRows()
+    {
+        CustomerOrderConfig menu = inventory.orderConfig;
+        if (menu == null) return;
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        bool lockedIngredient = HasLockedIngredient();
+        foreach (MilestoneLockedMenuRow row in menuRowBindings)
+        {
+            if (row == null || row.item == null) continue;
+            bool unlocked = menu.IsMenuItemUnlocked(row.item);
+            string name = unlocked ? inventory.GetDisplayName(row.item) : string.Empty;
+            if (!row.displayValid || row.displayedUnlocked != unlocked || row.displayedName != name)
+            {
+                if (row.label != null)
+                {
+                    row.label.text = name;
+                    row.label.color = GameUITheme.TextPrimary;
+                }
+                if (row.rowBackground != null) row.rowBackground.color = GameUITheme.Surface;
+                if (row.preview != null) row.preview.color = unlocked ? Color.white : Color.clear;
+                if (row.lockVisual != null) row.lockVisual.alpha = 0f;
+                if (row.lockedOverlay != null && row.lockedOverlay.activeSelf == unlocked)
+                    row.lockedOverlay.SetActive(!unlocked);
+                if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
+                    toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
+                row.displayedUnlocked = unlocked;
+                row.displayedName = name;
+                row.displayValid = true;
+            }
+            if (row.workflowText != null && (!row.workflowUnlockedStateCached
+                || row.workflowWasUnlocked != unlocked || row.workflowHadLockedIngredient != lockedIngredient))
+            {
+                row.workflowText.text = unlocked
+                    ? (lockedIngredient ? "Recipe details unlock when the required ingredients are available."
+                        : GetWorkflowDescription(menu, row.item)) : string.Empty;
+                row.workflowWasUnlocked = unlocked;
+                row.workflowHadLockedIngredient = lockedIngredient;
+                row.workflowUnlockedStateCached = true;
+            }
+            if (row.toggle != null)
+            {
+                // Save restores and external menu edits still update retained rows.
+                bool enabled = menu.IsItemEnabled(row.item);
+                if (row.toggle.isOn != enabled) row.toggle.SetIsOnWithoutNotify(enabled);
+                bool interactable = unlocked && planPhase;
+                if (row.toggle.interactable != interactable) row.toggle.interactable = interactable;
+            }
+        }
+    }
+
+    void RefreshSupplyRows(IngredientDeliveryService delivery, bool deliveryActive,
+        bool automaticOrderingUnlocked, out int cartTotal, out int cartPackCount)
+    {
+        cartTotal = 0;
+        cartPackCount = 0;
+        foreach (IngredientOrderRow row in supplyRowBindings)
+        {
+            if (row == null || row.item == null) continue;
+            bool unlocked = inventory.IsOrderItemUnlocked(row.item);
+            string name = unlocked ? inventory.GetDisplayName(row.item) : string.Empty;
+            int pack = inventory.GetPackSize(row.item);
+            int price = inventory.GetPackPrice(row.item);
+            int stock = inventory.GetCount(row.item);
+            int incoming = delivery != null ? delivery.GetIncomingCount(row.item) : 0;
+            int reorderTarget = inventory.GetReorderTarget(row.item);
+            if (!unlocked && GetCartPacks(row.item) != 0) SetCartPacks(row.item, 0);
+            int selected = unlocked ? GetCartPacks(row.item) : 0;
+            cartTotal += selected * price;
+            cartPackCount += selected;
+            bool unlockChanged = !row.displayValid || row.displayedUnlocked != unlocked;
+
+            if (unlockChanged || row.displayedName != name || row.displayedPack != pack || row.displayedPrice != price)
+            {
+                if (row.infoText != null)
+                {
+                    row.infoText.text = unlocked ? name + "\nPack of " + pack + "  |  $" + price : string.Empty;
+                    row.infoText.color = GameUITheme.TextPrimary;
+                }
+                if (row.rowBackground == null) row.rowBackground = row.GetComponent<Image>();
+                if (row.rowBackground != null) row.rowBackground.color = GameUITheme.Surface;
+                if (row.lockVisual != null) row.lockVisual.alpha = 0f;
+                if (row.lockedOverlay != null && row.lockedOverlay.activeSelf == unlocked)
+                    row.lockedOverlay.SetActive(!unlocked);
+            }
+            if (unlockChanged || row.displayedStock != stock || row.displayedIncoming != incoming
+                || row.displayedReorderTarget != reorderTarget
+                || row.displayedAutomaticOrderingUnlocked != automaticOrderingUnlocked)
+            {
+                if (row.stockText != null)
+                {
+                    if (!unlocked) row.stockText.text = string.Empty;
+                    else
+                    {
+                        string stockValue = stock + (incoming > 0 ? " (+" + incoming + ")" : string.Empty);
+                        string autoValue = !automaticOrderingUnlocked ? "Locked"
+                            : reorderTarget > 0 ? "Tgt " + reorderTarget : "Off";
+                        row.stockText.text = "Stock\n" + stockValue + "\n" + autoValue;
+                    }
+                    row.stockText.color = GameUITheme.TextSecondary;
+                }
+                SetButtonState(row.autoOrderButton, unlocked && automaticOrderingUnlocked,
+                    reorderTarget > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
+            }
+            if (unlockChanged || row.displayedCartPacks != selected)
+                if (row.cartCountText != null) row.cartCountText.text = unlocked ? "x" + selected : string.Empty;
+            if (unlockChanged || row.displayedDeliveryActive != deliveryActive || row.displayedCartPacks != selected)
+            {
+                SetButtonState(row.removeButton, !deliveryActive && unlocked && selected > 0, GameUITheme.Danger);
+                SetButtonState(row.addButton, !deliveryActive && unlocked, GameUITheme.Positive);
+            }
+            row.displayedUnlocked = unlocked;
+            row.displayedName = name;
+            row.displayedPack = pack;
+            row.displayedPrice = price;
+            row.displayedStock = stock;
+            row.displayedIncoming = incoming;
+            row.displayedReorderTarget = reorderTarget;
+            row.displayedAutomaticOrderingUnlocked = automaticOrderingUnlocked;
+            row.displayedCartPacks = selected;
+            row.displayedDeliveryActive = deliveryActive;
+            row.displayValid = true;
+        }
     }
 
     public void FocusRecipeNode(RecipeGraphNodeView selected)
@@ -2576,6 +2655,18 @@ public class IngredientOrderRow : MonoBehaviour
     public TextMeshProUGUI cartCountText;
     public CanvasGroup lockVisual;
     public GameObject lockedOverlay;
+    internal Image rowBackground;
+    internal bool displayValid;
+    internal bool displayedUnlocked;
+    internal string displayedName;
+    internal int displayedPack;
+    internal int displayedPrice;
+    internal int displayedStock;
+    internal int displayedIncoming;
+    internal int displayedReorderTarget;
+    internal bool displayedAutomaticOrderingUnlocked;
+    internal int displayedCartPacks;
+    internal bool displayedDeliveryActive;
 }
 
 public sealed class MilestoneLockedMenuRow : MonoBehaviour
@@ -2590,6 +2681,10 @@ public sealed class MilestoneLockedMenuRow : MonoBehaviour
     public GameObject lockedOverlay;
     public bool workflowWasUnlocked;
     public bool workflowUnlockedStateCached;
+    internal bool workflowHadLockedIngredient;
+    internal bool displayValid;
+    internal bool displayedUnlocked;
+    internal string displayedName;
 }
 
 /// <summary>Click-and-drag panning for the recipe dependency graph.</summary>

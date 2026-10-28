@@ -9,6 +9,24 @@ using UnityEngine.UI;
 /// </summary>
 public class GameUITheme : MonoBehaviour
 {
+    /// <summary>Keeps a small HUD branch above its menus without reordering their shared canvas.</summary>
+    public static void EnsureHudCanvas(Transform root, int sortingOffset)
+    {
+        if (root == null || root.parent == null) return;
+        Canvas parentCanvas = root.parent.GetComponentInParent<Canvas>();
+        if (parentCanvas == null || parentCanvas.renderMode == RenderMode.WorldSpace) return;
+
+        Canvas canvas = root.GetComponent<Canvas>();
+        if (canvas == null) canvas = root.gameObject.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingLayerID = parentCanvas.sortingLayerID;
+        canvas.sortingOrder = Mathf.Clamp(parentCanvas.sortingOrder + sortingOffset,
+            short.MinValue, short.MaxValue);
+        canvas.additionalShaderChannels = parentCanvas.additionalShaderChannels;
+        if (root.GetComponent<GraphicRaycaster>() == null)
+            root.gameObject.AddComponent<GraphicRaycaster>();
+    }
+
     public static void ConfigureScroll(ScrollRect scroll)
     {
         if (scroll == null) return;

@@ -23,6 +23,7 @@ public class WorkersUI : MonoBehaviour
     ProductionManager production;
     bool listenerAdded;
     bool layoutApplied;
+    Transform configuredCardContainer;
     RectTransform flowPanel;
     Transform flowListRow;
     Transform flowTabsContent;
@@ -47,29 +48,31 @@ public class WorkersUI : MonoBehaviour
     TextMeshProUGUI flowExpandArrowLabel;
     TextMeshProUGUI flowHeaderLabel;
     bool flowExpanded = true;
-
-    void Start()
-    {
-        EnsureRefs();
-        ApplyCleanLayout();
-        EnsureCardContainer();
-        EnsureFlowSection();
-        PurchaseUndoFooter.RemoveFromPanel(transform);
-    }
+    bool flowSectionNeedsTheme;
+    readonly HashSet<StationNode> efficiencyStations = new HashSet<StationNode>();
+    readonly float[] efficiencyExact = new float[4];
+    readonly float[] efficiencyRemainders = new float[4];
+    readonly int[] efficiencyPercents = new int[4];
+    readonly int[] displayedEfficiencyPercents = { -1, -1, -1, -1 };
+    static readonly string[] EfficiencyNames = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
+    string displayedEfficiencyFlowName;
+    int displayedEfficiencyStationCount = -1;
+    readonly List<ProductionFlowPlan> displayedTabFlows = new List<ProductionFlowPlan>();
+    readonly List<string> displayedTabNames = new List<string>();
+    readonly List<Button> displayedTabButtons = new List<Button>();
+    int displayedSelectedTab = -1;
+    Button wiredDeleteFlowButton;
 
     void OnEnable()
     {
-        EnsureRefs();
-        ApplyCleanLayout();
-        EnsureCardContainer();
-        ConfigureWorkerScroll();
-        EnsureFlowSection();
-        PurchaseUndoFooter.RemoveFromPanel(transform);
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
         if (ResearchProgressManager.Instance != null)
             ResearchProgressManager.Instance.Changed += Refresh;
         Refresh();
+        displayedShiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
+        nextSystemEfficiencyRefresh = Time.unscaledTime + 0.5f;
+        PurchaseUndoFooter.RemoveFromPanel(transform);
     }
 
     void OnDisable()
@@ -255,9 +258,13 @@ public class WorkersUI : MonoBehaviour
 
         if (cardContainer != null)
         {
-            ConfigureCardContainer();
-            FitScrollArea();
-            ConfigureWorkerScroll();
+            if (configuredCardContainer != cardContainer)
+            {
+                ConfigureCardContainer();
+                FitScrollArea();
+                ConfigureWorkerScroll();
+                configuredCardContainer = cardContainer;
+            }
             return;
         }
 
@@ -314,6 +321,7 @@ public class WorkersUI : MonoBehaviour
         ConfigureCardContainer();
         FitScrollArea();
         ConfigureWorkerScroll();
+        configuredCardContainer = cardContainer;
     }
 
     void ConfigureCardContainer()
@@ -392,7 +400,7 @@ public class WorkersUI : MonoBehaviour
         }
     }
 
-    void FitScrollArea()
+    void FitScrollArea(bool rebuildFlowLayout = true)
     {
         var scroll = transform.Find("WorkerCardsScroll") as RectTransform;
         if (scroll == null && cardContainer != null)
@@ -404,7 +412,7 @@ public class WorkersUI : MonoBehaviour
         float topInset = 310f;
         if (flowPanel != null)
         {
-            LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
+            if (rebuildFlowLayout) LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
             float panelHeight = Mathf.Max(44f, flowPanel.rect.height);
             // The header ends near the top of the content area; keep the flow
             // panel and worker list on the same compact baseline.
@@ -433,6 +441,7 @@ public class WorkersUI : MonoBehaviour
 
     void EnsureFlowSection()
     {
+        if (flowPanel != null) return;
         var existing = transform.Find("FlowPathPanel") as RectTransform;
         // Rebuild outdated panels so economics/layout fixes apply.
         if (existing != null && existing.Find("LayoutV9") == null)
@@ -442,15 +451,9 @@ public class WorkersUI : MonoBehaviour
             flowPanel = null;
         }
 
-        if (flowPanel != null)
-        {
-            BindFlowTabScroller(flowListRow);
-            LayoutFlowPanel();
-            return;
-        }
-
         if (existing != null)
         {
+            flowSectionNeedsTheme = true;
             flowPanel = existing;
             flowListRow = existing.Find("FlowListRow");
             BindFlowTabScroller(flowListRow);
@@ -475,6 +478,7 @@ public class WorkersUI : MonoBehaviour
 
         var go = new GameObject("FlowPathPanel", typeof(RectTransform), typeof(Image));
         go.transform.SetParent(transform, false);
+        flowSectionNeedsTheme = true;
         flowPanel = go.GetComponent<RectTransform>();
         var bg = go.GetComponent<Image>();
         bg.color = new Color(0.14f, 0.15f, 0.2f, 0.95f);
@@ -813,6 +817,9 @@ public class WorkersUI : MonoBehaviour
     {
         systemEfficiencyRoot = root;
         if (root == null) return;
+        displayedEfficiencyStationCount = -1;
+        for (int i = 0; i < displayedEfficiencyPercents.Length; i++)
+            displayedEfficiencyPercents[i] = -1;
         systemEfficiencyHeading = root.Find("Heading")?.GetComponent<TextMeshProUGUI>();
         systemEfficiencyExplanation = root.Find("StateExplanation")?.GetComponent<TextMeshProUGUI>();
         Transform row = root.Find("StateButtons");
@@ -888,8 +895,13 @@ public class WorkersUI : MonoBehaviour
     void RefreshSystemEfficiency()
     {
         if (systemEfficiencyRoot == null || production == null) return;
-        var stations = new HashSet<StationNode>();
-        ProductionFlowPlan flow = production.SelectedFlow;
+        HashSet<StationNode> stations = efficiencyStations;
+        stations.Clear();
+        // SelectedFlow normalizes every route and allocates while doing so.
+        // The recurring efficiency display only needs to read the selection.
+        List<ProductionFlowPlan> flows = production.productionFlows;
+        ProductionFlowPlan flow = flows != null && flows.Count > 0
+            ? flows[Mathf.Clamp(production.selectedFlowIndex, 0, flows.Count - 1)] : null;
         if (flow?.stations != null)
         {
             foreach (GameObject stationObject in flow.stations)
@@ -921,17 +933,13 @@ public class WorkersUI : MonoBehaviour
         }
 
         float total = workingSeconds + blockedSeconds + starvedSeconds + idleSeconds;
-        var exact = total > 0.001f
-            ? new[]
-            {
-                workingSeconds * 100f / total,
-                blockedSeconds * 100f / total,
-                starvedSeconds * 100f / total,
-                idleSeconds * 100f / total
-            }
-            : new[] { 0f, 0f, 0f, 100f };
-        var percents = new int[4];
-        var remainders = new float[4];
+        float[] exact = efficiencyExact;
+        exact[0] = total > 0.001f ? workingSeconds * 100f / total : 0f;
+        exact[1] = total > 0.001f ? blockedSeconds * 100f / total : 0f;
+        exact[2] = total > 0.001f ? starvedSeconds * 100f / total : 0f;
+        exact[3] = total > 0.001f ? idleSeconds * 100f / total : 100f;
+        int[] percents = efficiencyPercents;
+        float[] remainders = efficiencyRemainders;
         int assigned = 0;
         for (int i = 0; i < exact.Length; i++)
         {
@@ -948,17 +956,23 @@ public class WorkersUI : MonoBehaviour
             remainders[largest] = -1f;
         }
 
-        string[] names = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
-        if (systemEfficiencyHeading != null)
+        string sourceName = flow != null ? flow.flowName : null;
+        if (systemEfficiencyHeading != null && (sourceName != displayedEfficiencyFlowName
+            || stations.Count != displayedEfficiencyStationCount))
         {
-            string flowName = flow != null && !string.IsNullOrWhiteSpace(flow.flowName)
-                ? flow.flowName.ToUpperInvariant() : "SELECTED FLOW";
+            string flowName = !string.IsNullOrWhiteSpace(sourceName)
+                ? sourceName.ToUpperInvariant() : "SELECTED FLOW";
             systemEfficiencyHeading.text = flowName + " EFFICIENCY  ("
                 + stations.Count + " stations)";
+            displayedEfficiencyFlowName = sourceName;
+            displayedEfficiencyStationCount = stations.Count;
         }
         for (int i = 0; i < systemEfficiencyButtonLabels.Length; i++)
-            if (systemEfficiencyButtonLabels[i] != null)
-                systemEfficiencyButtonLabels[i].text = names[i] + "  " + percents[i] + "%";
+            if (systemEfficiencyButtonLabels[i] != null && displayedEfficiencyPercents[i] != percents[i])
+            {
+                systemEfficiencyButtonLabels[i].text = EfficiencyNames[i] + "  " + percents[i] + "%";
+                displayedEfficiencyPercents[i] = percents[i];
+            }
     }
 
     void LayoutFlowPanel()
@@ -977,7 +991,7 @@ public class WorkersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
-        FitScrollArea();
+        FitScrollArea(rebuildFlowLayout: false);
     }
 
     Transform MakeRow(Transform parent, string name, float height)
@@ -1209,63 +1223,101 @@ public class WorkersUI : MonoBehaviour
     {
         if (flowListRow == null || flowTabsContent == null || production == null) return;
 
-        for (int i = flowTabsContent.childCount - 1; i >= 0; i--)
+        if (production.productionFlows == null || production.productionFlows.Count == 0)
+            production.EnsureProductionFlows();
+        bool rebuild = displayedTabFlows.Count != production.productionFlows.Count;
+        for (int i = 0; !rebuild && i < production.productionFlows.Count; i++)
         {
-            GameObject oldTab = flowTabsContent.GetChild(i).gameObject;
-            oldTab.SetActive(false);
-            Destroy(oldTab);
+            ProductionFlowPlan flow = production.productionFlows[i];
+            rebuild = displayedTabFlows[i] != flow
+                || displayedTabNames[i] != flow?.flowName
+                || (flow != null && displayedTabButtons[i] == null);
         }
 
-        production.EnsureProductionFlows();
-        flowListRow.gameObject.SetActive(flowExpanded);
+        if (rebuild)
+        {
+            for (int i = flowTabsContent.childCount - 1; i >= 0; i--)
+            {
+                GameObject oldTab = flowTabsContent.GetChild(i).gameObject;
+                oldTab.SetActive(false);
+                Destroy(oldTab);
+            }
+            displayedTabFlows.Clear();
+            displayedTabNames.Clear();
+            displayedTabButtons.Clear();
+            displayedSelectedTab = -1;
+        }
+
+        if (flowListRow.gameObject.activeSelf != flowExpanded)
+            flowListRow.gameObject.SetActive(flowExpanded);
         for (int i = 0; i < production.productionFlows.Count; i++)
         {
             ProductionFlowPlan flow = production.productionFlows[i];
+            if (rebuild)
+            {
+                displayedTabFlows.Add(flow);
+                displayedTabNames.Add(flow?.flowName);
+                displayedTabButtons.Add(null);
+            }
             if (flow == null) continue;
             int index = i;
             bool selected = index == production.selectedFlowIndex;
-            string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
-            Button chip = MakeChip(flowTabsContent, label, Mathf.Clamp(18f + label.Length * 7f, 82f, 150f));
-            chip.gameObject.name = "FlowTab_" + (i + 1);
+            Button chip = displayedTabButtons[i];
+            if (rebuild)
+            {
+                string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
+                chip = MakeChip(flowTabsContent, label, Mathf.Clamp(18f + label.Length * 7f, 82f, 150f));
+                chip.gameObject.name = "FlowTab_" + (i + 1);
+                displayedTabButtons[i] = chip;
+                chip.onClick.AddListener(() =>
+                {
+                    if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
+                        return;
+                    production.SelectProductionFlow(index);
+                    if (ManagementModeController.Instance != null)
+                        ManagementModeController.Instance.SelectFlow(flow);
+                    var cameraController = FindObjectOfType<PlayerCameraController>();
+                    if (cameraController != null)
+                        cameraController.PanTo(flow);
+                    RefreshFlowSection();
+                });
+                chip.gameObject.AddComponent<WorkerFlowDropTarget>();
+            }
+            if (!rebuild && displayedSelectedTab == production.selectedFlowIndex) continue;
             var img = chip.GetComponent<Image>();
             GameUITheme.ApplyCompactTabButton(chip, selected);
-            chip.onClick.AddListener(() =>
-            {
-                if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow)
-                    return;
-                production.SelectProductionFlow(index);
-                if (ManagementModeController.Instance != null)
-                    ManagementModeController.Instance.SelectFlow(flow);
-                var cameraController = FindObjectOfType<PlayerCameraController>();
-                if (cameraController != null)
-                    cameraController.PanTo(flow);
-                RefreshFlowSection();
-            });
-            var dropTarget = chip.gameObject.AddComponent<WorkerFlowDropTarget>();
-            dropTarget.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
+            chip.GetComponent<WorkerFlowDropTarget>()?.Bind(this, flow, img != null ? img.color : HudTabColors.Idle);
         }
+        displayedSelectedTab = production.selectedFlowIndex;
 
-        if (flowTabsContent is RectTransform tabsRect)
+        if (rebuild && flowTabsContent is RectTransform tabsRect)
             LayoutRebuilder.ForceRebuildLayoutImmediate(tabsRect);
-        if (flowTabsScroll != null) LayoutRebuilder.MarkLayoutForRebuild(flowTabsScroll.transform as RectTransform);
+        if (rebuild && flowTabsScroll != null)
+            LayoutRebuilder.MarkLayoutForRebuild(flowTabsScroll.transform as RectTransform);
 
         if (deleteFlowButton == null) return;
         deleteFlowButton.interactable = (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress)
             && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
-        deleteFlowButton.onClick.RemoveAllListeners();
-        ProductionFlowPlan selectedFlow = production.SelectedFlow;
-        deleteFlowButton.onClick.AddListener(() =>
+        if (wiredDeleteFlowButton != deleteFlowButton)
         {
-            if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
-            if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
-            production.RemoveProductionFlow(selectedFlow);
-            if (ManagementModeController.Instance != null)
-                ManagementModeController.Instance.SelectFlow(production.SelectedFlow);
-            WorkerAssignmentLinkVisuals.SetFocusedFlow(production.SelectedFlow);
-            WorkerAssignmentLinkVisuals.NotifyLinksChanged();
-            StationOutputLinkVisuals.NotifyLinksChanged();
-            Refresh();
-        });
+            deleteFlowButton.onClick.RemoveAllListeners();
+            deleteFlowButton.onClick.AddListener(DeleteSelectedFlow);
+            wiredDeleteFlowButton = deleteFlowButton;
+        }
+    }
+
+    void DeleteSelectedFlow()
+    {
+        if (production == null) return;
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
+        production.RemoveProductionFlow(production.SelectedFlow);
+        if (ManagementModeController.Instance != null)
+            ManagementModeController.Instance.SelectFlow(production.SelectedFlow);
+        WorkerAssignmentLinkVisuals.SetFocusedFlow(production.SelectedFlow);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        StationOutputLinkVisuals.NotifyLinksChanged();
+        Refresh();
     }
 
     void RebuildStepRow()
@@ -1383,7 +1435,7 @@ public class WorkersUI : MonoBehaviour
 
             production.EnsureProductionFlows();
             RefreshSystemEfficiency();
-            ProductionFlowPlan flow = production.SelectedFlow;
+            ProductionFlowPlan flow = production.productionFlows[production.selectedFlowIndex];
             bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
             if (createFlowButton != null) createFlowButton.interactable = planPhase;
             if (flowNameInput != null) flowNameInput.interactable = planPhase;
@@ -1403,7 +1455,7 @@ public class WorkersUI : MonoBehaviour
 
             RebuildFlowListRow();
             RebuildStepRow();
-            if (flowNameInput != null && !flowNameInput.isFocused)
+            if (flowNameInput != null && !flowNameInput.isFocused && flowNameInput.text != flow.flowName)
                 flowNameInput.SetTextWithoutNotify(flow.flowName);
             WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
 
@@ -1498,7 +1550,11 @@ public class WorkersUI : MonoBehaviour
         }
         finally
         {
-            GameUITheme.ApplyTo(transform);
+            if (flowSectionNeedsTheme && flowPanel != null)
+            {
+                GameUITheme.ApplyTo(flowPanel);
+                flowSectionNeedsTheme = false;
+            }
         }
     }
 

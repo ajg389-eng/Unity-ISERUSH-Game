@@ -130,6 +130,18 @@ public class ManagementModeController : MonoBehaviour
     LineRenderer outputDragPreview;
     const float OutputDragThresholdPixels = 14f;
     float nextWorkflowHudRefresh;
+    const float StationDisplayRefreshInterval = 0.1f;
+    float nextStationDisplayRefresh;
+    float nextWorkerHoverRefresh;
+    GameObject boundStationPopup;
+    GameObject themedStationPopup;
+    int themedPopupChildCount = -1;
+    bool diagramModeValid;
+    bool diagramOutputOnly;
+    bool diagramTwoInputs;
+    bool diagramThreeInputs;
+    readonly Dictionary<RawImage, GameObject> diagramPreviewPrefabs = new Dictionary<RawImage, GameObject>();
+    readonly Dictionary<RawImage, string> diagramPreviewLabels = new Dictionary<RawImage, string>();
     ProductionFlowPlan capturedFlow;
     readonly Dictionary<GameObject, GameObject> capturedOriginalOutputs = new Dictionary<GameObject, GameObject>();
     bool capturingNewFlow;
@@ -276,8 +288,9 @@ public class ManagementModeController : MonoBehaviour
         if (shiftInProgress)
         {
             if (IsCapturingFlow) CancelFlowCapture();
-            CancelOutputDrag();
-            ClearEmployeeSelection();
+            if (outputDragActive) CancelOutputDrag();
+            if (selectedEmployee != null || selectedWorkerHighlight != null)
+                ClearEmployeeSelection();
         }
 
         UpdateWorkerHover();
@@ -294,8 +307,10 @@ public class ManagementModeController : MonoBehaviour
         // Keep heat lamp inventory / recipe-station rates live while selected
         if (selectedStation != null
             && stationPopup != null
-            && stationPopup.activeSelf)
+            && stationPopup.activeSelf
+            && Time.unscaledTime >= nextStationDisplayRefresh)
         {
+            nextStationDisplayRefresh = Time.unscaledTime + StationDisplayRefreshInterval;
             if (selectedStation.GetComponent<HeatLampStation>() != null)
                 RefreshHeatLampInventory();
             else
@@ -985,6 +1000,10 @@ public class ManagementModeController : MonoBehaviour
 
     void UpdateWorkerHover()
     {
+        // Hover follows a moving camera without repeating the same world query
+        // at the rendering rate. Click selection is still resolved immediately.
+        if (Time.unscaledTime < nextWorkerHoverRefresh) return;
+        nextWorkerHoverRefresh = Time.unscaledTime + 1f / 30f;
         if (Camera.main == null || IsPointerOverUI())
         {
             ClearWorkerHover();
@@ -1054,6 +1073,7 @@ public class ManagementModeController : MonoBehaviour
     void RefreshPopup()
     {
         if (selectedStation == null) return;
+        nextStationDisplayRefresh = Time.unscaledTime + StationDisplayRefreshInterval;
 
         if (stationTitleText != null)
             stationTitleText.text = selectedStation.DisplayName;
@@ -1327,7 +1347,9 @@ public class ManagementModeController : MonoBehaviour
     void ApplyStationRateLabels(StationNode node)
     {
         if (node == null) return;
-        node.EnsureIoDefaults(force: true);
+        // Recipe and rate setters already recalculate the station's I/O.
+        // Reading its display must not force that work on every live refresh.
+        node.EnsureIoDefaults();
         if (workerInfoText != null) workerInfoText.gameObject.SetActive(false);
         if (outputInfoText != null) outputInfoText.gameObject.SetActive(false);
         RefreshProductionDiagram(node);
@@ -2075,6 +2097,14 @@ public class ManagementModeController : MonoBehaviour
     {
         var diagramSize = productionDiagramRoot != null
             ? productionDiagramRoot.GetComponent<LayoutElement>() : null;
+        if (diagramModeValid && diagramOutputOnly == outputOnly
+            && diagramTwoInputs == twoInputs && diagramThreeInputs == threeInputs
+            && diagramSize != null && diagramSize.minHeight == 166f)
+            return;
+        diagramModeValid = true;
+        diagramOutputOnly = outputOnly;
+        diagramTwoInputs = twoInputs;
+        diagramThreeInputs = threeInputs;
         if (diagramSize != null)
         {
             diagramSize.minHeight = 166f;
@@ -2112,9 +2142,23 @@ public class ManagementModeController : MonoBehaviour
         size.flexibleWidth = 1f;
     }
 
-    static void SetDiagramPreview(RawImage image, GameObject prefab, string label)
+    void SetDiagramPreview(RawImage image, GameObject prefab, string label)
     {
         if (image == null) return;
+        // Recipe picker cards are transient; only retain references to the
+        // fixed production/stock previews owned by this controller.
+        bool cachePreview = image == productionInputPreview || image == productionSecondInputPreview
+            || image == productionThirdInputPreview || image == productionOutputPreview
+            || System.Array.IndexOf(pickupSlotPreviews, image) >= 0;
+        if (cachePreview && diagramPreviewPrefabs.TryGetValue(image, out GameObject previousPrefab)
+            && previousPrefab == prefab && diagramPreviewLabels.TryGetValue(image, out string previousLabel)
+            && previousLabel == label && (prefab == null || image.texture != null))
+            return;
+        if (cachePreview)
+        {
+            diagramPreviewPrefabs[image] = prefab;
+            diagramPreviewLabels[image] = label;
+        }
         image.texture = prefab != null ? ItemPreviewThumbnails.GetPrefab(prefab, label) : null;
         image.color = image.texture != null ? Color.white : new Color(1f, 1f, 1f, 0.08f);
         var fitter = image.GetComponent<AspectRatioFitter>();
@@ -2189,7 +2233,7 @@ public class ManagementModeController : MonoBehaviour
 
         if (stationTitleText != null)
         {
-            stationTitleText.fontSize = 22;
+            stationTitleText.fontSize = 20;
             TightenLabel(stationTitleText, 28f);
         }
 
@@ -2243,17 +2287,6 @@ public class ManagementModeController : MonoBehaviour
             if (statusText != null) statusText.transform.SetSiblingIndex(6);
         }
 
-        // Resolve child layout groups from the inside out before measuring the
-        // popup. Otherwise the first rendered frame uses stale preferred sizes
-        // and visibly snaps into its final arrangement one frame later.
-        if (productionDiagramRoot != null && productionDiagramRoot.activeSelf)
-            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productionDiagramRoot.transform);
-        if (productionRateControlRoot != null && productionRateControlRoot.activeSelf)
-            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productionRateControlRoot.transform);
-        if (productListContainer != null && productListContainer.gameObject.activeSelf)
-            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)productListContainer);
-        if (pickupInventoryRoot != null && pickupInventoryRoot.activeSelf)
-            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)pickupInventoryRoot.transform);
         AssemblyStation selectedAssembly = selectedStation != null
             ? selectedStation.GetComponent<AssemblyStation>() : null;
         bool hasThreeInputRecipe = selectedAssembly != null
@@ -2271,7 +2304,8 @@ public class ManagementModeController : MonoBehaviour
             rt.sizeDelta = new Vector2(resolvedWidth, rt.sizeDelta.y);
         }
 
-        Canvas.ForceUpdateCanvases();
+        // Resolve this popup's children after setting their final width. A
+        // global canvas flush also rebuilds the large Business/Inventory lists.
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
 
         float minimumHeight = heatLampCompact ? 246f : 310f;
@@ -2288,8 +2322,7 @@ public class ManagementModeController : MonoBehaviour
         float scale = height > availableHeight ? availableHeight / height : 1f;
         rt.localScale = Vector3.one * scale;
         CenterPopupVertically(rt);
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+        LayoutRebuilder.MarkLayoutForRebuild(rt);
     }
 
     void CenterPopupVertically(RectTransform rt)
@@ -2722,7 +2755,7 @@ public class ManagementModeController : MonoBehaviour
         recipePickerRoot.transform.SetAsLastSibling();
         if (productionOutputSelectButton != null)
             productionOutputSelectButton.interactable = false;
-        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.MarkLayoutForRebuild(recipePickerRoot.transform as RectTransform);
         Sfx.Play(SfxId.UiOpen);
     }
 
@@ -4322,6 +4355,9 @@ public class ManagementModeController : MonoBehaviour
 
     void EnsurePopup()
     {
+        if (stationPopup != null && stationPopup == boundStationPopup
+            && productionDiagramRoot != null)
+            return;
         if (stationPopup == null)
         {
             stationPopup = FindExistingStationPopup();
@@ -4350,6 +4386,7 @@ public class ManagementModeController : MonoBehaviour
                 EnsureProductionDiagramUI();
                 WirePopupButtons();
                 ApplyStationPopupTheme();
+                boundStationPopup = stationPopup;
                 return;
             }
         }
@@ -4370,11 +4407,17 @@ public class ManagementModeController : MonoBehaviour
         EnsureProductionDiagramUI();
         WirePopupButtons();
         ApplyStationPopupTheme();
+        boundStationPopup = stationPopup;
     }
 
     void ApplyStationPopupTheme()
     {
         if (stationPopup == null) return;
+        int childCount = stationPopup.transform.childCount;
+        if (themedStationPopup == stationPopup && themedPopupChildCount == childCount)
+            return;
+        themedStationPopup = stationPopup;
+        themedPopupChildCount = childCount;
 
         Image background = stationPopup.GetComponent<Image>();
         if (background == null) background = stationPopup.AddComponent<Image>();

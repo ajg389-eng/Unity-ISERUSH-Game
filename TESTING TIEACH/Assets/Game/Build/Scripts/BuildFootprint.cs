@@ -644,6 +644,7 @@ public class CounterSurface : MonoBehaviour
     readonly System.Collections.Generic.List<GameObject> counterSegments = new System.Collections.Generic.List<GameObject>();
     readonly HashSet<int> groundStationSlots = new HashSet<int>();
     readonly Dictionary<int, GroundPickupStationPlacement> groundStationItems = new Dictionary<int, GroundPickupStationPlacement>();
+    readonly List<Renderer> boundsRenderers = new List<Renderer>();
     Transform counterTemplate;
     Vector3 counterSegmentScale;
     float originalSlotLength;
@@ -694,10 +695,12 @@ public class CounterSurface : MonoBehaviour
     {
         if (counterSegmentMode) return segmentedCounterBounds;
 
-        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        // Re-read the hierarchy and world bounds so dragging, resizing, and
+        // mounted items remain accurate without allocating a renderer array.
+        GetComponentsInChildren(false, boundsRenderers);
         bool found = false;
         Bounds bounds = new Bounds(transform.position, Vector3.one);
-        foreach (Renderer renderer in renderers)
+        foreach (Renderer renderer in boundsRenderers)
         {
             if (renderer == null) continue;
             if (!IsCounterBodyRenderer(renderer)) continue;
@@ -863,13 +866,22 @@ public class CounterSurface : MonoBehaviour
     public int GetNearestSlot(Vector3 worldPoint, int span, bool requireAvailable)
     {
         CleanupOccupants();
-        span = Mathf.Clamp(span, 1, Mathf.Max(1, slotCount));
+        int count = Mathf.Max(1, slotCount);
+        span = Mathf.Clamp(span, 1, count);
+        Bounds bounds = GetBaseBounds();
+        bool alongZ = bounds.size.z >= bounds.size.x;
+        GetGridAlignedRange(alongZ ? bounds.center.z : bounds.center.x,
+            !alongZ, out float min, out float max);
         int best = -1;
         float bestDistance = float.MaxValue;
-        for (int i = 0; i <= Mathf.Max(1, slotCount) - span; i++)
+        for (int i = 0; i <= count - span; i++)
         {
             if (requireAvailable && !IsSlotRangeAvailable(i, span)) continue;
-            float distance = (GetSlotCenter(i, span) - worldPoint).sqrMagnitude;
+            Vector3 center = new Vector3(bounds.center.x, bounds.max.y, bounds.center.z);
+            float along = Mathf.Lerp(min, max, (i + span * 0.5f) / count);
+            if (alongZ) center.z = along;
+            else center.x = along;
+            float distance = (center - worldPoint).sqrMagnitude;
             if (distance >= bestDistance) continue;
             bestDistance = distance;
             best = i;
@@ -1213,7 +1225,11 @@ public class CounterSurface : MonoBehaviour
 
     void CleanupOccupants()
     {
-        occupants.RemoveAll(item => item == null || item.surface != this);
+        for (int i = occupants.Count - 1; i >= 0; i--)
+        {
+            CounterMountedItem item = occupants[i];
+            if (item == null || item.surface != this) occupants.RemoveAt(i);
+        }
     }
 
     void BuildGridVisual()
