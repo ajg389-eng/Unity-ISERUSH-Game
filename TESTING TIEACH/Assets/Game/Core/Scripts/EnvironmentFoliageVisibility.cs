@@ -20,7 +20,6 @@ public class EnvironmentFoliageVisibility : MonoBehaviour
 
     void Start()
     {
-        QualitySettings.shadowDistance = Mathf.Max(QualitySettings.shadowDistance, 180f);
         ApplyTerrainTreeDistances();
         BrightenFoliageRenderers();
     }
@@ -32,11 +31,11 @@ public class EnvironmentFoliageVisibility : MonoBehaviour
         {
             Terrain terrain = terrains[i];
             if (terrain == null) return;
-            terrain.treeBillboardDistance = 5000f;
-            terrain.treeCrossFadeLength = 0f;
-            terrain.treeMaximumFullLODCount = 400;
-            terrain.treeDistance = 5000f;
-            terrain.detailObjectDistance = Mathf.Max(terrain.detailObjectDistance, 200f);
+            terrain.treeBillboardDistance = 100f;
+            terrain.treeCrossFadeLength = 10f;
+            terrain.treeMaximumFullLODCount = 100;
+            terrain.treeDistance = 1000f;
+            terrain.detailObjectDistance = 80f;
         }
     }
 
@@ -49,7 +48,7 @@ public class EnvironmentFoliageVisibility : MonoBehaviour
             if (renderer == null || !IsFoliage(renderer)) continue;
 
             renderer.receiveShadows = false;
-            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.lightProbeUsage = LightProbeUsage.Off;
             renderer.allowOcclusionWhenDynamic = false;
         }

@@ -27,13 +27,22 @@ public sealed class StoreAppearanceController : MonoBehaviour
 
     readonly Dictionary<Renderer, OriginalLook> originals = new Dictionary<Renderer, OriginalLook>();
     readonly Dictionary<Renderer, MeshRenderer> tintOverlays = new Dictionary<Renderer, MeshRenderer>();
+    readonly Dictionary<Renderer, Material> overlayMaterials = new Dictionary<Renderer, Material>();
+    readonly HashSet<Renderer> overlayRenderers = new HashSet<Renderer>();
+    readonly List<Renderer> destroyedRendererBuffer = new List<Renderer>();
     readonly List<Texture2D> wallTextures = new List<Texture2D>();
     readonly List<Texture2D> floorTextures = new List<Texture2D>();
     readonly List<Texture2D> roofTextures = new List<Texture2D>();
+    readonly List<Renderer> rendererBuffer = new List<Renderer>();
+    readonly List<Renderer> signatureRenderers = new List<Renderer>();
+    const float RendererCheckInterval = 1f;
     MaterialPropertyBlock block;
     GridManager grid;
+    Transform expandedWallsRoot;
     int lastRendererSignature = -1;
     bool refreshQueued = true;
+    int queuedRefreshFrame;
+    float nextRendererCheck;
 
     public static readonly string[] TintNames = { "Original", "Cream", "Warm", "Sage", "Blue", "Slate" };
     public static readonly Color[] TintColors =
@@ -60,30 +69,58 @@ public sealed class StoreAppearanceController : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
         block = new MaterialPropertyBlock();
-        grid = GridManager.Instance != null ? GridManager.Instance : FindFirstObjectByType<GridManager>();
+        BindGrid();
         LoadTextureLibraries();
-        if (grid != null) grid.GridChanged += QueueRefresh;
     }
 
-    void Start() => ApplyAll();
+    void Start() => RefreshNow();
 
     void OnDestroy()
     {
         if (grid != null) grid.GridChanged -= QueueRefresh;
         if (Instance == this) Instance = null;
-        foreach (var overlay in tintOverlays.Values)
-            if (overlay != null && overlay.sharedMaterial != null)
-                Destroy(overlay.sharedMaterial);
+        foreach (Material material in overlayMaterials.Values)
+            if (material != null) Destroy(material);
+        overlayMaterials.Clear();
         tintOverlays.Clear();
+        overlayRenderers.Clear();
+        originals.Clear();
     }
 
     void LateUpdate()
     {
+        if (refreshQueued)
+        {
+            // Procedural walls finish their rebuild in LateUpdate, after the
+            // grid event. Apply the appearance on the following frame.
+            if (Time.frameCount >= queuedRefreshFrame) RefreshNow();
+            return;
+        }
+        if (Time.unscaledTime < nextRendererCheck) return;
+        nextRendererCheck = Time.unscaledTime + RendererCheckInterval;
+        PruneDestroyedRenderers();
+
+        // Keep a recovery check for scene/load changes that bypass GridChanged.
+        // Idle frames do not traverse the building or allocate renderer arrays.
         int signature = CalculateRendererSignature();
-        if (!refreshQueued && signature == lastRendererSignature) return;
-        refreshQueued = false;
-        lastRendererSignature = signature;
-        ApplyAll();
+        if (signature != lastRendererSignature) RefreshNow();
+    }
+
+    void BindGrid()
+    {
+        if (grid != null) return;
+        grid = GridManager.Instance != null ? GridManager.Instance : FindFirstObjectByType<GridManager>();
+        if (grid != null) grid.GridChanged += QueueRefresh;
+    }
+
+    Transform GetExpandedWallsRoot()
+    {
+        if (expandedWallsRoot == null)
+        {
+            var root = GameObject.Find("KitchenExpandWalls");
+            if (root != null) expandedWallsRoot = root.transform;
+        }
+        return expandedWallsRoot;
     }
 
     void LoadTextureLibraries()
@@ -170,12 +207,24 @@ public sealed class StoreAppearanceController : MonoBehaviour
     }
 
     static Color ValidTint(Color color) => color.a <= 0f ? Color.white : new Color(color.r, color.g, color.b, 1f);
-    public void QueueRefresh() => refreshQueued = true;
-    public void RefreshNow() { refreshQueued = false; ApplyAll(); }
+    public void QueueRefresh()
+    {
+        refreshQueued = true;
+        queuedRefreshFrame = Time.frameCount + 1;
+    }
+
+    public void RefreshNow()
+    {
+        refreshQueued = false;
+        PruneDestroyedRenderers();
+        ApplyAll();
+        lastRendererSignature = CalculateRendererSignature();
+        nextRendererCheck = Time.unscaledTime + RendererCheckInterval;
+    }
 
     void ApplyAll()
     {
-        if (grid == null) grid = GridManager.Instance != null ? GridManager.Instance : FindFirstObjectByType<GridManager>();
+        BindGrid();
         if (grid == null) return;
 
         Texture floorTexture = GetTexture(floorTextures, FloorTextureIndex);
@@ -209,9 +258,10 @@ public sealed class StoreAppearanceController : MonoBehaviour
         ApplyNamed("Wall_East", tint, texture);
         ApplyNamed("Wall_West", tint, texture);
 
-        var root = GameObject.Find("KitchenExpandWalls");
+        var root = GetExpandedWallsRoot();
         if (root == null) return;
-        foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+        root.GetComponentsInChildren(true, rendererBuffer);
+        foreach (var renderer in rendererBuffer)
         {
             if (renderer.GetComponentInParent<SimsBuildingRoof>() != null) continue;
             if (renderer.transform.name.IndexOf("Window", System.StringComparison.OrdinalIgnoreCase) >= 0) continue;
@@ -221,8 +271,8 @@ public sealed class StoreAppearanceController : MonoBehaviour
 
     void ApplyRoof(Color tint, Texture texture)
     {
-        var root = GameObject.Find("KitchenExpandWalls");
-        var roof = root != null ? root.transform.Find("SimsRoof") : null;
+        var root = GetExpandedWallsRoot();
+        var roof = root != null ? root.Find("SimsRoof") : null;
         ApplyToTransform(roof, tint, texture);
     }
 
@@ -235,7 +285,8 @@ public sealed class StoreAppearanceController : MonoBehaviour
     void ApplyToTransform(Transform target, Color tint, Texture texture)
     {
         if (target == null) return;
-        foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+        target.GetComponentsInChildren(true, rendererBuffer);
+        foreach (var renderer in rendererBuffer)
             ApplyToRenderer(renderer, tint, texture);
     }
 
@@ -295,19 +346,28 @@ public sealed class StoreAppearanceController : MonoBehaviour
         {
             Shader shader = Shader.Find("ISE Rush/Surface Tint Multiply");
             if (shader == null) return;
+            overlayRenderers.Remove(overlay);
             var overlayObject = new GameObject("StoreAppearanceTint", typeof(MeshFilter), typeof(MeshRenderer));
             overlayObject.transform.SetParent(source.transform, false);
             overlayObject.layer = source.gameObject.layer;
             overlayObject.GetComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
             overlay = overlayObject.GetComponent<MeshRenderer>();
-            overlay.sharedMaterial = new Material(shader)
+            // A destroyed renderer does not destroy its runtime Material.
+            // Keep ownership separately so geometry rebuilds can release it.
+            if (overlayMaterials.TryGetValue(source, out Material previousMaterial)
+                && previousMaterial != null)
+                Destroy(previousMaterial);
+            Material overlayMaterial = new Material(shader)
             {
                 name = source.name + " Tint (Runtime)",
                 hideFlags = HideFlags.HideAndDontSave
             };
+            overlay.sharedMaterial = overlayMaterial;
+            overlayMaterials[source] = overlayMaterial;
             overlay.shadowCastingMode = ShadowCastingMode.Off;
             overlay.receiveShadows = false;
             tintOverlays[source] = overlay;
+            overlayRenderers.Add(overlay);
         }
 
         overlay.gameObject.SetActive(source.enabled);
@@ -353,12 +413,62 @@ public sealed class StoreAppearanceController : MonoBehaviour
     static Color Multiply(Color a, Color b) => new Color(
         Mathf.Clamp01(a.r * b.r), Mathf.Clamp01(a.g * b.g), Mathf.Clamp01(a.b * b.b), a.a);
 
+    void PruneDestroyedRenderers()
+    {
+        destroyedRendererBuffer.Clear();
+        foreach (Renderer renderer in originals.Keys)
+            if (renderer == null) destroyedRendererBuffer.Add(renderer);
+        foreach (Renderer renderer in destroyedRendererBuffer)
+            originals.Remove(renderer);
+
+        destroyedRendererBuffer.Clear();
+        foreach (var entry in tintOverlays)
+            if (entry.Key == null || entry.Value == null)
+                destroyedRendererBuffer.Add(entry.Key);
+        foreach (Renderer renderer in destroyedRendererBuffer)
+        {
+            if (tintOverlays.TryGetValue(renderer, out MeshRenderer overlay))
+            {
+                overlayRenderers.Remove(overlay);
+                if (overlay != null) Destroy(overlay.gameObject);
+            }
+            tintOverlays.Remove(renderer);
+            if (overlayMaterials.TryGetValue(renderer, out Material material) && material != null)
+                Destroy(material);
+            overlayMaterials.Remove(renderer);
+        }
+        destroyedRendererBuffer.Clear();
+    }
+
     int CalculateRendererSignature()
     {
-        int count = 0;
-        var walls = GameObject.Find("KitchenExpandWalls");
-        if (walls != null) count += walls.GetComponentsInChildren<Renderer>(true).Length * 17;
-        if (grid != null && grid.floor != null) count += grid.floor.GetComponentsInChildren<Renderer>(true).Length * 31;
-        return count;
+        BindGrid();
+        int signature = GetRendererSignature(GetExpandedWallsRoot());
+        if (grid != null)
+        {
+            unchecked
+            {
+                signature = signature * 31 + GetRendererSignature(grid.floor);
+                signature = signature * 31 + GetRendererSignature(grid.customerFloor);
+            }
+        }
+        return signature;
+    }
+
+    int GetRendererSignature(Transform root)
+    {
+        if (root == null) return 0;
+        root.GetComponentsInChildren(true, signatureRenderers);
+        int signature = root.GetInstanceID();
+        unchecked
+        {
+            foreach (Renderer renderer in signatureRenderers)
+            {
+                // Appearance overlays are generated by ApplyAll itself.
+                if (renderer == null || overlayRenderers.Contains(renderer)) continue;
+                signature = signature * 31 + renderer.GetInstanceID();
+            }
+        }
+        return signature;
     }
 }

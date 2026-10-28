@@ -42,6 +42,8 @@ public class WorkersUI : MonoBehaviour
     float nextSystemEfficiencyRefresh;
     Button flowExpandButton;
     bool displayedShiftInProgress;
+    bool hasDisplayedEmployeeList;
+    int displayedEmployeeListSignature;
     TextMeshProUGUI flowExpandArrowLabel;
     TextMeshProUGUI flowHeaderLabel;
     bool flowExpanded = true;
@@ -1600,6 +1602,7 @@ public class WorkersUI : MonoBehaviour
 
     public void Refresh()
     {
+        bool workerCardsRebuilt = false;
         try
         {
             EnsureRefs();
@@ -1658,28 +1661,57 @@ public class WorkersUI : MonoBehaviour
                 hireButton.interactable = canHire;
 
             if (cardContainer == null) return;
-            for (int i = cardContainer.childCount - 1; i >= 0; i--)
-                Destroy(cardContainer.GetChild(i).gameObject);
-
-            if (production.employees == null) return;
-            foreach (var emp in production.employees)
+            int employeeListSignature = GetEmployeeListSignature(production.employees);
+            if (!hasDisplayedEmployeeList || employeeListSignature != displayedEmployeeListSignature)
             {
-                if (emp == null) continue;
-                var card = CreateCard();
-                if (card != null)
+                for (int i = cardContainer.childCount - 1; i >= 0; i--)
+                    Destroy(cardContainer.GetChild(i).gameObject);
+
+                if (production.employees != null)
                 {
-                    card.gameObject.name = "WorkerCard_" + emp.GetInstanceID();
-                    card.Bind(emp);
-                    card.transform.SetAsLastSibling();
+                    foreach (var emp in production.employees)
+                    {
+                        if (emp == null) continue;
+                        var card = CreateCard();
+                        if (card != null)
+                        {
+                            card.gameObject.name = "WorkerCard_" + emp.GetInstanceID();
+                            card.Bind(emp);
+                            card.transform.SetAsLastSibling();
+                        }
+                    }
                 }
+
+                displayedEmployeeListSignature = employeeListSignature;
+                hasDisplayedEmployeeList = true;
+                workerCardsRebuilt = true;
             }
 
-            if (cardContainer is RectTransform containerRect)
+            if (workerCardsRebuilt && cardContainer is RectTransform containerRect)
                 LayoutRebuilder.ForceRebuildLayoutImmediate(containerRect);
         }
         finally
         {
-            GameUITheme.ApplyTo(transform);
+            if (workerCardsRebuilt)
+                GameUITheme.ApplyTo(transform);
+        }
+    }
+
+    static int GetEmployeeListSignature(IList<KitchenEmployee> employees)
+    {
+        unchecked
+        {
+            int signature = 17;
+            if (employees == null) return signature * 31;
+            signature = signature * 31 + employees.Count;
+            for (int i = 0; i < employees.Count; i++)
+            {
+                KitchenEmployee employee = employees[i];
+                signature = signature * 31 + (employee != null ? employee.GetInstanceID() : 0);
+                signature = signature * 31 + (employee != null && employee.employeeName != null
+                    ? employee.employeeName.GetHashCode() : 0);
+            }
+            return signature;
         }
     }
 

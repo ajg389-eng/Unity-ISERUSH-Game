@@ -11,6 +11,7 @@ public class RoadStreetlights : MonoBehaviour
     readonly List<Light> lights = new List<Light>();
     Material glowMaterial;
     GameObject lampRoot;
+    float appliedStrength = -1f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -119,10 +120,13 @@ public class RoadStreetlights : MonoBehaviour
         float daylight = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(6, 9, hour))
             * (1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(17, 20, hour)));
         float strength = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(0.8f, 0.25f, daylight));
+        if (Mathf.Abs(strength - appliedStrength) < 0.002f) return;
+        appliedStrength = strength;
         foreach (Light light in lights)
         {
             if (light == null) continue;
-            light.enabled = strength > 0.01f;
+            bool lightEnabled = strength > 0.01f;
+            if (light.enabled != lightEnabled) light.enabled = lightEnabled;
             light.intensity = 8f * strength;
         }
         if (glowMaterial != null)

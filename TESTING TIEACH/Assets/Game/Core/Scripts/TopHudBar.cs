@@ -23,6 +23,9 @@ public class TopHudBar : MonoBehaviour
     [Header("Layout")]
     public float barHeight = 56f;
 
+    TextMeshProUGUI displayedMoneyText;
+    int displayedMoney;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
     {
@@ -45,7 +48,13 @@ public class TopHudBar : MonoBehaviour
         if (money == null)
             money = FindFirstObjectByType<MoneyManager>();
         if (money != null && moneyText != null)
-            moneyText.text = "$" + money.CurrentMoney;
+        {
+            int amount = money.CurrentMoney;
+            if (displayedMoneyText == moneyText && displayedMoney == amount) return;
+            moneyText.text = "$" + amount;
+            displayedMoneyText = moneyText;
+            displayedMoney = amount;
+        }
     }
 
     public void BindReferences()

@@ -208,11 +208,8 @@ public class PlayerCameraController : MonoBehaviour
 
     void Zoom()
     {
-        if (ShouldBlockZoom())
-            return;
-
         float scroll = Input.mouseScrollDelta.y * 0.1f;
-        if (Mathf.Abs(scroll) > 0.01f)
+        if (Mathf.Abs(scroll) > 0.01f && !ShouldBlockZoom())
         {
             targetZoomY -= scroll * zoomSpeed;
             targetZoomY = Mathf.Clamp(targetZoomY, minY, maxY);
@@ -308,6 +305,8 @@ public class PlayerCameraController : MonoBehaviour
     static float InteractionDeltaTime => Time.unscaledDeltaTime;
 
     static readonly List<RaycastResult> ZoomRaycastHits = new List<RaycastResult>();
+    static EventSystem zoomPointerEventSystem;
+    static PointerEventData zoomPointer;
 
     static bool ShouldBlockZoom()
     {
@@ -316,9 +315,15 @@ public class PlayerCameraController : MonoBehaviour
         var es = EventSystem.current;
         if (es == null) return false;
 
-        var pointer = new PointerEventData(es) { position = Input.mousePosition };
+        if (zoomPointer == null || zoomPointerEventSystem != es)
+        {
+            zoomPointerEventSystem = es;
+            zoomPointer = new PointerEventData(es);
+        }
+        zoomPointer.Reset();
+        zoomPointer.position = Input.mousePosition;
         ZoomRaycastHits.Clear();
-        es.RaycastAll(pointer, ZoomRaycastHits);
+        es.RaycastAll(zoomPointer, ZoomRaycastHits);
 
         for (int i = 0; i < ZoomRaycastHits.Count; i++)
         {

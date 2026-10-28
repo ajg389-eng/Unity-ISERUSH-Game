@@ -6,9 +6,16 @@ public class MoneyUI : MonoBehaviour
     public MoneyManager money;
     public TextMeshProUGUI moneyText;
 
+    TextMeshProUGUI displayedMoneyText;
+    int displayedMoney;
+
     void Update()
     {
         if (!money || !moneyText) return;
-        moneyText.text = "$" + money.CurrentMoney.ToString();
+        int amount = money.CurrentMoney;
+        if (displayedMoneyText == moneyText && displayedMoney == amount) return;
+        moneyText.text = "$" + amount;
+        displayedMoneyText = moneyText;
+        displayedMoney = amount;
     }
 }

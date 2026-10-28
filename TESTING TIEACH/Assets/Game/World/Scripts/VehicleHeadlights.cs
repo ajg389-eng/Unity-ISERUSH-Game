@@ -6,6 +6,7 @@ public class VehicleHeadlights : MonoBehaviour
 {
     Light[] lamps;
     Material lensMaterial;
+    float appliedStrength = -1f;
     void Start()
     {
         var renderers = GetComponentsInChildren<Renderer>();
@@ -56,7 +57,13 @@ public class VehicleHeadlights : MonoBehaviour
         float hour=GameTimeManager.Instance!=null?GameTimeManager.Instance.CurrentMinutes/60f:12f;
         float darkness=1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(6,9,hour))*(1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(17,20,hour)));
         float strength=Mathf.SmoothStep(0,1,Mathf.InverseLerp(0.2f,0.75f,darkness));
-        foreach(var lamp in lamps) { lamp.enabled=strength>0.01f; lamp.intensity=12*strength; }
+        if (Mathf.Abs(strength-appliedStrength)<0.002f) return;
+        appliedStrength=strength;
+        foreach(var lamp in lamps) {
+            bool lightEnabled=strength>0.01f;
+            if (lamp.enabled!=lightEnabled) lamp.enabled=lightEnabled;
+            lamp.intensity=12*strength;
+        }
         if(lensMaterial!=null) lensMaterial.SetColor("_EmissionColor",new Color(1,0.94f,0.78f)*5*strength);
     }
     void OnDestroy() { if(lensMaterial!=null) Destroy(lensMaterial); }

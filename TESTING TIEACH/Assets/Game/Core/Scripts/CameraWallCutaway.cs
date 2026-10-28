@@ -25,7 +25,12 @@ public class CameraWallCutaway : MonoBehaviour
     const float CameraMoveThresholdSqr = 0.0001f;
     const float FocusMoveThresholdSqr = 0.0001f;
     const float CameraRotationThreshold = 0.1f;
-    const float IdleRefreshInterval = 0.05f;
+    // Camera movement can make this system evaluate every registered wall section.
+    // Keep those scans to 10 Hz; CameraOcclusionWall still interpolates each fade
+    // every frame, so the visual transition remains smooth without a full scan
+    // on every second rendered frame.
+    const float IdleRefreshInterval = 0.1f;
+    const float StationaryRefreshInterval = 1f;
 
     const string PrefLockNorth = "PauseMenu.LockWall.North";
     const string PrefLockEast = "PauseMenu.LockWall.East";
@@ -76,6 +81,7 @@ public class CameraWallCutaway : MonoBehaviour
     float cachedAspect;
     bool cachedOrthographic;
     float nextIdleRefresh;
+    float nextStationaryRefresh;
 
     void Awake()
     {
@@ -137,6 +143,10 @@ public class CameraWallCutaway : MonoBehaviour
             if (targetCamera == null || !targetCamera.isActiveAndEnabled) return;
         }
 
+        if (hasCachedView && !wallTargetsDirty && Time.unscaledTime < nextIdleRefresh)
+            return;
+        nextIdleRefresh = Time.unscaledTime + IdleRefreshInterval;
+
         Vector3 focus = GetFocus();
         Transform cameraTransform = targetCamera.transform;
         Vector3 cameraPosition = cameraTransform.position;
@@ -150,7 +160,7 @@ public class CameraWallCutaway : MonoBehaviour
             || !Mathf.Approximately(targetCamera.orthographicSize, cachedOrthographicSize)
             || !Mathf.Approximately(targetCamera.aspect, cachedAspect)
             || targetCamera.orthographic != cachedOrthographic
-            || Time.unscaledTime >= nextIdleRefresh;
+            || Time.unscaledTime >= nextStationaryRefresh;
         if (!viewChanged) return;
 
         hasCachedView = true;
@@ -163,7 +173,7 @@ public class CameraWallCutaway : MonoBehaviour
         cachedOrthographicSize = targetCamera.orthographicSize;
         cachedAspect = targetCamera.aspect;
         cachedOrthographic = targetCamera.orthographic;
-        nextIdleRefresh = Time.unscaledTime + IdleRefreshInterval;
+        nextStationaryRefresh = Time.unscaledTime + StationaryRefreshInterval;
 
         Vector3 viewTarget = GetViewTarget(focus);
         Vector3 cameraToTarget = viewTarget - cameraPosition;
@@ -189,10 +199,10 @@ public class CameraWallCutaway : MonoBehaviour
                 continue;
             }
 
-            float fadeAmount = GetFadeAmount(wall, focus, viewTarget, viewRay,
-                targetDistance, cameraToTarget);
-            if (IsOutwardLocked(wall.GetOutward(focus)))
-                fadeAmount = 0f;
+            Vector3 outward = wall.GetOutward(focus);
+            float fadeAmount = IsOutwardLocked(outward) ? 0f
+                : GetFadeAmount(wall, outward, focus, viewTarget, viewRay,
+                    targetDistance, cameraToTarget);
             wall.SetDuckTarget(fadeAmount);
         }
     }
@@ -208,7 +218,7 @@ public class CameraWallCutaway : MonoBehaviour
         return fallback;
     }
 
-    float GetFadeAmount(CameraOcclusionWall wall, Vector3 focus, Vector3 viewTarget,
+    float GetFadeAmount(CameraOcclusionWall wall, Vector3 outward, Vector3 focus, Vector3 viewTarget,
         Ray viewRay, float targetDistance, Vector3 cameraToTarget)
     {
         if (wall == null || targetDistance <= 0.01f)
@@ -231,7 +241,6 @@ public class CameraWallCutaway : MonoBehaviour
         // opaque even when it is near the focus or ray.
         Vector3 toCamera = viewRay.origin - bounds.center;
         toCamera.y = 0f;
-        Vector3 outward = wall.GetOutward(focus);
         outward.y = 0f;
         if (toCamera.sqrMagnitude < 0.0001f || outward.sqrMagnitude < 0.0001f)
             return 0f;

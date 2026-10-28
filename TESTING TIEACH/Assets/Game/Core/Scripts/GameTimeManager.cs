@@ -384,9 +384,14 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     Material originalSkybox;
     Material runtimeSkybox;
     GameTimeManager clock;
-    const float EnvironmentRefreshInterval = 5f;
+    const float SkyRefreshInterval = 0.1f;
+    const float EnvironmentRefreshInterval = 30f;
     float lastAppliedMinutes = float.MinValue;
+    float nextSkyRefresh;
     float nextEnvironmentRefresh;
+    Color lastEnvironmentSkyColor;
+    Color lastEnvironmentGroundColor;
+    float lastEnvironmentDaylight;
     Light daylightSource;
     float originalSunIntensity;
     Color originalSunColor;
@@ -444,7 +449,6 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
             originalSunRotation = daylightSource.transform.rotation;
             originalSunShadows = daylightSource.shadows;
             originalShadowStrength = daylightSource.shadowStrength;
-            daylightSource.shadows = LightShadows.Soft;
         }
         originalAmbientIntensity = RenderSettings.ambientIntensity;
         originalReflectionIntensity = RenderSettings.reflectionIntensity;
@@ -495,8 +499,10 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
     {
         if (runtimeSkybox == null || clock == null) return;
         float minutes = clock.CurrentMinutes;
-        if (!forceEnvironmentRefresh && Mathf.Abs(minutes - lastAppliedMinutes) < 0.1f)
+        if (!forceEnvironmentRefresh && (Time.unscaledTime < nextSkyRefresh
+            || Mathf.Abs(minutes - lastAppliedMinutes) < 0.1f))
             return;
+        nextSkyRefresh = Time.unscaledTime + SkyRefreshInterval;
 
         float hour = minutes / 60f;
         SkyPreset value;
@@ -553,11 +559,27 @@ public sealed class TimeOfDaySkyboxController : MonoBehaviour
         runtimeSkybox.SetFloat("_ConstellationIndex", (clock.CurrentDay - 1) % 3);
         lastAppliedMinutes = minutes;
 
-        if (forceEnvironmentRefresh || Time.unscaledTime >= nextEnvironmentRefresh)
+        // Ambient lighting is supplied explicitly above. Recapturing the sky
+        // cubemap every five seconds did unnecessary GPU work even through the
+        // long, unchanged daytime preset. Refresh reflections only after a
+        // noticeable palette change, with a real-time limit during fast-forward.
+        bool environmentChanged = Mathf.Abs(daylight - lastEnvironmentDaylight) >= 0.1f
+            || MaxColorDifference(value.top, lastEnvironmentSkyColor) >= 0.08f
+            || MaxColorDifference(value.bottom, lastEnvironmentGroundColor) >= 0.08f;
+        if (forceEnvironmentRefresh
+            || (environmentChanged && Time.unscaledTime >= nextEnvironmentRefresh))
         {
             DynamicGI.UpdateEnvironment();
             nextEnvironmentRefresh = Time.unscaledTime + EnvironmentRefreshInterval;
+            lastEnvironmentDaylight = daylight;
+            lastEnvironmentSkyColor = value.top;
+            lastEnvironmentGroundColor = value.bottom;
         }
+    }
+
+    static float MaxColorDifference(Color a, Color b)
+    {
+        return Mathf.Max(Mathf.Abs(a.r - b.r), Mathf.Abs(a.g - b.g), Mathf.Abs(a.b - b.b));
     }
 
     void ApplyPostProcessing(float daylight, float sunsetWarmth)

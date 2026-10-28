@@ -37,6 +37,9 @@ public class ManagementScreenController : MonoBehaviour
     MainHudTabs cachedMainHudTabs;
     InventoryUI cachedInventoryUI;
     Canvas cachedCanvas;
+    bool businessContentAreaAligned;
+    int alignedScreenWidth;
+    int alignedScreenHeight;
 
     void Start()
     {
@@ -241,6 +244,9 @@ public class ManagementScreenController : MonoBehaviour
         RectTransform tabBar = FindDeep(contentBox, "TabBar") as RectTransform;
         RectTransform contentArea = FindDeep(contentBox, "TabContentArea") as RectTransform;
         if (contentRect == null || tabBar == null || contentArea == null) return;
+        if (businessContentAreaAligned && alignedScreenWidth == Screen.width
+            && alignedScreenHeight == Screen.height)
+            return;
 
         Canvas.ForceUpdateCanvases();
         Vector3[] corners = new Vector3[4];
@@ -252,6 +258,9 @@ public class ManagementScreenController : MonoBehaviour
         contentArea.anchorMax = Vector2.one;
         contentArea.offsetMin = new Vector2(0f, 20f);
         contentArea.offsetMax = new Vector2(0f, -topInset);
+        businessContentAreaAligned = true;
+        alignedScreenWidth = Screen.width;
+        alignedScreenHeight = Screen.height;
     }
 
     void EnsureBusinessTabs()
@@ -424,6 +433,11 @@ public class ManagementScreenController : MonoBehaviour
 
     public void Open()
     {
+        Open(0);
+    }
+
+    void Open(int initialTabIndex)
+    {
         if (managementPanel == null) return;
 
         // Prepare hidden so Unity never presents the previous tab or a partially
@@ -445,13 +459,12 @@ public class ManagementScreenController : MonoBehaviour
 
         if (openButton != null)
             openButton.gameObject.SetActive(false);
-        SelectTab(0);
+        SelectTab(initialTabIndex);
         isOpen = true;
 
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);
 
-        GameUITheme.ApplyTo(managementPanel.transform);
         managementPanel.SetActive(true);
         Canvas.ForceUpdateCanvases();
         AlignBusinessContentArea();
@@ -512,23 +525,28 @@ public class ManagementScreenController : MonoBehaviour
     /// <summary>Re-open management after world flow capture, preferably on the Workers tab.</summary>
     public void ResumeAfterWorldCapture()
     {
-        Open();
         OpenWorkersTab();
     }
 
     public void OpenWorkersTab()
     {
-        if (!isOpen)
-            Open();
-        if (tabPanels == null) return;
+        if (tabPanels == null)
+        {
+            if (!isOpen) Open();
+            return;
+        }
         for (int i = 0; i < tabPanels.Length; i++)
         {
             if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null)
             {
-                SelectTab(i);
+                if (!isOpen)
+                    Open(i);
+                else
+                    SelectTab(i);
                 return;
             }
         }
+        if (!isOpen) Open();
     }
 
     public void OpenAnalyticsTab()
@@ -563,16 +581,17 @@ public class ManagementScreenController : MonoBehaviour
 
             bool workers = i < tabPanels.Length && tabPanels[i] != null
                 && tabPanels[i].GetComponentInChildren<WorkersUI>(true) != null;
-            tabButtons[i].gameObject.SetActive(true);
+            if (!tabButtons[i].gameObject.activeSelf)
+                tabButtons[i].gameObject.SetActive(true);
 
             var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
-            if (label != null)
-                label.text = workers ? "Workers"
-                    : tabButtons[i].gameObject.name == "Tab_Menu" ? "Menu" : "Supply";
-            tabButtons[i].gameObject.SetActive(true);
+            string desiredLabel = workers ? "Workers"
+                : tabButtons[i].gameObject.name == "Tab_Menu" ? "Menu" : "Supply";
+            if (label != null && label.text != desiredLabel)
+                label.text = desiredLabel;
         }
 
-        if (tabBar != null)
+        if (tabBar != null && !tabBar.gameObject.activeSelf)
             tabBar.gameObject.SetActive(true);
     }
 

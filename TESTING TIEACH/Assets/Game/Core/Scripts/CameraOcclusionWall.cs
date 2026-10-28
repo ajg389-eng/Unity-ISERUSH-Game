@@ -35,11 +35,13 @@ public class CameraOcclusionWall : MonoBehaviour
     Material[][] originalMaterials;
     Material[][] cutawayMaterials;
     bool[] originalRendererEnabled;
+    bool[] originalForceRenderingOff;
     bool[] brickRenderers;
     readonly List<Material> cutawayMaterialInstances = new List<Material>();
     readonly List<CutawayCap> cutawayCaps = new List<CutawayCap>();
     bool usingCutawayMaterials;
     bool usingOpacityMaterials;
+    bool fullyHidden;
     bool cutsceneForceVisible;
     Material[][] opacityMaterials;
     readonly List<Material> opacityMaterialInstances = new List<Material>();
@@ -50,6 +52,8 @@ public class CameraOcclusionWall : MonoBehaviour
     bool rendererCacheDirty = true;
     float lastAppliedOpacity = -1f;
     static Material brickCutawayTemplate;
+    static Shader opacityShader;
+    static Shader triplanarOpacityShader;
     Material capMaterial;
 
     sealed class CutawayCap
@@ -78,6 +82,15 @@ public class CameraOcclusionWall : MonoBehaviour
     void Awake()
     {
         CacheRenderers();
+    }
+
+    void Start()
+    {
+        // Create the fade variants with the wall, rather than on the first frame
+        // the player looks toward it. Containers never fade their own renderers.
+        if (sectionContainer) return;
+        EnsureRendererCacheCurrent();
+        EnsureOpacityMaterials();
     }
 
     void OnTransformChildrenChanged()
@@ -226,6 +239,12 @@ public class CameraOcclusionWall : MonoBehaviour
             return;
         }
 
+        // Alpha zero still submits and shades transparent wall geometry. Keep
+        // authored enabled states intact while omitting fully faded sections.
+        bool hide = amount >= 0.995f;
+        SetFullyHidden(hide);
+        if (hide) return;
+
         EnsureOpacityMaterials();
         if (renderers == null || opacityMaterials == null) return;
 
@@ -239,10 +258,20 @@ public class CameraOcclusionWall : MonoBehaviour
             usingOpacityMaterials = true;
         }
 
-        float opacity = amount >= 0.995f
-            ? 0f
-            : Mathf.Lerp(1f, Mathf.Clamp01(occludedAlpha), amount);
+        float opacity = Mathf.Lerp(1f, Mathf.Clamp01(occludedAlpha), amount);
         SetOpacity(opacity);
+    }
+
+    void SetFullyHidden(bool hidden)
+    {
+        if (fullyHidden == hidden) return;
+        fullyHidden = hidden;
+        if (renderers == null || originalForceRenderingOff == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] == null) continue;
+            renderers[i].forceRenderingOff = hidden || originalForceRenderingOff[i];
+        }
     }
 
     void CacheRenderers()
@@ -254,6 +283,7 @@ public class CameraOcclusionWall : MonoBehaviour
         rendererCacheDirty = false;
         originalMaterials = new Material[renderers.Length][];
         originalRendererEnabled = new bool[renderers.Length];
+        originalForceRenderingOff = new bool[renderers.Length];
         brickRenderers = new bool[renderers.Length];
         bool foundBounds = false;
         Bounds combined = default;
@@ -263,6 +293,7 @@ public class CameraOcclusionWall : MonoBehaviour
             Renderer renderer = renderers[i];
             originalMaterials[i] = renderer != null ? renderer.sharedMaterials : new Material[0];
             originalRendererEnabled[i] = renderer != null && renderer.enabled;
+            originalForceRenderingOff[i] = renderer != null && renderer.forceRenderingOff;
             brickRenderers[i] = HasBrickMaterial(originalMaterials[i]);
             if (renderer == null || !renderer.enabled) continue;
             if (renderer.GetComponentInParent<Canvas>() != null) continue;
@@ -320,11 +351,16 @@ public class CameraOcclusionWall : MonoBehaviour
     {
         if (opacityMaterials != null || renderers == null) return;
 
-        Shader fadeShader = Shader.Find("Universal Render Pipeline/Lit");
-        Shader brickFadeShader = Shader.Find("ISE Rush/Camera Cutaway Triplanar");
+        if (opacityShader == null)
+            opacityShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (triplanarOpacityShader == null)
+            triplanarOpacityShader = Shader.Find("ISE Rush/Camera Cutaway Triplanar");
+        Shader fadeShader = opacityShader;
+        Shader brickFadeShader = triplanarOpacityShader;
         if (fadeShader == null && brickFadeShader == null) return;
 
         opacityMaterials = new Material[renderers.Length][];
+        var variants = new Dictionary<Material, Material>();
         for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
         {
             Material[] originals = originalMaterials[rendererIndex];
@@ -333,6 +369,11 @@ public class CameraOcclusionWall : MonoBehaviour
             {
                 Material original = originals[materialIndex];
                 if (original == null) continue;
+                if (variants.TryGetValue(original, out Material existing))
+                {
+                    opacityMaterials[rendererIndex][materialIndex] = existing;
+                    continue;
+                }
 
                 Material fade;
                 bool useTriplanarFade = brickFadeShader != null
@@ -357,6 +398,7 @@ public class CameraOcclusionWall : MonoBehaviour
                 fade.name = original.name + " (Camera Fade)";
                 fade.hideFlags = HideFlags.HideAndDontSave;
                 CopyFadeMaterialLook(original, fade);
+                variants.Add(original, fade);
                 opacityMaterials[rendererIndex][materialIndex] = fade;
                 opacityMaterialInstances.Add(fade);
             }
@@ -623,8 +665,9 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void RestoreOriginalRendering()
     {
-        if (!usingCutawayMaterials && !usingOpacityMaterials)
+        if (!usingCutawayMaterials && !usingOpacityMaterials && !fullyHidden)
             return;
+        SetFullyHidden(false);
         HideCutawayCaps();
         if (renderers == null) return;
         int count = Mathf.Min(renderers.Length, originalRendererEnabled != null

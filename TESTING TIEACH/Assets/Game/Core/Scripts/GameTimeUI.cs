@@ -22,6 +22,17 @@ public class GameTimeUI : MonoBehaviour
     Image playHighlight;
     Image fastForwardRateHighlight;
     Image fastHighlight;
+    TopHudBar cachedBar;
+    RectTransform cachedSpeedStrip;
+    bool displayStateValid;
+    int displayedDay;
+    int displayedMinute;
+    GameTimeManager.SpeedMode displayedSpeed;
+    float displayedSelectedRate;
+    float displayedActiveRate;
+    float displayedSuperFastRate;
+    bool displayedShiftOver;
+    bool displayedTutorial;
 
     void Awake()
     {
@@ -40,6 +51,7 @@ public class GameTimeUI : MonoBehaviour
 
     void OnEnable()
     {
+        displayStateValid = false;
         if (timeManager != null)
         {
             timeManager.OnTimeChanged += Refresh;
@@ -79,11 +91,12 @@ public class GameTimeUI : MonoBehaviour
                 Refresh();
             }
         }
-        ApplyClockText();
+        Refresh();
     }
 
     void BindReferences()
     {
+        displayStateValid = false;
         if (dayText == null)
             dayText = FindComponentByNames<TextMeshProUGUI>("DayText", "Day");
 
@@ -267,7 +280,9 @@ public class GameTimeUI : MonoBehaviour
         if (leftover != null)
             Destroy(leftover.gameObject);
 
-        PositionSpeedStrip(strip.GetComponent<RectTransform>(), bar);
+        cachedBar = bar;
+        cachedSpeedStrip = strip.GetComponent<RectTransform>();
+        PositionSpeedStrip(cachedSpeedStrip, cachedBar);
     }
 
     static Button FindNamedButton(Transform root, string objectName)
@@ -282,6 +297,11 @@ public class GameTimeUI : MonoBehaviour
 
     void LateUpdate()
     {
+        if (cachedSpeedStrip != null)
+        {
+            PositionSpeedStrip(cachedSpeedStrip, cachedBar);
+            return;
+        }
         Transform host = transform.parent;
         var bar = GetComponentInParent<TopHudBar>();
         if (bar != null && bar.transform.parent != null)
@@ -291,16 +311,22 @@ public class GameTimeUI : MonoBehaviour
         if (strip == null && bar != null)
             strip = bar.transform.Find(SpeedStripName) as RectTransform;
         if (strip != null)
+        {
+            cachedBar = bar;
+            cachedSpeedStrip = strip;
             PositionSpeedStrip(strip, bar);
+        }
     }
 
     static void PositionSpeedStrip(RectTransform strip, TopHudBar bar)
     {
         if (strip == null) return;
-        strip.anchorMin = new Vector2(0.5f, 1f);
-        strip.anchorMax = new Vector2(0.5f, 1f);
-        strip.pivot = new Vector2(0.5f, 1f);
-        strip.sizeDelta = new Vector2(202f, 36f);
+        Vector2 topCenter = new Vector2(0.5f, 1f);
+        if (strip.anchorMin != topCenter) strip.anchorMin = topCenter;
+        if (strip.anchorMax != topCenter) strip.anchorMax = topCenter;
+        if (strip.pivot != topCenter) strip.pivot = topCenter;
+        Vector2 size = new Vector2(202f, 36f);
+        if (strip.sizeDelta != size) strip.sizeDelta = size;
 
         float y = -62f;
         if (bar != null)
@@ -308,7 +334,8 @@ public class GameTimeUI : MonoBehaviour
             var barRt = (RectTransform)bar.transform;
             y = barRt.anchoredPosition.y - barRt.rect.height - 6f;
         }
-        strip.anchoredPosition = new Vector2(0f, y);
+        Vector2 position = new Vector2(0f, y);
+        if (strip.anchoredPosition != position) strip.anchoredPosition = position;
     }
 
     void CacheButtonHighlights()
@@ -407,6 +434,28 @@ public class GameTimeUI : MonoBehaviour
     void Refresh()
     {
         if (timeManager == null) return;
+
+        int minute = Mathf.FloorToInt(timeManager.CurrentMinutes);
+        bool tutorial = OnboardingTutorial.BlocksProgression;
+        if (displayStateValid && displayedDay == timeManager.CurrentDay
+            && displayedMinute == minute && displayedSpeed == timeManager.CurrentSpeed
+            && displayedSelectedRate == timeManager.SelectedFastForwardRate
+            && displayedActiveRate == timeManager.CurrentFastForwardRate
+            && displayedSuperFastRate == timeManager.superFastTimeScale
+            && displayedShiftOver == timeManager.IsShiftOver && displayedTutorial == tutorial)
+            return;
+
+        // The clock event fires each simulation frame. Only format text and
+        // touch the HUD when a displayed value has actually changed.
+        displayStateValid = true;
+        displayedDay = timeManager.CurrentDay;
+        displayedMinute = minute;
+        displayedSpeed = timeManager.CurrentSpeed;
+        displayedSelectedRate = timeManager.SelectedFastForwardRate;
+        displayedActiveRate = timeManager.CurrentFastForwardRate;
+        displayedSuperFastRate = timeManager.superFastTimeScale;
+        displayedShiftOver = timeManager.IsShiftOver;
+        displayedTutorial = tutorial;
 
         if (dayText != null)
             dayText.text = timeManager.GetDayText();

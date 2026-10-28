@@ -32,6 +32,15 @@ public class MainHudTabs : MonoBehaviour
     Button inventoryTabButton;
     Button managementTabButton;
     Button businessTabButton;
+    InventoryUI cachedInventoryUI;
+    ManagementScreenController cachedManagementScreen;
+    bool visualStateKnown;
+    bool displayedInventoryOpen;
+    bool displayedManagementOpen;
+    bool sourceButtonsResolved;
+    Button inventorySourceButton;
+    Button managementSourceButton;
+    float nextPageControllerRefresh;
     bool built;
     PrimaryPage lastPage = PrimaryPage.Build;
 
@@ -88,7 +97,8 @@ public class MainHudTabs : MonoBehaviour
         RefreshVisuals();
         // Stay above full-screen overlays that use raycastTarget=false parents
         // but still have opaque children.
-        transform.SetAsLastSibling();
+        if (transform.parent != null && transform.GetSiblingIndex() != transform.parent.childCount - 1)
+            transform.SetAsLastSibling();
     }
 
     void Update()
@@ -116,6 +126,7 @@ public class MainHudTabs : MonoBehaviour
 
     public void Build(bool forceDefaultLayout = false)
     {
+        RefreshPageControllerReferences();
         var rt = (RectTransform)transform;
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayout(rt);
@@ -454,13 +465,17 @@ public class MainHudTabs : MonoBehaviour
 
     void HideSourceButtons()
     {
-        var inventorySource = FindInventoryButton();
-        var managementSource = FindManagementButton();
+        if (!sourceButtonsResolved)
+        {
+            inventorySourceButton = FindInventoryButton();
+            managementSourceButton = FindManagementButton();
+            sourceButtonsResolved = true;
+        }
 
-        if (inventorySource != null)
-            inventorySource.gameObject.SetActive(false);
-        if (managementSource != null)
-            managementSource.gameObject.SetActive(false);
+        if (inventorySourceButton != null && inventorySourceButton.gameObject.activeSelf)
+            inventorySourceButton.gameObject.SetActive(false);
+        if (managementSourceButton != null && managementSourceButton.gameObject.activeSelf)
+            managementSourceButton.gameObject.SetActive(false);
     }
 
     static void HideManagementPageTitle()
@@ -474,13 +489,32 @@ public class MainHudTabs : MonoBehaviour
 
     void RefreshVisuals()
     {
-        var inv = FindFirstObjectByType<InventoryUI>();
-        var mgmt = FindFirstObjectByType<ManagementScreenController>();
-        bool inventoryOpen = inv != null && inv.IsPanelOpen;
-        bool managementOpen = mgmt != null && mgmt.IsOpen;
+        RefreshPageControllerReferences();
+        bool inventoryOpen = cachedInventoryUI != null && cachedInventoryUI.IsPanelOpen;
+        bool managementOpen = cachedManagementScreen != null && cachedManagementScreen.IsOpen;
+
+        if (visualStateKnown && inventoryOpen == displayedInventoryOpen
+            && managementOpen == displayedManagementOpen)
+            return;
 
         HudTabColors.Apply(inventoryTabButton, inventoryOpen);
         HudTabColors.Apply(businessTabButton, managementOpen);
+        displayedInventoryOpen = inventoryOpen;
+        displayedManagementOpen = managementOpen;
+        visualStateKnown = true;
+    }
+
+    void RefreshPageControllerReferences()
+    {
+        if (cachedInventoryUI != null && cachedManagementScreen != null)
+            return;
+        if (Time.unscaledTime < nextPageControllerRefresh)
+            return;
+        nextPageControllerRefresh = Time.unscaledTime + 0.5f;
+        if (cachedInventoryUI == null)
+            cachedInventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (cachedManagementScreen == null)
+            cachedManagementScreen = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
     }
 
     static void SetTabLabel(Image tab, string value)

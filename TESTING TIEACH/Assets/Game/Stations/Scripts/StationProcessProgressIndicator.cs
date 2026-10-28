@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>Small world-space radial meter shown while a station is processing food.</summary>
@@ -11,6 +12,12 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
     Canvas canvas;
     UnityEngine.UI.Image fill;
     Camera cachedCamera;
+    readonly List<Renderer> stationRenderers = new List<Renderer>();
+    bool rendererCacheDirty = true;
+    float nextRendererRefresh;
+
+    void OnEnable() => rendererCacheDirty = true;
+    void OnTransformChildrenChanged() => rendererCacheDirty = true;
 
     public static StationProcessProgressIndicator Ensure(GameObject station)
     {
@@ -79,15 +86,22 @@ public sealed class StationProcessProgressIndicator : MonoBehaviour
 
     Vector3 FindWorldPosition()
     {
-        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0)
+        // Nested food displays can change without a direct-child callback.
+        // Reuse the list for a slower recovery scan while the meter is visible.
+        if (rendererCacheDirty || Time.unscaledTime >= nextRendererRefresh)
+        {
+            GetComponentsInChildren(true, stationRenderers);
+            rendererCacheDirty = false;
+            nextRendererRefresh = Time.unscaledTime + 1f;
+        }
+        if (stationRenderers.Count == 0)
             return transform.position + Vector3.up * (1.5f + HeightPadding);
 
         float top = transform.position.y + 1.5f;
-        for (int i = 0; i < renderers.Length; i++)
+        for (int i = 0; i < stationRenderers.Count; i++)
         {
-            if (renderers[i] != null && renderers[i].enabled)
-                top = Mathf.Max(top, renderers[i].bounds.max.y);
+            if (stationRenderers[i] != null && stationRenderers[i].enabled)
+                top = Mathf.Max(top, stationRenderers[i].bounds.max.y);
         }
         return new Vector3(transform.position.x, top + HeightPadding, transform.position.z);
     }

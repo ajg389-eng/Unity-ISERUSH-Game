@@ -87,7 +87,6 @@ public class InventoryUI : MonoBehaviour
         EnsureUndoFooter();
         EnsureTabInfo();
         WireTabButtons();
-        RefreshAll();
         displayedShiftInProgress = IsShiftInProgress;
         SelectTab(0);
         ApplyModeState();
@@ -217,7 +216,6 @@ public class InventoryUI : MonoBehaviour
             EnsureUndoFooter();
             EnsureTabInfo();
             WireTabButtons();
-            RefreshAll();
             SelectTab(activeTab);
             RefreshExpandButton();
             Canvas.ForceUpdateCanvases();
@@ -422,7 +420,8 @@ public class InventoryUI : MonoBehaviour
     public void OpenBuildPage()
     {
         OpenPanel();
-        SelectTab(0);
+        if (activeTab != 0)
+            SelectTab(0);
     }
 
     /// <summary>Editor / runtime: configure the stations Content as a 3-column grid.</summary>

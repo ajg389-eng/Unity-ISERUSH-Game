@@ -30,6 +30,13 @@ public class PauseMenuUI : MonoBehaviour
     const string PrefVSync = "PauseMenu.Graphics.VSync";
     const string PrefGraphicsPreset = "PauseMenu.Graphics.Preset";
     const float MusicFullVolume = 0.35f;
+    const int DefaultGraphicsPreset = 1;
+    const int DefaultShadowQuality = 1;
+    const int DefaultAntiAliasing = 1;
+    const int DefaultTextureQuality = 1;
+    static readonly int[] ShadowResolutions = { 1024, 2048, 4096 };
+    static readonly float[] ShadowDistances = { 30f, 50f, 80f };
+    static readonly int[] MsaaSamples = { 1, 2, 4, 8 };
 
     static readonly Color ButtonColor = GameUITheme.Surface;
     static readonly Color MainButtonColor = GameUITheme.Surface;
@@ -1443,11 +1450,11 @@ public class PauseMenuUI : MonoBehaviour
     void RefreshGraphicsControls()
     {
         bool shadows = PlayerPrefs.GetInt(PrefShadows, 1) == 1;
-        shadowQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, 1), 0, 2);
-        antiAliasingIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, 2), 0, 3);
-        textureQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, 0), 0, 2);
+        shadowQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, DefaultShadowQuality), 0, 2);
+        antiAliasingIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, DefaultAntiAliasing), 0, 3);
+        textureQualityIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, DefaultTextureQuality), 0, 2);
         bool vSync = PlayerPrefs.GetInt(PrefVSync, 1) == 1;
-        int preset = Mathf.Clamp(PlayerPrefs.GetInt(PrefGraphicsPreset, 2), -1, 3);
+        int preset = Mathf.Clamp(PlayerPrefs.GetInt(PrefGraphicsPreset, DefaultGraphicsPreset), -1, 3);
 
         if (graphicsPresetValue != null)
             graphicsPresetValue.text = GraphicsPresetName(preset);
@@ -1524,7 +1531,7 @@ public class PauseMenuUI : MonoBehaviour
 
     void CycleGraphicsPreset(int delta)
     {
-        int current = PlayerPrefs.GetInt(PrefGraphicsPreset, 2);
+        int current = PlayerPrefs.GetInt(PrefGraphicsPreset, DefaultGraphicsPreset);
         if (current < 0 || current > 3)
             current = delta >= 0 ? -1 : 0;
         ApplyGraphicsPreset(WrapIndex(current + delta, 4));
@@ -1538,7 +1545,7 @@ public class PauseMenuUI : MonoBehaviour
         // Low, Medium, High, Ultra. Texture quality uses Unity's mip limit,
         // where zero is full resolution and larger values reduce memory use.
         bool shadows = preset > 0;
-        int shadowQuality = preset <= 1 ? 0 : preset - 1;
+        int shadowQuality = preset == 0 ? 0 : preset == 3 ? 2 : 1;
         int antiAliasing = preset;
         int textureQuality = preset == 0 ? 2 : preset == 1 ? 1 : 0;
         bool vSync = preset > 0;
@@ -1743,9 +1750,9 @@ public class PauseMenuUI : MonoBehaviour
     static void ApplySavedGraphics()
     {
         bool shadows = PlayerPrefs.GetInt(PrefShadows, 1) == 1;
-        int shadowQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, 1), 0, 2);
-        int antiAliasing = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, 2), 0, 3);
-        int textureQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, 0), 0, 2);
+        int shadowQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefShadowQuality, DefaultShadowQuality), 0, 2);
+        int antiAliasing = Mathf.Clamp(PlayerPrefs.GetInt(PrefAntiAliasing, DefaultAntiAliasing), 0, 3);
+        int textureQuality = Mathf.Clamp(PlayerPrefs.GetInt(PrefTextureQuality, DefaultTextureQuality), 0, 2);
         bool vSync = PlayerPrefs.GetInt(PrefVSync, 1) == 1;
         ApplyGraphicsSettings(shadows, shadowQuality, antiAliasing, textureQuality, vSync);
     }
@@ -1753,12 +1760,8 @@ public class PauseMenuUI : MonoBehaviour
     static void ApplyGraphicsSettings(bool shadows, int shadowQuality, int antiAliasing,
         int textureQuality, bool vSync)
     {
-        int[] shadowResolutions = { 1024, 2048, 4096 };
-        float[] shadowDistances = { 40f, 70f, 100f };
-        int[] msaaSamples = { 1, 2, 4, 8 };
-
-        shadowQuality = Mathf.Clamp(shadowQuality, 0, shadowResolutions.Length - 1);
-        antiAliasing = Mathf.Clamp(antiAliasing, 0, msaaSamples.Length - 1);
+        shadowQuality = Mathf.Clamp(shadowQuality, 0, ShadowResolutions.Length - 1);
+        antiAliasing = Mathf.Clamp(antiAliasing, 0, MsaaSamples.Length - 1);
         textureQuality = Mathf.Clamp(textureQuality, 0, 2);
 
         QualitySettings.shadows = shadows
@@ -1767,12 +1770,12 @@ public class PauseMenuUI : MonoBehaviour
         QualitySettings.shadowResolution = shadowQuality switch
         {
             0 => UnityEngine.ShadowResolution.Low,
-            2 => UnityEngine.ShadowResolution.VeryHigh,
-            _ => UnityEngine.ShadowResolution.High
+            2 => UnityEngine.ShadowResolution.High,
+            _ => UnityEngine.ShadowResolution.Medium
         };
-        QualitySettings.shadowDistance = shadows ? shadowDistances[shadowQuality] : 0f;
+        QualitySettings.shadowDistance = shadows ? ShadowDistances[shadowQuality] : 0f;
         QualitySettings.globalTextureMipmapLimit = textureQuality;
-        QualitySettings.antiAliasing = antiAliasing == 0 ? 0 : msaaSamples[antiAliasing];
+        QualitySettings.antiAliasing = antiAliasing == 0 ? 0 : MsaaSamples[antiAliasing];
         QualitySettings.vSyncCount = vSync ? 1 : 0;
 
         var pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
@@ -1780,9 +1783,9 @@ public class PauseMenuUI : MonoBehaviour
             pipeline = QualitySettings.renderPipeline as UniversalRenderPipelineAsset;
         if (pipeline == null) return;
 
-        pipeline.shadowDistance = shadows ? shadowDistances[shadowQuality] : 0f;
-        pipeline.mainLightShadowmapResolution = shadowResolutions[shadowQuality];
-        pipeline.msaaSampleCount = msaaSamples[antiAliasing];
+        pipeline.shadowDistance = shadows ? ShadowDistances[shadowQuality] : 0f;
+        pipeline.mainLightShadowmapResolution = ShadowResolutions[shadowQuality];
+        pipeline.msaaSampleCount = MsaaSamples[antiAliasing];
 
         foreach (var light in FindObjectsByType<Light>(FindObjectsSortMode.None))
         {
@@ -1790,6 +1793,13 @@ public class PauseMenuUI : MonoBehaviour
             light.shadows = !shadows
                 ? LightShadows.None
                 : shadowQuality == 0 ? LightShadows.Hard : LightShadows.Soft;
+            var lightData = light.GetUniversalAdditionalLightData();
+            lightData.softShadowQuality = shadowQuality switch
+            {
+                0 => SoftShadowQuality.Low,
+                2 => SoftShadowQuality.High,
+                _ => SoftShadowQuality.Medium
+            };
         }
     }
 

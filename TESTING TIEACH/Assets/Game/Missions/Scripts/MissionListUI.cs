@@ -76,6 +76,18 @@ public class MissionListUI : MonoBehaviour
     GameObject tasksScrollRoot;
     GameObject progressionScrollRoot;
     bool combinedLayoutBuilt;
+    bool tasksDirty = true;
+    bool dailyGoalsDirty = true;
+    bool progressionDirty = true;
+    bool panelHeightDirty = true;
+    bool hasDailyGoalSnapshot;
+    int lastDailyOrders;
+    int lastDailyRevenue;
+    float lastDailyWait;
+    float lastCanvasHeight;
+    float nextMissingSourceSearchTime;
+    bool topTabVisualInitialized;
+    bool lastTopTabOpen;
 
     readonly List<GameObject> taskRowPool = new List<GameObject>();
     readonly List<GameObject> milestoneTaskRowPool = new List<GameObject>();
@@ -109,7 +121,7 @@ public class MissionListUI : MonoBehaviour
         if (progress != null)
             progress.OnMissionsChanged -= RefreshTasks;
         if (statistics != null)
-            statistics.OnStatisticsChanged -= RefreshTasks;
+            statistics.OnStatisticsChanged -= OnStatisticsChanged;
         if (milestones != null)
             milestones.OnMilestonesChanged -= RefreshProgression;
     }
@@ -126,26 +138,34 @@ public class MissionListUI : MonoBehaviour
         if (ResolveDataSources())
             RefreshAll();
 
-        if (topTabsRoot != null)
-            topTabsRoot.transform.SetAsLastSibling();
         RefreshTopTabs();
+
+        FlushPendingRefreshes();
     }
 
     bool ResolveDataSources()
     {
+        bool searchMissingSources = !Application.isPlaying
+            || Time.unscaledTime >= nextMissingSourceSearchTime;
+        if (searchMissingSources)
+            nextMissingSourceSearchTime = Time.unscaledTime + 0.5f;
+
         // Use Unity's overloaded null check here: a destroyed singleton wrapper can
         // still be a non-null CLR reference after returning to the game scene.
         MissionProgressManager nextProgress = MissionProgressManager.Instance;
         if (nextProgress == null)
-            nextProgress = progress != null ? progress : FindObjectOfType<MissionProgressManager>();
+            nextProgress = progress != null ? progress
+                : searchMissingSources ? FindObjectOfType<MissionProgressManager>() : null;
 
         MilestoneProgressManager nextMilestones = MilestoneProgressManager.Instance;
         if (nextMilestones == null)
-            nextMilestones = milestones != null ? milestones : FindObjectOfType<MilestoneProgressManager>();
+            nextMilestones = milestones != null ? milestones
+                : searchMissingSources ? FindObjectOfType<MilestoneProgressManager>() : null;
 
         StoreStatisticsManager nextStatistics = StoreStatisticsManager.Instance;
         if (nextStatistics == null)
-            nextStatistics = statistics != null ? statistics : FindObjectOfType<StoreStatisticsManager>();
+            nextStatistics = statistics != null ? statistics
+                : searchMissingSources ? FindObjectOfType<StoreStatisticsManager>() : null;
         bool changed = false;
 
         if (progress != nextProgress)
@@ -166,9 +186,11 @@ public class MissionListUI : MonoBehaviour
 
         if (statistics != nextStatistics)
         {
-            if (statistics != null) statistics.OnStatisticsChanged -= RefreshTasks;
+            if (statistics != null) statistics.OnStatisticsChanged -= OnStatisticsChanged;
             statistics = nextStatistics;
-            if (statistics != null) statistics.OnStatisticsChanged += RefreshTasks;
+            if (statistics != null) statistics.OnStatisticsChanged += OnStatisticsChanged;
+            hasDailyGoalSnapshot = false;
+            OnStatisticsChanged();
             changed = true;
         }
 
@@ -261,7 +283,7 @@ public class MissionListUI : MonoBehaviour
         panelOpen = visible;
         if (panelRoot != null)
             panelRoot.SetActive(visible);
-        if (visible)
+        if (visible && ResolveDataSources())
             RefreshAll();
         if (!visible && tabInfoUI != null)
             tabInfoUI.Close();
@@ -305,8 +327,6 @@ public class MissionListUI : MonoBehaviour
         if (headerText != null)
             headerText.text = "Objectives";
 
-        RefreshAll();
-
         if (playSound)
             Sfx.Play(SfxId.UiClick);
 
@@ -316,18 +336,72 @@ public class MissionListUI : MonoBehaviour
     void RefreshAll()
     {
         RefreshTasks();
+        dailyGoalsDirty = true;
         RefreshProgression();
     }
 
     void RefreshTasks()
     {
-        ResolveDataSources();
+        tasksDirty = true;
+    }
+
+    void OnStatisticsChanged()
+    {
+        int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
+        int revenue = statistics != null ? statistics.RevenueToday : 0;
+        float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
+        // Visits, walkouts, waste and rolling throughput do not change these
+        // goals. In particular, they must not rebuild a hidden objectives panel.
+        if (hasDailyGoalSnapshot && orders == lastDailyOrders
+            && revenue == lastDailyRevenue && wait == lastDailyWait)
+            return;
+
+        hasDailyGoalSnapshot = true;
+        lastDailyOrders = orders;
+        lastDailyRevenue = revenue;
+        lastDailyWait = wait;
+        dailyGoalsDirty = true;
+    }
+
+    void FlushPendingRefreshes()
+    {
+        // Simulation events only mark data dirty. Coalesce them until the end
+        // of the frame, and leave the hierarchy untouched while it is closed.
+        if (!IsOpen) return;
         EnsureUI();
+
+        if (dailyGoalsDirty)
+        {
+            dailyGoalsDirty = false;
+            ClearPool(taskRowPool);
+            CreateDailyGoalRows();
+            UpdatePanelHeight();
+        }
+        if (tasksDirty)
+        {
+            tasksDirty = false;
+            RebuildTasks();
+        }
+        if (progressionDirty)
+        {
+            progressionDirty = false;
+            RebuildProgression();
+        }
+
+        if (targetCanvas != null && targetCanvas.pixelRect.height != lastCanvasHeight)
+            panelHeightDirty = true;
+        if (panelHeightDirty)
+        {
+            panelHeightDirty = false;
+            ApplyPanelHeight();
+        }
+    }
+
+    void RebuildTasks()
+    {
         if (tasksListContent == null || milestoneTasksListContent == null) return;
 
-        ClearPool(taskRowPool);
         ClearPool(milestoneTaskRowPool);
-        CreateDailyGoalRows();
 
         if (progress == null)
         {
@@ -389,8 +463,12 @@ public class MissionListUI : MonoBehaviour
 
     void RefreshProgression()
     {
-        ResolveDataSources();
-        EnsureUI();
+        progressionDirty = true;
+        tasksDirty = true;
+    }
+
+    void RebuildProgression()
+    {
         if (progressionListContent == null) return;
 
         ClearPool(progressionRowPool);
@@ -487,24 +565,25 @@ public class MissionListUI : MonoBehaviour
 
         if (complete)
         {
-            var check = new GameObject("Check", typeof(RectTransform), typeof(TextMeshProUGUI));
-            check.transform.SetParent(box.transform, false);
-            var checkRect = (RectTransform)check.transform;
-            checkRect.anchorMin = Vector2.zero;
-            checkRect.anchorMax = Vector2.one;
-            checkRect.offsetMin = new Vector2(0f, -1f);
-            checkRect.offsetMax = Vector2.zero;
-            var checkGraphic = check.GetComponent<TextMeshProUGUI>();
-            checkGraphic.text = "✓";
-            checkGraphic.fontSize = 15f;
-            checkGraphic.fontStyle = FontStyles.Bold;
-            checkGraphic.alignment = TextAlignmentOptions.Center;
-            checkGraphic.textWrappingMode = TextWrappingModes.NoWrap;
-            if (TMP_Settings.defaultFontAsset != null)
-                checkGraphic.font = TMP_Settings.defaultFontAsset;
-            checkGraphic.color = new Color(0.06f, 0.08f, 0.1f, 1f);
-            checkGraphic.raycastTarget = false;
+            // The default font has no checkmark glyph. Draw the two strokes
+            // directly so completing a task cannot trigger font warning spam.
+            CreateTaskCheckStroke(box.transform, new Vector2(-3f, -1f), 5f, -45f);
+            CreateTaskCheckStroke(box.transform, new Vector2(1f, 0f), 9f, 45f);
         }
+    }
+
+    static void CreateTaskCheckStroke(Transform parent, Vector2 position, float width, float angle)
+    {
+        var stroke = new GameObject("Check", typeof(RectTransform), typeof(Image));
+        stroke.transform.SetParent(parent, false);
+        var rect = (RectTransform)stroke.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(width, 2f);
+        rect.anchoredPosition = position;
+        rect.localRotation = Quaternion.Euler(0f, 0f, angle);
+        var image = stroke.GetComponent<Image>();
+        image.color = new Color(0.06f, 0.08f, 0.1f, 1f);
+        image.raycastTarget = false;
     }
 
     static void CreateTaskCheckboxPart(Transform parent, string objectName, Color color,
@@ -593,6 +672,11 @@ public class MissionListUI : MonoBehaviour
 
     void EnsureUI()
     {
+        if (built && panelRoot != null && combinedLayoutBuilt
+            && tasksListContent != null && milestoneTasksListContent != null
+            && progressionListContent != null)
+            return;
+
         bool applyTheme = !built;
         TryFindScenePanel();
 
@@ -675,6 +759,7 @@ public class MissionListUI : MonoBehaviour
         if (applyTheme && panelRoot != null)
             GameUITheme.ApplyTo(panelRoot.transform);
         MakePanelClickThrough();
+        RefreshAll();
     }
 
     void MakePanelClickThrough()
@@ -960,6 +1045,10 @@ public class MissionListUI : MonoBehaviour
     void EnsureTopTabs()
     {
         if (targetCanvas == null) return;
+        if (topTabsRoot != null && topObjectivesButton != null && topResearchButton != null)
+            return;
+
+        topTabVisualInitialized = false;
 
         Transform existing = targetCanvas.transform.Find(TopTabsObjectName);
         topTabsRoot = existing != null
@@ -1004,6 +1093,7 @@ public class MissionListUI : MonoBehaviour
         topObjectivesButton.onClick.AddListener(ToggleObjectives);
         topResearchButton.onClick.RemoveAllListeners();
         topResearchButton.onClick.AddListener(OpenResearch);
+        topTabsRoot.transform.SetAsLastSibling();
         RefreshTopTabs();
     }
 
@@ -1076,8 +1166,14 @@ public class MissionListUI : MonoBehaviour
 
     void RefreshTopTabs()
     {
-        SetTopTabVisual(topObjectivesButton, IsOpen);
-        if (topResearchButton != null)
+        bool open = IsOpen;
+        if (!topTabVisualInitialized || lastTopTabOpen != open)
+        {
+            SetTopTabVisual(topObjectivesButton, open);
+            lastTopTabOpen = open;
+            topTabVisualInitialized = topObjectivesButton != null;
+        }
+        if (topResearchButton != null && topResearchButton.gameObject.activeSelf)
             topResearchButton.gameObject.SetActive(false);
     }
 
@@ -1147,9 +1243,22 @@ public class MissionListUI : MonoBehaviour
 
     void UpdatePanelHeight()
     {
+        panelHeightDirty = true;
+        // The scene setup command also uses this class outside Play Mode,
+        // where LateUpdate does not run to flush the pending layout.
+        if (!Application.isPlaying)
+        {
+            ApplyPanelHeight();
+            panelHeightDirty = false;
+        }
+    }
+
+    void ApplyPanelHeight()
+    {
         if (panelRoot == null || targetCanvas == null) return;
 
         float screenHeight = targetCanvas.pixelRect.height;
+        lastCanvasHeight = screenHeight;
         if (screenHeight <= 0f) screenHeight = Screen.height;
         float maxHeight = Mathf.Max(220f, screenHeight - 150f);
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
@@ -1157,7 +1266,11 @@ public class MissionListUI : MonoBehaviour
             ? panelLayout.padding.top + panelLayout.padding.bottom
             : 24f;
         float maxColumnsHeight = Mathf.Max(180f, maxHeight - panelPadding);
-        Canvas.ForceUpdateCanvases();
+        // Resolve only this panel's text and layout, once after all row changes.
+        // Forcing every canvas from customer/statistics events stalls gameplay.
+        var panelRect = panelRoot.transform as RectTransform;
+        if (panelRect == null) return;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
 
         float taskHeight = GetScrollContentHeight(tasksScrollRoot);
         float progressionHeight = GetScrollContentHeight(progressionScrollRoot);
@@ -1177,10 +1290,9 @@ public class MissionListUI : MonoBehaviour
 
         float panelHeight = Mathf.Clamp(columnsHeight + panelPadding, 120f, maxHeight);
 
-        var panelRect = panelRoot.transform as RectTransform;
-        if (panelRect != null)
+        if (!Mathf.Approximately(panelRect.rect.height, panelHeight))
             panelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, panelHeight);
-        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.MarkLayoutForRebuild(panelRect);
     }
 
     static float GetScrollContentHeight(GameObject scrollRoot)
@@ -1188,7 +1300,6 @@ public class MissionListUI : MonoBehaviour
         var scroll = scrollRoot != null ? scrollRoot.GetComponent<ScrollRect>() : null;
         RectTransform content = scroll != null ? scroll.content : null;
         if (content == null) return 0f;
-        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
         return LayoutUtility.GetPreferredHeight(content);
     }
 

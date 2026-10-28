@@ -20,6 +20,7 @@ public sealed class BuildingNightLights : MonoBehaviour
     GameObject fixtures;
     Material housing, lens, indoorTrim, indoorShade;
     float nextRefresh;
+    float appliedStrength = -1f;
 
     void Update()
     {
@@ -40,20 +41,31 @@ public sealed class BuildingNightLights : MonoBehaviour
         float daylight = Mathf.SmoothStep(0,1,Mathf.InverseLerp(6,9,hour))
             * (1-Mathf.SmoothStep(0,1,Mathf.InverseLerp(16,19,hour)));
         float strength = 1-daylight;
+        bool strengthChanged = Mathf.Abs(strength - appliedStrength) >= 0.002f;
         foreach (var item in decorations)
+        {
             if (item.decor != null)
-                item.decor.SetActive(item.wall != null && item.wall.isActiveAndEnabled && item.wall.DuckAmount < 0.1f);
+            {
+                bool visible = item.wall != null && item.wall.isActiveAndEnabled && item.wall.DuckAmount < 0.1f;
+                if (item.decor.activeSelf != visible) item.decor.SetActive(visible);
+            }
+        }
         foreach (WallLamp fixture in lights)
         {
             if (fixture.root == null) continue;
             bool visible = fixture.roomFill || (fixture.wall != null && fixture.wall.isActiveAndEnabled
                 && fixture.wall.DuckAmount < 0.1f);
-            fixture.root.SetActive(visible);
-            fixture.light.enabled = visible && strength > 0.01f;
-            fixture.light.intensity = fixture.intensity * strength;
+            if (fixture.root.activeSelf != visible) fixture.root.SetActive(visible);
+            bool lightEnabled = visible && strength > 0.01f;
+            if (fixture.light.enabled != lightEnabled) fixture.light.enabled = lightEnabled;
+            if (strengthChanged) fixture.light.intensity = fixture.intensity * strength;
         }
-        if (lens != null) lens.SetColor("_EmissionColor", new Color(1f,0.85f,0.60f)*4f*strength);
-        if (indoorShade != null) indoorShade.SetColor("_EmissionColor", new Color(1f,0.94f,0.82f)*2f*strength);
+        if (strengthChanged)
+        {
+            appliedStrength = strength;
+            if (lens != null) lens.SetColor("_EmissionColor", new Color(1f,0.85f,0.60f)*4f*strength);
+            if (indoorShade != null) indoorShade.SetColor("_EmissionColor", new Color(1f,0.94f,0.82f)*2f*strength);
+        }
     }
 
     void Rebuild()
@@ -61,6 +73,7 @@ public sealed class BuildingNightLights : MonoBehaviour
         if (fixtures != null) { fixtures.SetActive(false); Destroy(fixtures); }
         lights.Clear();
         decorations.Clear();
+        appliedStrength = -1f;
         if (grid == null || grid.floor == null) return;
         if (housing == null)
         {
@@ -197,8 +210,10 @@ public sealed class BuildingNightLights : MonoBehaviour
         Renderer surface = floor.GetComponentInChildren<Renderer>();
         if (surface == null) return;
         Bounds bounds = surface.bounds;
-        int columns = Mathf.Max(1, Mathf.CeilToInt(bounds.size.x / 5f));
-        int rows = Mathf.Max(1, Mathf.CeilToInt(bounds.size.z / 5f));
+        // Wider cones retain overlapping floor coverage with fewer realtime lights.
+        const float spacing = 7f;
+        int columns = Mathf.Max(1, Mathf.CeilToInt(bounds.size.x / spacing));
+        int rows = Mathf.Max(1, Mathf.CeilToInt(bounds.size.z / spacing));
         for (int x = 0; x < columns; x++)
         for (int z = 0; z < rows; z++)
         {
@@ -206,20 +221,19 @@ public sealed class BuildingNightLights : MonoBehaviour
             root.transform.SetParent(fixtures.transform, false);
             root.transform.position = new Vector3(
                 Mathf.Lerp(bounds.min.x, bounds.max.x, (x + 0.5f) / columns),
-                bounds.max.y + 3.6f,
+                bounds.max.y + 4.2f,
                 Mathf.Lerp(bounds.min.z, bounds.max.z, (z + 0.5f) / rows));
             root.transform.rotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
             var light = root.AddComponent<Light>();
             light.type = LightType.Spot;
             light.color = new Color(1f, 0.95f, 0.86f);
-            light.spotAngle = 105f;
-            light.innerSpotAngle = 75f;
-            light.range = 6.5f;
-            light.shadows = LightShadows.Soft;
-            light.shadowResolution = LightShadowResolution.Low;
+            light.spotAngle = 110f;
+            light.innerSpotAngle = 80f;
+            light.range = 8f;
+            light.shadows = LightShadows.None;
             light.enabled = false;
             // Ambient-looking room coverage persists when walls are cut away.
-            lights.Add(new WallLamp { root = root, light = light, roomFill = true, intensity = 2.2f });
+            lights.Add(new WallLamp { root = root, light = light, roomFill = true, intensity = 3f });
         }
     }
 
@@ -254,8 +268,7 @@ public sealed class BuildingNightLights : MonoBehaviour
         light.innerSpotAngle = southInterior ? 65f : (indoor ? 35f : 55f);
         light.color = indoor ? new Color(1f,0.94f,0.82f) : new Color(1f,0.87f,0.68f);
         light.range = southInterior ? 9f : range;
-        light.shadows = LightShadows.Soft;
-        light.shadowResolution = LightShadowResolution.Low;
+        light.shadows = LightShadows.None;
         light.enabled = false;
         root.SetActive(wall.DuckAmount < 0.1f);
         lights.Add(new WallLamp { light = light, root = root, wall = wall, intensity = southInterior ? 4.2f : (indoor ? 2.8f : 4.5f) });
