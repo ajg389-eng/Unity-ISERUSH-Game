@@ -46,6 +46,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     Sprite circleSprite;
     Transform visualsRoot;
     bool visible;
+    bool billboardPoseCached;
+    Transform billboardCamera;
+    Vector3 billboardCameraPosition;
+    Quaternion billboardCameraRotation;
     KitchenEmployee focusedWorker;
     StationNode focusedStation;
     ProductionFlowPlan focusedFlow;
@@ -110,8 +114,20 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             else ClearVisuals();
         }
 
+        if (!visible) return;
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        Transform cameraTransform = cam.transform;
+        if (billboardPoseCached && billboardCamera == cameraTransform
+            && (cameraTransform.position - billboardCameraPosition).sqrMagnitude < 0.0001f
+            && Quaternion.Angle(cameraTransform.rotation, billboardCameraRotation) < 0.1f)
+            return;
         FaceLabelsTowardCamera();
         FaceRecipePreviewsTowardCamera();
+        billboardCamera = cameraTransform;
+        billboardCameraPosition = cameraTransform.position;
+        billboardCameraRotation = cameraTransform.rotation;
+        billboardPoseCached = true;
     }
 
     public static void NotifyLinksChanged()
@@ -197,6 +213,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     public void Refresh()
     {
+        billboardPoseCached = false;
         RefreshFlowWorkerHighlights();
         EnsureRoot();
         ClearVisuals();

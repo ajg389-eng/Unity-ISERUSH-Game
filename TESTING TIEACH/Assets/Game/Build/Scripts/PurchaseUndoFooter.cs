@@ -136,7 +136,9 @@ public class PurchaseUndoFooter : MonoBehaviour
     void Refresh()
     {
         var undo = PurchaseUndoManager.Instance != null ? PurchaseUndoManager.Instance : PurchaseUndoManager.Ensure();
-        bool can = undo != null && (floorOnly ? undo.CanUndoFloor : IngredientOnly ? undo.CanUndoIngredient : undo.CanUndo);
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        bool can = undo != null && (IngredientOnly || planPhase)
+            && (floorOnly ? undo.CanUndoFloor : IngredientOnly ? undo.CanUndoIngredient : undo.CanUndo);
         if (button != null)
             button.interactable = can;
         if (label != null)

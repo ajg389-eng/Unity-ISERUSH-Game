@@ -24,7 +24,7 @@ public class CustomersUI : MonoBehaviour
     readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
     readonly List<Image[]> demandReputationStars = new List<Image[]>();
-    static readonly float[] demandColumnMinimumWidths = { 210f, 105f, 120f, 120f, 175f };
+    static readonly float[] demandColumnMinimumWidths = { 190f, 85f, 95f, 90f, 95f, 95f, 160f };
     readonly float[] demandColumnWidths = (float[])demandColumnMinimumWidths.Clone();
 
     void OnEnable()
@@ -91,7 +91,7 @@ public class CustomersUI : MonoBehaviour
             new Vector2(0, 1), new Vector2(1, 1),
             new Vector2(0, -176), new Vector2(-28, 34),
             12, TextAlignmentOptions.TopLeft);
-        demandHelp.text = "Open orders are waiting for pickup. Ordered/min counts items accepted at the register. Produced/min counts item units successfully delivered to Pickup Stations in the last 60 seconds.\nServe 50 items for star 1, then 100, 150, 200, and 250 more. Each star adds 5 requests/min next shift.";
+        demandHelp.text = "Demand/min is scheduled customer demand. Ordered/min is actual orders accepted at the register. Produced/min is output delivered to pickup over the last minute. Predicted/min estimates steady output from active flows with enough supply and pickup space.\nServe 50 items for star 1, then 100, 150, 200, and 250 more. Each star adds 5 requests/min next shift.";
         demandHelp.enableAutoSizing = true;
         demandHelp.fontSizeMin = 11f;
         demandHelp.fontSizeMax = 12f;
@@ -218,7 +218,7 @@ public class CustomersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         demandHeader = CreateDemandTableRow("Header", 42f, out _);
-        string[] headings = { "Item", "Open\nOrders", "Ordered\n/min", "Produced\n/min", "Reputation /\nNext Shift" };
+        string[] headings = { "Item", "Open\nOrders", "Ordered\n/min", "Demand\n/min", "Produced\n/min", "Predicted\n/min", "Reputation /\nNext Shift" };
         for (int i = 0; i < headings.Length; i++)
         {
             demandHeader[i].text = headings[i];
@@ -460,7 +460,11 @@ public class CustomersUI : MonoBehaviour
             cells[0].text = name;
             cells[1].text = row.openOrdersAtRegister.ToString();
             cells[2].text = row.orderedPerMinute.ToString("F1");
-            cells[3].text = row.producedLastMinute.ToString();
+            cells[3].text = row.requiredPerMinute.ToString("F1");
+            cells[4].text = row.producedLastMinute.ToString();
+            cells[5].text = pm != null
+                ? pm.GetPredictedOutputPerMinute(row.item).ToString("F1")
+                : "0.0";
             CustomerOrderConfig config = pm != null ? pm.orderConfig : null;
             int reputation = config != null ? config.GetItemReputation(row.item) : 0;
             int pendingChange = config != null ? config.GetPendingItemDemandChangePerMinute(row.item) : 0;
@@ -480,7 +484,7 @@ public class CustomersUI : MonoBehaviour
             string reputationProgress = starsEarned >= CustomerOrderConfig.MaxReputationStars
                 ? $"{reputation} items served"
                 : $"{progressToNextStar}/{servedForNextStar} to next star";
-            cells[4].text = $"{reputationProgress}\n{reputationDetail}";
+            cells[6].text = $"{reputationProgress}\n{reputationDetail}";
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
                 rowImage.color = Color.clear;
@@ -494,7 +498,7 @@ public class CustomersUI : MonoBehaviour
             TextMeshProUGUI[] row = CreateDemandTableRow("DemandRow", 60f, out var preview);
             demandRows.Add(row);
             demandImages.Add(preview);
-            demandReputationStars.Add(CreateReputationStars(row[4]));
+            demandReputationStars.Add(CreateReputationStars(row[6]));
         }
     }
 

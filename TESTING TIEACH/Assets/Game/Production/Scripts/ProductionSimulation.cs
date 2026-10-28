@@ -92,6 +92,7 @@ namespace KitchenProduction
         public readonly Trip[] Trips;
         public readonly int[] Stock, ReservedStock;
         public readonly long[] Delivered;
+        public readonly long[,] DeliveredByItem;
         public readonly List<SimulationEvent> Events = new List<SimulationEvent>();
         public long Now { get; private set; }
         public bool UnlimitedStock, DrainPickup;
@@ -114,6 +115,7 @@ namespace KitchenProduction
             Stock = new int[plan.ItemCount];
             ReservedStock = new int[plan.ItemCount];
             Delivered = new long[plan.FlowCount];
+            DeliveredByItem = new long[plan.FlowCount, plan.ItemCount];
         }
 
         ProductionSimulation(ProductionSimulation other)
@@ -129,6 +131,7 @@ namespace KitchenProduction
             Stock = (int[])other.Stock.Clone();
             ReservedStock = (int[])other.ReservedStock.Clone();
             Delivered = (long[])other.Delivered.Clone();
+            DeliveredByItem = (long[,])other.DeliveredByItem.Clone();
         }
 
         public ProductionSimulation Copy() => new ProductionSimulation(this);
@@ -408,6 +411,7 @@ namespace KitchenProduction
                     if (pickup)
                     {
                         Delivered[w.Flow] += t.Units;
+                        DeliveredByItem[w.Flow, t.Item] += t.Units;
                         Emit(EventKind.Deliver, t.Destination, t.Item, t.Units, index, w.Flow);
                     }
                     else Emit(EventKind.Transfer, t.Destination, t.Item, t.Units, index, w.Flow);

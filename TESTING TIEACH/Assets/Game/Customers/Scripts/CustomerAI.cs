@@ -66,6 +66,15 @@ public class CustomerAI : MonoBehaviour
     float queueTravelStuckSeconds;
     Vector3 lastQueueTravelPosition;
     Renderer customerFloorRenderer;
+    static Renderer sharedCustomerFloorRenderer;
+    static int sharedCustomerFloorLookupFrame = -1;
+    static int sharedCustomerGridFrame = -1;
+    static int sharedCustomerGridRendererId = -1;
+    static int sharedCustomerGridManagerId = -1;
+    static Bounds sharedCustomerGridBounds;
+    static float sharedCustomerGridOriginX, sharedCustomerGridOriginZ, sharedCustomerGridCellSize;
+    static int sharedCustomerGridWidth, sharedCustomerGridHeight;
+    static bool sharedCustomerGridValid;
     Phase phase = Phase.GoingToSlot;
     bool patienceStarted;
     CustomerPath exitPath;
@@ -81,6 +90,11 @@ public class CustomerAI : MonoBehaviour
     public bool HasOrderedAtRegister => orderRevealed;
     static int nextOrderNumber;
     static readonly System.Random customerNameRandom = new System.Random();
+    const float CustomerSpatialCellSize = 0.82f;
+    static readonly Dictionary<Vector2Int, List<CustomerAI>> customerSpatialBuckets =
+        new Dictionary<Vector2Int, List<CustomerAI>>();
+    static readonly List<List<CustomerAI>> customerSpatialBucketPool = new List<List<CustomerAI>>();
+    static int customerSpatialIndexFrame = -1;
     static readonly string[] orderNames = { "Kevin", "Emma", "Riley", "Alex", "Maya", "Noah", "Skyler", "Chloe", "Owen", "Avery", "Jordan", "Sofia", "Liam", "Grace", "Ethan", "Harper", "Leo", "Zoe", "Sam", "Ella" };
     public int OrderNumber { get; private set; }
     public string CustomerDisplayName { get; private set; }
@@ -1294,23 +1308,55 @@ public class CustomerAI : MonoBehaviour
     {
         bounds = default;
         originX = originZ = 0f;
-        cellSize = grid != null ? Mathf.Max(0.01f, grid.cellSize) : 1f;
+        cellSize = 1f;
         width = height = 0;
 
         if (customerFloorRenderer == null)
         {
-            GameObject floor = GameObject.Find("CustomerFloor");
-            if (floor != null)
-                customerFloorRenderer = floor.GetComponentInChildren<Renderer>();
+            if (sharedCustomerFloorRenderer == null
+                && sharedCustomerFloorLookupFrame != Time.frameCount)
+            {
+                sharedCustomerFloorLookupFrame = Time.frameCount;
+                GameObject floor = GameObject.Find("CustomerFloor");
+                if (floor != null)
+                    sharedCustomerFloorRenderer = floor.GetComponentInChildren<Renderer>();
+            }
+            customerFloorRenderer = sharedCustomerFloorRenderer;
         }
         if (customerFloorRenderer == null) return false;
 
-        bounds = customerFloorRenderer.bounds;
-        Vector3 sharedOrigin = grid != null ? grid.Origin : bounds.min;
-        originX = sharedOrigin.x + Mathf.Round((bounds.min.x - sharedOrigin.x) / cellSize) * cellSize;
-        originZ = sharedOrigin.z + Mathf.Round((bounds.min.z - sharedOrigin.z) / cellSize) * cellSize;
-        width = Mathf.Max(1, Mathf.RoundToInt(bounds.size.x / cellSize));
-        height = Mathf.Max(1, Mathf.RoundToInt(bounds.size.z / cellSize));
+        GridManager activeGrid = grid != null ? grid : GridManager.Instance;
+        int rendererId = customerFloorRenderer.GetInstanceID();
+        int gridId = activeGrid != null ? activeGrid.GetInstanceID() : 0;
+        if (sharedCustomerGridFrame != Time.frameCount
+            || sharedCustomerGridRendererId != rendererId
+            || sharedCustomerGridManagerId != gridId)
+        {
+            sharedCustomerGridFrame = Time.frameCount;
+            sharedCustomerGridRendererId = rendererId;
+            sharedCustomerGridManagerId = gridId;
+            sharedCustomerGridBounds = customerFloorRenderer.bounds;
+            sharedCustomerGridCellSize = activeGrid != null ? Mathf.Max(0.01f, activeGrid.cellSize) : 1f;
+            Vector3 sharedOrigin = activeGrid != null ? activeGrid.Origin : sharedCustomerGridBounds.min;
+            sharedCustomerGridOriginX = sharedOrigin.x
+                + Mathf.Round((sharedCustomerGridBounds.min.x - sharedOrigin.x) / sharedCustomerGridCellSize)
+                    * sharedCustomerGridCellSize;
+            sharedCustomerGridOriginZ = sharedOrigin.z
+                + Mathf.Round((sharedCustomerGridBounds.min.z - sharedOrigin.z) / sharedCustomerGridCellSize)
+                    * sharedCustomerGridCellSize;
+            sharedCustomerGridWidth = Mathf.Max(1,
+                Mathf.RoundToInt(sharedCustomerGridBounds.size.x / sharedCustomerGridCellSize));
+            sharedCustomerGridHeight = Mathf.Max(1,
+                Mathf.RoundToInt(sharedCustomerGridBounds.size.z / sharedCustomerGridCellSize));
+            sharedCustomerGridValid = true;
+        }
+        if (!sharedCustomerGridValid) return false;
+        bounds = sharedCustomerGridBounds;
+        originX = sharedCustomerGridOriginX;
+        originZ = sharedCustomerGridOriginZ;
+        cellSize = sharedCustomerGridCellSize;
+        width = sharedCustomerGridWidth;
+        height = sharedCustomerGridHeight;
         return true;
     }
 
@@ -1357,31 +1403,70 @@ public class CustomerAI : MonoBehaviour
         if (hasQueueSlot)
             return false;
 
-        const float followDistance = 0.82f;
         Vector3 move = dest - transform.position;
         move.y = 0f;
         if (move.sqrMagnitude < 0.0001f) return false;
         Vector3 moveDir = move.normalized;
 
-        for (int i = 0; i < ActiveCustomers.Count; i++)
+        EnsureCustomerSpatialIndex();
+        Vector2Int ownCell = GetCustomerSpatialCell(transform.position);
+        float followDistanceSq = CustomerSpatialCellSize * CustomerSpatialCellSize;
+        for (int x = ownCell.x - 1; x <= ownCell.x + 1; x++)
+        for (int z = ownCell.y - 1; z <= ownCell.y + 1; z++)
         {
-            CustomerAI other = ActiveCustomers[i];
-            if (other == null || other == this || other.IsLeaving || other.phase == Phase.Entering)
+            if (!customerSpatialBuckets.TryGetValue(new Vector2Int(x, z), out List<CustomerAI> bucket))
                 continue;
-            if (other.waitingForPickup != waitingForPickup) continue;
+            for (int i = 0; i < bucket.Count; i++)
+            {
+                CustomerAI other = bucket[i];
+                if (other == null || other == this || other.IsLeaving || other.phase == Phase.Entering)
+                    continue;
+                if (other.waitingForPickup != waitingForPickup) continue;
 
-            Vector3 toOther = other.transform.position - transform.position;
-            toOther.y = 0f;
-            float gap = toOther.magnitude;
-            if (gap >= followDistance) continue;
-            if (gap < 0.001f) return GetInstanceID() > other.GetInstanceID();
+                Vector3 toOther = other.transform.position - transform.position;
+                toOther.y = 0f;
+                float gapSq = toOther.sqrMagnitude;
+                if (gapSq >= followDistanceSq) continue;
+                if (gapSq < 0.000001f) return GetInstanceID() > other.GetInstanceID();
 
-            float ahead = Vector3.Dot(moveDir, toOther / gap);
-            if (ahead > 0.35f)
-                return true;
+                float gap = Mathf.Sqrt(gapSq);
+                if (Vector3.Dot(moveDir, toOther) > gap * 0.35f)
+                    return true;
+            }
         }
 
         return false;
+    }
+
+    static Vector2Int GetCustomerSpatialCell(Vector3 position)
+    {
+        return new Vector2Int(Mathf.FloorToInt(position.x / CustomerSpatialCellSize),
+            Mathf.FloorToInt(position.z / CustomerSpatialCellSize));
+    }
+
+    static void EnsureCustomerSpatialIndex()
+    {
+        if (customerSpatialIndexFrame == Time.frameCount) return;
+        customerSpatialIndexFrame = Time.frameCount;
+        customerSpatialBuckets.Clear();
+        for (int i = 0; i < customerSpatialBucketPool.Count; i++)
+            customerSpatialBucketPool[i].Clear();
+
+        int usedBuckets = 0;
+        for (int i = 0; i < ActiveCustomers.Count; i++)
+        {
+            CustomerAI customer = ActiveCustomers[i];
+            if (customer == null) continue;
+            Vector2Int cell = GetCustomerSpatialCell(customer.transform.position);
+            if (!customerSpatialBuckets.TryGetValue(cell, out List<CustomerAI> bucket))
+            {
+                if (usedBuckets >= customerSpatialBucketPool.Count)
+                    customerSpatialBucketPool.Add(new List<CustomerAI>(4));
+                bucket = customerSpatialBucketPool[usedBuckets++];
+                customerSpatialBuckets.Add(cell, bucket);
+            }
+            bucket.Add(customer);
+        }
     }
 
     void SnapXZ(Vector3 world)

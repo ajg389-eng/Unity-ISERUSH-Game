@@ -125,6 +125,15 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+        {
+            CancelPlacement();
+            CancelDrag();
+            ClearStationSelection();
+            actionBar?.Refresh();
+            return;
+        }
+
         if (actionBar == null)
             actionBar = BuildStationActionBar.EnsureFor(this);
 
@@ -347,6 +356,7 @@ public class BuildPlacer : MonoBehaviour
 
     public void BeginPlacement(ItemDefinition item)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (item == null || item.prefab == null) return;
         bool shakeStationLocked = item.IsTieredStation && item.stationFamily == "Shake Station"
             && item.stationMark == 1
@@ -1016,6 +1026,7 @@ public class BuildPlacer : MonoBehaviour
 
     public void BeginMoveSelected()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         CleanupSelection();
         if (selectedObjects.Count == 0 || IsDragging || IsPlacing) return;
         if (selectedObjects.Count == 1) BeginSingleDrag(selectedObjects[0]);
@@ -1360,6 +1371,7 @@ public class BuildPlacer : MonoBehaviour
 
     void TryStartDrag()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (Camera.main == null) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
@@ -1646,6 +1658,7 @@ public class BuildPlacer : MonoBehaviour
 
     void RemoveDraggedAndReturnToInventory()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (draggingObject == null) return;
 
         ItemDefinition returnedItem = draggingMountedItem != null
@@ -1683,6 +1696,7 @@ public class BuildPlacer : MonoBehaviour
 
     void TryPlaceAt(int x, int y)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (placingItem == null) return;
 
         // Must own one to place. A stale ghost is cancelled immediately.
@@ -2880,8 +2894,9 @@ public sealed class BuildStationActionBar : MonoBehaviour
         if (instructionPanel != null)
             instructionPanel.SetActive(count > 0 || placementInstructionActive
                 || (messageLabel != null && messageLabel.gameObject.activeSelf));
-        if (moveButton != null) moveButton.interactable = count > 0 && !placer.IsDragging && !placer.IsPlacing;
-        if (clearButton != null) clearButton.interactable = count > 0 && !placer.IsDragging && !placer.IsPlacing;
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        if (moveButton != null) moveButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
+        if (clearButton != null) clearButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
     }
 
     public void SetPlacementInstruction(string instruction)

@@ -41,6 +41,7 @@ public class WorkerCardUI : MonoBehaviour
     float nextDetailsRefreshTime;
     float nextSelectionRefreshTime;
     float nextUpgradeRefreshTime;
+    bool displayedShiftState;
 
     const float DetailsRefreshInterval = 0.2f;
     const float SelectionRefreshInterval = 0.12f;
@@ -54,6 +55,15 @@ public class WorkerCardUI : MonoBehaviour
     void Update()
     {
         TrySelectFromCardClick();
+        bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
+        bool planPhase = !shiftInProgress;
+        if (displayedShiftState != shiftInProgress)
+        {
+            displayedShiftState = shiftInProgress;
+            RefreshUpgradeButton();
+        }
+        if (fireButton != null) fireButton.interactable = planPhase;
+        if (priorityDropdown != null) priorityDropdown.interactable = planPhase;
         float now = Time.unscaledTime;
         if (employee != null && now >= nextDetailsRefreshTime)
             RefreshDetails();
@@ -196,6 +206,7 @@ public class WorkerCardUI : MonoBehaviour
         detailsExpanded = false;
         hasAssignmentSignature = false;
         nextUpgradeRefreshTime = 0f;
+        displayedShiftState = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
 
         HideLegacyUi();
         EnsureLayout();
@@ -308,7 +319,8 @@ public class WorkerCardUI : MonoBehaviour
 
     void OnPriorityChanged(int value)
     {
-        if (settingPriorityDropdown || employee == null) return;
+        if (settingPriorityDropdown || employee == null
+            || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)) return;
         employee.taskPriority = (KitchenEmployee.TaskPriority)Mathf.Clamp(value, 0,
             System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length - 1);
         RefreshPriorityDropdown();
@@ -875,7 +887,8 @@ public class WorkerCardUI : MonoBehaviour
         bool maxed = employee != null && employee.IsMaxUpgraded;
         int cost = employee != null ? employee.GetNextUpgradeCost() : -1;
         bool canPay = maxed || cost <= 0 || money == null || money.CanAfford(cost);
-        btn.interactable = employee != null && !maxed && canPay;
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        btn.interactable = planPhase && employee != null && !maxed && canPay;
         if (img != null)
         {
             if (maxed)
@@ -889,7 +902,7 @@ public class WorkerCardUI : MonoBehaviour
 
     void OnUpgradeClicked()
     {
-        if (employee == null) return;
+        if (employee == null || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)) return;
         if (!employee.TryUpgrade())
         {
             Sfx.Play(SfxId.UiError);
@@ -1083,7 +1096,8 @@ public class WorkerCardUI : MonoBehaviour
 
     void OnFireClicked()
     {
-        if (employee == null || production == null) return;
+        if (employee == null || production == null
+            || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)) return;
         WorkerCustomizePopup.Hide();
         production.FireWorker(employee);
         employee = null;

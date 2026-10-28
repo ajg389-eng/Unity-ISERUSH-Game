@@ -182,6 +182,7 @@ public partial class KitchenEmployee : MonoBehaviour
 
     public bool TryUpgrade(MoneyManager money = null)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return false;
         int cost = GetNextUpgradeCost();
         if (cost < 0 || UpgradeLevel >= MaxUnlockedUpgradeLevel) return false;
         if (money == null)
@@ -1054,6 +1055,8 @@ public partial class KitchenEmployee : MonoBehaviour
     [Min(3f)] public float taskProgressTimeout = 20f;
     int lastMeaningfulProgressSignature;
     float lastMeaningfulProgressTime;
+    float nextClaimValidationTime;
+    float nextTaskHeartbeatTime;
     float ArrivalRadius => Mathf.Max(0.02f, cellArrivalDistance);
 
     enum Step
@@ -1571,6 +1574,8 @@ public partial class KitchenEmployee : MonoBehaviour
         if (currentJob != null) return;
         ResetItemHandlingState();
         currentJob = job;
+        nextClaimValidationTime = 0f;
+        nextTaskHeartbeatTime = 0f;
         heldUnits = 0;
         // heldUnits on the job also records the batch size that should be worked
         // at the next station. Only restore it as physical inventory when the job
@@ -2543,18 +2548,25 @@ public partial class KitchenEmployee : MonoBehaviour
 
         if (currentJob != null)
         {
-            if (manager != null && !awaitingOutputDelivery
-                && !manager.ValidateActiveClaim(currentJob, this))
+            if (manager != null && !awaitingOutputDelivery && Time.time >= nextClaimValidationTime)
             {
-                ReleaseBlockedAssemblyJobAndReturn();
-                return;
+                nextClaimValidationTime = Time.time + 0.5f;
+                if (!manager.ValidateActiveClaim(currentJob, this))
+                {
+                    ReleaseBlockedAssemblyJobAndReturn();
+                    return;
+                }
             }
             if (manager != null)
             {
                 ProductionTaskState taskState = awaitingOutputDelivery
                     ? ProductionTaskState.Delivering
                     : IsTraveling() ? ProductionTaskState.Traveling : ProductionTaskState.Working;
-                manager.TouchTask(currentJob, taskState);
+                if (currentJob.taskState != taskState || Time.time >= nextTaskHeartbeatTime)
+                {
+                    manager.TouchTask(currentJob, taskState);
+                    nextTaskHeartbeatTime = Time.time + 1f;
+                }
             }
             RecoverStalledProductionTask();
             if (currentJob == null) return;
@@ -4456,9 +4468,13 @@ public partial class KitchenEmployee : MonoBehaviour
 
     void SnapToGround()
     {
-        Vector3 p = transform.position;
-        p.y = GroundY;
-        transform.position = p;
+        float targetY = GroundY;
+        if (Mathf.Abs(transform.position.y - targetY) > 0.001f)
+        {
+            Vector3 p = transform.position;
+            p.y = targetY;
+            transform.position = p;
+        }
     }
 
     bool SnapToWorldXZ(Vector3 world)

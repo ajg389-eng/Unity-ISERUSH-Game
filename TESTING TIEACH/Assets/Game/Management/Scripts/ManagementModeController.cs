@@ -112,6 +112,7 @@ public class ManagementModeController : MonoBehaviour
 
     /// <summary>True when using a designer-placed popup (inspector or scene). Keeps your RectTransform.</summary>
     bool usingScenePopup;
+    public bool HasOpenStationPanel => stationPopup != null && stationPopup.activeSelf;
 
     enum PendingAction { None, PickOutput, PickWorker }
     PendingAction pending;
@@ -125,6 +126,7 @@ public class ManagementModeController : MonoBehaviour
     Vector2 outputDragStartScreen;
     bool outputDragActive;
     bool outputDragMoved;
+    bool cachedShiftInProgress;
     LineRenderer outputDragPreview;
     const float OutputDragThresholdPixels = 14f;
     float nextWorkflowHudRefresh;
@@ -263,6 +265,21 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
+        bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
+        if (shiftInProgress != cachedShiftInProgress)
+        {
+            cachedShiftInProgress = shiftInProgress;
+            if (shiftInProgress && recipePickerOpen) CloseRecipePicker();
+            if (selectedStation != null) RefreshPopup();
+        }
+
+        if (shiftInProgress)
+        {
+            if (IsCapturingFlow) CancelFlowCapture();
+            CancelOutputDrag();
+            ClearEmployeeSelection();
+        }
+
         UpdateWorkerHover();
         UpdateOutputDragPreview();
         RefreshWorkflowDecisionHud();
@@ -332,6 +349,8 @@ public class ManagementModeController : MonoBehaviour
         var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
         if (clickedEmployee != null && !IsCapturingFlow)
         {
+            if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+                return;
             CustomerWallDoor.HideActivePopup();
             CancelOutputDrag();
             SelectEmployeeForAssignment(clickedEmployee);
@@ -433,6 +452,8 @@ public class ManagementModeController : MonoBehaviour
 
     void BeginOutputDrag(StationNode source)
     {
+        if (!IsCapturingFlow && GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress) return;
         if (!IsCapturingFlow && source != null && !CanHaveOutput(source))
         {
             CancelOutputDrag();
@@ -621,6 +642,7 @@ public class ManagementModeController : MonoBehaviour
 
     void ApplyOutputLink(StationNode from, StationNode to)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (!CanLinkOutput(from, to, out string reason))
         {
             SetStatus(reason);
@@ -933,6 +955,7 @@ public class ManagementModeController : MonoBehaviour
 
     void TryAssignEmployeeToStation(KitchenEmployee emp, StationNode node)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (emp == null || node == null) return;
 
         if (!node.IsWorkStation)
@@ -1013,6 +1036,7 @@ public class ManagementModeController : MonoBehaviour
         EnsurePopup();
         if (stationPopup != null)
             stationPopup.SetActive(true);
+        ShiftPlanningUI.SetStationPopupOpen(true);
         RefreshPopup();
         WorkerAssignmentLinkVisuals.SetFocusedStation(node);
 
@@ -1065,7 +1089,8 @@ public class ManagementModeController : MonoBehaviour
         if (!recipePickerOpen && productListContainer != null)
             productListContainer.gameObject.SetActive(false);
         if (productionOutputSelectButton != null)
-            productionOutputSelectButton.interactable = hasOutputChoices && !recipePickerOpen;
+            productionOutputSelectButton.interactable = hasOutputChoices && !recipePickerOpen
+                && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
         RefreshHeatLampInventory();
         RefreshStationSummary();
         ApplyPanelLayout(isHeatLamp);
@@ -2661,6 +2686,7 @@ public class ManagementModeController : MonoBehaviour
 
     void OpenRecipePicker()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (selectedStation == null) return;
         EnsureRecipePickerUI();
         if (recipePickerRoot == null || recipePickerContent == null) return;
@@ -3005,6 +3031,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SetSelectedProduct(ItemDefinition item)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (selectedStation == null || item == null) return;
         var grill = selectedStation.GetComponent<GrillStation>();
         if (grill != null)
@@ -3080,6 +3107,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SetSelectedAssemblyRecipe(AssemblyRecipeDefinition recipe)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (selectedStation == null || recipe == null) return;
         AssemblyStation assembly = selectedStation.GetComponent<AssemblyStation>();
         if (assembly == null) return;
@@ -3166,6 +3194,7 @@ public class ManagementModeController : MonoBehaviour
 
     void AssignWorkerToSelected(KitchenEmployee emp)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (selectedStation == null || emp == null) return;
         if (!selectedStation.IsWorkStation)
         {
@@ -3184,6 +3213,7 @@ public class ManagementModeController : MonoBehaviour
 
     public void OnAssignWorkerClicked()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (selectedStation == null) return;
         if (!selectedStation.IsWorkStation)
         {
@@ -3293,7 +3323,11 @@ public class ManagementModeController : MonoBehaviour
     void HidePopup()
     {
         CloseRecipePicker();
-        if (stationPopup != null) stationPopup.SetActive(false);
+        if (stationPopup != null && stationPopup.activeSelf)
+        {
+            stationPopup.SetActive(false);
+            ShiftPlanningUI.SetStationPopupOpen(false);
+        }
     }
 
     void EnsureWorkflowDecisionHud()
@@ -3389,6 +3423,7 @@ public class ManagementModeController : MonoBehaviour
 
     public void BeginFlowCapture(ProductionFlowPlan flow, bool isNew = true)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (flow == null) return;
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);

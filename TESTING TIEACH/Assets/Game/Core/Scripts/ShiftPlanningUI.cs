@@ -62,7 +62,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     TextMeshProUGUI liveItemRatesText;
     TextMeshProUGUI liveStatsText;
     TextMeshProUGUI liveDiagnosisText;
-    Button goalButton;
     Button startShiftButton;
     Button inspectIssueButton;
     ItemDefinition selectedGoalItem;
@@ -71,7 +70,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     ShiftResult latestShift;
     ShiftResult previousShift;
     bool initialized;
+    bool planHiddenForStationPopup;
     float nextLiveRefreshTime;
+    int lastPlanDemandRevision = int.MinValue;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -135,10 +136,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void Update()
     {
-        if (livePanelRoot == null || !livePanelRoot.activeSelf || Time.unscaledTime < nextLiveRefreshTime)
-            return;
+        if (Time.unscaledTime < nextLiveRefreshTime) return;
         nextLiveRefreshTime = Time.unscaledTime + LiveRefreshSeconds;
-        RefreshLivePanel();
+        if (panelRoot != null && panelRoot.activeSelf)
+        {
+            CustomerOrderConfig planConfig = ResolveOrderConfig();
+            int revision = planConfig != null ? planConfig.DemandScheduleRevision : -1;
+            if (revision != lastPlanDemandRevision)
+                RefreshPlan();
+        }
+        if (livePanelRoot != null && livePanelRoot.activeSelf)
+            RefreshLivePanel();
     }
 
     bool IsAtShiftStart()
@@ -167,6 +175,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         RefreshPlan();
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
+        ManagementModeController management = ManagementModeController.Instance;
+        if (management != null && management.HasOpenStationPanel)
+            SetStationPopupOpen(true);
         CaptureStationBaseline();
         timeManager.RequestExternalPause(PauseSource);
         Sfx.Play(SfxId.UiOpen);
@@ -191,17 +202,18 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         rootRect.anchorMax = new Vector2(1f, 0f);
         rootRect.pivot = new Vector2(1f, 0f);
         rootRect.anchoredPosition = new Vector2(-20f, 20f);
-        rootRect.sizeDelta = new Vector2(510f, 620f);
+        rootRect.sizeDelta = new Vector2(480f, 400f);
 
         Image background = panelRoot.GetComponent<Image>();
-        background.color = new Color(0.075f, 0.09f, 0.12f, 0.97f);
+        background.color = new Color(GameUITheme.Panel.r, GameUITheme.Panel.g,
+            GameUITheme.Panel.b, 0.985f);
         // The card stays visible while the player opens Build and Staff. Only
         // its buttons catch clicks, so planning remains possible underneath it.
         background.raycastTarget = false;
 
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(18, 18, 16, 16);
-        layout.spacing = 8f;
+        layout.spacing = 6f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -209,18 +221,16 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         dayTitle = CreateText(panelRoot.transform, "DayTitle", "SHIFT PLAN", 24f,
-            FontStyles.Bold, 36f, GameUITheme.Accent);
+            FontStyles.Bold, 32f, GameUITheme.Accent);
         TextMeshProUGUI intro = CreateText(panelRoot.transform, "Intro",
-            "Check scheduled customer demand. Adjust recipes, station targets, links, and workers before opening.",
-            14f, FontStyles.Normal, 46f, GameUITheme.TextPrimary);
+            "Review demand, tune the kitchen, then start the shift.",
+            13f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
         intro.textWrappingMode = TextWrappingModes.Normal;
 
-        CreateText(panelRoot.transform, "DemandHeading", "ITEMS TO COVER PER MINUTE", 13f,
-            FontStyles.Bold, 24f, GameUITheme.Accent);
-        goalButton = CreateButton(panelRoot.transform, "ShiftGoalButton", "GOAL: Choose a menu item");
-        goalButton.onClick.AddListener(CycleGoalItem);
+        CreateText(panelRoot.transform, "DemandHeading", "MENU DEMAND PER MINUTE", 13f,
+            FontStyles.Bold, 20f, GameUITheme.Accent);
         demandText = CreateText(panelRoot.transform, "DemandList", "Loading demand...", 16f,
-            FontStyles.Normal, 170f, GameUITheme.TextPrimary);
+            FontStyles.Normal, 32f, GameUITheme.TextPrimary);
         demandText.textWrappingMode = TextWrappingModes.Normal;
         demandText.enableAutoSizing = true;
         demandText.fontSizeMin = 12f;
@@ -231,14 +241,15 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         goalComparisonText.textWrappingMode = TextWrappingModes.Normal;
 
         TextMeshProUGUI runHint = CreateText(panelRoot.transform, "RunHint",
-            "The shift stays paused while you plan. During the run, use pause or fast-forward. The day review will show where stations lost production time.",
-            13f, FontStyles.Normal, 58f, GameUITheme.TextSecondary);
+            "Shift stays paused until you start. Pause or fast-forward during the run; review lost production time afterward.",
+            12f, FontStyles.Normal, 40f, GameUITheme.TextSecondary);
         runHint.textWrappingMode = TextWrappingModes.Normal;
 
         startShiftButton = CreateButton(panelRoot.transform, "StartShiftButton", "START SHIFT");
         startShiftButton.onClick.AddListener(StartShift);
         panelRoot.SetActive(false);
         EnsureLivePanel(canvas);
+        FitPlanPanel();
     }
 
     void EnsureLivePanel(Canvas canvas)
@@ -301,10 +312,14 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         goalItems.Clear();
         if (config == null)
         {
+            lastPlanDemandRevision = -1;
             if (demandText != null) demandText.text = "Demand schedule is not ready yet.";
-            RefreshGoalButton();
+            SetDemandListHeight(2);
+            FitPlanPanel();
             return;
         }
+
+        lastPlanDemandRevision = config.DemandScheduleRevision;
 
         var items = new List<ItemDefinition>(config.GetEnabledMenuItems());
         items.Sort((a, b) =>
@@ -335,7 +350,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         selectedGoalItemName = selectedGoalItem != null ? selectedGoalItem.itemName : string.Empty;
 
         if (demandText != null && goalItems.Count == 0)
+        {
             demandText.text = "No menu items are enabled. Open Business > Menu to choose what to sell.";
+            SetDemandListHeight(2);
+        }
         else if (demandText != null)
         {
             var lines = new StringBuilder();
@@ -349,14 +367,57 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                     .Append(" items/min");
             }
             if (goalItems.Count > visibleItems)
-                lines.Append("\n+").Append(goalItems.Count - visibleItems)
-                    .Append(" more. Cycle the goal to select any item.");
+                lines.Append("\n+").Append(goalItems.Count - visibleItems).Append(" more items.");
             demandText.text = lines.ToString();
+            SetDemandListHeight(Mathf.Max(2, visibleItems
+                + (goalItems.Count > visibleItems ? 1 : 0)));
         }
 
-        RefreshGoalButton();
         if (goalComparisonText != null)
             goalComparisonText.text = GetLatestShiftResultText();
+        FitPlanPanel();
+    }
+
+    void SetDemandListHeight(int lineCount)
+    {
+        if (demandText == null) return;
+        LayoutElement layout = demandText.GetComponent<LayoutElement>();
+        if (layout == null) return;
+        float height = Mathf.Clamp(lineCount * 20f + 4f, 28f, 144f);
+        layout.minHeight = height;
+        layout.preferredHeight = height;
+    }
+
+    void FitPlanPanel()
+    {
+        if (panelRoot == null) return;
+        RectTransform rect = panelRoot.transform as RectTransform;
+        RectTransform canvasRect = panelRoot.transform.parent as RectTransform;
+        if (rect == null) return;
+
+        VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
+        float preferredHeight = layout != null
+            ? layout.padding.vertical + layout.spacing * Mathf.Max(0, panelRoot.transform.childCount - 1)
+            : 0f;
+        for (int i = 0; i < panelRoot.transform.childCount; i++)
+        {
+            RectTransform child = panelRoot.transform.GetChild(i) as RectTransform;
+            if (child != null && child.gameObject.activeSelf)
+                preferredHeight += LayoutUtility.GetPreferredHeight(child);
+        }
+        float desiredHeight = Mathf.Max(360f, preferredHeight + 4f);
+        float availableHeight = canvasRect != null
+            ? Mathf.Max(240f, canvasRect.rect.height - 40f)
+            : Mathf.Max(240f, Screen.height - 40f);
+        float width = canvasRect != null
+            ? Mathf.Min(480f, Mathf.Max(320f, canvasRect.rect.width - 40f))
+            : Mathf.Min(480f, Mathf.Max(320f, Screen.width - 40f));
+
+        rect.sizeDelta = new Vector2(width, desiredHeight);
+        rect.localScale = desiredHeight > availableHeight
+            ? Vector3.one * (availableHeight / desiredHeight) : Vector3.one;
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
     }
 
     void StartShift()
@@ -364,10 +425,34 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         ProductionManager.Instance?.BeginShiftThroughputTracking();
         StoreStatisticsManager.Instance?.BeginShiftThroughputTracking();
         CaptureStationBaseline();
+        planHiddenForStationPopup = false;
         if (panelRoot != null) panelRoot.SetActive(false);
         ShowLivePanel();
         if (timeManager != null) timeManager.ReleaseExternalPause(PauseSource);
         Sfx.Play(SfxId.UiClick);
+    }
+
+    public static void SetStationPopupOpen(bool isOpen)
+    {
+        ShiftPlanningUI planning = Instance;
+        if (planning == null || planning.panelRoot == null) return;
+
+        if (isOpen)
+        {
+            if (!planning.panelRoot.activeSelf) return;
+            planning.planHiddenForStationPopup = true;
+            planning.panelRoot.SetActive(false);
+            return;
+        }
+
+        if (!planning.planHiddenForStationPopup) return;
+        planning.planHiddenForStationPopup = false;
+        if (planning.timeManager == null || planning.timeManager.IsShiftOver
+            || !planning.initialized)
+            return;
+
+        planning.panelRoot.SetActive(true);
+        planning.panelRoot.transform.SetAsLastSibling();
     }
 
     CustomerOrderConfig ResolveOrderConfig()
@@ -384,43 +469,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             if (goalItems[i] != null && goalItems[i].itemName == itemName)
                 return true;
         return false;
-    }
-
-    void CycleGoalItem()
-    {
-        if (goalItems.Count == 0) return;
-        int current = -1;
-        for (int i = 0; i < goalItems.Count; i++)
-            if (goalItems[i] == selectedGoalItem || (selectedGoalItem != null
-                && goalItems[i].itemName == selectedGoalItem.itemName))
-            {
-                current = i;
-                break;
-            }
-        selectedGoalItem = goalItems[(current + 1) % goalItems.Count];
-        selectedGoalItemName = selectedGoalItem.itemName;
-        RefreshPlan();
-        Sfx.Play(SfxId.UiClick);
-    }
-
-    void RefreshGoalButton()
-    {
-        if (goalButton == null) return;
-        TextMeshProUGUI label = goalButton.GetComponentInChildren<TextMeshProUGUI>(true);
-        CustomerOrderConfig config = ResolveOrderConfig();
-        if (label != null)
-        {
-            if (selectedGoalItem == null || config == null)
-                label.text = "SHIFT GOAL: Choose a menu item";
-            else
-                label.text = "SHIFT GOAL: Deliver "
-                    + config.GetCustomerDemandPerMinute(selectedGoalItem).ToString("0.#")
-                    + "/min " + selectedGoalItem.itemName + "  >";
-            label.enableAutoSizing = true;
-            label.fontSizeMin = 12f;
-            label.fontSizeMax = 16f;
-        }
-        goalButton.interactable = goalItems.Count > 1;
     }
 
     void ShowLivePanel()

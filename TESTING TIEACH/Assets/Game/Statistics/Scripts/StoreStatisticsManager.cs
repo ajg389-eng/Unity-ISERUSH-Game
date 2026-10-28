@@ -19,6 +19,14 @@ public class StoreStatisticsManager : MonoBehaviour
     const int MaxCompletedOrders = 500;
     int mealsWasted;
     int revenueEarned;
+    int careerOrdersServed;
+    int careerCustomersVisited;
+    int careerCustomersLost;
+    int careerShiftsCompleted;
+    int careerBestShiftRevenue;
+    int careerBestShiftOrders;
+    int careerLastCompletedDay;
+    float careerWaitTotalSeconds;
 
     // Day-scoped counters (reset at the start of each shift)
     int dayOrdersCompleted;
@@ -72,6 +80,8 @@ public class StoreStatisticsManager : MonoBehaviour
             completedOrderTimes.RemoveAt(0);
         if (saleAmount > 0)
             revenueEarned += saleAmount;
+        careerOrdersServed++;
+        careerWaitTotalSeconds += wait;
 
         dayOrdersCompleted++;
         dayWaitSum += wait;
@@ -84,6 +94,7 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         mealsWasted++;
         dayMealsWasted++;
+        OnStatisticsChanged?.Invoke();
         NotificationCenter.Post("Prepared food expired at a pickup station. Review customer demand and flow throughput.",
             GameNotificationKind.Warning, "food-wasted", 30f);
     }
@@ -91,6 +102,8 @@ public class StoreStatisticsManager : MonoBehaviour
     public void RecordCustomerLost()
     {
         dayCustomersLost++;
+        careerCustomersLost++;
+        OnStatisticsChanged?.Invoke();
         NotificationCenter.Post("A customer left before receiving their order.",
             GameNotificationKind.Warning, "customer-walkout", 20f);
     }
@@ -100,9 +113,11 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         EnsureHourBuckets();
         dayCustomersVisited++;
+        careerCustomersVisited++;
         int idx = GetCurrentHourBucketIndex();
         if (idx >= 0 && idx < hourVisitBuckets.Length)
             hourVisitBuckets[idx]++;
+        OnStatisticsChanged?.Invoke();
     }
 
     /// <summary>Reset day counters and snapshot starting cash for the new shift.</summary>
@@ -139,6 +154,61 @@ public class StoreStatisticsManager : MonoBehaviour
 
     public int MealsWasted => mealsWasted;
     public int RevenueEarned => revenueEarned;
+    public int CareerOrdersServed => careerOrdersServed;
+    public int CareerCustomersVisited => careerCustomersVisited;
+    public int CareerCustomersLost => careerCustomersLost;
+    public int CareerShiftsCompleted => careerShiftsCompleted;
+    public int CareerBestShiftRevenue => careerBestShiftRevenue;
+    public int CareerBestShiftOrders => careerBestShiftOrders;
+    public int CareerLastCompletedDay => careerLastCompletedDay;
+    public float CareerAverageWaitTimeSeconds => careerOrdersServed > 0
+        ? careerWaitTotalSeconds / careerOrdersServed : 0f;
+    public float CareerWaitTotalSeconds => careerWaitTotalSeconds;
+
+    public void RecordShiftCompleted(int day)
+    {
+        day = Mathf.Max(1, day);
+        if (day <= careerLastCompletedDay) return;
+
+        careerLastCompletedDay = day;
+        careerShiftsCompleted++;
+        careerBestShiftRevenue = Mathf.Max(careerBestShiftRevenue, dayRevenue);
+        careerBestShiftOrders = Mathf.Max(careerBestShiftOrders, dayOrdersCompleted);
+        OnStatisticsChanged?.Invoke();
+    }
+
+    public void RestoreCareerStatistics(int ordersServed, int customersVisited,
+        int customersLost, int shiftsCompleted, int totalRevenue, int totalMealsWasted,
+        int bestShiftRevenue, int bestShiftOrders, int lastCompletedDay,
+        float totalWaitSeconds)
+    {
+        careerOrdersServed = Mathf.Max(0, ordersServed);
+        careerCustomersVisited = Mathf.Max(0, customersVisited);
+        careerCustomersLost = Mathf.Max(0, customersLost);
+        careerShiftsCompleted = Mathf.Max(0, shiftsCompleted);
+        revenueEarned = Mathf.Max(0, totalRevenue);
+        mealsWasted = Mathf.Max(0, totalMealsWasted);
+        careerBestShiftRevenue = Mathf.Max(0, bestShiftRevenue);
+        careerBestShiftOrders = Mathf.Max(0, bestShiftOrders);
+        careerLastCompletedDay = Mathf.Max(0, lastCompletedDay);
+        careerWaitTotalSeconds = Mathf.Max(0f, totalWaitSeconds);
+        OnStatisticsChanged?.Invoke();
+    }
+
+    public void ResetCareerStatistics()
+    {
+        careerOrdersServed = 0;
+        careerCustomersVisited = 0;
+        careerCustomersLost = 0;
+        careerShiftsCompleted = 0;
+        careerBestShiftRevenue = 0;
+        careerBestShiftOrders = 0;
+        careerLastCompletedDay = 0;
+        careerWaitTotalSeconds = 0f;
+        revenueEarned = 0;
+        mealsWasted = 0;
+        OnStatisticsChanged?.Invoke();
+    }
 
     public int OrdersCompletedToday => dayOrdersCompleted;
     public int RevenueToday => dayRevenue;

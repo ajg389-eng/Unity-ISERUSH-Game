@@ -47,6 +47,8 @@ public class GameTimeManager : MonoBehaviour
     public SpeedMode CurrentSpeed { get; private set; } = SpeedMode.Play;
     public int CurrentDay { get; private set; } = 1;
     public bool IsShiftOver { get; private set; }
+    /// <summary>True once the current day's service window has begun, including while paused.</summary>
+    public bool IsShiftInProgress => !IsShiftOver && CurrentMinutes > DayStartMinutes + 0.01f;
 
     /// <summary>Minutes from midnight (fractional).</summary>
     public float CurrentMinutes { get; private set; }
@@ -282,7 +284,10 @@ public class GameTimeManager : MonoBehaviour
         if (pauseAtDayEnd)
             SetSpeed(SpeedMode.Paused);
         if (recordShiftResult)
+        {
+            StoreStatisticsManager.Instance?.RecordShiftCompleted(CurrentDay);
             OnShiftEnding?.Invoke();
+        }
         // Clear customers before the end-of-day event so the autosave stores a
         // clean next-day state and the summary reads only the day's statistics.
         CustomerAI.DespawnAllCustomers();

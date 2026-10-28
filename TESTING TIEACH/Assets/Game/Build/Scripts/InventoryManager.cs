@@ -95,9 +95,12 @@ public class InventoryManager : MonoBehaviour
 
     public bool CanPurchase(ItemDefinition item)
     {
-        return item != null && !OnboardingTutorial.IsStationLocked(item)
+        return !IsShiftInProgress && item != null && !OnboardingTutorial.IsStationLocked(item)
             && !IsResearchLocked(item) && !IsAtUniquePlacementLimit(item);
     }
+
+    static bool IsShiftInProgress => GameTimeManager.Instance != null
+        && GameTimeManager.Instance.IsShiftInProgress;
 
     static bool IsResearchLocked(ItemDefinition item)
     {

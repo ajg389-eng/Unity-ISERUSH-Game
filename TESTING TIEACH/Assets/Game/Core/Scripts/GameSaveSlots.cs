@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
@@ -39,6 +41,19 @@ public static class GameSaveSlots
 
     static string Key(int slotIndex, string field) => Prefix + slotIndex + "." + field;
 
+    static string JoinNames(IEnumerable<string> names)
+    {
+        var value = new StringBuilder();
+        if (names == null) return string.Empty;
+        foreach (string name in names)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            if (value.Length > 0) value.Append('\n');
+            value.Append(name);
+        }
+        return value.ToString();
+    }
+
     public static SlotInfo GetSlot(int slotIndex)
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
@@ -71,7 +86,7 @@ public static class GameSaveSlots
     public static void WipeSlot(int slotIndex)
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
-        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "IntroSeen", "InvestorLetterSent" };
+        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "MenuItems", "IntroSeen", "InvestorLetterSent" };
         foreach (string field in fields)
             PlayerPrefs.DeleteKey(Key(slotIndex, field));
 
@@ -115,6 +130,8 @@ public static class GameSaveSlots
                 ShiftPlanningUI.RestoreSaveState(null);
                 if (time != null) time.RestoreDay(info.day);
                 if (money != null) money.SetMoney(info.cash);
+                StoreStatisticsManager.Instance?.ResetCareerStatistics();
+                StoreStatisticsManager.Instance?.BeginDay();
 
                 // There is no saved kitchen to restore, so clear any scene state
                 // left over from the previously selected slot.
@@ -141,16 +158,43 @@ public static class GameSaveSlots
             if (ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null)
                 ProductionManager.Instance.orderConfig.ClearEnabledMenuItems();
 
+            StoreStatisticsManager.Instance?.ResetCareerStatistics();
             StoreStatisticsManager.Instance?.BeginDay();
 
             if (MissionProgressManager.Instance != null)
                 MissionProgressManager.Instance.ResetProgress();
             if (MilestoneProgressManager.Instance != null)
                 MilestoneProgressManager.Instance.ResetAllProgress();
+            PlayerPrefs.DeleteKey(Key(slotIndex, "MenuItems"));
         }
 
+        RestoreMenuSelection(slotIndex);
         SaveActiveSlot();
         return true;
+    }
+
+    /// <summary>
+    /// Persists only the small menu selection. The full kitchen checkpoint is
+    /// intentionally left to the normal autosave so a menu click does not scan
+    /// every station, worker, flow, and customer.
+    /// </summary>
+    public static void SaveEnabledMenuSelection(CustomerOrderConfig config)
+    {
+        if (!slotSelectedThisSession || config == null) return;
+        int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        if (slotIndex < 1 || slotIndex > SlotCount) return;
+        PlayerPrefs.SetString(Key(slotIndex, "MenuItems"), JoinNames(config.CaptureEnabledMenuItemNames()));
+    }
+
+    static void RestoreMenuSelection(int slotIndex)
+    {
+        string key = Key(slotIndex, "MenuItems");
+        if (!PlayerPrefs.HasKey(key)) return;
+        ProductionManager production = ProductionManager.Instance;
+        CustomerOrderConfig config = production != null ? production.orderConfig : null;
+        if (config == null) return;
+        string packedNames = PlayerPrefs.GetString(key, string.Empty);
+        config.RestoreEnabledMenuItems(packedNames.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
     }
 
     public static void MarkActiveSlotIntroSeen()
@@ -186,8 +230,10 @@ public static class GameSaveSlots
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>();
         int day = time != null ? time.CurrentDay : 1;
         int cash = money != null ? money.CurrentMoney : 1000;
-        string checkpoint = JsonUtility.ToJson(KitchenSaveSnapshot.Capture());
+        KitchenSaveSnapshot snapshot = KitchenSaveSnapshot.Capture();
+        string checkpoint = JsonUtility.ToJson(snapshot);
         PlayerPrefs.SetString(Key(slotIndex, "Kitchen"), checkpoint);
+        PlayerPrefs.SetString(Key(slotIndex, "MenuItems"), JoinNames(snapshot.enabledMenuItemNames));
 
         PlayerPrefs.SetInt(Key(slotIndex, "Exists"), 1);
         PlayerPrefs.SetInt(Key(slotIndex, "Day"), Mathf.Max(1, day));

@@ -216,6 +216,8 @@ public class ProductionJob
 public partial class ProductionManager : MonoBehaviour
 {
     public static ProductionManager Instance { get; private set; }
+    static bool IsShiftInProgress => GameTimeManager.Instance != null
+        && GameTimeManager.Instance.IsShiftInProgress;
 
     [Header("Order config")]
     public CustomerOrderConfig orderConfig;
@@ -594,6 +596,13 @@ public partial class ProductionManager : MonoBehaviour
         return total * 60f / observedWindow;
     }
 
+    /// <summary>Steady-state item output predicted by the active worker and station flows.</summary>
+    public float GetPredictedOutputPerMinute(ItemDefinition item)
+    {
+        if (!useScheduledProduction || item == null) return 0f;
+        return ScheduledProduction.GetPredictedOutputPerMinute(item);
+    }
+
     /// <summary>Starts a clean rolling output window for the next player-run shift.</summary>
     public void BeginShiftThroughputTracking()
     {
@@ -887,6 +896,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public ProductionFlowPlan CreateProductionFlow()
     {
+        if (IsShiftInProgress) return null;
         EnsureProductionFlows();
         int number = productionFlows.Count + 1;
         var flow = new ProductionFlowPlan
@@ -923,6 +933,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public KitchenEmployee AddAvailableWorkerToSelectedFlow()
     {
+        if (IsShiftInProgress) return null;
         ProductionFlowPlan flow = SelectedFlow;
         if (employees == null) return null;
         foreach (KitchenEmployee employee in employees)
@@ -938,6 +949,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public KitchenEmployee RemoveLastWorkerFromSelectedFlow()
     {
+        if (IsShiftInProgress) return null;
         ProductionFlowPlan flow = SelectedFlow;
         if (flow.workers.Count == 0) return null;
         KitchenEmployee employee = flow.workers[flow.workers.Count - 1];
@@ -950,6 +962,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public void RemoveWorkerFromFlow(ProductionFlowPlan flow, KitchenEmployee employee)
     {
+        if (IsShiftInProgress) return;
         if (flow == null || employee == null || flow.workers == null) return;
         if (!flow.workers.Remove(employee)) return;
         employee.ClearAllOperatedStations();
@@ -961,6 +974,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public void RemoveProductionFlow(ProductionFlowPlan flow)
     {
+        if (IsShiftInProgress) return;
         if (flow == null || productionFlows == null || !productionFlows.Contains(flow)) return;
         ProductionFlowPlan previousSelection = SelectedFlow;
         int removedIndex = productionFlows.IndexOf(flow);
@@ -1291,6 +1305,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public void AddWorkerToFlow(ProductionFlowPlan targetFlow, KitchenEmployee employee)
     {
+        if (IsShiftInProgress) return;
         if (targetFlow == null || employee == null) return;
         EnsureProductionFlows();
         if (!productionFlows.Contains(targetFlow)) return;
@@ -1318,6 +1333,7 @@ public partial class ProductionManager : MonoBehaviour
     /// <summary>Hire without spending money (debug).</summary>
     public KitchenEmployee HireWorkerFree()
     {
+        if (IsShiftInProgress) return null;
         if (employeePrefab == null)
         {
             Debug.LogWarning("ProductionManager: no employeePrefab assigned.");
@@ -1339,6 +1355,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public KitchenEmployee HireWorker()
     {
+        if (IsShiftInProgress) return null;
         if (employeePrefab == null)
         {
             Debug.LogWarning("ProductionManager: no employeePrefab assigned. Use Production > Create Default Employee Prefab and assign it.");
@@ -1406,7 +1423,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public bool CanHireWorker()
     {
-        if (employeePrefab == null) return false;
+        if (IsShiftInProgress || employeePrefab == null) return false;
         return HiredWorkerCount < MaxHiredWorkers;
     }
 
@@ -1425,6 +1442,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public void FireWorker(KitchenEmployee emp)
     {
+        if (IsShiftInProgress) return;
         if (emp == null) return;
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
@@ -3055,11 +3073,9 @@ public partial class ProductionManager : MonoBehaviour
     {
         if (job == null) return;
         SetTaskState(job, state);
-        // TouchTask is called by the owning worker every update while travelling
-        // or operating a station. Keep the claim alive for the whole operation,
-        // not only when the worker changes step or inventory. Long recipes could
-        // otherwise be reclaimed mid-animation and send their worker back to the
-        // flow root even though useful work was still in progress.
+        // The owning worker periodically refreshes this heartbeat while travelling
+        // or operating. Long recipes must keep their claim even when they make no
+        // inventory change for an extended period.
         if (job.assignedTo != null)
             job.claimHeartbeatAt = Time.time;
     }

@@ -61,7 +61,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndoIngredient()
     {
-        return CanUndoIngredient && TryUndo();
+        return CanUndoIngredient && TryUndoInternal(allowIngredientDuringShift: true);
     }
 
     public bool CanUndoFloor
@@ -148,7 +148,7 @@ public class PurchaseUndoManager : MonoBehaviour
             var foodMenu = FindFirstObjectByType<IngredientsOrderUI>();
             if (foodMenu != null && foodMenu.isActiveAndEnabled)
                 TryUndoIngredient();
-            else
+            else if (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress)
                 TryUndo();
         }
     }
@@ -260,6 +260,14 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndo()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return false;
+        return TryUndoInternal(allowIngredientDuringShift: false);
+    }
+
+    bool TryUndoInternal(bool allowIngredientDuringShift)
+    {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress
+            && (!allowIngredientDuringShift || !CanUndoIngredient)) return false;
         if (stack.Count == 0)
             return false;
 
@@ -294,6 +302,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndoLastFloor()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return false;
         if (!CanUndoFloor)
             return false;
 

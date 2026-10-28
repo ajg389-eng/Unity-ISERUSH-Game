@@ -1577,11 +1577,12 @@ public class IngredientsOrderUI : MonoBehaviour
 
         Toggle toggle = CreateCheckbox(header.transform);
         toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
-        toggle.interactable = itemUnlocked;
+        toggle.interactable = itemUnlocked
+            && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
         toggle.onValueChanged.AddListener(enabled =>
         {
             menu.SetItemEnabled(captured, enabled);
-            GameSaveSlots.SaveActiveSlot();
+            GameSaveSlots.SaveEnabledMenuSelection(menu);
         });
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
@@ -1623,6 +1624,8 @@ public class IngredientsOrderUI : MonoBehaviour
         rowState.item = item;
         rowState.label = nameText;
         rowState.workflowText = workflowText;
+        rowState.workflowWasUnlocked = itemUnlocked;
+        rowState.workflowUnlockedStateCached = true;
         rowState.preview = preview;
         rowState.lockVisual = lockVisual;
         rowState.rowBackground = row.GetComponent<Image>();
@@ -2286,20 +2289,34 @@ public class IngredientsOrderUI : MonoBehaviour
                 row.preview.color = unlocked ? Color.white : Color.clear;
             if (row.lockVisual != null) row.lockVisual.alpha = 0f;
             if (row.lockedOverlay != null) row.lockedOverlay.SetActive(!unlocked);
-            if (row.workflowText != null)
+            if (row.workflowText != null && (!row.workflowUnlockedStateCached
+                || row.workflowWasUnlocked != unlocked))
+            {
                 row.workflowText.text = unlocked
-                    ? GetWorkflowDescription(inventory.orderConfig, row.item)
+                    ? (HasLockedIngredient()
+                        ? "Recipe details unlock when the required ingredients are available."
+                        : GetWorkflowDescription(inventory.orderConfig, row.item))
                     : string.Empty;
+                row.workflowWasUnlocked = unlocked;
+                row.workflowUnlockedStateCached = true;
+            }
             if (row.toggle != null)
             {
                 // Rows survive closing this screen and loading another save.
                 // Refresh their value from the restored menu without saving it again.
                 row.toggle.SetIsOnWithoutNotify(inventory.orderConfig.IsItemEnabled(row.item));
-                row.toggle.interactable = unlocked;
+                row.toggle.interactable = unlocked
+                    && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
             }
             if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
                 toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
         }
+
+        // The Menu and Supply sections share this component, but only the
+        // visible section needs a refresh. In particular, avoid walking and
+        // rewriting every supply row while the player is changing menu items.
+        if (showMenu) return;
+
         var delivery = IngredientDeliveryService.Instance;
         bool deliveryActive = delivery != null && delivery.HasPending;
         bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
@@ -2571,6 +2588,8 @@ public sealed class MilestoneLockedMenuRow : MonoBehaviour
     public Image rowBackground;
     public Toggle toggle;
     public GameObject lockedOverlay;
+    public bool workflowWasUnlocked;
+    public bool workflowUnlockedStateCached;
 }
 
 /// <summary>Click-and-drag panning for the recipe dependency graph.</summary>

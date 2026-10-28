@@ -12,6 +12,10 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
 
     static AnalyticsPopupUI instance;
     GameObject panel;
+    GameObject liveAnalyticsContent;
+    GameObject playerStatisticsContent;
+    Button liveAnalyticsTab;
+    Button playerStatisticsTab;
     public static bool IsOpen => instance != null && instance.gameObject.activeInHierarchy;
 
     public static void Open(Transform canvas)
@@ -36,6 +40,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
 
         instance.gameObject.SetActive(false);
         instance.transform.SetAsLastSibling();
+        instance.ShowPage(false);
         instance.gameObject.SetActive(true);
         OnboardingTutorial.NotifyAnalyticsScreenOpened();
         Sfx.Play(SfxId.UiOpen);
@@ -83,7 +88,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         title.alignment = TextAlignmentOptions.Left;
 
         var hint = CreateText(panel.transform, "Hint",
-            "Live demand and flow performance | Service rate = served orders / (served orders + walkouts)",
+            "Review live production or lifetime restaurant performance",
             12f, FontStyles.Normal);
         hint.rectTransform.anchorMin = new Vector2(0f, 1f);
         hint.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -96,14 +101,90 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         var close = CreateButton(panel.transform, "Close", "X", new Vector2(-68f, -58f), new Vector2(-18f, -14f), GameUITheme.Danger);
         close.onClick.AddListener(Close);
 
-        var content = new GameObject("AnalyticsContent", typeof(RectTransform));
+        BuildPageTabs();
+
+        liveAnalyticsContent = CreatePageContent("AnalyticsContent");
+        liveAnalyticsContent.AddComponent<CustomersUI>();
+
+        playerStatisticsContent = CreatePageContent("PlayerStatisticsContent");
+        playerStatisticsContent.AddComponent<Image>().color = Color.clear;
+        playerStatisticsContent.AddComponent<PlayerStatisticsUI>();
+        playerStatisticsContent.SetActive(false);
+    }
+
+    GameObject CreatePageContent(string name)
+    {
+        GameObject content = new GameObject(name, typeof(RectTransform));
         content.transform.SetParent(panel.transform, false);
-        var contentRect = (RectTransform)content.transform;
-        contentRect.anchorMin = Vector2.zero;
-        contentRect.anchorMax = Vector2.one;
-        contentRect.offsetMin = new Vector2(18f, 18f);
-        contentRect.offsetMax = new Vector2(-18f, -88f);
-        content.AddComponent<CustomersUI>();
+        RectTransform rect = (RectTransform)content.transform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(18f, 18f);
+        rect.offsetMax = new Vector2(-18f, -126f);
+        return content;
+    }
+
+    void BuildPageTabs()
+    {
+        GameObject tabs = new GameObject("AnalyticsTabs", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup));
+        tabs.transform.SetParent(panel.transform, false);
+        RectTransform rect = (RectTransform)tabs.transform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = new Vector2(28f, -120f);
+        rect.offsetMax = new Vector2(-100f, -84f);
+        HorizontalLayoutGroup layout = tabs.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 6f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+
+        liveAnalyticsTab = CreatePageTab(tabs.transform, "LiveAnalyticsTab", "LIVE ANALYTICS");
+        playerStatisticsTab = CreatePageTab(tabs.transform, "PlayerStatisticsTab", "PLAYER STATS");
+        liveAnalyticsTab.onClick.AddListener(() => ShowPage(false));
+        playerStatisticsTab.onClick.AddListener(() => ShowPage(true));
+    }
+
+    Button CreatePageTab(Transform parent, string name, string label)
+    {
+        GameObject tabObject = new GameObject(name,
+            typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        tabObject.transform.SetParent(parent, false);
+        Image image = tabObject.GetComponent<Image>();
+        image.color = GameUITheme.Charcoal;
+        Button button = tabObject.GetComponent<Button>();
+        button.targetGraphic = image;
+        GameUITheme.ApplyCompactControlEffects(button);
+        LayoutElement size = tabObject.GetComponent<LayoutElement>();
+        size.minWidth = size.preferredWidth = 166f;
+        size.minHeight = size.preferredHeight = 34f;
+
+        TextMeshProUGUI text = CreateText(tabObject.transform, "Label", label, 12f,
+            FontStyles.Bold);
+        text.color = GameUITheme.TextPrimary;
+        text.alignment = TextAlignmentOptions.Center;
+        text.rectTransform.anchorMin = Vector2.zero;
+        text.rectTransform.anchorMax = Vector2.one;
+        text.rectTransform.offsetMin = Vector2.zero;
+        text.rectTransform.offsetMax = Vector2.zero;
+        GameUITheme.ApplyCompactTabButton(button, label == "LIVE ANALYTICS");
+        return button;
+    }
+
+    void ShowPage(bool showPlayerStatistics)
+    {
+        if (liveAnalyticsContent != null)
+            liveAnalyticsContent.SetActive(!showPlayerStatistics);
+        if (playerStatisticsContent != null)
+            playerStatisticsContent.SetActive(showPlayerStatistics);
+        if (liveAnalyticsTab != null)
+            GameUITheme.ApplyCompactTabButton(liveAnalyticsTab, !showPlayerStatistics);
+        if (playerStatisticsTab != null)
+            GameUITheme.ApplyCompactTabButton(playerStatisticsTab, showPlayerStatistics);
     }
 
     static TextMeshProUGUI CreateText(Transform parent, string name, string value, float size, FontStyles style)

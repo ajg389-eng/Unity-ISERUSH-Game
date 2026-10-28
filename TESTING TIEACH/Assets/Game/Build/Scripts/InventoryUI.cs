@@ -67,6 +67,7 @@ public class InventoryUI : MonoBehaviour
     bool expansionStateKnown;
     int displayedFloorWidth, displayedFloorHeight, displayedExpandWidth, displayedExpandHeight, displayedExpandCost;
     bool displayedGridAvailable, displayedCanExpand;
+    bool displayedShiftInProgress;
 
     void Start()
     {
@@ -87,6 +88,7 @@ public class InventoryUI : MonoBehaviour
         EnsureTabInfo();
         WireTabButtons();
         RefreshAll();
+        displayedShiftInProgress = IsShiftInProgress;
         SelectTab(0);
         ApplyModeState();
     }
@@ -107,6 +109,12 @@ public class InventoryUI : MonoBehaviour
         }
 
         ApplyModeState();
+        bool shiftInProgress = IsShiftInProgress;
+        if (panel != null && panel.activeSelf && shiftInProgress != displayedShiftInProgress)
+        {
+            displayedShiftInProgress = shiftInProgress;
+            RefreshAll();
+        }
         if (IsPanelOpen)
             RefreshExpandButton();
 
@@ -630,6 +638,7 @@ public class InventoryUI : MonoBehaviour
         card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(captured),
             inventory.GetCount(captured), inventory.GetAcquiredCount(captured));
         card.SetTutorialLocked(IsMilestoneStationLocked(captured));
+        card.SetDesignLocked(IsShiftInProgress);
         if (OnboardingTutorial.ShouldHighlightInventoryItem(captured))
             card.transform.SetAsFirstSibling();
     }
@@ -693,6 +702,7 @@ public class InventoryUI : MonoBehaviour
                 if (selected != null) refresh();
             }, mark1Locked: shakeStationLocked,
                 mark2Locked: mk2 != null && !mk2Unlocked);
+            card.SetDesignLocked(IsShiftInProgress);
         };
         refresh();
 
@@ -709,6 +719,9 @@ public class InventoryUI : MonoBehaviour
                 && item.stationMark == 1
                 && !MilestoneFeatures.HasReached(MilestoneFeatures.RestaurantBasics)));
     }
+
+    static bool IsShiftInProgress => GameTimeManager.Instance != null
+        && GameTimeManager.Instance.IsShiftInProgress;
 
     void CreateLegacyRow(ItemDefinition item)
     {
@@ -767,7 +780,7 @@ public class InventoryUI : MonoBehaviour
 
     void BeginItemPlacement(ItemDefinition item)
     {
-        if (item == null || inventory == null || inventory.GetCount(item) <= 0)
+        if (IsShiftInProgress || item == null || inventory == null || inventory.GetCount(item) <= 0)
         {
             Sfx.Play(SfxId.UiError);
             return;
@@ -1328,7 +1341,8 @@ public class InventoryUI : MonoBehaviour
         int h = grid != null ? grid.Height : 0;
         bool canSize = grid != null && grid.CanExpand(expandWidth, expandHeight);
         bool canPay = money != null && money.CanAfford(expandCost);
-        bool can = canSize && canPay;
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        bool can = planPhase && canSize && canPay;
 
         // Affordability remains live, but unchanged values do not dirty the UI.
         if (expandButton != null && expandButton.interactable != can)
@@ -1365,6 +1379,7 @@ public class InventoryUI : MonoBehaviour
 
     void OnExpandClicked()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (grid == null) grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (money == null) money = FindObjectOfType<MoneyManager>();
         if (grid == null || money == null) return;

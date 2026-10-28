@@ -1299,6 +1299,8 @@ public class CustomerOrderConfig : ScriptableObject
 
     public void SetItemEnabled(ItemDefinition item, bool enabled)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+            return;
         if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
         if (enabled && !IsMenuItemUnlocked(item)) return;
         bool changed = enabled

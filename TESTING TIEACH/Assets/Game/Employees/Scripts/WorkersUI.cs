@@ -41,6 +41,7 @@ public class WorkersUI : MonoBehaviour
     int expandedSystemEfficiencyState = -1;
     float nextSystemEfficiencyRefresh;
     Button flowExpandButton;
+    bool displayedShiftInProgress;
     TextMeshProUGUI flowExpandArrowLabel;
     TextMeshProUGUI flowHeaderLabel;
     bool flowExpanded = true;
@@ -82,6 +83,12 @@ public class WorkersUI : MonoBehaviour
 
     void Update()
     {
+        bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
+        if (shiftInProgress != displayedShiftInProgress)
+        {
+            displayedShiftInProgress = shiftInProgress;
+            Refresh();
+        }
         if (systemEfficiencyRoot == null || !systemEfficiencyRoot.gameObject.activeInHierarchy
             || Time.unscaledTime < nextSystemEfficiencyRefresh)
             return;
@@ -412,6 +419,7 @@ public class WorkersUI : MonoBehaviour
 
     void OnHireClicked()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null)
         {
             production = FindObjectOfType<ProductionManager>();
@@ -1072,6 +1080,11 @@ public class WorkersUI : MonoBehaviour
 
     void OnFlowNameEdited(string value)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+        {
+            UpdateFlowHeader();
+            return;
+        }
         if (production == null) return;
         production.SelectedFlow.SetName(value);
         string clean = production.SelectedFlow.flowName;
@@ -1146,6 +1159,7 @@ public class WorkersUI : MonoBehaviour
 
     void CreateFlow()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null) return;
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller == null)
@@ -1166,6 +1180,7 @@ public class WorkersUI : MonoBehaviour
 
     void EditFlow()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null) return;
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller == null)
@@ -1233,12 +1248,13 @@ public class WorkersUI : MonoBehaviour
         if (flowTabsScroll != null) LayoutRebuilder.MarkLayoutForRebuild(flowTabsScroll.transform as RectTransform);
 
         if (deleteFlowButton == null) return;
-        deleteFlowButton.interactable = ManagementModeController.Instance == null
-            || !ManagementModeController.Instance.IsCapturingFlow;
+        deleteFlowButton.interactable = (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress)
+            && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
         deleteFlowButton.onClick.RemoveAllListeners();
         ProductionFlowPlan selectedFlow = production.SelectedFlow;
         deleteFlowButton.onClick.AddListener(() =>
         {
+            if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
             if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
             production.RemoveProductionFlow(selectedFlow);
             if (ManagementModeController.Instance != null)
@@ -1325,8 +1341,10 @@ public class WorkersUI : MonoBehaviour
             if (worker == null) continue;
             KitchenEmployee capturedWorker = worker;
             Button chip = MakeChip(workerRow, worker.employeeName + "  ×", 118f);
+            chip.interactable = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
             chip.onClick.AddListener(() =>
             {
+                if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
                 production.RemoveWorkerFromFlow(flow, capturedWorker);
                 Refresh();
             });
@@ -1339,6 +1357,7 @@ public class WorkersUI : MonoBehaviour
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
         Button dropZone = MakeChip(parent, "+  Drop Worker", 126f);
+        dropZone.interactable = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
         if (image != null) image.color = idleColor;
@@ -1363,6 +1382,16 @@ public class WorkersUI : MonoBehaviour
             production.EnsureProductionFlows();
             RefreshSystemEfficiency();
             ProductionFlowPlan flow = production.SelectedFlow;
+            bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+            if (createFlowButton != null) createFlowButton.interactable = planPhase;
+            if (flowNameInput != null) flowNameInput.interactable = planPhase;
+            Button editButton = flowPanel != null
+                ? flowPanel.Find("FlowHeader/EditFlow")?.GetComponent<Button>()
+                    ?? flowPanel.Find("ActionsRow/EditFlow")?.GetComponent<Button>()
+                    ?? flowPanel.Find("FlowListRow/EditFlow")?.GetComponent<Button>()
+                : null;
+            if (editButton != null) editButton.interactable = planPhase
+                && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
             UpdateFlowHeader();
             if (flow != null
                 && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
@@ -1559,6 +1588,7 @@ public class WorkersUI : MonoBehaviour
 
     public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null || employee == null || flow == null) return;
         production.AddWorkerToFlow(flow, employee);
         int flowIndex = production.productionFlows.IndexOf(flow);
@@ -1590,6 +1620,8 @@ public class WorkersUI : MonoBehaviour
                 countText.text = string.Empty;
 
             bool canHire = production.employeePrefab != null;
+            if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+                canHire = false;
             var money = FindObjectOfType<MoneyManager>();
             int hireCostNow = production.GetHireCost();
             string costLabel = hireCostNow <= 0 ? "FREE" : "$" + hireCostNow;
@@ -1597,6 +1629,11 @@ public class WorkersUI : MonoBehaviour
             {
                 canHire = false;
                 costLabel = "N/A";
+            }
+            else if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+            {
+                canHire = false;
+                costLabel = "PLAN ONLY";
             }
             else if (production.ExtraHireLocked)
             {
@@ -1691,6 +1728,7 @@ class WorkerFlowDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (card == null) card = GetComponent<WorkerCardUI>();
         if (card == null || card.employee == null) return;
 

@@ -22,6 +22,7 @@ public class InventoryItemCardUI : MonoBehaviour
     public UnityEngine.UI.Button mark2Button;
 
     bool tutorialHighlight;
+    bool designLocked;
     public bool IsTutorialHighlighted => tutorialHighlight;
     bool tutorialLocked;
     Image cardImage;
@@ -273,7 +274,7 @@ public class InventoryItemCardUI : MonoBehaviour
         if (qtyText != null)
             qtyText.text = Mathf.Max(0, owned).ToString();
         if (buyButton != null)
-            buyButton.interactable = (canPlace || !atUniquePlacementLimit) && !tutorialLocked;
+            buyButton.interactable = (canPlace || !atUniquePlacementLimit) && !tutorialLocked && !designLocked;
         if (priceText != null)
         {
             if (canPlace) priceText.text = "PLACE";
@@ -297,6 +298,29 @@ public class InventoryItemCardUI : MonoBehaviour
         if (selectButtons != null)
             foreach (var button in selectButtons)
                 if (button != null) button.interactable = false;
+    }
+
+    public void SetDesignLocked(bool locked)
+    {
+        designLocked = locked;
+        if (locked)
+        {
+            if (buyButton != null) buyButton.interactable = false;
+            if (selectButtons != null)
+                foreach (var button in selectButtons)
+                    if (button != null) button.interactable = false;
+            if (mark1Button != null) mark1Button.interactable = false;
+            if (mark2Button != null) mark2Button.interactable = false;
+            return;
+        }
+        if (boundItem != null)
+        {
+            var inventory = FindFirstObjectByType<InventoryManager>();
+            SetOwnedCount(inventory != null ? inventory.GetAcquiredCount(boundItem) : 0);
+        }
+        if (selectButtons != null)
+            foreach (var button in selectButtons)
+                if (button != null) button.interactable = !locked && !tutorialLocked;
     }
 
     public void SetDisplayName(string displayName)

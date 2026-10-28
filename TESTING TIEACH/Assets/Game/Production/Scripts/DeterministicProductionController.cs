@@ -45,6 +45,7 @@ public sealed class DeterministicProductionController : IDisposable
     readonly Dictionary<ProductionFlowPlan, int> flowIndex = new Dictionary<ProductionFlowPlan, int>();
     readonly Dictionary<(Vector3, Vector3), Vector3[]> routeCache = new Dictionary<(Vector3, Vector3), Vector3[]>();
     readonly Dictionary<(int, int), Vector3[]> routes = new Dictionary<(int, int), Vector3[]>();
+    readonly Dictionary<(int, int), float[]> routeCumulativeDistances = new Dictionary<(int, int), float[]>();
     readonly Dictionary<GameObject, ProductionStationCheckpoint> restoredStations = new Dictionary<GameObject, ProductionStationCheckpoint>();
     readonly Dictionary<KitchenEmployee, ProductionWorkerCheckpoint> restoredWorkers = new Dictionary<KitchenEmployee, ProductionWorkerCheckpoint>();
     Vector3[] points;
@@ -56,6 +57,7 @@ public sealed class DeterministicProductionController : IDisposable
     bool configurationCheck = true, disposed, invalidEventLogged;
     long nextForecastAt = -1;
     long[] plannedTotals;
+    long[][] plannedTotalsByFlowItem;
     float[] targetTotals;
     string[] workerDescriptions;
     int[] workerDescriptionKeys;
@@ -211,7 +213,7 @@ public sealed class DeterministicProductionController : IDisposable
             }
         foreach (KitchenEmployee worker in workers) if (worker != null) worker.ClearScheduledPresentation();
         bindings.Clear(); workers.Clear(); items.Clear(); itemIndex.Clear(); stationIndex.Clear();
-        workerIndex.Clear(); flowIndex.Clear(); routes.Clear();
+        workerIndex.Clear(); flowIndex.Clear(); routes.Clear(); routeCumulativeDistances.Clear();
         manager.EnsureProductionFlows();
         var stationObjects = new List<GameObject>();
         foreach (ProductionFlowPlan flow in manager.productionFlows)
@@ -358,6 +360,7 @@ public sealed class DeterministicProductionController : IDisposable
             targetTotals[edge.Flow] += 60f * Sim.TicksPerSecond / source.CycleTicks;
         }
         plannedTotals = null;
+        plannedTotalsByFlowItem = null;
         nextForecastAt = -1;
         SynchronizeExternalState();
         simulation.AdvanceTo(0);
@@ -731,19 +734,37 @@ public sealed class DeterministicProductionController : IDisposable
         Vector3 p = points[trip.Location];
         bool moving = trip.Phase == Sim.TripPhase.Approach || trip.Phase == Sim.TripPhase.Travel;
         int target = trip.Phase == Sim.TripPhase.Approach ? trip.Source : trip.Destination;
-        if (moving && routes.TryGetValue((trip.Location, target), out Vector3[] path) && path.Length > 0)
+        var routeKey = (trip.Location, target);
+        if (moving && routes.TryGetValue(routeKey, out Vector3[] path) && path.Length > 0)
         {
-            float total = 0f;
-            for (int i = 1; i < path.Length; i++) total += FlatDistance(path[i - 1], path[i]);
-            float fraction = (float)(simulation.Now - trip.PhaseStarted) / Math.Max(1, trip.DueAt - trip.PhaseStarted);
-            float remaining = total * Mathf.Clamp01(fraction);
-            p = path[path.Length - 1];
-            for (int i = 1; i < path.Length; i++)
+            if (path.Length == 1)
             {
-                float length = FlatDistance(path[i - 1], path[i]);
-                if (remaining <= length) { p = Vector3.Lerp(path[i - 1], path[i], length > 0f ? remaining / length : 1f); break; }
-                remaining -= length;
+                p = path[0];
+                p.y = workers[worker].groundHeight != 0f ? workers[worker].groundHeight
+                    : grid != null ? grid.Origin.y : workers[worker].transform.position.y;
+                return p;
             }
+            if (!routeCumulativeDistances.TryGetValue(routeKey, out float[] cumulative))
+            {
+                cumulative = new float[path.Length];
+                for (int i = 1; i < path.Length; i++)
+                    cumulative[i] = cumulative[i - 1] + FlatDistance(path[i - 1], path[i]);
+                routeCumulativeDistances.Add(routeKey, cumulative);
+            }
+            float fraction = (float)(simulation.Now - trip.PhaseStarted) / Math.Max(1, trip.DueAt - trip.PhaseStarted);
+            float remaining = cumulative[path.Length - 1] * Mathf.Clamp01(fraction);
+            int low = 1;
+            int high = path.Length - 1;
+            while (low < high)
+            {
+                int mid = (low + high) >> 1;
+                if (cumulative[mid] < remaining) low = mid + 1;
+                else high = mid;
+            }
+            float segmentLength = cumulative[low] - cumulative[low - 1];
+            float segmentProgress = segmentLength > 0.0001f
+                ? Mathf.Clamp01((remaining - cumulative[low - 1]) / segmentLength) : 1f;
+            p = Vector3.Lerp(path[low - 1], path[low], segmentProgress);
         }
         p.y = workers[worker].groundHeight != 0f ? workers[worker].groundHeight
             : grid != null ? grid.Origin.y : workers[worker].transform.position.y;
@@ -761,9 +782,17 @@ public sealed class DeterministicProductionController : IDisposable
             var plan = new Sim(simulation.Plan) { UnlimitedStock = true, DrainPickup = true };
             plan.AdvanceTo(120 * Sim.TicksPerSecond);
             long[] before = (long[])plan.Delivered.Clone();
+            long[,] beforeByItem = (long[,])plan.DeliveredByItem.Clone();
             plan.AdvanceTo(720 * Sim.TicksPerSecond);
             plannedTotals = new long[before.Length];
-            for (int i = 0; i < before.Length; i++) plannedTotals[i] = plan.Delivered[i] - before[i];
+            plannedTotalsByFlowItem = new long[before.Length][];
+            for (int i = 0; i < before.Length; i++)
+            {
+                plannedTotals[i] = plan.Delivered[i] - before[i];
+                plannedTotalsByFlowItem[i] = new long[simulation.Plan.ItemCount];
+                for (int item = 0; item < simulation.Plan.ItemCount; item++)
+                    plannedTotalsByFlowItem[i][item] = plan.DeliveredByItem[i, item] - beforeByItem[i, item];
+            }
         }
         if (simulation.Now >= nextForecastAt || nextForecastAt < 0)
         {
@@ -780,6 +809,25 @@ public sealed class DeterministicProductionController : IDisposable
             nextForecastAt = simulation.Now + Sim.TicksPerSecond;
         }
         return forecasts[index];
+    }
+
+    public float GetPredictedOutputPerMinute(ItemDefinition item)
+    {
+        if (simulation == null || item == null) return 0f;
+        if (plannedTotalsByFlowItem == null)
+        {
+            if (manager == null || manager.productionFlows == null || manager.productionFlows.Count == 0)
+                return 0f;
+            for (int i = 0; i < manager.productionFlows.Count && plannedTotalsByFlowItem == null; i++)
+                GetForecast(manager.productionFlows[i]);
+        }
+        if (!itemIndex.TryGetValue(item, out int itemId) || plannedTotalsByFlowItem == null)
+            return 0f;
+
+        long deliveredOverTenMinutes = 0;
+        for (int flow = 0; flow < plannedTotalsByFlowItem.Length; flow++)
+            deliveredOverTenMinutes += plannedTotalsByFlowItem[flow][itemId];
+        return deliveredOverTenMinutes / 10f;
     }
 
     string ForecastWarning(int flow)

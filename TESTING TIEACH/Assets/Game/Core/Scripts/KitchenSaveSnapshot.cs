@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 23;
+    public const int CurrentVersion = 25;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -14,6 +14,10 @@ public class KitchenSaveSnapshot
     public float minutes;
     public int dailyCompletedOrders, dailyRevenue;
     public float dailyWaitTotalSeconds;
+    public int careerOrdersServed, careerCustomersVisited, careerCustomersLost;
+    public int careerShiftsCompleted, careerRevenue, careerMealsWasted;
+    public int careerBestShiftRevenue, careerBestShiftOrders, careerLastCompletedDay;
+    public float careerWaitTotalSeconds;
     public bool tutorialComplete;
     public bool tutorialOrderServed;
     public ShiftPlanningUI.SavedState shiftPlanningState;
@@ -69,6 +73,16 @@ public class KitchenSaveSnapshot
             s.dailyCompletedOrders = statistics.OrdersCompletedToday;
             s.dailyRevenue = statistics.RevenueToday;
             s.dailyWaitTotalSeconds = statistics.AverageWaitTimeTodaySeconds * statistics.OrdersCompletedToday;
+            s.careerOrdersServed = statistics.CareerOrdersServed;
+            s.careerCustomersVisited = statistics.CareerCustomersVisited;
+            s.careerCustomersLost = statistics.CareerCustomersLost;
+            s.careerShiftsCompleted = statistics.CareerShiftsCompleted;
+            s.careerRevenue = statistics.RevenueEarned;
+            s.careerMealsWasted = statistics.MealsWasted;
+            s.careerBestShiftRevenue = statistics.CareerBestShiftRevenue;
+            s.careerBestShiftOrders = statistics.CareerBestShiftOrders;
+            s.careerLastCompletedDay = statistics.CareerLastCompletedDay;
+            s.careerWaitTotalSeconds = statistics.CareerWaitTotalSeconds;
         }
         if (ResearchProgressManager.Instance != null)
         {
@@ -514,6 +528,14 @@ public class KitchenSaveSnapshot
                 statistics.RestoreDailyTaskProgress(dailyCompletedOrders, dailyRevenue, dailyWaitTotalSeconds);
             else
                 statistics.BeginDay();
+
+            if (version >= 24)
+                statistics.RestoreCareerStatistics(careerOrdersServed, careerCustomersVisited,
+                    careerCustomersLost, careerShiftsCompleted, careerRevenue, careerMealsWasted,
+                    careerBestShiftRevenue, careerBestShiftOrders, careerLastCompletedDay,
+                    version >= 25 ? careerWaitTotalSeconds : 0f);
+            else
+                statistics.ResetCareerStatistics();
         }
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
