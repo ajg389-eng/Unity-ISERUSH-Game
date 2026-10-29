@@ -351,7 +351,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.name == InventoryUI.StationsPanelName)
         {
             title = "Stations";
-            guidebookChapter = "Build";
+            guidebookChapter = "Work Design";
             body = FormatHelp(
                 "Station cards show how many you own and the next purchase cost. There is no station quantity cap, so plan around cost and floor space.",
                 "Choose a station, place it on a valid footprint, and leave a clear route between work areas.",
@@ -362,7 +362,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.name == InventoryUI.FloorPanelName)
         {
             title = "Floor";
-            guidebookChapter = "Build";
+            guidebookChapter = "Work Design";
             body = FormatHelp(
                 "The Floor tab shows the kitchen size, the next expansion, and its price.",
                 "Expand when the current layout cannot fit the needed stations or clear walking space.",
@@ -373,7 +373,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.name == InventoryUI.CustomizePanelName)
         {
             title = "Customize";
-            guidebookChapter = "Build";
+            guidebookChapter = "Work Design";
             body = FormatHelp(
                 "These controls change the look of the walls, floor, and roof.",
                 "Use clear visual differences to make work areas easier to recognize.",
@@ -384,7 +384,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && (panel.name == "TasksPage" || panel.name == "DailyTasksPage"))
         {
             title = "Tasks";
-            guidebookChapter = "Start Here";
+            guidebookChapter = "ISE Loop";
             body = FormatHelp(
                 "The highlighted task is the current objective. Later tasks show what comes next.",
                 "Read the task condition and complete that action before changing other systems.",
@@ -395,7 +395,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.name == "ProgressionPage")
         {
             title = "Progression";
-            guidebookChapter = "Start Here";
+            guidebookChapter = "Improve";
             body = FormatHelp(
                 "Milestones group tasks into stages. Research projects become available as you progress.",
                 "Complete the current milestone tasks, then choose research that addresses your next capacity need.",
@@ -406,7 +406,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.GetComponentInChildren<IngredientsOrderUI>(true) != null)
         {
             title = "Supply and Menu";
-            guidebookChapter = "Supply";
+            guidebookChapter = "Flow";
             body = FormatHelp(
                 "The menu controls which products customers can order. Supply shows current and incoming ingredients.",
                 "Enable the products you plan to make, then check ingredient stock against their recipes before the shift.",
@@ -417,7 +417,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.GetComponentInChildren<WorkersUI>(true) != null)
         {
             title = "Workers and Flows";
-            guidebookChapter = "Workers";
+            guidebookChapter = "Flow";
             body = FormatHelp(
                 "Flows connect the stations that move and transform items. Workers assigned to a flow handle its transfers.",
                 "Check the selected flow's planned workload and worker coverage. Confirm every node is connected through to Pickup.",
@@ -428,7 +428,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         if (panel != null && panel.GetComponentInChildren<CustomersUI>(true) != null)
         {
             title = "Customer Analytics";
-            guidebookChapter = "Reports";
+            guidebookChapter = "Plan";
             body = FormatHelp(
                 "This screen tracks customer visits, demand, and product output.",
                 "Compare each item's demand rate with its completed rate. Use orders per minute for customer service and items per minute for production.",
@@ -437,7 +437,7 @@ public class ManagementTabInfoUI : MonoBehaviour
         }
 
         title = "Store Stats";
-        guidebookChapter = "Reports";
+        guidebookChapter = "Diagnose";
         body = FormatHelp(
             "Store Stats brings together queues, utilization, wait, Pickup stock, waste, and revenue.",
             "Find where work is accumulating, then compare that queue with the station or worker serving it.",

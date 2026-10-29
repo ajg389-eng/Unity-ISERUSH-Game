@@ -18,7 +18,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
     public TextMeshProUGUI titleText;
     public TextMeshProUGUI summaryText;
     public Button continueButton;
-    Button inspectDiagnosisButton;
+    Button quickFeedbackButton;
 
     TextMeshProUGUI revenueValue;
     TextMeshProUGUI cashChangeValue;
@@ -157,8 +157,6 @@ public class EndOfDaySummaryUI : MonoBehaviour
         string diagnosis = BuildOperationsDiagnosis();
         string shiftGoals = BuildShiftGoals(stats, tm);
         string gradeBreakdown = BuildGradeBreakdown(grade);
-        RefreshDiagnosisButton();
-
         if (gradeValue != null)
         {
             gradeValue.text = grade.letter;
@@ -326,28 +324,18 @@ public class EndOfDaySummaryUI : MonoBehaviour
             continueButton.onClick.RemoveListener(ContinueToNextDay);
             continueButton.onClick.AddListener(ContinueToNextDay);
         }
-        if (inspectDiagnosisButton != null)
+        if (quickFeedbackButton != null)
         {
-            inspectDiagnosisButton.onClick.RemoveListener(InspectDiagnosis);
-            inspectDiagnosisButton.onClick.AddListener(InspectDiagnosis);
+            quickFeedbackButton.onClick.RemoveListener(OpenQuickFeedbackSurvey);
+            quickFeedbackButton.onClick.AddListener(OpenQuickFeedbackSurvey);
         }
     }
 
-    void InspectDiagnosis()
+    void OpenQuickFeedbackSurvey()
     {
-        Hide();
-        ShiftPlanningUI.FocusDiagnosedStation();
-    }
-
-    void RefreshDiagnosisButton()
-    {
-        if (inspectDiagnosisButton == null) return;
-        bool hasStation = ShiftPlanningUI.HasDiagnosedStation;
-        inspectDiagnosisButton.gameObject.SetActive(hasStation);
-        if (!hasStation) return;
-        TextMeshProUGUI label = inspectDiagnosisButton.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (label != null)
-            label.text = "Pause & Inspect " + ShiftPlanningUI.DiagnosedStationName;
+        Sfx.Play(SfxId.UiClick);
+        GameTimeManager tm = GameTimeManager.Instance ?? timeManager;
+        QuickFeedbackSurveyUI.OpenForShift(tm != null ? tm.CurrentDay : 1);
     }
 
     void EnsurePanel()
@@ -385,8 +373,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
         if (continueButton == null)
             continueButton = panelRoot.transform.Find("ContinueButton")?.GetComponent<Button>()
                 ?? panelRoot.transform.Find("Card/ContinueButton")?.GetComponent<Button>();
-        if (inspectDiagnosisButton == null)
-            inspectDiagnosisButton = panelRoot.transform.Find("Card/SummaryPanel/InspectDiagnosis")?.GetComponent<Button>();
+        if (quickFeedbackButton == null)
+            quickFeedbackButton = panelRoot.transform.Find("Card/SummaryPanel/RateShiftFeedback")?.GetComponent<Button>();
         revenueValue = FindText("Card/HeadlineMetrics/Revenue/Value");
         cashChangeValue = FindText("Card/HeadlineMetrics/CashChange/Value");
         ordersValue = FindText("Card/HeadlineMetrics/Orders/Value");
@@ -496,17 +484,17 @@ public class EndOfDaySummaryUI : MonoBehaviour
         summaryRt.offsetMin = new Vector2(18f, 58f);
         summaryRt.offsetMax = new Vector2(-18f, -48f);
 
-        inspectDiagnosisButton = CreateButton(summaryPanel.transform, "InspectDiagnosis", "Pause & Inspect Limiting Station");
-        RectTransform inspectRt = (RectTransform)inspectDiagnosisButton.transform;
-        inspectRt.anchorMin = new Vector2(0.5f, 0f);
-        inspectRt.anchorMax = new Vector2(0.5f, 0f);
-        inspectRt.pivot = new Vector2(0.5f, 0f);
-        inspectRt.anchoredPosition = new Vector2(0f, 10f);
-        inspectRt.sizeDelta = new Vector2(300f, 38f);
-        LayoutElement inspectLayout = inspectDiagnosisButton.GetComponent<LayoutElement>();
-        inspectLayout.minHeight = 38f;
-        inspectLayout.preferredHeight = 38f;
-        inspectDiagnosisButton.gameObject.SetActive(false);
+        quickFeedbackButton = CreateButton(summaryPanel.transform, "RateShiftFeedback", "Rate this shift");
+        quickFeedbackButton.GetComponent<Image>().color = new Color(0.24f, 0.38f, 0.52f, 1f);
+        RectTransform feedbackRt = (RectTransform)quickFeedbackButton.transform;
+        feedbackRt.anchorMin = new Vector2(0.5f, 0f);
+        feedbackRt.anchorMax = new Vector2(0.5f, 0f);
+        feedbackRt.pivot = new Vector2(0.5f, 0f);
+        feedbackRt.anchoredPosition = new Vector2(-165f, 10f);
+        feedbackRt.sizeDelta = new Vector2(250f, 38f);
+        LayoutElement feedbackLayout = quickFeedbackButton.GetComponent<LayoutElement>();
+        feedbackLayout.minHeight = 38f;
+        feedbackLayout.preferredHeight = 38f;
 
         continueButton = CreateButton(card.transform, "ContinueButton", "Continue to Next Day");
         panelRoot.transform.SetAsLastSibling();

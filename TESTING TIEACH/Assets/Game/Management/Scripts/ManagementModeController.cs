@@ -232,36 +232,6 @@ public class ManagementModeController : MonoBehaviour
         WorkerAssignmentLinkVisuals.SetFocusedFlow(flow);
     }
 
-    /// <summary>Opens Management and selects a station from a shift diagnosis.</summary>
-    public bool FocusStationFromReview(StationNode station)
-    {
-        if (station == null) return false;
-
-        // Open the top-level Business page first so the selected station and
-        // its card are presented in the same context as normal station review.
-        MainHudTabs mainHud = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
-        ManagementScreenController businessScreen = FindFirstObjectByType<ManagementScreenController>(
-            FindObjectsInactive.Include);
-        if (mainHud != null)
-            mainHud.OpenBusinessPage();
-        else if (businessScreen != null)
-        {
-            businessScreen.SetUnifiedPrimaryPage(true);
-            businessScreen.Open();
-        }
-
-        if (modeManager == null)
-            modeManager = FindFirstObjectByType<GameModeManager>();
-        modeManager?.SetMode(GameModeManager.Mode.Manage);
-        PlayerCameraController cameraController = FindFirstObjectByType<PlayerCameraController>();
-        if (cameraController != null)
-            cameraController.PanTo(station.transform);
-        SelectStation(station);
-        if (stationPopup != null)
-            stationPopup.transform.SetAsLastSibling();
-        return true;
-    }
-
     void Update()
     {
         if (!IsManageMode)

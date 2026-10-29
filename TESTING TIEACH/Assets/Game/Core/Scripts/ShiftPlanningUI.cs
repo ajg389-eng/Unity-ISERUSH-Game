@@ -63,7 +63,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     TextMeshProUGUI liveStatsText;
     TextMeshProUGUI liveDiagnosisText;
     Button startShiftButton;
-    Button inspectIssueButton;
     ItemDefinition selectedGoalItem;
     string selectedGoalItemName;
     StationNode diagnosedStation;
@@ -264,7 +263,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         rect.anchorMax = new Vector2(1f, 0f);
         rect.pivot = new Vector2(1f, 0f);
         rect.anchoredPosition = new Vector2(-20f, 20f);
-        rect.sizeDelta = new Vector2(430f, 230f);
+        rect.sizeDelta = new Vector2(430f, 190f);
 
         Image background = livePanelRoot.GetComponent<Image>();
         background.color = new Color(0.075f, 0.09f, 0.12f, 0.96f);
@@ -298,8 +297,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         liveDiagnosisText = CreateText(livePanelRoot.transform, "LiveDiagnosis", "Checking station activity...", 13f,
             FontStyles.Normal, 42f, GameUITheme.TextPrimary);
         liveDiagnosisText.textWrappingMode = TextWrappingModes.Normal;
-        inspectIssueButton = CreateButton(livePanelRoot.transform, "InspectIssue", "PAUSE & INSPECT");
-        inspectIssueButton.onClick.AddListener(FocusDiagnosedStation);
         livePanelRoot.SetActive(false);
     }
 
@@ -543,26 +540,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
         RectTransform panelRect = livePanelRoot.GetComponent<RectTransform>();
         if (panelRect != null)
-            panelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(230f + items.Count * 17f, 250f, 450f));
+            panelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(190f + items.Count * 17f, 205f, 410f));
 
         string diagnosis = BuildShiftProductionDiagnosis();
         if (liveDiagnosisText != null)
             liveDiagnosisText.text = string.IsNullOrEmpty(diagnosis)
                 ? "No major station delay detected." : diagnosis;
 
-        bool canInspect = diagnosedStation != null;
-        if (inspectIssueButton != null)
-        {
-            inspectIssueButton.gameObject.SetActive(canInspect);
-            TextMeshProUGUI label = inspectIssueButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (label != null && canInspect)
-            {
-                label.text = "PAUSE & INSPECT " + diagnosedStation.DisplayName;
-                label.enableAutoSizing = true;
-                label.fontSizeMin = 11f;
-                label.fontSizeMax = 16f;
-            }
-        }
     }
     void CaptureStationBaseline()
     {
@@ -586,20 +570,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     public static string GetShiftProductionDiagnosis()
     {
         return Instance != null ? Instance.BuildShiftProductionDiagnosis() : string.Empty;
-    }
-
-    public static bool HasDiagnosedStation => Instance != null && Instance.diagnosedStation != null;
-    public static string DiagnosedStationName => HasDiagnosedStation
-        ? Instance.diagnosedStation.DisplayName : string.Empty;
-
-    public static void FocusDiagnosedStation()
-    {
-        if (Instance == null || Instance.diagnosedStation == null) return;
-        if (GameTimeManager.Instance != null)
-            GameTimeManager.Instance.SetSpeed(GameTimeManager.SpeedMode.Paused);
-        ManagementModeController management = ManagementModeController.Instance;
-        if (management != null)
-            management.FocusStationFromReview(Instance.diagnosedStation);
     }
 
     public static string GetShiftComparisonSummary()
