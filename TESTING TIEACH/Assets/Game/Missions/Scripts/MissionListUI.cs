@@ -13,7 +13,6 @@ public class MissionListUI : MonoBehaviour
     const string TopTabsObjectName = "TasksProgressionTabs";
     const float TopTabsWidth = 210f;
     const float TopTabsHeight = 60f;
-    const int MinimumOrdersForWaitGoal = 5;
 
     public enum SideTab
     {
@@ -444,8 +443,9 @@ public class MissionListUI : MonoBehaviour
 
     void CreateDailyGoalRows()
     {
-        const int revenueTarget = 500;
-        const float waitTarget = 46f;
+        int revenueTarget = StoreStatisticsManager.DailyRevenueTaskTarget;
+        float waitTarget = StoreStatisticsManager.DailyWaitTaskTargetSeconds;
+        int minimumOrders = StoreStatisticsManager.MinimumOrdersForDailyWaitTask;
         int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
         int revenue = statistics != null ? statistics.RevenueToday : 0;
         float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
@@ -453,11 +453,12 @@ public class MissionListUI : MonoBehaviour
         CreateTaskRow("Earn $" + revenueTarget,
             "$" + Mathf.Min(revenue, revenueTarget) + "/$" + revenueTarget + " revenue",
             GetTaskColor(TaskType.Finance), false, revenue >= revenueTarget);
-        bool waitComplete = orders >= MinimumOrdersForWaitGoal && wait <= waitTarget;
+        bool waitComplete = (statistics != null && statistics.DailyWaitTaskAwarded)
+            || (orders >= minimumOrders && wait <= waitTarget);
         CreateTaskRow("Average wait of " + waitTarget.ToString("0") + "s or less",
             orders > 0
-                ? wait.ToString("0") + "s average — " + Mathf.Min(orders, MinimumOrdersForWaitGoal) + "/" + MinimumOrdersForWaitGoal + " orders"
-                : "Complete " + MinimumOrdersForWaitGoal + " orders to measure average wait",
+                ? wait.ToString("0") + "s average — " + Mathf.Min(orders, minimumOrders) + "/" + minimumOrders + " orders"
+                : "Complete " + minimumOrders + " orders to measure average wait",
             GetTaskColor(TaskType.Service), false, waitComplete);
     }
 

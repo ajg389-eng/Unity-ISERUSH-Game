@@ -7,6 +7,10 @@ using UnityEngine;
 /// </summary>
 public class StoreStatisticsManager : MonoBehaviour
 {
+    public const int DailyRevenueTaskTarget = 500;
+    public const float DailyWaitTaskTargetSeconds = 46f;
+    public const int MinimumOrdersForDailyWaitTask = 5;
+
     public static StoreStatisticsManager Instance { get; private set; }
     public event System.Action OnStatisticsChanged;
 
@@ -20,6 +24,7 @@ public class StoreStatisticsManager : MonoBehaviour
     int mealsWasted;
     int revenueEarned;
     int careerOrdersServed;
+    int careerDailyTasksCompleted;
     int careerCustomersVisited;
     int careerCustomersLost;
     int careerShiftsCompleted;
@@ -37,6 +42,8 @@ public class StoreStatisticsManager : MonoBehaviour
     float dayWaitSum;
     int dayMoneyStart;
     bool dayTrackingStarted;
+    bool dailyRevenueTaskAwarded;
+    bool dailyWaitTaskAwarded;
 
     /// <summary>Visits per in-game hour from day start → day end (e.g. 10 AM–10 PM).</summary>
     int[] hourVisitBuckets = System.Array.Empty<int>();
@@ -87,6 +94,7 @@ public class StoreStatisticsManager : MonoBehaviour
         dayWaitSum += wait;
         if (saleAmount > 0)
             dayRevenue += saleAmount;
+        EvaluateDailyTaskReputation();
         OnStatisticsChanged?.Invoke();
     }
 
@@ -131,6 +139,8 @@ public class StoreStatisticsManager : MonoBehaviour
         dayWaitSum = 0f;
         dayMoneyStart = GetCurrentMoney();
         dayTrackingStarted = true;
+        dailyRevenueTaskAwarded = false;
+        dailyWaitTaskAwarded = false;
         EnsureHourBuckets(forceReset: true);
         OnStatisticsChanged?.Invoke();
     }
@@ -143,18 +153,42 @@ public class StoreStatisticsManager : MonoBehaviour
         OnStatisticsChanged?.Invoke();
     }
 
-    public void RestoreDailyTaskProgress(int completedOrders, int revenue, float waitTotalSeconds)
+    public void RestoreDailyTaskProgress(int completedOrders, int revenue, float waitTotalSeconds,
+        int completedDailyTasks = 0, bool revenueTaskAwarded = false, bool waitTaskAwarded = false)
     {
         dayOrdersCompleted = Mathf.Max(0, completedOrders);
         dayRevenue = Mathf.Max(0, revenue);
         dayWaitSum = Mathf.Max(0f, waitTotalSeconds);
+        careerDailyTasksCompleted = Mathf.Max(0, completedDailyTasks);
+        dailyRevenueTaskAwarded = revenueTaskAwarded;
+        dailyWaitTaskAwarded = waitTaskAwarded;
         dayTrackingStarted = true;
+        EvaluateDailyTaskReputation();
         OnStatisticsChanged?.Invoke();
+    }
+
+    void EvaluateDailyTaskReputation()
+    {
+        if (!dailyRevenueTaskAwarded && dayRevenue >= DailyRevenueTaskTarget)
+        {
+            dailyRevenueTaskAwarded = true;
+            careerDailyTasksCompleted++;
+        }
+
+        if (!dailyWaitTaskAwarded && dayOrdersCompleted >= MinimumOrdersForDailyWaitTask
+            && AverageWaitTimeTodaySeconds <= DailyWaitTaskTargetSeconds)
+        {
+            dailyWaitTaskAwarded = true;
+            careerDailyTasksCompleted++;
+        }
     }
 
     public int MealsWasted => mealsWasted;
     public int RevenueEarned => revenueEarned;
     public int CareerOrdersServed => careerOrdersServed;
+    public int CareerDailyTasksCompleted => careerDailyTasksCompleted;
+    public bool DailyRevenueTaskAwarded => dailyRevenueTaskAwarded;
+    public bool DailyWaitTaskAwarded => dailyWaitTaskAwarded;
     public int CareerCustomersVisited => careerCustomersVisited;
     public int CareerCustomersLost => careerCustomersLost;
     public int CareerShiftsCompleted => careerShiftsCompleted;
@@ -198,6 +232,7 @@ public class StoreStatisticsManager : MonoBehaviour
     public void ResetCareerStatistics()
     {
         careerOrdersServed = 0;
+        careerDailyTasksCompleted = 0;
         careerCustomersVisited = 0;
         careerCustomersLost = 0;
         careerShiftsCompleted = 0;

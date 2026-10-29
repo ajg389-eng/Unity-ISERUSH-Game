@@ -14,6 +14,12 @@ public class TopHudBar : MonoBehaviour
     public const string MoneyTextName = "MoneyText";
     public const string HudActionsName = "HudActions";
     const float BarWidth = 760f;
+    const int StoreReputationMaxStars = 5;
+    const int StoreReputationMaxPoints = 750;
+    const int PointsPerCompletedOrder = 1;
+    const int PointsPerDailyTask = 10;
+    const int PointsPerMilestone = 50;
+    static readonly int[] StoreReputationStarThresholds = { 50, 150, 300, 500, 750 };
 
     [Header("References")]
     public MoneyManager money;
@@ -25,6 +31,15 @@ public class TopHudBar : MonoBehaviour
 
     TextMeshProUGUI displayedMoneyText;
     int displayedMoney;
+    Button storeReputationButton;
+    Image[] storeReputationStars;
+    GameObject storeReputationPopup;
+    TextMeshProUGUI storeReputationBreakdown;
+    int displayedStoreReputationScore = -1;
+    int displayedStoreReputationOrders = -1;
+    int displayedStoreReputationDailyTasks = -1;
+    int displayedStoreReputationMilestones = -1;
+    float nextStoreReputationRefresh;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -50,10 +65,18 @@ public class TopHudBar : MonoBehaviour
         if (money != null && moneyText != null)
         {
             int amount = money.CurrentMoney;
-            if (displayedMoneyText == moneyText && displayedMoney == amount) return;
-            moneyText.text = "$" + amount;
-            displayedMoneyText = moneyText;
-            displayedMoney = amount;
+            if (displayedMoneyText != moneyText || displayedMoney != amount)
+            {
+                moneyText.text = "$" + amount;
+                displayedMoneyText = moneyText;
+                displayedMoney = amount;
+            }
+        }
+
+        if (Time.unscaledTime >= nextStoreReputationRefresh)
+        {
+            nextStoreReputationRefresh = Time.unscaledTime + 0.5f;
+            RefreshStoreReputation();
         }
     }
 
@@ -204,14 +227,14 @@ public class TopHudBar : MonoBehaviour
         {
             var le = hudActions.GetComponent<LayoutElement>() ?? hudActions.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 144f;
-            le.preferredWidth = 144f;
+            le.minWidth = 240f;
+            le.preferredWidth = 240f;
             le.flexibleWidth = 0f;
             hudActions.anchorMin = new Vector2(1f, 1f);
             hudActions.anchorMax = new Vector2(1f, 1f);
             hudActions.pivot = new Vector2(1f, 1f);
             hudActions.anchoredPosition = new Vector2(-235f, -8f);
-            hudActions.sizeDelta = new Vector2(144f, 48f);
+            hudActions.sizeDelta = new Vector2(240f, 48f);
         }
 
         if (moneyText != null)
@@ -315,6 +338,7 @@ public class TopHudBar : MonoBehaviour
         Button recipes = FindOrCreateHudAction(section.transform, "RecipesButton", "Recipes", GameIconId.MenuList);
         Button research = FindOrCreateHudAction(section.transform, "ResearchButton", "Research", GameIconId.Gear);
         Button analytics = FindOrCreateHudAction(section.transform, "AnalyticsButton", "Analytics", GameIconId.Analytics);
+        EnsureStoreReputationDisplay(section.transform, recipes);
 
         recipes.onClick.RemoveAllListeners();
         recipes.onClick.AddListener(OpenRecipesFromHud);
@@ -322,6 +346,216 @@ public class TopHudBar : MonoBehaviour
         research.onClick.AddListener(OpenResearchFromHud);
         analytics.onClick.RemoveAllListeners();
         analytics.onClick.AddListener(OpenAnalyticsFromHud);
+    }
+
+    void EnsureStoreReputationDisplay(Transform parent, Button recipesButton)
+    {
+        if (parent == null) return;
+        Transform existing = parent.Find("StoreReputation");
+        GameObject root = existing != null ? existing.gameObject
+            : new GameObject("StoreReputation", typeof(RectTransform), typeof(Image), typeof(Button),
+                typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        if (root.transform.parent != parent)
+            root.transform.SetParent(parent, false);
+
+        Image background = root.GetComponent<Image>();
+        Button button = root.GetComponent<Button>();
+        if (background == null) background = root.AddComponent<Image>();
+        if (button == null) button = root.AddComponent<Button>();
+        storeReputationButton = button;
+        background.color = HudTabColors.Idle;
+        background.raycastTarget = true;
+        button.targetGraphic = background;
+        button.transition = Selectable.Transition.None;
+        button.interactable = true;
+        button.onClick.RemoveListener(ToggleStoreReputationPopup);
+        button.onClick.AddListener(ToggleStoreReputationPopup);
+
+        LayoutElement element = root.GetComponent<LayoutElement>();
+        if (element == null) element = root.AddComponent<LayoutElement>();
+        element.minWidth = 78f;
+        element.preferredWidth = 78f;
+        element.flexibleWidth = 0f;
+        element.minHeight = 40f;
+        element.preferredHeight = 40f;
+
+        HorizontalLayoutGroup starsLayout = root.GetComponent<HorizontalLayoutGroup>();
+        if (starsLayout == null) starsLayout = root.AddComponent<HorizontalLayoutGroup>();
+        starsLayout.padding = new RectOffset(3, 3, 2, 2);
+        starsLayout.spacing = 1f;
+        starsLayout.childAlignment = TextAnchor.MiddleCenter;
+        starsLayout.childControlWidth = false;
+        starsLayout.childControlHeight = false;
+        starsLayout.childForceExpandWidth = false;
+        starsLayout.childForceExpandHeight = false;
+
+        storeReputationStars = new Image[StoreReputationMaxStars];
+        Sprite starSprite = GameIconLibrary.GetSprite(GameIconId.Star);
+        for (int i = 0; i < StoreReputationMaxStars; i++)
+        {
+            string starName = "Star" + (i + 1);
+            Transform starTransform = root.transform.Find(starName);
+            GameObject starObject = starTransform != null ? starTransform.gameObject
+                : new GameObject(starName, typeof(RectTransform), typeof(Image));
+            if (starObject.transform.parent != root.transform)
+                starObject.transform.SetParent(root.transform, false);
+            RectTransform starRect = (RectTransform)starObject.transform;
+            starRect.sizeDelta = new Vector2(13f, 13f);
+            Image star = starObject.GetComponent<Image>();
+            star.sprite = starSprite;
+            star.preserveAspect = true;
+            star.raycastTarget = false;
+            storeReputationStars[i] = star;
+        }
+
+        if (recipesButton != null)
+        {
+            int rootIndex = root.transform.GetSiblingIndex();
+            int recipesIndex = recipesButton.transform.GetSiblingIndex();
+            int targetIndex = rootIndex < recipesIndex ? recipesIndex - 1 : recipesIndex;
+            if (rootIndex != targetIndex)
+                root.transform.SetSiblingIndex(targetIndex);
+        }
+        DelayedTooltip.Attach(button, "Click to view store reputation factors.");
+        EnsureStoreReputationPopup(root.transform);
+        RefreshStoreReputation(true);
+    }
+
+    void EnsureStoreReputationPopup(Transform parent)
+    {
+        if (parent == null) return;
+        Transform existing = parent.Find("StoreReputationPopup");
+        storeReputationPopup = existing != null ? existing.gameObject
+            : new GameObject("StoreReputationPopup", typeof(RectTransform), typeof(Image),
+                typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        if (storeReputationPopup.transform.parent != parent)
+            storeReputationPopup.transform.SetParent(parent, false);
+
+        RectTransform popupRect = (RectTransform)storeReputationPopup.transform;
+        popupRect.anchorMin = Vector2.zero;
+        popupRect.anchorMax = Vector2.zero;
+        popupRect.pivot = new Vector2(0f, 1f);
+        popupRect.anchoredPosition = new Vector2(0f, -6f);
+        popupRect.sizeDelta = new Vector2(280f, 174f);
+
+        LayoutElement popupElement = storeReputationPopup.GetComponent<LayoutElement>();
+        popupElement.ignoreLayout = true;
+        Image popupBackground = storeReputationPopup.GetComponent<Image>();
+        popupBackground.color = new Color(0.12f, 0.14f, 0.18f, 0.98f);
+        popupBackground.raycastTarget = true;
+
+        VerticalLayoutGroup layout = storeReputationPopup.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(12, 12, 10, 10);
+        layout.spacing = 6f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        Transform titleTransform = storeReputationPopup.transform.Find("Title");
+        if (titleTransform == null)
+        {
+            GameObject titleObject = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI),
+                typeof(LayoutElement));
+            titleObject.transform.SetParent(storeReputationPopup.transform, false);
+            TextMeshProUGUI title = titleObject.GetComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null) title.font = TMP_Settings.defaultFontAsset;
+            title.text = "STORE REPUTATION";
+            title.fontSize = 15f;
+            title.fontStyle = FontStyles.Bold;
+            title.color = new Color(1f, 0.78f, 0.30f, 1f);
+            title.raycastTarget = false;
+            titleObject.GetComponent<LayoutElement>().preferredHeight = 22f;
+        }
+
+        Transform detailsTransform = storeReputationPopup.transform.Find("Breakdown");
+        if (detailsTransform == null)
+        {
+            GameObject detailsObject = new GameObject("Breakdown", typeof(RectTransform), typeof(TextMeshProUGUI),
+                typeof(LayoutElement));
+            detailsObject.transform.SetParent(storeReputationPopup.transform, false);
+            storeReputationBreakdown = detailsObject.GetComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null) storeReputationBreakdown.font = TMP_Settings.defaultFontAsset;
+            storeReputationBreakdown.fontSize = 13f;
+            storeReputationBreakdown.color = Color.white;
+            storeReputationBreakdown.textWrappingMode = TextWrappingModes.Normal;
+            storeReputationBreakdown.raycastTarget = false;
+            detailsObject.GetComponent<LayoutElement>().flexibleHeight = 1f;
+        }
+        else
+        {
+            storeReputationBreakdown = detailsTransform.GetComponent<TextMeshProUGUI>();
+        }
+
+        if (existing == null)
+            storeReputationPopup.SetActive(false);
+        storeReputationPopup.transform.SetAsLastSibling();
+    }
+
+    void ToggleStoreReputationPopup()
+    {
+        if (storeReputationPopup == null) return;
+        storeReputationPopup.SetActive(!storeReputationPopup.activeSelf);
+        RefreshStoreReputation(true);
+        Sfx.Play(storeReputationPopup.activeSelf ? SfxId.UiOpen : SfxId.UiClick);
+    }
+
+    void RefreshStoreReputation(bool force = false)
+    {
+        if (storeReputationStars == null || storeReputationStars.Length == 0) return;
+        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+        int servedOrders = statistics != null ? statistics.CareerOrdersServed : 0;
+        int dailyTasks = statistics != null ? statistics.CareerDailyTasksCompleted : 0;
+        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
+        int completedMilestones = milestones != null ? milestones.CompletedNumberedMilestoneCount : 0;
+        int score = servedOrders * PointsPerCompletedOrder
+            + dailyTasks * PointsPerDailyTask
+            + completedMilestones * PointsPerMilestone;
+        if (!force && score == displayedStoreReputationScore
+            && servedOrders == displayedStoreReputationOrders
+            && dailyTasks == displayedStoreReputationDailyTasks
+            && completedMilestones == displayedStoreReputationMilestones) return;
+        displayedStoreReputationScore = score;
+        displayedStoreReputationOrders = servedOrders;
+        displayedStoreReputationDailyTasks = dailyTasks;
+        displayedStoreReputationMilestones = completedMilestones;
+
+        int starsEarned = GetStoreReputationStars(score);
+        Color earned = new Color(1f, 0.78f, 0.30f, 1f);
+        Color unearned = new Color(0.31f, 0.37f, 0.44f, 0.8f);
+        for (int i = 0; i < storeReputationStars.Length; i++)
+            if (storeReputationStars[i] != null)
+                storeReputationStars[i].color = i < starsEarned ? earned : unearned;
+
+        if (storeReputationBreakdown != null)
+        {
+            int cappedScore = Mathf.Min(StoreReputationMaxPoints, score);
+            int progress = starsEarned >= StoreReputationMaxStars
+                ? 0 : Mathf.Max(0, cappedScore - (starsEarned > 0 ? StoreReputationStarThresholds[starsEarned - 1] : 0));
+            int needed = starsEarned >= StoreReputationMaxStars
+                ? 0 : StoreReputationStarThresholds[starsEarned] - (starsEarned > 0 ? StoreReputationStarThresholds[starsEarned - 1] : 0);
+            string nextStar = starsEarned >= StoreReputationMaxStars
+                ? "All 5 stars earned."
+                : "Next star: " + progress + "/" + needed + " points";
+            storeReputationBreakdown.text = "Orders served      " + servedOrders + " × 1 = " + servedOrders
+                + "\nDaily tasks           " + dailyTasks + " × " + PointsPerDailyTask + " = " + (dailyTasks * PointsPerDailyTask)
+                + "\nMilestones           " + completedMilestones + " × " + PointsPerMilestone + " = " + (completedMilestones * PointsPerMilestone)
+                + "\n\nReputation: " + cappedScore + "/" + StoreReputationMaxPoints + " points"
+                + "\n" + nextStar;
+        }
+    }
+
+    static int GetStoreReputationStars(int score)
+    {
+        int stars = 0;
+        int cappedScore = Mathf.Clamp(score, 0, StoreReputationMaxPoints);
+        for (int i = 0; i < StoreReputationStarThresholds.Length; i++)
+        {
+            if (cappedScore < StoreReputationStarThresholds[i]) break;
+            stars++;
+        }
+        return stars;
     }
 
     RectTransform FindHudActions()

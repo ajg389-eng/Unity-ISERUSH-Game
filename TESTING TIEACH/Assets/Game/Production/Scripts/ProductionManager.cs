@@ -962,7 +962,12 @@ public partial class ProductionManager : MonoBehaviour
 
     public void RemoveWorkerFromFlow(ProductionFlowPlan flow, KitchenEmployee employee)
     {
-        if (IsShiftInProgress) return;
+        if (IsShiftInProgress)
+        {
+            if (flow != null && flow.workers != null && flow.workers.Contains(employee))
+                RequestWorkerFlowReassignment(employee, null);
+            return;
+        }
         if (flow == null || employee == null || flow.workers == null) return;
         if (!flow.workers.Remove(employee)) return;
         employee.ClearAllOperatedStations();
@@ -1305,8 +1310,12 @@ public partial class ProductionManager : MonoBehaviour
 
     public void AddWorkerToFlow(ProductionFlowPlan targetFlow, KitchenEmployee employee)
     {
-        if (IsShiftInProgress) return;
         if (targetFlow == null || employee == null) return;
+        if (IsShiftInProgress)
+        {
+            RequestWorkerFlowReassignment(employee, targetFlow);
+            return;
+        }
         EnsureProductionFlows();
         if (!productionFlows.Contains(targetFlow)) return;
         if (targetFlow.workers.Contains(employee))
@@ -1328,6 +1337,76 @@ public partial class ProductionManager : MonoBehaviour
         targetFlow.workers.Add(employee);
         lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
         NotifyProductionStateChanged(0f);
+    }
+
+    /// <summary>Queues live worker reassignment until the worker finishes their current delivery.</summary>
+    public bool RequestWorkerFlowReassignment(KitchenEmployee employee, ProductionFlowPlan targetFlow)
+    {
+        if (!IsShiftInProgress || employee == null) return false;
+        EnsureProductionFlows();
+        if (targetFlow != null && !productionFlows.Contains(targetFlow)) return false;
+        if (GetFlowForWorker(employee) == targetFlow && !employee.HasPendingFlowReassignment) return false;
+
+        if (employee.ActiveJob != null)
+        {
+            employee.QueueFlowReassignment(targetFlow);
+            return true;
+        }
+
+        ApplyWorkerFlowReassignment(employee, targetFlow);
+        return true;
+    }
+
+    /// <summary>Completes a queued live reassignment after the worker's active job ends.</summary>
+    public void ApplyQueuedWorkerFlowReassignment(KitchenEmployee employee, ProductionFlowPlan targetFlow)
+    {
+        if (employee == null) return;
+        ApplyWorkerFlowReassignment(employee, targetFlow);
+    }
+
+    void ApplyWorkerFlowReassignment(KitchenEmployee employee, ProductionFlowPlan targetFlow)
+    {
+        if (employee == null) return;
+        EnsureProductionFlows();
+        if (targetFlow != null && !productionFlows.Contains(targetFlow)) targetFlow = null;
+
+        foreach (ProductionFlowPlan flow in productionFlows)
+            if (flow != null && flow.workers != null)
+                flow.workers.Remove(employee);
+
+        // This path runs only when the worker has no active job, so changing
+        // their station permissions cannot discard an item mid-delivery.
+        employee.ClearAllOperatedStations();
+        if (targetFlow != null)
+        {
+            if (!targetFlow.workers.Contains(employee)) targetFlow.workers.Add(employee);
+            if (targetFlow.stations != null)
+            {
+                foreach (GameObject station in targetFlow.stations)
+                {
+                    if (station == null) continue;
+                    StationNode node = StationNode.EnsureOn(station);
+                    if (node == null || !node.IsWorkStation) continue;
+                    node.AddWorker(employee);
+                }
+            }
+            employee.assignedFlow = targetFlow.kind;
+            employee.assignedFlowName = targetFlow.flowName;
+            employee.SyncFromOperatedStations();
+        }
+        else
+        {
+            employee.assignedFlow = KitchenFlowKind.None;
+            employee.assignedFlowName = string.Empty;
+        }
+
+        lastFlowBalance = new TeamBalanceResult
+        {
+            success = true,
+            message = targetFlow != null ? "Worker moved during shift." : "Worker removed from flow."
+        };
+        NotifyProductionStateChanged(0f);
+        WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 
     /// <summary>Hire without spending money (debug).</summary>

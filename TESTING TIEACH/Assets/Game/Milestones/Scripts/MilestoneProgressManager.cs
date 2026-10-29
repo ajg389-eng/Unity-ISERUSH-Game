@@ -31,6 +31,20 @@ public class MilestoneProgressManager : MonoBehaviour
 
     public string ActiveMilestoneId => activeMilestoneId;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
+    public int CompletedNumberedMilestoneCount
+    {
+        get
+        {
+            if (database?.milestones == null) return 0;
+            int count = 0;
+            foreach (MilestoneDefinition milestone in database.milestones)
+                if (milestone != null && !milestone.isTutorial
+                    && !string.IsNullOrEmpty(milestone.milestoneId)
+                    && completedMilestoneIds.Contains(milestone.milestoneId))
+                    count++;
+            return count;
+        }
+    }
     public IReadOnlyCollection<string> GetCompletedMilestoneIds() => completedMilestoneIds;
 
     /// <summary>

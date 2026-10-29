@@ -120,6 +120,15 @@ public partial class KitchenEmployee : MonoBehaviour
     public bool IsIdle => currentJob == null && !returningToFlowStart;
     public bool HasJob => currentJob != null || (scheduledPresentation && scheduledBusy);
     public ProductionJob ActiveJob => currentJob;
+    public bool HasPendingFlowReassignment => hasPendingFlowReassignment;
+    ProductionFlowPlan pendingFlowReassignment;
+    bool hasPendingFlowReassignment;
+
+    public void QueueFlowReassignment(ProductionFlowPlan flow)
+    {
+        pendingFlowReassignment = flow;
+        hasPendingFlowReassignment = true;
+    }
     public ItemDefinition CurrentWorkProduct => currentJob != null ? currentJob.CurrentWorkProduct : null;
     public bool IsWorkingOn(ProductionJob job) => job != null && currentJob == job;
     public int OperatedStationCount => operatedStations != null ? operatedStations.Count : 0;
@@ -1784,6 +1793,7 @@ public partial class KitchenEmployee : MonoBehaviour
         ResetNavigationPath(true);
         SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
         if (manager == null) manager = ProductionManager.Instance;
+        if (hasPendingFlowReassignment) return;
         // Use the normal idle scheduler so a worker can start a compatible,
         // ready production cycle when the queued tasks have just run out.
         // Stock production remains bounded by the pickup station's free space.
@@ -2528,14 +2538,20 @@ public partial class KitchenEmployee : MonoBehaviour
 
     void Update()
     {
+        if (manager == null)
+            manager = ProductionManager.Instance;
+        if (hasPendingFlowReassignment && currentJob == null && manager != null)
+        {
+            ProductionFlowPlan targetFlow = pendingFlowReassignment;
+            pendingFlowReassignment = null;
+            hasPendingFlowReassignment = false;
+            manager.ApplyQueuedWorkerFlowReassignment(this, targetFlow);
+        }
         if (ProductionManager.Instance != null && ProductionManager.Instance.useScheduledProduction
             && ProductionManager.Instance.ScheduledProduction.PresentWorker(this)) return;
         ClearScheduledPresentation();
         SnapToGround();
         TrackWorkerEfficiencyTravel();
-        if (manager == null)
-            manager = ProductionManager.Instance;
-
         RecoverStalledMovement();
 
         bool needsAttention = NeedsPlayerAttention();

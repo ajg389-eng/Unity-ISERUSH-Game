@@ -6,13 +6,14 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 25;
+    public const int CurrentVersion = 26;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
-    public int dailyCompletedOrders, dailyRevenue;
+    public int dailyCompletedOrders, dailyRevenue, careerDailyTasksCompleted;
+    public bool dailyRevenueTaskAwarded, dailyWaitTaskAwarded;
     public float dailyWaitTotalSeconds;
     public int careerOrdersServed, careerCustomersVisited, careerCustomersLost;
     public int careerShiftsCompleted, careerRevenue, careerMealsWasted;
@@ -73,6 +74,9 @@ public class KitchenSaveSnapshot
             s.dailyCompletedOrders = statistics.OrdersCompletedToday;
             s.dailyRevenue = statistics.RevenueToday;
             s.dailyWaitTotalSeconds = statistics.AverageWaitTimeTodaySeconds * statistics.OrdersCompletedToday;
+            s.careerDailyTasksCompleted = statistics.CareerDailyTasksCompleted;
+            s.dailyRevenueTaskAwarded = statistics.DailyRevenueTaskAwarded;
+            s.dailyWaitTaskAwarded = statistics.DailyWaitTaskAwarded;
             s.careerOrdersServed = statistics.CareerOrdersServed;
             s.careerCustomersVisited = statistics.CareerCustomersVisited;
             s.careerCustomersLost = statistics.CareerCustomersLost;
@@ -525,7 +529,10 @@ public class KitchenSaveSnapshot
         if (statistics != null)
         {
             if (version >= 18)
-                statistics.RestoreDailyTaskProgress(dailyCompletedOrders, dailyRevenue, dailyWaitTotalSeconds);
+                statistics.RestoreDailyTaskProgress(dailyCompletedOrders, dailyRevenue, dailyWaitTotalSeconds,
+                    version >= 26 ? careerDailyTasksCompleted : 0,
+                    version >= 26 && dailyRevenueTaskAwarded,
+                    version >= 26 && dailyWaitTaskAwarded);
             else
                 statistics.BeginDay();
 

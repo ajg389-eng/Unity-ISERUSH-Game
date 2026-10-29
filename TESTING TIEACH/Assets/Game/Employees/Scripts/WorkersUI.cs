@@ -1395,10 +1395,9 @@ public class WorkersUI : MonoBehaviour
             if (worker == null) continue;
             KitchenEmployee capturedWorker = worker;
             Button chip = MakeChip(workerRow, worker.employeeName + "  ×", 118f);
-            chip.interactable = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+            chip.interactable = true;
             chip.onClick.AddListener(() =>
             {
-                if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
                 production.RemoveWorkerFromFlow(flow, capturedWorker);
                 Refresh();
             });
@@ -1411,7 +1410,7 @@ public class WorkersUI : MonoBehaviour
     {
         Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
         Button dropZone = MakeChip(parent, "+  Drop Worker", 126f);
-        dropZone.interactable = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        dropZone.interactable = true;
         dropZone.gameObject.name = "WorkerDropZone";
         var image = dropZone.GetComponent<Image>();
         if (image != null) image.color = idleColor;
@@ -1470,6 +1469,7 @@ public class WorkersUI : MonoBehaviour
                 flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
                     + "Add stations to analyze this flow.\n"
                     + "<b>Resources Required:</b> None";
+                AppendShiftWorkerHint();
                 LayoutFlowPanel();
                 return;
             }
@@ -1482,6 +1482,7 @@ public class WorkersUI : MonoBehaviour
                 scheduleText.Append("\n<b>Delivered recently:</b> ")
                     .Append(FormatItemRate(layout.actualOutputPerMinute)).Append(" items/min");
                 flowStatus.text = "<size=17><b><color=#F1C66D>Flow Capacity</color></b></size>\n" + scheduleText;
+                AppendShiftWorkerHint();
                 LayoutFlowPanel();
                 return;
             }
@@ -1546,6 +1547,7 @@ public class WorkersUI : MonoBehaviour
             }
             flowStatus.text = "<size=17><b><color=#F1C66D>Flow Economics</color></b></size>\n"
                 + "<color=#59616D>──────────────────────────────</color>\n" + sb;
+            AppendShiftWorkerHint();
             LayoutFlowPanel();
         }
         finally
@@ -1556,6 +1558,14 @@ public class WorkersUI : MonoBehaviour
                 flowSectionNeedsTheme = false;
             }
         }
+    }
+
+    void AppendShiftWorkerHint()
+    {
+        if (flowStatus == null || GameTimeManager.Instance == null
+            || !GameTimeManager.Instance.IsShiftInProgress)
+            return;
+        flowStatus.text += "\n<color=#77C7A5>During shift: drag a worker card onto a flow tab to move them.</color>";
     }
 
     string GetRawResourceName(ItemDefinition resource)
@@ -1646,7 +1656,6 @@ public class WorkersUI : MonoBehaviour
 
     public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null || employee == null || flow == null) return;
         production.AddWorkerToFlow(flow, employee);
         int flowIndex = production.productionFlows.IndexOf(flow);
@@ -1816,7 +1825,6 @@ class WorkerFlowDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (card == null) card = GetComponent<WorkerCardUI>();
         if (card == null || card.employee == null) return;
 
