@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Whipped Cream
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Whipped Cream
-  prefab: {fileID: 7268922663748963708, guid: 06a27d31b11f0cd4d8e0062efb31eefd, type: 3}
+  prefab: {fileID: 7268922663748963708, guid: 23247efb0d449ad429fea6d7aece3506, type: 3}
   price: 2
   startingQuantity: 0
   stationFamily: 

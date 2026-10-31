@@ -15,9 +15,9 @@ public static class ExpandedFoodMenuSetup
         RemoveRetiredBranches(config);
         var cheeseFries = Item("Cheese Fries", "C Fries.prefab", 11, 0);
         var cheeseBaconFries = Item("Cheese Bacon Fries", "CB Fries.prefab", 14, 0);
-        var cream = Item("Whipped Cream", "Whipped Cream Shake.prefab", 2, 8);
+        var cream = Item("Whipped Cream", "Whipped Cream.prefab", 2, 8);
         var sprinkles = Item("Sprinkles", "Sprinkles.prefab", 1, 6);
-        var creamShake = Item("Whipped Cream Shake", "Whipped Cream Shake.prefab", 11, 0);
+        var creamShake = Item("Whipped Cream Shake", "Shake.prefab", 11, 0);
         var sprinkleShake = Item("Whipped Cream Sprinkle Shake", "Whiped Cream Sprinkles Shake.prefab", 13, 0);
 
         config.cheeseSauceIngredient = null;

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Whipped Cream Shake
   m_EditorClassIdentifier: Assembly-CSharp::ItemDefinition
   itemName: Whipped Cream Shake
-  prefab: {fileID: 7268922663748963708, guid: 06a27d31b11f0cd4d8e0062efb31eefd, type: 3}
+  prefab: {fileID: 7268922663748963708, guid: cf4c9a248f937ff4c9b548674e6cf9a7, type: 3}
   price: 11
   startingQuantity: 0
   stationFamily: 

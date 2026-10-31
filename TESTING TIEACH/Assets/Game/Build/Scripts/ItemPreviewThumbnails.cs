@@ -7,7 +7,7 @@ using UnityEngine;
 public static class ItemPreviewThumbnails
 {
     const int Size = 256;
-    const int CacheVersion = 10;
+    const int CacheVersion = 11;
     const string RootName = "__ItemPreviewThumbnails";
     const int PreviewLayer = 31;
 
@@ -18,6 +18,8 @@ public static class ItemPreviewThumbnails
     static readonly Dictionary<int, RenderTexture> cache = new Dictionary<int, RenderTexture>();
     static Camera previewCamera;
     static Transform stage;
+    static Mesh whippedCreamSwirlMesh;
+    static Material whippedCreamSwirlMaterial;
 
     public static Texture Get(ItemDefinition item)
     {
@@ -32,7 +34,11 @@ public static class ItemPreviewThumbnails
             return null;
 
         Vector3 scale = previewScale ?? prefab.transform.localScale;
-        int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode();
+        string label = !string.IsNullOrEmpty(displayName) ? displayName : prefab.name;
+        bool whippedCreamShakePreview = string.Equals(label, "Whipped Cream Shake",
+            System.StringComparison.OrdinalIgnoreCase);
+        int key = prefab.GetInstanceID() ^ (CacheVersion * 397) ^ scale.GetHashCode()
+            ^ (whippedCreamShakePreview ? 0x51A7 : 0);
         if (cache.TryGetValue(key, out var existing))
         {
             if (existing != null && existing.IsCreated())
@@ -46,7 +52,6 @@ public static class ItemPreviewThumbnails
         }
 
         EnsureStage();
-        string label = !string.IsNullOrEmpty(displayName) ? displayName : prefab.name;
         var rt = new RenderTexture(Size, Size, 16, RenderTextureFormat.ARGB32)
         {
             antiAliasing = 2,
@@ -87,6 +92,19 @@ public static class ItemPreviewThumbnails
             previewCamera.orthographicSize = ortho;
             previewCamera.transform.position = center + new Vector3(0f, halfH * 0.35f, -Mathf.Max(halfW, halfH) * 2.6f);
             previewCamera.transform.LookAt(center);
+            if (whippedCreamShakePreview)
+            {
+                AddWhippedCreamTopping(instance, bounds);
+                bounds = CalculateBounds(instance);
+                halfW = Mathf.Max(bounds.extents.x, bounds.extents.z, 0.05f);
+                halfH = Mathf.Max(bounds.extents.y, 0.05f);
+                ortho = Mathf.Max(halfW, halfH) * 1.2f;
+                center = bounds.center;
+                previewCamera.orthographicSize = ortho;
+                previewCamera.transform.position = center + new Vector3(0f, halfH * 0.35f,
+                    -Mathf.Max(halfW, halfH) * 2.6f);
+                previewCamera.transform.LookAt(center);
+            }
             previewCamera.Render();
             previewCamera.targetTexture = null;
         }
@@ -98,6 +116,103 @@ public static class ItemPreviewThumbnails
 
         cache[key] = rt;
         return rt;
+    }
+
+    static void AddWhippedCreamTopping(GameObject shake, Bounds shakeBounds)
+    {
+        if (shake == null) return;
+
+        EnsureWhippedCreamSwirl();
+        Vector3 topCenter = new Vector3(shakeBounds.center.x, shakeBounds.max.y, shakeBounds.center.z);
+        Vector3 localTop = shake.transform.InverseTransformPoint(topCenter);
+        Vector3 lossyScale = shake.transform.lossyScale;
+        float horizontalRadius = Mathf.Max(shakeBounds.extents.x, shakeBounds.extents.z) * 0.62f;
+        float toppingHeight = Mathf.Max(shakeBounds.size.y * 0.34f, horizontalRadius * 0.8f);
+
+        var topping = new GameObject("PreviewWhippedCreamTopping", typeof(MeshFilter), typeof(MeshRenderer));
+        topping.layer = shake.layer;
+        topping.transform.SetParent(shake.transform, false);
+        topping.transform.localPosition = localTop;
+        topping.transform.localScale = new Vector3(
+            horizontalRadius / Mathf.Max(Mathf.Abs(lossyScale.x), 0.0001f),
+            toppingHeight / Mathf.Max(Mathf.Abs(lossyScale.y), 0.0001f),
+            horizontalRadius / Mathf.Max(Mathf.Abs(lossyScale.z), 0.0001f));
+        topping.GetComponent<MeshFilter>().sharedMesh = whippedCreamSwirlMesh;
+        var renderer = topping.GetComponent<MeshRenderer>();
+        renderer.sharedMaterial = whippedCreamSwirlMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+    }
+
+    static void EnsureWhippedCreamSwirl()
+    {
+        if (whippedCreamSwirlMesh == null)
+        {
+            const int pathSegments = 96;
+            const int ringSegments = 12;
+            var vertices = new Vector3[(pathSegments + 1) * ringSegments];
+            var triangles = new int[pathSegments * ringSegments * 6];
+
+            for (int i = 0; i <= pathSegments; i++)
+            {
+                float t = i / (float)pathSegments;
+                float angle = t * Mathf.PI * 5f;
+                float centerRadius = 0.42f * (1f - t);
+                float tubeRadius = 0.55f * Mathf.Pow(1f - t, 0.72f);
+                Vector3 center = new Vector3(Mathf.Cos(angle) * centerRadius, 0.04f + t, Mathf.Sin(angle) * centerRadius);
+                float nextT = Mathf.Min(1f, t + 0.005f);
+                float nextAngle = nextT * Mathf.PI * 5f;
+                Vector3 nextCenter = new Vector3(Mathf.Cos(nextAngle) * 0.42f * (1f - nextT),
+                    0.04f + nextT, Mathf.Sin(nextAngle) * 0.42f * (1f - nextT));
+                Vector3 tangent = (nextCenter - center).normalized;
+                Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                Vector3 normal = Vector3.Cross(tangent, radial).normalized;
+
+                for (int j = 0; j < ringSegments; j++)
+                {
+                    float around = j * Mathf.PI * 2f / ringSegments;
+                    vertices[i * ringSegments + j] = center + tubeRadius
+                        * (radial * Mathf.Cos(around) + normal * Mathf.Sin(around));
+                }
+            }
+
+            int tri = 0;
+            for (int i = 0; i < pathSegments; i++)
+            {
+                for (int j = 0; j < ringSegments; j++)
+                {
+                    int nextJ = (j + 1) % ringSegments;
+                    int a = i * ringSegments + j;
+                    int b = i * ringSegments + nextJ;
+                    int c = (i + 1) * ringSegments + j;
+                    int d = (i + 1) * ringSegments + nextJ;
+                    triangles[tri++] = a;
+                    triangles[tri++] = b;
+                    triangles[tri++] = c;
+                    triangles[tri++] = b;
+                    triangles[tri++] = d;
+                    triangles[tri++] = c;
+                }
+            }
+
+            whippedCreamSwirlMesh = new Mesh { name = "PreviewWhippedCreamSwirl" };
+            whippedCreamSwirlMesh.vertices = vertices;
+            whippedCreamSwirlMesh.triangles = triangles;
+            whippedCreamSwirlMesh.RecalculateNormals();
+            whippedCreamSwirlMesh.RecalculateBounds();
+        }
+
+        if (whippedCreamSwirlMaterial == null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            whippedCreamSwirlMaterial = new Material(shader) { name = "PreviewWhippedCreamMaterial" };
+            Color cream = new Color(1f, 0.96f, 0.86f, 1f);
+            if (whippedCreamSwirlMaterial.HasProperty("_BaseColor"))
+                whippedCreamSwirlMaterial.SetColor("_BaseColor", cream);
+            if (whippedCreamSwirlMaterial.HasProperty("_Color"))
+                whippedCreamSwirlMaterial.SetColor("_Color", cream);
+        }
     }
 
     static void EnsureStage()
