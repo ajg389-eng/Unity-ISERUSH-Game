@@ -2129,7 +2129,7 @@ MonoBehaviour:
   money: {fileID: 626923595}
   moneyText: {fileID: 58481756}
   timeUI: {fileID: 1190729277}
-  barHeight: 60
+  barHeight: 120
 --- !u!114 &241275785
 MonoBehaviour:
   m_ObjectHideFlags: 0

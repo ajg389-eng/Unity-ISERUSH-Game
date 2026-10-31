@@ -217,7 +217,7 @@ public class GameTimeUI : MonoBehaviour
         ignore.ignoreLayout = true;
 
         var hlg = strip.GetComponent<HorizontalLayoutGroup>() ?? strip.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 6f;
+        hlg.spacing = 8f;
         hlg.padding = new RectOffset(0, 0, 0, 0);
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = true;
@@ -254,22 +254,18 @@ public class GameTimeUI : MonoBehaviour
 
         if (fastForwardRateHighlight == null && fastForwardRateButton != null)
             fastForwardRateHighlight = fastForwardRateButton.GetComponent<Image>();
-        if (fastForwardRateButton != null)
-        {
-            LayoutElement rateSize = fastForwardRateButton.GetComponent<LayoutElement>()
-                ?? fastForwardRateButton.gameObject.AddComponent<LayoutElement>();
-            rateSize.minWidth = 42f;
-            rateSize.preferredWidth = 42f;
-            rateSize.flexibleWidth = 0f;
-        }
+        SetSpeedButtonLayout(pauseButton, 56f, 48f);
+        SetSpeedButtonLayout(playButton, 56f, 48f);
+        SetSpeedButtonLayout(fastForwardRateButton, 60f, 48f);
+        SetSpeedButtonLayout(fastForwardButton, 56f, 48f);
 
         GameUITheme.ApplyCompactControlEffects(pauseButton);
         GameUITheme.ApplyCompactControlEffects(playButton);
         GameUITheme.ApplyCompactControlEffects(fastForwardRateButton);
         GameUITheme.ApplyCompactControlEffects(fastForwardButton);
-        GameIconLibrary.ApplyToButton(pauseButton, GameIconId.Pause, 21f, 0f, true);
-        GameIconLibrary.ApplyToButton(playButton, GameIconId.Play, 21f, 0f, true);
-        GameIconLibrary.ApplyToButton(fastForwardButton, GameIconId.FastForward, 21f, 0f, true);
+        GameIconLibrary.ApplyToButton(pauseButton, GameIconId.Pause, 30f, 0f, true);
+        GameIconLibrary.ApplyToButton(playButton, GameIconId.Play, 30f, 0f, true);
+        GameIconLibrary.ApplyToButton(fastForwardButton, GameIconId.FastForward, 30f, 0f, true);
 
         pauseButton.transform.SetSiblingIndex(0);
         playButton.transform.SetSiblingIndex(1);
@@ -325,10 +321,10 @@ public class GameTimeUI : MonoBehaviour
         if (strip.anchorMin != topCenter) strip.anchorMin = topCenter;
         if (strip.anchorMax != topCenter) strip.anchorMax = topCenter;
         if (strip.pivot != topCenter) strip.pivot = topCenter;
-        Vector2 size = new Vector2(202f, 36f);
+        Vector2 size = new Vector2(276f, 52f);
         if (strip.sizeDelta != size) strip.sizeDelta = size;
 
-        float y = -62f;
+        float y = -126f;
         if (bar != null)
         {
             var barRt = (RectTransform)bar.transform;
@@ -336,6 +332,32 @@ public class GameTimeUI : MonoBehaviour
         }
         Vector2 position = new Vector2(0f, y);
         if (strip.anchoredPosition != position) strip.anchoredPosition = position;
+    }
+
+    static void SetSpeedButtonLayout(Button button, float width, float height)
+    {
+        if (button == null) return;
+        LayoutElement layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = width;
+        layout.minHeight = layout.preferredHeight = height;
+        layout.flexibleWidth = layout.flexibleHeight = 0f;
+        TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (label != null)
+        {
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = new Vector2(2f, 1f);
+            labelRect.offsetMax = new Vector2(-2f, -1f);
+            label.alignment = TextAlignmentOptions.Center;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 19f;
+            label.fontSizeMax = 27f;
+            label.fontSize = 27f;
+            label.overflowMode = TextOverflowModes.Truncate;
+            label.margin = Vector4.zero;
+        }
     }
 
     void CacheButtonHighlights()
@@ -528,11 +550,11 @@ public class GameTimeUI : MonoBehaviour
         {
             var le = dayText.GetComponent<LayoutElement>() ?? dayText.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 68f;
-            le.preferredWidth = 68f;
+            le.minWidth = 100f;
+            le.preferredWidth = 100f;
             le.flexibleWidth = 0f;
-            dayText.fontSize = 14f;
-            PositionStackedTimeLabel(dayText.rectTransform, 0f, 9f, 76f, 16f);
+            dayText.fontSize = 24f;
+            PositionStackedTimeLabel(dayText.rectTransform, 0f, 22f, 100f, 30f);
         }
         if (clockText != null)
         {
@@ -541,10 +563,10 @@ public class GameTimeUI : MonoBehaviour
             le.minWidth = 110f;
             le.preferredWidth = 118f;
             le.flexibleWidth = 0f;
-            PositionStackedTimeLabel(clockText.rectTransform, 0f, -9f, 118f, 22f);
+            PositionStackedTimeLabel(clockText.rectTransform, 0f, -20f, 160f, 38f);
             clockText.enableAutoSizing = true;
-            clockText.fontSizeMin = 16;
-            clockText.fontSizeMax = 20;
+            clockText.fontSizeMin = 24;
+            clockText.fontSizeMax = 30;
             clockText.enableWordWrapping = false;
             clockText.overflowMode = TextOverflowModes.Truncate;
         }
@@ -555,7 +577,8 @@ public class GameTimeUI : MonoBehaviour
             le.minWidth = 38f;
             le.preferredWidth = 38f;
             le.flexibleWidth = 0f;
-            PositionTimeLabel(speedMultiplierText.rectTransform, 82f, 38f);
+            PositionStackedTimeLabel(speedMultiplierText.rectTransform, 0f, -46f, 52f, 20f);
+            speedMultiplierText.fontSize = 16f;
         }
         if (rushText != null)
             rushText.gameObject.SetActive(false);

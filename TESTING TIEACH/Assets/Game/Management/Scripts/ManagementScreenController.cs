@@ -169,7 +169,16 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (button == null) return;
         var text = button.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (text != null) text.text = label;
+        if (text != null)
+        {
+            text.text = label;
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 14f;
+            text.fontSizeMax = 20f;
+            text.fontSize = 20f;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.overflowMode = TextOverflowModes.Truncate;
+        }
     }
 
     int FindButtonIndex(string objectName)
@@ -309,6 +318,16 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabBar == null) return;
 
+        var businessBarRect = tabBar as RectTransform;
+        if (businessBarRect != null)
+        {
+            // Business uses the same second-row navigation as Build. Lower its
+            // tabs enough to clear the enlarged primary tabs above it.
+            Vector2 position = businessBarRect.anchoredPosition;
+            position.y = Mathf.Min(position.y, -30f);
+            businessBarRect.anchoredPosition = position;
+        }
+
         var layout = tabBar.GetComponent<HorizontalLayoutGroup>();
         if (layout != null)
         {
@@ -347,31 +366,35 @@ public class ManagementScreenController : MonoBehaviour
         var parentRect = tabRect != null ? tabRect.parent as RectTransform : null;
         var mainHud = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
         var mainRect = mainHud != null ? mainHud.transform as RectTransform : null;
-        if (tabRect == null || parentRect == null || mainRect == null) return;
+        var businessTab = mainHud != null ? mainHud.BusinessTabTransform as RectTransform : null;
+        if (tabRect == null || parentRect == null || mainRect == null || businessTab == null) return;
 
-        Vector3[] mainCorners = new Vector3[4];
-        Vector3[] parentCorners = new Vector3[4];
-        mainRect.GetWorldCorners(mainCorners);
-        parentRect.GetWorldCorners(parentCorners);
-        float targetWorldWidth = Vector3.Distance(mainCorners[0], mainCorners[3]);
-        float parentWorldWidth = Vector3.Distance(parentCorners[0], parentCorners[3]);
-        if (targetWorldWidth <= 0.01f || parentWorldWidth <= 0.01f) return;
+        Vector3[] businessCorners = new Vector3[4];
+        Vector3[] rowCorners = new Vector3[4];
+        businessTab.GetWorldCorners(businessCorners);
+        mainRect.GetWorldCorners(rowCorners);
+        Vector3 bottomCenter = (businessCorners[0] + businessCorners[3]) * 0.5f;
+        Vector3 rowCenter = (rowCorners[0] + rowCorners[1] + rowCorners[2] + rowCorners[3]) * 0.25f;
+        Vector3 localBottom = parentRect.InverseTransformPoint(bottomCenter);
+        Vector3 localCenter = parentRect.InverseTransformPoint(rowCenter);
+        float parentScaleX = Mathf.Abs(parentRect.lossyScale.x);
+        float parentScaleY = Mathf.Abs(parentRect.lossyScale.y);
+        if (parentScaleX <= 0.0001f || parentScaleY <= 0.0001f) return;
 
-        float parentScale = Mathf.Abs(parentRect.lossyScale.x);
-        if (parentScale <= 0.0001f) return;
-        var mainLayout = mainHud.GetComponent<HorizontalLayoutGroup>();
         var businessLayout = tabRect.GetComponent<HorizontalLayoutGroup>();
-        if (mainLayout != null)
-        {
-            // Match the colored button row, excluding the primary strip's own
-            // outer padding, then add this bar's padding back.
-            float mainContentLocal = Mathf.Max(0f, mainRect.rect.width - mainLayout.padding.horizontal);
-            targetWorldWidth = mainContentLocal * Mathf.Abs(mainRect.lossyScale.x);
-        }
-
-        float businessPadding = businessLayout != null ? businessLayout.padding.horizontal : 0f;
-        float targetLocalWidth = targetWorldWidth / parentScale + businessPadding;
-        tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetLocalWidth);
+        float horizontalPadding = businessLayout != null ? businessLayout.padding.horizontal : 0f;
+        var primaryLayout = mainRect.GetComponent<HorizontalLayoutGroup>();
+        float primaryPadding = primaryLayout != null ? primaryLayout.padding.horizontal : 0f;
+        float targetLocalWidth = Mathf.Max(0f, Vector3.Distance(rowCorners[0], rowCorners[3])
+            - primaryPadding * Mathf.Abs(mainRect.lossyScale.x)) / parentScaleX;
+        float height = tabRect.rect.height > 1f ? tabRect.rect.height : tabRect.sizeDelta.y;
+        tabRect.anchorMin = new Vector2(0.5f, 1f);
+        tabRect.anchorMax = new Vector2(0.5f, 1f);
+        tabRect.pivot = new Vector2(0.5f, 1f);
+        tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetLocalWidth + horizontalPadding);
+        tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+        tabRect.anchoredPosition = new Vector2(localCenter.x - parentRect.rect.center.x,
+            localBottom.y - 12f / parentScaleY - parentRect.rect.yMax);
         LayoutRebuilder.ForceRebuildLayoutImmediate(tabRect);
     }
 

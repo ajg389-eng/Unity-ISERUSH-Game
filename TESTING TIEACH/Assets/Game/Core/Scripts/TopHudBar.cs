@@ -13,7 +13,7 @@ public class TopHudBar : MonoBehaviour
     public const string TimeSectionName = "TimeSection";
     public const string MoneyTextName = "MoneyText";
     public const string HudActionsName = "HudActions";
-    const float BarWidth = 760f;
+    const float BarWidth = 804f;
     const int StoreReputationMaxStars = 5;
     const int StoreReputationMaxPoints = 750;
     const int PointsPerCompletedOrder = 1;
@@ -27,7 +27,7 @@ public class TopHudBar : MonoBehaviour
     public GameTimeUI timeUI;
 
     [Header("Layout")]
-    public float barHeight = 56f;
+    public float barHeight = 120f;
 
     TextMeshProUGUI displayedMoneyText;
     int displayedMoney;
@@ -151,8 +151,8 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
-        // 760 fits between the 550-wide left and right tab strips at 1920
-        // without either side covering the money or notification controls.
+        // 804 leaves the center enough room for the clock, music, and notice
+        // controls while staying between the side navigation groups at 1920.
         rt.sizeDelta = new Vector2(BarWidth, barHeight);
 
         EnsureConnectedBackdrop(rt.parent, Mathf.Max(60f, barHeight));
@@ -184,11 +184,11 @@ public class TopHudBar : MonoBehaviour
             var le = moneySection.GetComponent<LayoutElement>();
             if (le == null) le = moneySection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 76f;
-            le.preferredWidth = 76f;
+            le.minWidth = 100f;
+            le.preferredWidth = 100f;
             le.flexibleWidth = 0f;
             PositionSection(moneySection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(168f, 0f), new Vector2(76f, barHeight - 16f));
+                new Vector2(168f, 0f), new Vector2(100f, barHeight - 16f));
         }
 
         var gusHelpSection = transform.Find(TopHudUtilityControls.GusHelpSectionName) as RectTransform;
@@ -197,7 +197,7 @@ public class TopHudBar : MonoBehaviour
             var le = gusHelpSection.GetComponent<LayoutElement>() ?? gusHelpSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
             PositionSection(gusHelpSection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(14f, 0f), new Vector2(42f, 42f));
+                new Vector2(14f, 0f), new Vector2(56f, 56f));
         }
 
         var guidebookSection = transform.Find(TopHudUtilityControls.GuidebookSectionName) as RectTransform;
@@ -206,7 +206,7 @@ public class TopHudBar : MonoBehaviour
             var le = guidebookSection.GetComponent<LayoutElement>() ?? guidebookSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
             PositionSection(guidebookSection, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(70f, 0f), new Vector2(42f, 42f));
+                new Vector2(76f, 0f), new Vector2(56f, 56f));
         }
 
         var timeSection = transform.Find(TimeSectionName) as RectTransform;
@@ -215,11 +215,11 @@ public class TopHudBar : MonoBehaviour
             var le = timeSection.GetComponent<LayoutElement>();
             if (le == null) le = timeSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 170f;
-            le.preferredWidth = 170f;
+            le.minWidth = 200f;
+            le.preferredWidth = 200f;
             le.flexibleWidth = 0f;
             PositionSection(timeSection, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                Vector2.zero, new Vector2(170f, barHeight - 16f));
+                Vector2.zero, new Vector2(200f, barHeight - 16f));
         }
 
         var hudActions = FindHudActions();
@@ -233,8 +233,8 @@ public class TopHudBar : MonoBehaviour
             hudActions.anchorMin = new Vector2(1f, 1f);
             hudActions.anchorMax = new Vector2(1f, 1f);
             hudActions.pivot = new Vector2(1f, 1f);
-            hudActions.anchoredPosition = new Vector2(-235f, -8f);
-            hudActions.sizeDelta = new Vector2(240f, 48f);
+            hudActions.anchoredPosition = new Vector2(-235f, -20f);
+            hudActions.sizeDelta = new Vector2(240f, 80f);
         }
 
         if (moneyText != null)
@@ -242,8 +242,8 @@ public class TopHudBar : MonoBehaviour
             moneyText.overflowMode = TextOverflowModes.Truncate;
             moneyText.alignment = TextAlignmentOptions.MidlineLeft;
             moneyText.enableAutoSizing = true;
-            moneyText.fontSizeMin = 18;
-            moneyText.fontSizeMax = 24;
+            moneyText.fontSizeMin = 24;
+            moneyText.fontSizeMax = 32;
         }
 
 
@@ -252,11 +252,11 @@ public class TopHudBar : MonoBehaviour
         {
             var le = musicSection.GetComponent<LayoutElement>() ?? musicSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 206f;
-            le.preferredWidth = 206f;
+            le.minWidth = 242f;
+            le.preferredWidth = 242f;
             le.flexibleWidth = 0f;
             PositionSection(musicSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                new Vector2(-116f, 0f), new Vector2(206f, barHeight - 16f));
+                new Vector2(-60f, 0f), new Vector2(242f, barHeight - 16f));
         }
 
         var noticeSection = transform.Find(TopHudUtilityControls.NotificationSectionName) as RectTransform;
@@ -264,11 +264,57 @@ public class TopHudBar : MonoBehaviour
         {
             var le = noticeSection.GetComponent<LayoutElement>() ?? noticeSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 92f;
-            le.preferredWidth = 92f;
-            le.flexibleWidth = 0f;
-            PositionSection(noticeSection, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-                new Vector2(-16f, 0f), new Vector2(92f, barHeight - 16f));
+            PositionSection(noticeSection, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(56f, barHeight - 16f));
+            PositionNoticeInGap(noticeSection, musicSection, hudActions, barHeight - 16f);
+        }
+    }
+
+    void PositionNoticeInGap(RectTransform notice, RectTransform music, RectTransform actions, float height)
+    {
+        if (notice == null || music == null || actions == null) return;
+
+        Vector3[] musicCorners = new Vector3[4];
+        Vector3[] actionCorners = new Vector3[4];
+        music.GetWorldCorners(musicCorners);
+        actions.GetWorldCorners(actionCorners);
+        float musicRight = Mathf.Max(musicCorners[2].x, musicCorners[3].x);
+        float actionsLeft = Mathf.Min(actionCorners[0].x, actionCorners[1].x);
+        float scaleX = Mathf.Abs(((RectTransform)transform).lossyScale.x);
+        float scaleY = Mathf.Abs(((RectTransform)transform).lossyScale.y);
+        if (scaleX < 0.0001f || scaleY < 0.0001f) return;
+
+        float gap = Mathf.Max(0f, (actionsLeft - musicRight) / scaleX);
+        float noticeWidth = Mathf.Min(56f, Mathf.Max(0f, gap - 8f));
+        float centerWorldX = (musicRight + actionsLeft) * 0.5f;
+        RectTransform barRect = (RectTransform)transform;
+        Vector3 localCenter = ((RectTransform)transform).InverseTransformPoint(
+            new Vector3(centerWorldX, transform.position.y, transform.position.z));
+
+        // Preserve the gap-centered horizontal position. Only correct its
+        // vertical placement so the button stays inside the top bar.
+        localCenter.y = barRect.rect.center.y;
+
+        notice.anchorMin = new Vector2(0.5f, 0.5f);
+        notice.anchorMax = new Vector2(0.5f, 0.5f);
+        notice.pivot = new Vector2(0.5f, 0.5f);
+        notice.sizeDelta = new Vector2(noticeWidth, height);
+        notice.anchoredPosition = new Vector2(
+            localCenter.x - barRect.rect.center.x,
+            localCenter.y - barRect.rect.center.y);
+
+        var element = notice.GetComponent<LayoutElement>();
+        if (element != null)
+            element.minWidth = element.preferredWidth = noticeWidth;
+
+        Button button = notice.GetComponentInChildren<Button>(true);
+        if (button != null)
+        {
+            float buttonSize = Mathf.Max(0f, Mathf.Min(52f, noticeWidth - 4f));
+            var buttonRect = button.transform as RectTransform;
+            if (buttonRect != null) buttonRect.sizeDelta = new Vector2(buttonSize, Mathf.Min(52f, height));
+            GameIconLibrary.ApplyToButton(button, GameIconId.Exclamation,
+                Mathf.Min(30f, buttonSize * 0.58f), 0f, true);
         }
     }
 
@@ -373,11 +419,11 @@ public class TopHudBar : MonoBehaviour
 
         LayoutElement element = root.GetComponent<LayoutElement>();
         if (element == null) element = root.AddComponent<LayoutElement>();
-        element.minWidth = 78f;
-        element.preferredWidth = 78f;
+        element.minWidth = 90f;
+        element.preferredWidth = 90f;
         element.flexibleWidth = 0f;
-        element.minHeight = 40f;
-        element.preferredHeight = 40f;
+        element.minHeight = 56f;
+        element.preferredHeight = 56f;
 
         HorizontalLayoutGroup starsLayout = root.GetComponent<HorizontalLayoutGroup>();
         if (starsLayout == null) starsLayout = root.AddComponent<HorizontalLayoutGroup>();
@@ -400,7 +446,7 @@ public class TopHudBar : MonoBehaviour
             if (starObject.transform.parent != root.transform)
                 starObject.transform.SetParent(root.transform, false);
             RectTransform starRect = (RectTransform)starObject.transform;
-            starRect.sizeDelta = new Vector2(13f, 13f);
+            starRect.sizeDelta = new Vector2(16f, 16f);
             Image star = starObject.GetComponent<Image>();
             star.sprite = starSprite;
             star.preserveAspect = true;
@@ -595,10 +641,10 @@ public class TopHudBar : MonoBehaviour
         layout.minWidth = 42f;
         layout.preferredWidth = 42f;
         layout.flexibleWidth = 0f;
-        layout.minHeight = 40f;
-        layout.preferredHeight = 40f;
+        layout.minHeight = 56f;
+        layout.preferredHeight = 56f;
         button.GetComponent<Image>().color = GameUITheme.Surface;
-        GameIconLibrary.ApplyToButton(button, icon, 23f, 0f, true);
+        GameIconLibrary.ApplyToButton(button, icon, 28f, 0f, true);
         GameUITheme.ApplyCompactControlEffects(button);
         DelayedTooltip.Attach(button, label + ": open");
         return button;

@@ -981,27 +981,9 @@ public class InventoryUI : MonoBehaviour
         var mainRect = mainHud != null ? mainHud.transform as RectTransform : null;
         if (tabRect != null && parentRect != null && mainRect != null)
         {
-            Vector3[] mainCorners = new Vector3[4];
-            mainRect.GetWorldCorners(mainCorners);
-            float targetWorldWidth = Vector3.Distance(mainCorners[0], mainCorners[3]);
-            float targetWorldHeight = Vector3.Distance(mainCorners[0], mainCorners[1]);
-            var mainLayout = mainHud.GetComponent<HorizontalLayoutGroup>();
-            if (mainLayout != null)
-                targetWorldWidth = Mathf.Max(0f, mainRect.rect.width - mainLayout.padding.horizontal)
-                    * Mathf.Abs(mainRect.lossyScale.x);
-
-            float parentScaleX = Mathf.Abs(parentRect.lossyScale.x);
-            float parentScaleY = Mathf.Abs(parentRect.lossyScale.y);
-            if (parentScaleX > 0.0001f && targetWorldWidth > 0.01f)
-            {
-                float targetLocalWidth = targetWorldWidth / parentScaleX + layout.padding.horizontal;
-                tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetLocalWidth);
-            }
-            if (parentScaleY > 0.0001f && targetWorldHeight > 0.01f)
-            {
-                float targetLocalHeight = targetWorldHeight / parentScaleY;
-                tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetLocalHeight);
-            }
+            RectTransform primaryBuildTab = mainHud.InventoryTabTransform as RectTransform;
+            if (primaryBuildTab != null)
+                AlignSubTabBar(tabRect, parentRect, mainRect, primaryBuildTab, layout, 12f);
         }
 
         int visibleCount = 0;
@@ -1020,11 +1002,53 @@ public class InventoryUI : MonoBehaviour
         if (tabButtons != null)
         {
             foreach (var button in tabButtons)
+            {
                 SetInventoryTabSize(button, tabWidth, 40f);
+                var label = button != null ? button.GetComponentInChildren<TextMeshProUGUI>(true) : null;
+                if (label != null)
+                {
+                    label.enableAutoSizing = true;
+                    label.fontSizeMin = 14f;
+                    label.fontSizeMax = 20f;
+                    label.fontSize = 20f;
+                    label.textWrappingMode = TextWrappingModes.NoWrap;
+                    label.overflowMode = TextOverflowModes.Truncate;
+                }
+            }
         }
 
         if (tabRect != null)
             LayoutRebuilder.ForceRebuildLayoutImmediate(tabRect);
+    }
+
+    static void AlignSubTabBar(RectTransform tabRect, RectTransform parentRect,
+        RectTransform rowWidthSource, RectTransform primaryTab, HorizontalLayoutGroup layout, float gap)
+    {
+        Vector3[] primaryCorners = new Vector3[4];
+        Vector3[] rowCorners = new Vector3[4];
+        primaryTab.GetWorldCorners(primaryCorners);
+        rowWidthSource.GetWorldCorners(rowCorners);
+        Vector3 bottomCenter = (primaryCorners[0] + primaryCorners[3]) * 0.5f;
+        Vector3 rowCenter = (rowCorners[0] + rowCorners[3] + rowCorners[1] + rowCorners[2]) * 0.25f;
+        Vector3 localBottom = parentRect.InverseTransformPoint(bottomCenter);
+        Vector3 localCenter = parentRect.InverseTransformPoint(rowCenter);
+        float scaleX = Mathf.Abs(parentRect.lossyScale.x);
+        float scaleY = Mathf.Abs(parentRect.lossyScale.y);
+        if (scaleX < 0.0001f || scaleY < 0.0001f) return;
+
+        var sourceLayout = rowWidthSource.GetComponent<HorizontalLayoutGroup>();
+        float outerPadding = sourceLayout != null ? sourceLayout.padding.horizontal : 0f;
+        float width = Mathf.Max(0f, Vector3.Distance(rowCorners[0], rowCorners[3])
+            - outerPadding * Mathf.Abs(rowWidthSource.lossyScale.x)) / scaleX;
+        float height = tabRect.rect.height > 1f ? tabRect.rect.height : tabRect.sizeDelta.y;
+        tabRect.anchorMin = new Vector2(0.5f, 1f);
+        tabRect.anchorMax = new Vector2(0.5f, 1f);
+        tabRect.pivot = new Vector2(0.5f, 1f);
+        tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal,
+            width + (layout != null ? layout.padding.horizontal : 0f));
+        tabRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+        tabRect.anchoredPosition = new Vector2(localCenter.x - parentRect.rect.center.x,
+            localBottom.y - gap / scaleY - parentRect.rect.yMax);
     }
 
     static void SetInventoryTabSize(Button button, float width, float height)
