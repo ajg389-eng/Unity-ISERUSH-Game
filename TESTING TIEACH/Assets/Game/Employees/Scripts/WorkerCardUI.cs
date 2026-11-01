@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -13,6 +14,7 @@ public class WorkerCardUI : MonoBehaviour
     public GameObject nameInputObject;
     public Button customizeButton;
     public Button fireButton;
+    public Button flowAssignButton;
     public TextMeshProUGUI currentTaskText;
     public TextMeshProUGUI assignmentsText;
     public TextMeshProUGUI heldItemsText;
@@ -166,6 +168,11 @@ public class WorkerCardUI : MonoBehaviour
         {
             var t = transform.Find("Button_Customize") ?? transform.Find("Row1/Button_Customize");
             if (t != null) customizeButton = t.GetComponent<Button>();
+        }
+        if (flowAssignButton == null)
+        {
+            var t = transform.Find("Button_AssignFlow") ?? transform.Find("Row1/Button_AssignFlow");
+            if (t != null) flowAssignButton = t.GetComponent<Button>();
         }
         if (stationsLabel == null)
         {
@@ -595,13 +602,13 @@ public class WorkerCardUI : MonoBehaviour
         if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
         if (detailsExpanded)
         {
-            cardLe.minHeight = 96;
+            cardLe.minHeight = 112;
             cardLe.preferredHeight = -1;
         }
         else
         {
-            cardLe.minHeight = 44;
-            cardLe.preferredHeight = 44;
+            cardLe.minHeight = 56;
+            cardLe.preferredHeight = 56;
         }
 
         UpdateExpandArrowLabel();
@@ -655,13 +662,13 @@ public class WorkerCardUI : MonoBehaviour
             row1.SetAsFirstSibling();
             var rowLe = row1.GetComponent<LayoutElement>();
             if (rowLe == null) rowLe = row1.gameObject.AddComponent<LayoutElement>();
-            rowLe.minHeight = 28;
-            rowLe.preferredHeight = 28;
+            rowLe.minHeight = 36;
+            rowLe.preferredHeight = 36;
 
             var hlg = row1.GetComponent<HorizontalLayoutGroup>();
             if (hlg == null) hlg = row1.gameObject.AddComponent<HorizontalLayoutGroup>();
             hlg.padding = new RectOffset(0, 0, 0, 0);
-            hlg.spacing = 12;
+            hlg.spacing = 8;
             hlg.childAlignment = TextAnchor.MiddleLeft;
             hlg.childControlWidth = true;
             hlg.childControlHeight = true;
@@ -688,19 +695,44 @@ public class WorkerCardUI : MonoBehaviour
                 var nameLe = nameInputObject.GetComponent<LayoutElement>();
                 if (nameLe == null) nameLe = nameInputObject.AddComponent<LayoutElement>();
                 nameLe.flexibleWidth = 1;
-                nameLe.minWidth = 120;
+                nameLe.minWidth = 96;
                 nameLe.preferredWidth = -1;
+                var nameLabel = nameInputObject.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (nameLabel != null)
+                {
+                    nameLabel.fontSize = 17f;
+                    nameLabel.enableAutoSizing = true;
+                    nameLabel.fontSizeMin = 13f;
+                    nameLabel.fontSizeMax = 17f;
+                    nameLabel.textWrappingMode = TextWrappingModes.NoWrap;
+                    nameLabel.overflowMode = TextOverflowModes.Truncate;
+                }
+                var legacyNameLabel = nameInputObject.GetComponentInChildren<Text>(true);
+                if (legacyNameLabel != null) legacyNameLabel.fontSize = 17;
             }
 
             EnsureCustomizeButton(row1);
+            EnsureFlowAssignButton(row1);
+
+            if (flowAssignButton != null)
+            {
+                flowAssignButton.transform.SetSiblingIndex(2);
+                var assignLe = flowAssignButton.GetComponent<LayoutElement>();
+                if (assignLe == null) assignLe = flowAssignButton.gameObject.AddComponent<LayoutElement>();
+                assignLe.minWidth = 120;
+                assignLe.preferredWidth = 120;
+                assignLe.flexibleWidth = 0;
+                assignLe.minHeight = 34;
+                assignLe.preferredHeight = 34;
+            }
 
             if (customizeButton != null)
             {
-                customizeButton.transform.SetAsLastSibling();
+                customizeButton.transform.SetSiblingIndex(3);
                 var customizeLe = customizeButton.GetComponent<LayoutElement>();
                 if (customizeLe == null) customizeLe = customizeButton.gameObject.AddComponent<LayoutElement>();
-                customizeLe.minWidth = 96;
-                customizeLe.preferredWidth = 96;
+                customizeLe.minWidth = 88;
+                customizeLe.preferredWidth = 88;
                 customizeLe.flexibleWidth = 0;
             }
 
@@ -709,8 +741,8 @@ public class WorkerCardUI : MonoBehaviour
                 fireButton.transform.SetAsLastSibling();
                 var fireLe = fireButton.GetComponent<LayoutElement>();
                 if (fireLe == null) fireLe = fireButton.gameObject.AddComponent<LayoutElement>();
-                fireLe.minWidth = 72;
-                fireLe.preferredWidth = 72;
+                fireLe.minWidth = 68;
+                fireLe.preferredWidth = 68;
                 fireLe.flexibleWidth = 0;
             }
         }
@@ -733,6 +765,64 @@ public class WorkerCardUI : MonoBehaviour
             if (carryingSection != null)
                 carryingSection.gameObject.SetActive(false);
         }
+    }
+
+    void EnsureFlowAssignButton(Transform row1)
+    {
+        if (row1 == null) return;
+        Transform existing = row1.Find("Button_AssignFlow");
+        if (existing != null)
+        {
+            flowAssignButton = existing.GetComponent<Button>();
+            return;
+        }
+
+        var go = new GameObject("Button_AssignFlow", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        go.transform.SetParent(row1, false);
+        var image = go.GetComponent<Image>();
+        image.color = new Color(0.25f, 0.48f, 0.36f, 1f);
+        flowAssignButton = go.GetComponent<Button>();
+        flowAssignButton.targetGraphic = image;
+        GameUITheme.ApplyCompactControlEffects(flowAssignButton);
+
+        var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelGo.transform.SetParent(go.transform, false);
+        RectTransform labelRect = (RectTransform)labelGo.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(4f, 1f);
+        labelRect.offsetMax = new Vector2(-4f, -1f);
+        TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
+        label.text = "Assign";
+        label.fontSize = 14f;
+        label.fontStyle = FontStyles.Bold;
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.Center;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 11f;
+        label.fontSizeMax = 14f;
+        label.overflowMode = TextOverflowModes.Truncate;
+        label.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
+    }
+
+    public void ConfigureFlowAssignment(string label, bool assignedToSelectedFlow, Action onClick)
+    {
+        if (flowAssignButton == null)
+            EnsureFlowAssignButton(transform.Find("Row1"));
+        if (flowAssignButton == null) return;
+
+        var text = flowAssignButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (text != null) text.text = label;
+        flowAssignButton.onClick.RemoveAllListeners();
+        if (onClick != null) flowAssignButton.onClick.AddListener(() => onClick());
+        flowAssignButton.interactable = true;
+        var image = flowAssignButton.targetGraphic as Image;
+        if (image != null)
+            image.color = assignedToSelectedFlow
+                ? new Color(0.58f, 0.27f, 0.26f, 1f)
+                : new Color(0.25f, 0.48f, 0.36f, 1f);
     }
 
     static Transform EnsureStatusRow(Transform details)
