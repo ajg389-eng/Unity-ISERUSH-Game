@@ -48,6 +48,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     }
 
     public static ShiftPlanningUI Instance { get; private set; }
+    public static bool IsPlanning => Instance != null
+        && Instance.preShiftPlanningActive
+        && (Instance.timeManager == null || !Instance.timeManager.IsShiftOver);
     static SavedState pendingRestoreState;
     static bool hasPendingRestoreState;
 
@@ -70,6 +73,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     ShiftResult previousShift;
     bool initialized;
     bool planHiddenForStationPopup;
+    bool preShiftPlanningActive;
     float nextLiveRefreshTime;
     int lastPlanDemandRevision = int.MinValue;
 
@@ -172,6 +176,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (panelRoot == null) return;
         if (livePanelRoot != null) livePanelRoot.SetActive(false);
         RefreshPlan();
+        // Keep the planning phase active even if another UI panel temporarily
+        // hides the card. Station movement remains available until Start Shift.
+        preShiftPlanningActive = true;
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
         ManagementModeController management = ManagementModeController.Instance;
@@ -419,6 +426,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void StartShift()
     {
+        preShiftPlanningActive = false;
         ProductionManager.Instance?.BeginShiftThroughputTracking();
         StoreStatisticsManager.Instance?.BeginShiftThroughputTracking();
         CaptureStationBaseline();

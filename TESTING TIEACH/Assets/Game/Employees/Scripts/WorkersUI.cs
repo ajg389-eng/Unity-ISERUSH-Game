@@ -431,7 +431,9 @@ public class WorkersUI : MonoBehaviour
             float panelHeight = Mathf.Max(44f, flowPanel.rect.height);
             // The header ends near the top of the content area; keep the flow
             // panel and worker list on the same compact baseline.
-            topInset = 8f + panelHeight + 10f;
+            // Keep the panel below the Business submenu row. This space is
+            // required in planning as well as during live management.
+            topInset = 44f + panelHeight + 10f;
         }
 
         scroll.anchorMin = new Vector2(0f, 0f);
@@ -1091,7 +1093,7 @@ public class WorkersUI : MonoBehaviour
         flowPanel.anchorMin = new Vector2(0f, 1f);
         flowPanel.anchorMax = new Vector2(1f, 1f);
         flowPanel.pivot = new Vector2(0.5f, 1f);
-        flowPanel.anchoredPosition = new Vector2(0f, -8f);
+        flowPanel.anchoredPosition = new Vector2(0f, -44f);
         flowPanel.sizeDelta = new Vector2(-24f, flowPanel.sizeDelta.y);
 
         var fitter = flowPanel.GetComponent<ContentSizeFitter>();

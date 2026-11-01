@@ -55,6 +55,10 @@ public class BuildPlacer : MonoBehaviour
     float lastEditClickTime = -999f;
     int lastEditClickId;
 
+    bool IsStationEditingLocked => GameTimeManager.Instance != null
+        && GameTimeManager.Instance.IsShiftInProgress
+        && !ShiftPlanningUI.IsPlanning;
+
     sealed class GroupMoveMember
     {
         public GameObject root;
@@ -125,7 +129,7 @@ public class BuildPlacer : MonoBehaviour
             return;
         }
 
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+        if (IsStationEditingLocked)
         {
             CancelPlacement();
             CancelDrag();
@@ -168,6 +172,15 @@ public class BuildPlacer : MonoBehaviour
         // full-screen canvas roots must not prevent interaction with the world.
         if (UIInputFocusGuard.IsPointerOverBlockingPanel
             || (actionBar != null && actionBar.IsPointerOver)) return;
+
+        // Clicking an already placed station while an inventory ghost is active
+        // means the player is targeting that station for repositioning.
+        if (IsPlacing && Input.GetMouseButtonDown(0) && GetStationUnderPointer() != null)
+        {
+            CancelPlacement();
+            TrySelectStation();
+            return;
+        }
 
         // ---- Dragging a placed object ----
         if (IsDragging)
@@ -915,39 +928,35 @@ public class BuildPlacer : MonoBehaviour
         if (target == null)
         {
             if (!additive) ClearStationSelection();
+            lastEditClickId = 0;
             return;
         }
 
         int targetId = target.GetInstanceID();
         float clickTime = Time.unscaledTime;
-        bool doubleClick = targetId == lastEditClickId
+        bool doubleClick = !additive && targetId == lastEditClickId
             && clickTime - lastEditClickTime <= EditDoubleClickSeconds;
-        lastEditClickId = doubleClick ? 0 : targetId;
+        lastEditClickId = additive || doubleClick ? 0 : targetId;
         lastEditClickTime = clickTime;
 
-        // A repeated click starts moving directly, even if the first click did not
-        // leave the object selected. This keeps floor pickup stations reliable.
-        if (doubleClick && !additive)
+        if (doubleClick)
         {
-            bool groundPickup = IsGroundPickupStationObject(target);
-            if (groundPickup || !selectedObjects.Contains(target))
+            if (!selectedObjects.Contains(target))
             {
                 ClearStationSelection();
                 selectedObjects.Add(target);
                 StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
-                actionBar?.Refresh();
             }
             BeginMoveSelected();
             return;
         }
 
-        // Once selected, clicking the same object again is a move shortcut. This
-        // also makes the gesture reliable if counter and station colliders produce
-        // different raycast timing or the second click falls outside the interval.
         if (selectedObjects.Contains(target))
         {
-            if (additive) RemoveFromSelection(target);
-            else BeginMoveSelected();
+            if (additive)
+                RemoveFromSelection(target);
+            else
+                actionBar?.Refresh();
             return;
         }
 
@@ -956,6 +965,11 @@ public class BuildPlacer : MonoBehaviour
         selectedObjects.Add(target);
         StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
         actionBar?.Refresh();
+        if (additive)
+        {
+            Sfx.Play(SfxId.UiClick);
+            return;
+        }
         Sfx.Play(SfxId.UiClick);
     }
 
@@ -991,8 +1005,60 @@ public class BuildPlacer : MonoBehaviour
             if (mounted != null) return mounted.gameObject;
             BuildFootprint footprint = hit.collider.GetComponentInParent<BuildFootprint>();
             if (footprint != null && footprint.gameObject != ghost) return footprint.gameObject;
+
+            StationNode station = hit.collider.GetComponentInParent<StationNode>();
+            if (station != null)
+            {
+                PlacedBuildItem marker = station.GetComponentInParent<PlacedBuildItem>();
+                return marker != null ? marker.gameObject : station.gameObject;
+            }
+
+            PlacedBuildItem placed = hit.collider.GetComponentInParent<PlacedBuildItem>();
+            if (placed != null && placed.itemDefinition != null
+                && placed.itemDefinition.placementSurface == ItemDefinition.PlacementSurface.Floor)
+                return placed.gameObject;
+        }
+
+        // Tall or offset models can be hard to click directly. Resolve a click on
+        // any occupied floor tile back to the station whose footprint contains it.
+        if (TryGetFloorAimPoint(out Vector3 aim) && grid.WorldToCell(aim, out int cellX, out int cellY))
+        {
+            PlacedBuildItem[] placedItems = FindObjectsByType<PlacedBuildItem>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (PlacedBuildItem placed in placedItems)
+            {
+                if (placed == null || placed.gameObject == ghost || placed.itemDefinition == null
+                    || placed.itemDefinition.placementSurface != ItemDefinition.PlacementSurface.Floor)
+                    continue;
+                BuildFootprint footprint = placed.GetComponent<BuildFootprint>();
+                if (footprint == null)
+                {
+                    footprint = placed.gameObject.AddComponent<BuildFootprint>();
+                    footprint.EnsureAtLeast(placed.itemDefinition);
+                }
+                if (FootprintContainsCell(placed.gameObject, footprint, cellX, cellY))
+                    return placed.gameObject;
+            }
+
+            BuildFootprint[] footprints = FindObjectsByType<BuildFootprint>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (BuildFootprint footprint in footprints)
+            {
+                if (footprint == null || footprint.gameObject == ghost) continue;
+                if (FootprintContainsCell(footprint.gameObject, footprint, cellX, cellY))
+                    return footprint.gameObject;
+            }
         }
         return null;
+    }
+
+    bool FootprintContainsCell(GameObject root, BuildFootprint footprint, int cellX, int cellY)
+    {
+        if (root == null || footprint == null) return false;
+        GetPlacedFootprint(root, footprint,
+            out int x, out int y, out int width, out int height, out _);
+        return x >= 0 && cellX >= x && cellX < x + width
+            && cellY >= y && cellY < y + height;
     }
 
     static GameObject FindGroundPickupStationAtSlot(CounterSurface surface, int slot)
@@ -1026,11 +1092,12 @@ public class BuildPlacer : MonoBehaviour
 
     public void BeginMoveSelected()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsStationEditingLocked) return;
         CleanupSelection();
         if (selectedObjects.Count == 0 || IsDragging || IsPlacing) return;
         if (selectedObjects.Count == 1) BeginSingleDrag(selectedObjects[0]);
         else BeginGroupMove();
+        actionBar?.Refresh();
     }
 
     void BeginSingleDrag(GameObject target)
@@ -1134,6 +1201,23 @@ public class BuildPlacer : MonoBehaviour
         }
 
         BuildFootprint fp = target.GetComponent<BuildFootprint>();
+        if (fp == null)
+        {
+            // Older or imported station prefabs may be missing the runtime
+            // footprint added by ConfigurePlacedObject. Rebuild it from the
+            // placed item metadata so every floor station remains movable.
+            ItemDefinition definition = target.GetComponent<PlacedBuildItem>()?.itemDefinition;
+            if (definition != null
+                && definition.placementSurface == ItemDefinition.PlacementSurface.Floor)
+            {
+                fp = target.AddComponent<BuildFootprint>();
+                fp.EnsureAtLeast(definition);
+            }
+            else if (target.GetComponent<StationNode>() != null)
+            {
+                fp = target.AddComponent<BuildFootprint>();
+            }
+        }
         if (fp == null) return;
         CounterSurface counter = target.GetComponent<CounterSurface>();
         if (counter != null && !counter.IsAvailable)
@@ -1371,7 +1455,7 @@ public class BuildPlacer : MonoBehaviour
 
     void TryStartDrag()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsStationEditingLocked) return;
         if (Camera.main == null) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
@@ -2666,6 +2750,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     bool buildVisibilityKnown;
     bool displayedBuildMode;
     int displayedSelectionCount = -1;
+    bool displayedDragging;
 
     public bool IsPointerOver
     {
@@ -2895,18 +2980,21 @@ public sealed class BuildStationActionBar : MonoBehaviour
         if (placer == null || selectionLabel == null) return;
         int count = placer.SelectedStationCount;
         if (!placementInstructionActive && (messageLabel == null || !messageLabel.gameObject.activeSelf)
-            && displayedSelectionCount != count)
+            && (displayedSelectionCount != count || displayedDragging != placer.IsDragging))
         {
             displayedSelectionCount = count;
+            displayedDragging = placer.IsDragging;
             selectionLabel.text = count == 0
                 ? "Select a station"
-                : count == 1 ? "1 selected  |  Double-click or Move"
+                : placer.IsDragging ? "Click a tile to place"
+                : count == 1 ? "Double-click a station or tile to move"
                 : count + " selected  |  Double-click or Move";
         }
         if (instructionPanel != null)
             instructionPanel.SetActive(count > 0 || placementInstructionActive
                 || (messageLabel != null && messageLabel.gameObject.activeSelf));
-        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        bool planPhase = GameTimeManager.Instance == null
+            || !GameTimeManager.Instance.IsShiftInProgress || ShiftPlanningUI.IsPlanning;
         if (moveButton != null) moveButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
         if (clearButton != null) clearButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
     }
