@@ -549,9 +549,12 @@ public class MainHudTabs : MonoBehaviour
             if (label != null)
             {
                 label.color = buildLocked ? GameUITheme.TextSecondary : Color.white;
-                label.enableAutoSizing = buildLocked;
-                label.fontSizeMin = buildLocked ? 11f : 16f;
-                label.fontSizeMax = buildLocked ? 14f : 16f;
+                label.enableAutoSizing = false;
+                label.fontSize = 20f;
+                label.fontSizeMin = 20f;
+                label.fontSizeMax = 20f;
+                label.fontStyle = FontStyles.Bold;
+                label.characterSpacing = 0.8f;
             }
             if (buildLocked && inventoryBg != null)
                 inventoryBg.color = GameUITheme.PanelSlate;
