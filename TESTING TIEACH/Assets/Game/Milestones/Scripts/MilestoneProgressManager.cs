@@ -197,7 +197,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
         OnMilestoneCompleted?.Invoke(current);
 
-        NotificationCenter.Post(GetMilestoneDisplayLabel(current) + " completed. Check Research for newly available projects.",
+        NotificationCenter.Post(GetMilestoneDisplayLabel(current) + " completed.",
             GameNotificationKind.Message,
             "milestone-" + current.milestoneId);
 
@@ -212,12 +212,13 @@ public class MilestoneProgressManager : MonoBehaviour
             ApplyActiveMissions(reset: true);
             NotificationCenter.Post("Next: " + GetMilestoneDisplayLabel(next) + ". " + next.description,
                 GameNotificationKind.Message, "milestone-next-" + next.milestoneId, 12f);
+            MilestoneUnlockPopupUI.ShowAfterTransition(next);
         }
         else
         {
             activeMilestoneId = null;
             ApplyActiveMissions(reset: true);
-            NotificationCenter.Post("All milestones complete. Review Research, Supply, and Menu to keep improving the restaurant.",
+            NotificationCenter.Post("All milestones complete. Review Analytics and Supply to keep improving the restaurant.",
                 GameNotificationKind.Message, "milestones-complete", 12f);
         }
 
@@ -260,6 +261,7 @@ public class MilestoneProgressManager : MonoBehaviour
         activeMilestoneId = target.milestoneId;
         ApplyActiveMissions(reset: true);
         OnMilestonesChanged?.Invoke();
+        MilestoneUnlockPopupUI.ShowAfterTransition(target);
         return true;
     }
 

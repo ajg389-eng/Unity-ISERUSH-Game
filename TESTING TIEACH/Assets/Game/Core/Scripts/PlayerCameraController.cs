@@ -401,6 +401,17 @@ public static class UIInputFocusGuard
                 GameObject hit = PointerRaycastResults[i].gameObject;
                 if (hit == null) continue;
 
+                // Tutorial cards sit on a screen-space canvas while the player
+                // needs to click highlighted objects in the world. Only actual
+                // tutorial controls (such as Next) should consume that click.
+                if (hit.GetComponentInParent<OnboardingTutorial>() != null)
+                {
+                    if (hit.GetComponentInParent<Selectable>() != null
+                        || hit.GetComponentInParent<ScrollRect>() != null)
+                        return true;
+                    continue;
+                }
+
                 bool insideBuildPanel = cachedInventoryUI != null
                     && cachedInventoryUI.IsPanelOpen
                     && hit.transform.IsChildOf(cachedInventoryUI.panel.transform);

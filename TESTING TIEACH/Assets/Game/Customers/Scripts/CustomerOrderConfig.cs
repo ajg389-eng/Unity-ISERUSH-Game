@@ -1023,14 +1023,19 @@ public class CustomerOrderConfig : ScriptableObject
         };
     }
 
-    /// <summary>Returns the research title for a recipe progression stage.</summary>
+    /// <summary>Returns the milestone label that grants a recipe progression stage.</summary>
     public static string RecipeResearchTitleForStage(int stage)
     {
-        if (stage <= 1) return "Restaurant Basics / Recipe Upgrades I";
-        ResearchProgressManager.Definition definition = ResearchProgressManager.Get(RecipeResearchId(stage));
-        return definition != null && !string.IsNullOrWhiteSpace(definition.title)
-            ? definition.title
-            : "Recipe Research";
+        switch (stage)
+        {
+            case <= 0: return "Restaurant Basics";
+            case 1: return "Milestone 1: Process Analysis";
+            case 2: return "Milestone 2: Capacity Planning";
+            case 3: return "Milestone 3: Engineering Economy";
+            case 4: return "Milestone 4: Inventory Control";
+            case 5: return "Milestone 5: Quality & Reliability";
+            default: return "Milestone 6: Systems Integration";
+        }
     }
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
     public bool IsFries(ItemDefinition item) => item != null && (item == friesItem || item == cheeseFriesItem || item == cheeseBaconFriesItem);
@@ -1058,11 +1063,8 @@ public class CustomerOrderConfig : ScriptableObject
     public string RecipeResearchTitleForItem(ItemDefinition item)
     {
         string researchId = IngredientResearchId(item);
-        ResearchProgressManager.Definition definition = !string.IsNullOrEmpty(researchId)
-            ? ResearchProgressManager.Get(researchId) : null;
-        return definition != null && !string.IsNullOrWhiteSpace(definition.title)
-            ? definition.title
-            : RecipeResearchTitleForStage(GetIngredientMilestone(item));
+        int stage = researchId == "production_basics" ? 0 : GetIngredientMilestone(item);
+        return RecipeResearchTitleForStage(stage);
     }
 
     public bool IsMenuItemUnlocked(ItemDefinition item)
@@ -1283,8 +1285,8 @@ public class CustomerOrderConfig : ScriptableObject
     /// <summary>
     /// Customer orders are driven by the recipes the player can currently use.
     /// Menu milestone unlocks still gate the product family, while the assembly
-    /// recipe gate prevents a customer from ordering a product whose recipe is
-    /// still locked in Research.
+    /// recipe gate prevents a customer from ordering a product before its
+    /// milestone unlock is reached.
     /// </summary>
     public bool IsCustomerRecipeUnlocked(ItemDefinition item)
     {

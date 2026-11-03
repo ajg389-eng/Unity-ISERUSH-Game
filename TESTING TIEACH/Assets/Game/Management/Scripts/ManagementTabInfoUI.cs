@@ -397,8 +397,8 @@ public class ManagementTabInfoUI : MonoBehaviour
             title = "Progression";
             guidebookChapter = "Improve";
             body = FormatHelp(
-                "Milestones group tasks into stages. Research projects become available as you progress.",
-                "Complete the current milestone tasks, then choose research that addresses your next capacity need.",
+                "Milestones group tasks into stages and award new recipes, stations, and operating capabilities.",
+                "Complete the current milestone tasks to unlock the next set of restaurant capabilities.",
                 "Milestones connect practice with gradual system improvement.");
             return;
         }

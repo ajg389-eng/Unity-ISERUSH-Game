@@ -1,7 +1,9 @@
 /// <summary>
-/// Milestones reveal research projects. Completed research grants gameplay unlocks.
-/// Tutorial is stage 0; Milestone 1 is the first numbered stage.
+/// Milestones are the source of gameplay unlocks. Research definitions remain
+/// available for future use, but do not gate gameplay while research is disabled.
 /// </summary>
+using System.Collections.Generic;
+
 public static class MilestoneFeatures
 {
     public const int RestaurantBasics = 1;
@@ -22,10 +24,66 @@ public static class MilestoneFeatures
         return numberedStage <= 0 || HighestReachedNumberedStage() >= numberedStage;
     }
 
-    static bool Researched(string id) => ResearchProgressManager.Instance != null
-        && ResearchProgressManager.Instance.IsCompleted(id);
+    static readonly Dictionary<string, int> ResearchUnlockMilestones = new Dictionary<string, int>
+    {
+        // The first burger is part of Restaurant Basics, which is taught in the tutorial.
+        { "production_basics", 0 },
+        { "recipe_upgrades_1", 1 },
+        { "recipe_upgrades_2", 2 },
+        { "recipe_upgrades_3", 3 },
+        { "recipe_upgrades_4", 4 },
+        { "recipe_upgrades_5", 5 },
+        { "mk2_stations", 3 },
+        { "core_workforce", 0 },
+        { "carry_training", 2 },
+        { "carry_training_2", 3 },
+        { "carry_training_3", 4 },
+        { "manual_operations", 0 },
+        { "express_ordering", 2 },
+        { "automatic_ordering", 5 },
+        { "smart_operations", 6 }
+    };
 
-    public static bool IsResearchComplete(string id) => Researched(id);
+    public static bool IsResearchComplete(string id)
+    {
+        return !string.IsNullOrEmpty(id)
+            && ResearchUnlockMilestones.TryGetValue(id, out int milestone)
+            && HasReached(milestone);
+    }
 
-    public static bool Mk2StationsUnlocked => Researched("mk2_stations");
+    public static bool Mk2StationsUnlocked => HasReached(Mk2Stations);
+
+    public static IReadOnlyList<string> GetUnlocksForMilestone(MilestoneDefinition milestone)
+    {
+        if (milestone == null) return System.Array.Empty<string>();
+        switch (milestone.milestoneId)
+        {
+            case "milestone_01":
+                return new[] { "Fries production and menu item", "Shake production and menu item", "Shake Station MK1" };
+            case "milestone_02":
+                return new[]
+                {
+                    "Cheeseburger", "Cheese Fries", "Whipped Cream Shake",
+                    "Express ingredient ordering", "Worker transport upgrades up to 80 items/min"
+                };
+            case "milestone_03":
+                return new[]
+                {
+                    "Bacon Cheeseburger", "Classic Burger", "MK2 Stations",
+                    "Worker transport upgrades up to 100 items/min"
+                };
+            case "milestone_04":
+                return new[]
+                {
+                    "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake",
+                    "Worker transport upgrades up to 120 items/min"
+                };
+            case "milestone_05":
+                return new[] { "Super Burger", "Automatic ingredient ordering" };
+            case "milestone_06":
+                return new[] { "Integrated Supply Planning: reorder targets up to 8 packs" };
+            default:
+                return System.Array.Empty<string>();
+        }
+    }
 }

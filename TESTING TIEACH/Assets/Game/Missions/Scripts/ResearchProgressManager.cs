@@ -4,6 +4,8 @@ using UnityEngine;
 
 public sealed class ResearchProgressManager : MonoBehaviour
 {
+    public const bool ResearchEnabled = false;
+
     [Serializable]
     public sealed class Definition
     {
@@ -102,6 +104,19 @@ public sealed class ResearchProgressManager : MonoBehaviour
 
     void Update()
     {
+        if (!ResearchEnabled)
+        {
+            if (HasActiveResearch)
+            {
+                activeId = null;
+                remainingMinutes = 0f;
+                activeResearchUsesTutorialTimer = false;
+                Changed?.Invoke();
+            }
+            lastAbsoluteMinute = AbsoluteMinute;
+            return;
+        }
+
         float now = AbsoluteMinute;
         if (!HasActiveResearch) return;
 
@@ -134,6 +149,12 @@ public sealed class ResearchProgressManager : MonoBehaviour
 
     public bool TryStart(string id, out string reason)
     {
+        if (!ResearchEnabled)
+        {
+            reason = "Research is paused. Unlocks are awarded through milestones.";
+            return false;
+        }
+
         Definition definition = Get(id);
         if (definition == null) { reason = "Research project not found."; return false; }
         if (IsCompleted(id)) { reason = "Already researched."; return false; }
@@ -193,8 +214,9 @@ public sealed class ResearchProgressManager : MonoBehaviour
                 if (Get(id) != null || retiredResearchIds.Contains(id)) completed.Add(id);
         if (retiredResearchIds.Contains(savedActiveId))
             completed.Add(savedActiveId);
-        activeId = Get(savedActiveId) != null && !completed.Contains(savedActiveId) ? savedActiveId : null;
-        remainingMinutes = activeId != null ? Mathf.Max(0.01f, savedRemaining) : 0f;
+        activeId = ResearchEnabled && Get(savedActiveId) != null && !completed.Contains(savedActiveId)
+            ? savedActiveId : null;
+        remainingMinutes = ResearchEnabled && activeId != null ? Mathf.Max(0.01f, savedRemaining) : 0f;
         activeResearchUsesTutorialTimer = false;
         lastAbsoluteMinute = AbsoluteMinute;
         Changed?.Invoke();

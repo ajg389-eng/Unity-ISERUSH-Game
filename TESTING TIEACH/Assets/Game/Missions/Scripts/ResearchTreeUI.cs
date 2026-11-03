@@ -52,6 +52,12 @@ public sealed class ResearchTreeUI : MonoBehaviour
 
     public static void Open(Transform canvas)
     {
+        if (!ResearchProgressManager.ResearchEnabled)
+        {
+            ResearchDisabledNoticeUI.Show(canvas);
+            return;
+        }
+
         if (instance == null)
         {
             var root = new GameObject("ResearchOverlay", typeof(RectTransform), typeof(Image), typeof(ResearchTreeUI));

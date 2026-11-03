@@ -325,6 +325,7 @@ public class DebugMenu : MonoBehaviour
         });
 
         Transform researchRow = CreateButtonRow(actionContent, "ResearchDebugRow");
+        researchRow.gameObject.SetActive(ResearchProgressManager.ResearchEnabled);
         CreateButton(researchRow, "Reset Research", () =>
         {
             ResearchProgressManager.Ensure().DebugResetAll();

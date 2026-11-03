@@ -27,7 +27,7 @@ public class QuizDefinition : ScriptableObject
     public string title = "Milestone Quiz";
 
     [TextArea(2, 4)]
-    public string introText = "Answer every question correctly to advance to the next milestone and reveal new research.";
+    public string introText = "Complete milestone tasks to advance and unlock new content.";
 
     public List<QuizQuestion> questions = new List<QuizQuestion>();
 }

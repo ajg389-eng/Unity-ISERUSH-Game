@@ -955,7 +955,7 @@ public class WorkerCardUI : MonoBehaviour
 
         float nextRate = GetTrainedTransportRateForDisplay(employee.UpgradeLevel + 1);
         if (employee.IsMaxUpgraded)
-            return "Transport " + FormatRate(currentRate) + " items/min max | Research to unlock "
+            return "Transport " + FormatRate(currentRate) + " items/min max | Milestone unlock: "
                 + FormatRate(nextRate) + " items/min";
 
         int cost = employee.GetNextUpgradeCost();

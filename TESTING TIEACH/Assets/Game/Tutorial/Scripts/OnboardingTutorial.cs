@@ -24,6 +24,7 @@ public class OnboardingTutorial : MonoBehaviour
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
     public static bool IsResearchTutorialActive => IsCurrentStep(step => step.requireResearch);
     public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
+    public static bool IsRecipeStationSelectionActive => IsCurrentStep(step => step.requireRecipes);
     public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen);
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
 
@@ -104,6 +105,9 @@ public class OnboardingTutorial : MonoBehaviour
     int stepIndex;
     public int SaveStepIndex => stepIndex;
     public bool OrderServedForSave => orderServed;
+    public GameObject RecipeTutorialStationTarget => IsRecipeStationSelectionActive
+        ? GetRecipeTutorialStation(recipeTutorialStationIndex)?.gameObject
+        : null;
 
     public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false)
     {
@@ -315,13 +319,12 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None),
         new Step(
             "Build the production line",
-            "Build these seven stations in any order. The live checklist below tracks each one as you place it. The first copy of each station is free. Keep the register on the lobby counter, the Pickup Station on the pass, and production stations in the kitchen. The Fryer starts the fries process. Pickup freshness affects sale value: +50% within 8 seconds, base value by 28 seconds, and -50% by 56 seconds.\n\n" +
-            "<b>Human factors and work design</b> means arranging tasks and equipment around the people doing the work: keep stations reachable, routes direct, and aisles clear so workers spend less time walking and handling items.",
+            "Place the seven stations using the checklist. Register goes in the lobby; Pickup goes on the pass.",
             "Next", Highlight.None, openInventory: true, requireStationChecklist: true),
         new Step(
-            "Research the three foundations",
-            "Before we choose a recipe, open <b>Research</b>. Gus needs you to complete the first card in each branch: Restaurant Basics, Core Workforce, and Manual Operations. Each tutorial card finishes in one second.",
-            "Next", Highlight.None, requireResearch: true),
+            "Milestone unlocks",
+            "Recipes, stations, and upgrades unlock automatically as you reach milestones. Hamburger production is part of Restaurant Basics. Completing this tutorial advances you to Process Analysis, which unlocks fries and shakes.",
+            "Next", Highlight.None),
         new Step(
             "Open the recipe book",
             "The three foundations are complete. Open the <b>Recipes</b> screen and look through the Burger, Fries, and Shake production trees before we configure the stations.",
@@ -329,7 +332,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Configure ingredients and recipes",
             "Click the highlighted station in the kitchen. Gus will point out the exact choice to make in its station panel. We will configure each station one at a time. Afterward, use <b>Target / Min</b> to set its planned output pace.",
-            "Next", Highlight.Management, openWorkers: true, requireRecipes: true, requireStationSequence: true),
+            "Next", Highlight.Management, requireRecipes: true, requireStationSequence: true),
         new Step(
             "Buy ingredients",
             "Stations do nothing without stock. Open <b>Business</b> (top-left, or press 2), then choose <b>Supply</b>.\n\n" +
@@ -391,8 +394,7 @@ public class OnboardingTutorial : MonoBehaviour
         "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
 
-        "Open <b>Build</b> at the top-left, or press <b>1</b>. I covered the first copy of each station, so those are free. Click Buy, then choose a kitchen floor tile.\n\n" +
-        "Keep equipment out of the lobby. You can rotate a station while its placement ghost is visible.",
+        "Place the seven stations using the checklist. Register goes in the lobby; Pickup goes on the pass.",
 
         "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
         "Keep some floor space clear for the customer line. After placing it, click the register and choose <b>Enable</b> so customers can order.",
@@ -415,7 +417,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
         "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
 
-        "Before we choose a recipe, open <b>Research</b>. Complete the first card in each branch: Restaurant Basics, Core Workforce, and Manual Operations. These first cards finish in one second for the tutorial.",
+        "You do not need to purchase research. Recipes, stations, and upgrades unlock automatically through milestones. Hamburger production is part of Restaurant Basics; fries and shakes unlock at Process Analysis.",
 
         "The foundations are complete. Open the <b>Recipes</b> screen and inspect the Burger, Fries, and Shake production trees. We will configure the burger line next.",
 
@@ -454,8 +456,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         "The restaurant starts in the <b>Plan phase</b>. The shift is paused while you design stations and flows, set recipes and rates, order supplies, choose the menu, and assign workers. Menu demand and daily totals appear as you enable items. <b>Start Shift</b> opens the restaurant. Use <b>WASD</b> to move, hold <b>right mouse</b> and drag to turn, then scroll to zoom.",
         "You are the <b>industrial and systems engineer</b> for this restaurant. Design a connected operation, balance people, equipment, materials, and customer demand, then use evidence to improve the whole system.",
-        "Open <b>Build</b> and use the checklist to buy and place a Freezer, Grill, Pantry, Assembly Station, Register, Fryer, and Pickup Station. Place them in any order. Keep the Register on a lobby counter, the Pickup Station on the pass, and leave queue space clear. The first copy of each station is free. The Fryer starts fries production. Pickup freshness affects sale value: +50% within 8 seconds, base by 28 seconds, and -50% by 56 seconds. <b>Human factors and work design</b> means keeping stations reachable, routes direct, and aisles clear.",
-        "In <b>Research</b>, complete the first card in each of the three branches. Each first card finishes in one second during the tutorial.",
+        "Place the seven stations using the checklist. Register goes in the lobby; Pickup goes on the pass.",
+        "Recipes, stations, and upgrades unlock automatically through milestones. Hamburger production is part of Restaurant Basics; fries and shakes unlock at Process Analysis.",
         "Open <b>Recipes</b> and inspect the Burger, Fries, and Shake production trees before configuring a station.",
         "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger. <b>Target / Min</b> sets planned output from the selected recipe's base capacity. At <b>100%</b> a 15/min recipe makes one item every 4 seconds; a lower target slows the cycle and reduces input use proportionally. Match upstream supply to each recipe's required inputs.",
         "In <b>Food</b>, order Raw Patties and Buns. Stock prevents stations from starving, while excess stock ties up cash and can be wasted.",
@@ -662,6 +664,16 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
+        // This step advances automatically after the four station choices, so
+        // the tutorial card has no interactive controls to offer. Its callout
+        // can overlap the highlighted station, so disable its raycaster and let
+        // the player's click reach the world station below it.
+        if (canvasRoot != null)
+        {
+            GraphicRaycaster tutorialRaycaster = canvasRoot.GetComponent<GraphicRaycaster>();
+            if (tutorialRaycaster != null)
+                tutorialRaycaster.enabled = !step.requireRecipes;
+        }
         if (panel != null)
             panel.SetActive(true);
         if (cameraPromptPanel != null)
@@ -741,7 +753,14 @@ public class OnboardingTutorial : MonoBehaviour
             var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
             var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-            if (management != null && management.IsOpen) management.Close();
+            if (management != null)
+                management.SuspendForWorldCapture();
+            else
+                FindFirstObjectByType<GameModeManager>()?.SetMode(GameModeManager.Mode.Manage);
+            // The station popup is the configuration surface for this step.
+            // Keep the Business list hidden so its controls cannot intercept
+            // clicks on stations underneath it.
+            recipeBusinessOpened = true;
         }
         if (step.openResearch)
         {

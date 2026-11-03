@@ -1120,7 +1120,7 @@ public class IngredientsOrderUI : MonoBehaviour
         string display = locked ? "Locked Item"
             : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : FormatGraphLabel(fallback);
         label.text = "<b>" + display + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(station) + "</color>"
-            + (locked ? "\n<color=#D8B365>Research: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Unlocks at: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
         label.fontSize = 12f;
         label.enableAutoSizing = true;
         label.fontSizeMin = 8.5f;
@@ -1369,7 +1369,7 @@ public class IngredientsOrderUI : MonoBehaviour
         text.text = "<b>" + (locked ? "Locked Item"
                 : item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName : fallback)
             + "</b>\n<color=#B7BEC5>" + FormatGraphLabel(subtitle) + "</color>"
-            + (locked ? "\n<color=#D8B365>Research: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
+            + (locked ? "\n<color=#D8B365>Unlocks at: " + recipeChartMenu.RecipeResearchTitleForItem(item) + "</color>" : "");
         text.fontSize = 14f;
         text.enableAutoSizing = true;
         text.fontSizeMin = 10.5f;
@@ -2361,7 +2361,7 @@ public class IngredientsOrderUI : MonoBehaviour
                 && cartLockMilestone == 0;
         if (placeOrderLabel != null)
             placeOrderLabel.text = deliveryActive ? "Busy"
-                : cartLockMilestone > 0 ? "Research"
+                : cartLockMilestone > 0 ? "Milestone"
                 : !affordable && cartPackCount > 0 ? "Funds" : "Order";
         bool expressUnlocked = MilestoneFeatures.IsResearchComplete("express_ordering");
         if (expressLockedOverlay != null && expressLockedOverlay.activeSelf == expressUnlocked)
@@ -2375,9 +2375,9 @@ public class IngredientsOrderUI : MonoBehaviour
         if (placeOrderLabel != null && planning && cartLockMilestone == 0 && affordable)
             placeOrderLabel.text = "Add to Stock";
         if (expressOrderLabel != null)
-            expressOrderLabel.text = !expressUnlocked ? "Research"
+            expressOrderLabel.text = !expressUnlocked ? "Milestone"
                 : deliveryActive ? "Busy"
-                : cartLockMilestone > 0 ? "Research"
+                : cartLockMilestone > 0 ? "Milestone"
                 : !expressAffordable && cartPackCount > 0 ? "Funds"
                 : "Express";
     }
@@ -2559,7 +2559,7 @@ public class IngredientsOrderUI : MonoBehaviour
         recipeDetailsText.text = "<b>" + title + "</b>\n\n<b>INPUTS</b>\n" + inputs
             + "\n<b>STATION</b>\n" + (recipe.RequiresMk2 ? "Assembly Station MK2" : "Assembly Station MK1 or MK2")
             + "\n\n" + FormatEconomics(cost, value, profit)
-            + (researchStage > 0 ? "\n<b>RESEARCH</b>  " + recipeChartMenu.RecipeResearchTitleForItem(item) : "");
+            + (researchStage > 0 ? "\n<b>UNLOCKS AT</b>  " + recipeChartMenu.RecipeResearchTitleForItem(item) : "");
     }
 
     static string FormatEconomics(float cost, float value, float profit)

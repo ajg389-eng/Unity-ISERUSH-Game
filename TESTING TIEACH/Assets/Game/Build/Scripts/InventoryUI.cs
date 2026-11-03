@@ -58,8 +58,7 @@ public class InventoryUI : MonoBehaviour
     bool expandUiBuilt;
     Transform floorContentParent;
     int activeTab;
-    int displayedCapacityMilestoneCount = -1;
-    int displayedResearchCompletedCount = -1;
+    int displayedMilestoneStage = -1;
     ManagementTabInfoUI tabInfoUI;
     MainHudTabs cachedHudTabs;
     ManagementScreenController cachedManagementScreen;
@@ -122,10 +121,8 @@ public class InventoryUI : MonoBehaviour
         if (IsPanelOpen)
             RefreshExpandButton();
 
-        int reached = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
-        int researched = ResearchProgressManager.Instance != null ? ResearchProgressManager.Instance.CompletedCount : 0;
-        if (panel != null && panel.activeSelf && (reached != displayedCapacityMilestoneCount
-            || researched != displayedResearchCompletedCount
+        int reached = MilestoneFeatures.HighestReachedNumberedStage();
+        if (panel != null && panel.activeSelf && (reached != displayedMilestoneStage
             || displayedStationUnlockProgress != OnboardingTutorial.StationUnlockProgress))
             RefreshAll();
     }
@@ -426,10 +423,7 @@ public class InventoryUI : MonoBehaviour
         if (sr != null)
             sr.normalizedPosition = new Vector2(0f, 1f);
 
-        displayedCapacityMilestoneCount = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0;
-
-        displayedResearchCompletedCount = ResearchProgressManager.Instance != null
-            ? ResearchProgressManager.Instance.CompletedCount : 0;
+        displayedMilestoneStage = MilestoneFeatures.HighestReachedNumberedStage();
 
         // Inventory cards are rebuilt at runtime. Apply their one final appearance now,
         // after layout has its real dimensions, so there is no unstyled frame or delayed
@@ -466,8 +460,7 @@ public class InventoryUI : MonoBehaviour
             value = value * 31 + OnboardingTutorial.StationUnlockProgress;
             value = value * 31 + (MilestoneProgressManager.Instance != null
                 ? MilestoneProgressManager.Instance.CompletedMilestoneCount : 0);
-            value = value * 31 + (ResearchProgressManager.Instance != null
-                ? ResearchProgressManager.Instance.CompletedCount : 0);
+            value = value * 31 + MilestoneFeatures.HighestReachedNumberedStage();
             var viewport = contentParent.parent as RectTransform;
             value = value * 31 + (viewport != null ? Mathf.RoundToInt(viewport.rect.width) : 0);
             foreach (ItemDefinition item in inventory.allItems)
@@ -766,7 +759,7 @@ public class InventoryUI : MonoBehaviour
             bool mk2Locked = mk2 != null && !mk2Unlocked;
             bool lockedMk2Selected = active.stationMark == 2 && mk2Locked;
             card.SetUnlockRequirement(lockedMk2Selected
-                ? "Unlock with MK2 Stations research"
+                ? "Unlocks at Milestone 3: Engineering Economy"
                 : null);
             card.SetOwnedCount(inventory.GetStationFamilyAcquiredCount(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),

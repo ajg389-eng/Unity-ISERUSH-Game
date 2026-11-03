@@ -234,6 +234,14 @@ public class ManagementModeController : MonoBehaviour
 
     void Update()
     {
+        // This tutorial step selects stations directly in the world while the
+        // Business list is hidden. Keep Manage mode active in case another UI
+        // transition changed it after the tutorial opened the step.
+        if (OnboardingTutorial.IsRecipeStationSelectionActive
+            && modeManager != null
+            && modeManager.CurrentMode != GameModeManager.Mode.Manage)
+            modeManager.SetMode(GameModeManager.Mode.Manage);
+
         if (!IsManageMode)
         {
             CustomerWallDoor.HideActivePopup();
@@ -309,9 +317,24 @@ public class ManagementModeController : MonoBehaviour
 
         if (!Input.GetMouseButtonDown(0)) return;
         if (Camera.main == null) return;
-        if (IsPointerOverUI()) return;
+        bool tutorialStationSelection = OnboardingTutorial.IsRecipeStationSelectionActive;
+        if (!tutorialStationSelection && IsPointerOverUI()) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (tutorialStationSelection)
+        {
+            // During recipe onboarding, select the exact highlighted station
+            // directly. General scene colliders and decorative UI can overlap
+            // the station, so the normal first-hit raycast is unreliable here.
+            GameObject target = OnboardingTutorial.Instance != null
+                ? OnboardingTutorial.Instance.RecipeTutorialStationTarget
+                : null;
+            StationNode tutorialNode = FindTutorialStationUnderRay(ray, target);
+            if (tutorialNode != null)
+                SelectStation(tutorialNode);
+            return;
+        }
+
         if (IsCapturingFlow)
         {
             CustomerWallDoor.HideActivePopup();
@@ -386,6 +409,45 @@ public class ManagementModeController : MonoBehaviour
 
         // Start potential drag-to-assign-output from this station.
         SelectStation(node);
+    }
+
+    static StationNode FindTutorialStationUnderRay(Ray ray, GameObject target)
+    {
+        if (target == null || !target.activeInHierarchy) return null;
+
+        StationNode node = StationNode.EnsureOn(target);
+        Collider[] colliders = target.GetComponentsInChildren<Collider>();
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider collider = colliders[i];
+            if (collider == null || !collider.enabled || !collider.gameObject.activeInHierarchy)
+                continue;
+            if (collider.Raycast(ray, out _, 500f))
+                return node;
+        }
+
+        // Some station prefabs have sparse or missing colliders. Their visible
+        // model bounds still provide a forgiving click target for this guided step.
+        Renderer[] renderers = target.GetComponentsInChildren<Renderer>();
+        bool hasBounds = false;
+        Bounds bounds = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                continue;
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+                bounds.Encapsulate(renderer.bounds);
+        }
+
+        return hasBounds && bounds.IntersectRay(ray, out float distance) && distance <= 500f
+            ? node
+            : null;
     }
 
     void HandleMouseUp()
@@ -2900,8 +2962,7 @@ public class ManagementModeController : MonoBehaviour
             hash = hash * 31 + (selectedStation != null ? selectedStation.GetInstanceID() : 0);
             hash = hash * 31 + (assembly != null && assembly.IsMk2 ? 1 : 0);
             hash = hash * 31 + (current != null ? current.GetInstanceID() : 0);
-            hash = hash * 31 + (ResearchProgressManager.Instance != null
-                ? ResearchProgressManager.Instance.CompletedCount : 0);
+            hash = hash * 31 + MilestoneFeatures.HighestReachedNumberedStage();
             AssemblyRecipeDefinition recipe = assembly != null ? assembly.GetSelectedRecipe() : null;
             hash = hash * 31 + (recipe != null && recipe.recipeName != null
                 ? recipe.recipeName.GetHashCode() : 0);
