@@ -141,6 +141,7 @@ public class OnboardingTutorial : MonoBehaviour
     float autoAdvanceAt;
     bool flowEditCompleted;
     bool flowCreateCompleted;
+    bool workerDraggedToFlow;
     bool recipeBusinessOpened;
     bool researchScreenOpened;
     bool recipeScreenOpened;
@@ -224,6 +225,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireAllStations;
         public bool requireFlow;
         public bool requireWorkerOnFlow;
+        public bool requireWorkerDragToFlow;
         public bool requireHiredWorker;
         public bool requireEditedFlow;
         public bool requireRecipes;
@@ -270,7 +272,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireOrderServed = false,
             bool requireRegisterEnabled = false,
             bool requireCameraControls = false,
-            bool requireStationChecklist = false)
+            bool requireStationChecklist = false,
+            bool requireWorkerDragToFlow = false)
         {
             this.title = title;
             this.body = body;
@@ -286,6 +289,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireAllStations = requireAllStations;
             this.requireFlow = requireFlow;
             this.requireWorkerOnFlow = requireWorkerOnFlow;
+            this.requireWorkerDragToFlow = requireWorkerDragToFlow;
             this.requireHiredWorker = requireHiredWorker;
             this.requireEditedFlow = requireEditedFlow;
             this.requireRecipes = requireRecipes;
@@ -360,10 +364,11 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true, requireStationSequence: true),
         new Step(
             "Assign workers to a flow",
-            "Select your burger flow, then <b>drag a worker card onto DROP WORKER</b> in the flow panel.\n\n" +
+            "Select your burger flow, then <b>drag a worker card onto Drop Worker Here</b> in the flow panel. Follow the arrow to the drop zone.\n\n" +
             "That worker's name appears on the flow. Click the name chip to unassign. A worker's route and handling time affect how much material they can move, so use short, clear routes and assign enough capacity for the station workload. The kitchen will not cook until at least one worker is on a flow.\n\n" +
-            "Next stays locked until a flow has a worker assigned.",
-            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true, requireStationSequence: true),
+            "Next stays locked until you drop a worker card onto the highlighted zone.",
+            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true,
+            requireStationSequence: true, requireWorkerDragToFlow: true),
         new Step(
             "One customer loop",
             "Your setup is still in the <b>Plan phase</b>. Review menu demand and full-shift totals on the Plan screen; its list fills in as you enable menu items. Place stations, choose recipes and menu items, and design flows before opening. During a shift, you can still adjust target rates, reorder supplies, and move workers between flows, but station placement, recipe and menu choices, and flow redesign are locked.\n\n" +
@@ -653,6 +658,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        if (step.requireWorkerDragToFlow)
+            workerDraggedToFlow = false;
         recipeTutorialStationIndex = 0;
         recipeBusinessOpened = false;
         ingredientTutorialStep = 0;
@@ -898,13 +905,42 @@ public class OnboardingTutorial : MonoBehaviour
         bool hasTarget = TryGetCalloutTarget(rootRect, out targetPosition);
 
         panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
+        ManagementModeController stationTutorialManager = running
+            && Steps[stepIndex].requireRecipes ? ManagementModeController.Instance : null;
+        RectTransform recipePickerPanel = stationTutorialManager != null
+            ? stationTutorialManager.TutorialRecipePickerPanel : null;
+        float desiredPanelWidth = recipePickerPanel != null ? 420f : 560f;
+        if (Mathf.Abs(panelRect.sizeDelta.x - desiredPanelWidth) > 1f)
+        {
+            panelRect.sizeDelta = new Vector2(desiredPanelWidth, panelRect.sizeDelta.y);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
+        }
         float panelWidth = panelRect.rect.width > 1f ? panelRect.rect.width : 560f;
         float panelHeight = panelRect.rect.height > 1f ? panelRect.rect.height : 180f;
         float rootWidth = rootRect.rect.width > 1f ? rootRect.rect.width : 1920f;
         float rootHeight = rootRect.rect.height > 1f ? rootRect.rect.height : 1080f;
 
         Vector2 panelPosition;
-        if (hasTarget)
+        if (recipePickerPanel != null)
+        {
+            Vector3[] pickerCorners = new Vector3[4];
+            recipePickerPanel.GetWorldCorners(pickerCorners);
+            Canvas pickerCanvas = recipePickerPanel.GetComponentInParent<Canvas>();
+            Camera pickerCamera = pickerCanvas != null && pickerCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? pickerCanvas.worldCamera : null;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                RectTransformUtility.WorldToScreenPoint(pickerCamera, pickerCorners[0]), null, out Vector2 pickerMin);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                RectTransformUtility.WorldToScreenPoint(pickerCamera, pickerCorners[2]), null, out Vector2 pickerMax);
+            float leftSpace = pickerMin.x - (-rootWidth * 0.5f);
+            float rightSpace = rootWidth * 0.5f - pickerMax.x;
+            bool placeLeft = leftSpace >= rightSpace;
+            float sideX = placeLeft
+                ? pickerMin.x - panelWidth * 0.5f - 12f
+                : pickerMax.x + panelWidth * 0.5f + 12f;
+            panelPosition = new Vector2(sideX, hasTarget ? targetPosition.y : 0f);
+        }
+        else if (hasTarget)
         {
             bool targetOnLeft = targetPosition.x < 0f;
             panelPosition = new Vector2(
@@ -923,12 +959,12 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         // Top-bar callouts sit beneath the navigation, leaving its labels readable.
-        if (hasTarget && targetPosition.y > rootHeight * 0.5f - 180f
+        if (recipePickerPanel == null && hasTarget && targetPosition.y > rootHeight * 0.5f - 180f
             && (currentHighlight == Highlight.Inventory || currentHighlight == Highlight.Management))
             panelPosition.y = targetPosition.y - panelHeight * 0.5f - 60f;
 
         // Keep the entire flow editor readable, not just the highlighted button.
-        if (hasTarget && calloutTarget != null)
+        if (recipePickerPanel == null && hasTarget && calloutTarget != null)
         {
             Transform owner = calloutTarget;
             while (owner != null && owner.name != "FlowCaptureHUD") owner = owner.parent;
@@ -947,12 +983,42 @@ public class OnboardingTutorial : MonoBehaviour
                 panelPosition.y = bottom.y - panelHeight * 0.5f - 32f;
             }
         }
+        // Keep the menu-choice instruction to the left of the Plan card. The
+        // highlighted item lives inside that card, so centering the callout on
+        // its target makes the tutorial overlap the very control it describes.
+        if (running && Steps[stepIndex].requireHamburger && hasTarget
+            && ShiftPlanningUI.Instance != null
+            && ShiftPlanningUI.Instance.IsMenuItemPickerOpen
+            && ShiftPlanningUI.Instance.TutorialPlanningCard != null)
+        {
+            RectTransform planCard = ShiftPlanningUI.Instance.TutorialPlanningCard;
+            Vector3[] planCorners = new Vector3[4];
+            planCard.GetWorldCorners(planCorners);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                RectTransformUtility.WorldToScreenPoint(null, planCorners[0]), null, out Vector2 planBottomLeft);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                RectTransformUtility.WorldToScreenPoint(null, planCorners[1]), null, out Vector2 planTopLeft);
+            float planLeft = Mathf.Min(planBottomLeft.x, planTopLeft.x);
+            panelPosition.x = planLeft - panelWidth * 0.5f - 14f;
+            panelPosition.y = targetPosition.y;
+        }
         // The final step is for watching the kitchen, rather than pointing at a control.
         if (running && Steps[stepIndex].liveCustomer)
         {
             hasTarget = false;
-            panelPosition = new Vector2(rootWidth * 0.5f - panelWidth * 0.5f - 18f,
-                -rootHeight * 0.5f + panelHeight * 0.5f + 18f);
+            // Keep the observation instructions clear of the Plan card and
+            // Workflow panel, both of which occupy the lower-right corner.
+            panelPosition = new Vector2(0f,
+                rootHeight * 0.5f - panelHeight * 0.5f - 220f);
+        }
+        // The station checklist is used while the player is placing equipment.
+        // Keep its long instructions out of the center placement area and away
+        // from the placement hint at the bottom of the screen.
+        if (running && Steps[stepIndex].requireStationChecklist)
+        {
+            panelPosition = new Vector2(
+                rootWidth * 0.5f - panelWidth * 0.5f - 24f,
+                rootHeight * 0.5f - panelHeight * 0.5f - 170f);
         }
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
         panelPosition.x = Mathf.Clamp(panelPosition.x,
@@ -962,7 +1028,14 @@ public class OnboardingTutorial : MonoBehaviour
             -rootHeight * 0.5f + panelHeight * 0.5f + 18f,
             rootHeight * 0.5f - panelHeight * 0.5f - 18f);
         panelRect.anchoredPosition = panelPosition;
-        PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight), targetPosition, hasTarget);
+        // A highlighted UI control already has a gold outline. A long arrow to
+        // it can cross labels or instructions in the same panel, so reserve the
+        // arrow for world targets where it helps locate an object.
+        bool arrowTargetIsUI = calloutTarget != null
+            && calloutTarget.GetComponentInParent<Canvas>() != null
+            && !(running && Steps[stepIndex].requireWorkerDragToFlow);
+        PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight),
+            targetPosition, hasTarget && !arrowTargetIsUI);
     }
 
     bool TryGetCalloutTarget(RectTransform rootRect, out Vector2 localPoint)
@@ -981,7 +1054,7 @@ public class OnboardingTutorial : MonoBehaviour
         }
         else if (highlightTarget != null && Camera.main != null)
         {
-            Vector3 worldPoint = highlightTarget.position + Vector3.up * 1.8f;
+            Vector3 worldPoint = GetTutorialWorldAimPoint(highlightTarget);
             Vector3 projected = Camera.main.WorldToScreenPoint(worldPoint);
             if (projected.z <= 0f) return false;
             screenPoint = projected;
@@ -1067,6 +1140,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireEditedFlow) return "Edit and save flow";
         if (step.requireHiredWorker)
             return "Hire a worker";
+        if (step.requireWorkerDragToFlow && !workerDraggedToFlow)
+            return "Drag worker card to Drop Worker Here";
         if (step.requireWorkerOnFlow)
             return "Assign a worker";
         if (step.requireFlow)
@@ -1147,7 +1222,8 @@ public class OnboardingTutorial : MonoBehaviour
             return false;
         if (step.requireFlow && (!flowCreateCompleted || !HasTutorialFlow()))
             return false;
-        if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+        if (step.requireWorkerOnFlow && (!HasWorkerOnFlow()
+            || step.requireWorkerDragToFlow && !workerDraggedToFlow))
             return false;
         return true;
     }
@@ -1293,6 +1369,24 @@ public class OnboardingTutorial : MonoBehaviour
                     return true;
         }
         return false;
+    }
+
+    bool IsWorkerAssignmentStepIncomplete(Step step)
+    {
+        return !HasWorkerOnFlow()
+            || (step.requireWorkerDragToFlow && !workerDraggedToFlow);
+    }
+
+    public static void NotifyWorkerDroppedOnFlow()
+    {
+        OnboardingTutorial tutorial = Instance;
+        if (tutorial == null || !tutorial.running || tutorial.stepIndex < 0
+            || tutorial.stepIndex >= Steps.Length
+            || !Steps[tutorial.stepIndex].requireWorkerDragToFlow)
+            return;
+
+        tutorial.workerDraggedToFlow = true;
+        tutorial.RefreshAdvanceGate();
     }
 
     static bool IsBurgerTutorialFlow(ProductionFlowPlan flow)
@@ -1843,15 +1937,17 @@ public class OnboardingTutorial : MonoBehaviour
                 if (step.requireEditedFlow && !flowEditCompleted && button.name == "EditFlow"
                     || step.requireFlow && !step.requireEditedFlow
                         && !(flowCreateCompleted && HasTutorialFlow()) && button.name == "CreateFlow"
-                    || step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
+                    || step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step)
+                        && button.name == "WorkerDropZone")
                     HighlightControl(button);
-                if (step.requireWorkerOnFlow && !HasWorkerOnFlow() && button.name == "WorkerDropZone")
+                if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step)
+                    && button.name == "WorkerDropZone")
                 {
                     var flowPanel = button.transform.parent.GetComponentInParent<Image>();
                     if (flowPanel != null) HighlightControl(flowPanel);
                 }
             }
-            if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+            if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step))
                 foreach (var card in workers.GetComponentsInChildren<WorkerCardUI>())
                     if (card.employee != null) HighlightControl(card);
         }
@@ -1862,23 +1958,10 @@ public class OnboardingTutorial : MonoBehaviour
             if (station != null && manager != null && manager.TutorialSelectedStation == station.gameObject
                 && manager.stationPopup != null && manager.stationPopup.activeInHierarchy)
             {
-                string target = recipeTutorialStationIndex switch
-                {
-                    0 => "Raw Patty",
-                    1 => "Cooked Patty",
-                    2 => "Bun",
-                    _ => "Hamburger",
-                };
-                foreach (Button button in manager.stationPopup.GetComponentsInChildren<Button>(true))
-                {
-                    if (button == null || !button.gameObject.activeInHierarchy) continue;
-                    TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
-                    if (label != null && label.text.IndexOf(target, System.StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        HighlightControl(button);
-                        break;
-                    }
-                }
+                if (manager.TutorialRecipePickerOpen)
+                    HighlightControl(manager.TutorialRecipeChoice(GetRecipeTutorialChoiceName(recipeTutorialStationIndex)));
+                else if (manager.TutorialOutputSelectButton != null)
+                    HighlightControl(manager.TutorialOutputSelectButton);
             }
         }
         var management = ManagementModeController.Instance;
@@ -1929,8 +2012,18 @@ public class OnboardingTutorial : MonoBehaviour
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
         float pulse = 0.5f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.25f);
-        highlight.transform.position = highlightTarget.position + Vector3.up * 2.2f;
+        highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
         highlight.transform.localScale = Vector3.one * pulse;
+    }
+
+    Vector3 GetTutorialWorldAimPoint(Transform target)
+    {
+        bool choosingStationRecipe = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireRecipes && target != null
+            && target.GetComponent<StationNode>() != null;
+        return target != null
+            ? target.position + Vector3.up * (choosingStationRecipe ? 0.9f : 2.2f)
+            : Vector3.zero;
     }
 
     void TrackCameraTutorialInputs()
@@ -2006,7 +2099,7 @@ public class OnboardingTutorial : MonoBehaviour
         {
             highlight.SetActive(true);
             float markerPulse = 0.48f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.22f);
-            highlight.transform.position = highlightTarget.position + Vector3.up * 2.2f;
+            highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
             highlight.transform.localScale = Vector3.one * markerPulse;
         }
         if (secondaryHighlightTarget != null)
@@ -2041,19 +2134,22 @@ public class OnboardingTutorial : MonoBehaviour
             if (recipeTutorialStationIndex >= 4) return;
             Component station = GetRecipeTutorialStation(recipeTutorialStationIndex);
             if (station == null) return;
+            ManagementModeController stationManager = ManagementModeController.Instance;
+            if (stationManager != null)
+                stationManager.ClearTutorialStationSelectionExcept(station.gameObject);
             bool selected = ManagementModeController.Instance != null
                 && ManagementModeController.Instance.TutorialSelectedStation == station.gameObject;
             if (!selected)
             {
                 highlightTarget = station.transform;
                 secondaryHighlightTarget = null;
-                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> in the kitchen. Gus will show you its recipe choice.";
+                calloutTarget = null;
+                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim()
+                    + "</b> in the kitchen to open its settings.";
                 SetTutorialBodyText(tutorialFocusText);
                 return;
             }
 
-            tutorialFocusText = GetRecipeTutorialPrompt(recipeTutorialStationIndex, station.name.Replace("(Clone)", "").Trim());
-            SetTutorialBodyText(tutorialFocusText);
             if (IsRecipeTutorialStationConfigured(recipeTutorialStationIndex, station))
             {
                 recipeTutorialStationIndex++;
@@ -2069,8 +2165,40 @@ public class OnboardingTutorial : MonoBehaviour
                 tutorialFocusText = "Good. Now click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> and choose its burger-line item or recipe.";
                 SetTutorialBodyText(tutorialFocusText);
             }
+
+            ManagementModeController manager = ManagementModeController.Instance;
+            if (manager == null || manager.TutorialSelectedStation != station.gameObject)
+            {
+                highlightTarget = station.transform;
+                secondaryHighlightTarget = null;
+                calloutTarget = null;
+                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim()
+                    + "</b> in the kitchen to open its settings.";
+                SetTutorialBodyText(tutorialFocusText);
+                return;
+            }
+            string choice = GetRecipeTutorialChoiceName(recipeTutorialStationIndex);
+            highlightTarget = null;
+            secondaryHighlightTarget = null;
+            if (manager != null && manager.TutorialRecipePickerOpen)
+            {
+                tutorialFocusText = "Choose <b>" + choice + "</b> from the highlighted option.";
+                Button recipeChoice = manager.TutorialRecipeChoice(choice);
+                if (recipeChoice != null) FocusTutorialControl(recipeChoice);
+                else calloutTarget = null;
+            }
+            else
+            {
+                tutorialFocusText = "Open the highlighted station setting, then choose <b>" + choice + "</b>.";
+                if (manager != null && manager.TutorialOutputSelectButton != null)
+                    FocusTutorialControl(manager.TutorialOutputSelectButton);
+                else calloutTarget = null;
+            }
+            SetTutorialBodyText(tutorialFocusText);
             highlightTarget = station.transform;
-            calloutTarget = null;
+            if (manager != null && (manager.TutorialRecipePickerOpen
+                || manager.TutorialOutputSelectButton != null))
+                highlightTarget = null;
             return;
         }
 
@@ -2194,17 +2322,20 @@ public class OnboardingTutorial : MonoBehaviour
             }
         }
 
-        if (step.requireWorkerOnFlow && !HasWorkerOnFlow())
+        if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step))
         {
-            tutorialFocusText = "Choose a worker card, then drag it onto <b>Drop Worker</b> on the selected flow. The worker's name chip removes them from that flow.";
+            tutorialFocusText = "Drag a worker card onto the highlighted <b>Drop Worker Here</b> area on the selected flow. Follow the arrow to the drop zone.";
             var workers = FindFirstObjectByType<WorkersUI>();
             if (workers != null)
-                foreach (WorkerCardUI card in workers.GetComponentsInChildren<WorkerCardUI>(true))
-                    if (card != null && card.employee != null)
+            {
+                foreach (Button button in workers.GetComponentsInChildren<Button>(true))
+                    if (button != null && button.name == "WorkerDropZone" && button.gameObject.activeInHierarchy)
                     {
-                        calloutTarget = card.transform as RectTransform;
+                        calloutTarget = button.transform as RectTransform;
+                        highlightTarget = null;
                         break;
                     }
+            }
             SetTutorialBodyText(tutorialFocusText);
         }
 
@@ -2247,14 +2378,24 @@ public class OnboardingTutorial : MonoBehaviour
         return index == 2 ? config.friesIngredient : null;
     }
 
+    static T FindTutorialPlacedStation<T>() where T : Component
+    {
+        T[] stations = FindObjectsByType<T>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (T station in stations)
+            if (station != null && IsPlacedFlowStation<T>(station.gameObject))
+                return station;
+
+        return stations.Length > 0 ? stations[0] : null;
+    }
+
     Component GetRecipeTutorialStation(int index)
     {
         switch (index)
         {
-            case 0: return FindFirstObjectByType<FreezerStation>();
-            case 1: return FindFirstObjectByType<GrillStation>();
-            case 2: return FindFirstObjectByType<PantryStation>();
-            default: return FindFirstObjectByType<AssemblyStation>();
+            case 0: return FindTutorialPlacedStation<FreezerStation>();
+            case 1: return FindTutorialPlacedStation<GrillStation>();
+            case 2: return FindTutorialPlacedStation<PantryStation>();
+            default: return FindTutorialPlacedStation<AssemblyStation>();
         }
     }
 
@@ -2296,16 +2437,15 @@ public class OnboardingTutorial : MonoBehaviour
     static bool ItemNameContains(ItemDefinition item, string expected) => item != null
         && ((item.itemName ?? item.name ?? "").IndexOf(expected, System.StringComparison.OrdinalIgnoreCase) >= 0);
 
-    static string GetRecipeTutorialPrompt(int index, string stationName)
+    static string GetRecipeTutorialChoiceName(int index)
     {
-        string task = index switch
+        return index switch
         {
-            0 => "choose <b>Raw Patty</b> as its stored ingredient",
-            1 => "choose <b>Cooked Patty</b> as its output",
-            2 => "choose <b>Bun</b> as its stored ingredient",
-            _ => "choose the <b>Hamburger</b> recipe",
+            0 => "Raw Patty",
+            1 => "Cooked Patty",
+            2 => "Bun",
+            _ => "Hamburger",
         };
-        return "Click the highlighted <b>" + stationName + "</b> in the kitchen. In the station panel, " + task + ".";
     }
 
     static (Component source, Component destination) GetExpectedFlowLink(ProductionFlowPlan flow)
@@ -2447,7 +2587,7 @@ public class OnboardingTutorial : MonoBehaviour
         switch (kind)
         {
             case Highlight.Register:
-                var reg = FindFirstObjectByType<Register>();
+                var reg = FindTutorialRegister();
                 return reg != null ? reg.transform : null;
             case Highlight.Inventory:
                 var tabsInv = FindFirstObjectByType<MainHudTabs>();
@@ -2456,20 +2596,19 @@ public class OnboardingTutorial : MonoBehaviour
                 var tabsMgmt = FindFirstObjectByType<MainHudTabs>();
                 return tabsMgmt != null ? tabsMgmt.ManagementTabTransform : null;
             case Highlight.Freezer:
-                return StationOrNull(FindFirstObjectByType<FreezerStation>());
+                return StationOrNull(FindTutorialPlacedStation<FreezerStation>());
             case Highlight.Grill:
-                return StationOrNull(FindFirstObjectByType<GrillStation>());
+                return StationOrNull(FindTutorialPlacedStation<GrillStation>());
             case Highlight.Fryer:
-                return StationOrNull(FindFirstObjectByType<FryerStation>());
+                return StationOrNull(FindTutorialPlacedStation<FryerStation>());
             case Highlight.Drink:
-                return StationOrNull(FindFirstObjectByType<CuttingStation>());
+                return StationOrNull(FindTutorialPlacedStation<CuttingStation>());
             case Highlight.Assembly:
-                return StationOrNull(FindFirstObjectByType<AssemblyStation>());
+                return StationOrNull(FindTutorialPlacedStation<AssemblyStation>());
             case Highlight.HeatLamp:
-                var lamp = HeatLampStation.Instance != null ? HeatLampStation.Instance : FindFirstObjectByType<HeatLampStation>();
-                return StationOrNull(lamp);
+                return StationOrNull(FindTutorialPlacedStation<HeatLampStation>());
             case Highlight.Pantry:
-                return StationOrNull(FindFirstObjectByType<PantryStation>());
+                return StationOrNull(FindTutorialPlacedStation<PantryStation>());
             default:
                 return null;
         }
@@ -2533,7 +2672,7 @@ public class OnboardingTutorial : MonoBehaviour
         rt.sizeDelta = new Vector2(560f, 0f);
 
         var bg = panel.AddComponent<Image>();
-        bg.color = new Color(0.08f, 0.09f, 0.12f, 0.94f);
+        bg.color = new Color(0.08f, 0.09f, 0.12f, 0.985f);
         // The tutorial card can overlap a highlighted station in the kitchen.
         // Let world clicks pass through its background; the Next button remains
         // independently clickable.

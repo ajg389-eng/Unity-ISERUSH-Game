@@ -103,6 +103,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     public Button TutorialAddMenuItemButton => addMenuItemButton;
     public bool IsMenuItemPickerOpen => itemPickerRoot != null && itemPickerRoot.activeSelf;
+    public RectTransform TutorialPlanningCard => panelRoot != null ? panelRoot.transform as RectTransform : null;
 
     public Button TutorialMenuItemButton(ItemDefinition item)
     {
@@ -222,6 +223,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
         EnsurePanel();
         if (panelRoot == null) return;
+        EnsureMainHudNavigation();
         if (livePanelRoot != null) livePanelRoot.SetActive(false);
         RefreshPlan();
         // Keep the planning phase active even if another UI panel temporarily
@@ -235,6 +237,23 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         CaptureStationBaseline();
         timeManager.RequestExternalPause(PauseSource);
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    void EnsureMainHudNavigation()
+    {
+        MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        if (tabs == null)
+        {
+            Canvas canvas = ResolvePlayerUICanvas();
+            if (canvas != null)
+                tabs = MainHudTabs.CreateInCanvas(canvas.transform);
+        }
+
+        if (tabs == null) return;
+        if (!tabs.gameObject.activeSelf)
+            tabs.gameObject.SetActive(true);
+        tabs.Build();
+        tabs.transform.SetAsLastSibling();
     }
 
     void EnsurePanel()
@@ -878,6 +897,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         planHiddenForStationPopup = false;
         if (panelRoot != null) panelRoot.SetActive(false);
         ShowLivePanel();
+        // The planning/tutorial overlays can leave the primary navigation behind
+        // another HUD layer. Restore it after the live status panel is shown so
+        // Build and Business remain available/visible during the shift.
+        EnsureMainHudNavigation();
         if (timeManager != null) timeManager.ReleaseExternalPause(PauseSource);
         Sfx.Play(SfxId.UiClick);
     }

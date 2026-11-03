@@ -156,6 +156,35 @@ public class ManagementModeController : MonoBehaviour
     public ProductionFlowPlan CapturedFlow => capturedFlow;
     public KitchenEmployee SelectedEmployee => selectedEmployee;
     public GameObject TutorialSelectedStation => selectedStation != null ? selectedStation.gameObject : null;
+    bool IsShiftConfigurationLocked => GameTimeManager.Instance != null
+        && GameTimeManager.Instance.IsShiftInProgress && !ShiftPlanningUI.IsPlanning;
+    public bool TutorialRecipePickerOpen => recipePickerOpen
+        && recipePickerRoot != null && recipePickerRoot.activeInHierarchy;
+    public RectTransform TutorialRecipePickerPanel => TutorialRecipePickerOpen
+        ? recipePickerRoot.transform.Find("Panel") as RectTransform : null;
+    public Button TutorialOutputSelectButton => productionOutputSelectButton;
+
+    public Button TutorialRecipeChoice(string choice)
+    {
+        if (!TutorialRecipePickerOpen || productListContainer == null || string.IsNullOrWhiteSpace(choice))
+            return null;
+
+        foreach (Button button in productListContainer.GetComponentsInChildren<Button>(false))
+        {
+            if (button == null || !button.gameObject.activeInHierarchy) continue;
+            TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null && label.text.IndexOf(choice, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                return button;
+        }
+        return null;
+    }
+
+    public void ClearTutorialStationSelectionExcept(GameObject expectedStation)
+    {
+        if (selectedStation == null || selectedStation.gameObject == expectedStation) return;
+        CancelOutputDrag();
+        ClearSelection();
+    }
 
     void Awake()
     {
@@ -338,28 +367,22 @@ public class ManagementModeController : MonoBehaviour
         if (IsCapturingFlow)
         {
             CustomerWallDoor.HideActivePopup();
-            StationNode flowStation = FindFlowStationUnderRay(ray);
+            StationNode flowStation = FindStationAtPointer(ray);
             if (flowStation != null)
                 BeginOutputDrag(flowStation);
             return;
         }
-        if (!Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+        bool hasPhysicsHit = Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer);
+        if (!hasPhysicsHit)
         {
-            CustomerWallDoor.HideActivePopup();
-            if (pending == PendingAction.None && !IsCapturingFlow)
-            {
-                ClearEmployeeSelection();
-                ClearSelection();
-            }
-            CancelOutputDrag();
-            return;
+            hit = default;
         }
 
         // Click worker first: select them for station assignment.
-        var clickedEmployee = hit.collider.GetComponentInParent<KitchenEmployee>();
+        var clickedEmployee = hasPhysicsHit ? hit.collider.GetComponentInParent<KitchenEmployee>() : null;
         if (clickedEmployee != null && !IsCapturingFlow)
         {
-            if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
+            if (IsShiftConfigurationLocked)
                 return;
             CustomerWallDoor.HideActivePopup();
             CancelOutputDrag();
@@ -367,7 +390,7 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        CustomerWallDoor clickedDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
+        CustomerWallDoor clickedDoor = hasPhysicsHit ? hit.collider.GetComponentInParent<CustomerWallDoor>() : null;
         if (clickedDoor != null && !IsCapturingFlow)
         {
             CancelOutputDrag();
@@ -379,7 +402,12 @@ public class ManagementModeController : MonoBehaviour
 
         CustomerWallDoor.HideActivePopup();
 
-        var node = StationNode.FindFromCollider(hit.collider);
+        // Prefer the exact collider under the pointer. The footprint fallback
+        // is useful when a station part has no collider, but broad rendered
+        // bounds can overlap nearby stations such as Pantry and Cutting Station.
+        StationNode node = hasPhysicsHit ? StationNode.FindFromCollider(hit.collider) : null;
+        if (node == null)
+            node = FindFlowStationUnderRay(ray);
         if (node == null)
         {
             if (pending == PendingAction.None && !IsCapturingFlow)
@@ -464,7 +492,7 @@ public class ManagementModeController : MonoBehaviour
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             if (IsCapturingFlow)
-                target = FindFlowStationUnderRay(ray);
+                target = FindStationAtPointer(ray);
             else if (Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
                 target = StationNode.FindFromCollider(hit.collider);
         }
@@ -501,8 +529,7 @@ public class ManagementModeController : MonoBehaviour
 
     void BeginOutputDrag(StationNode source)
     {
-        if (!IsCapturingFlow && GameTimeManager.Instance != null
-            && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (!IsCapturingFlow && IsShiftConfigurationLocked) return;
         if (!IsCapturingFlow && source != null && !CanHaveOutput(source))
         {
             CancelOutputDrag();
@@ -557,7 +584,7 @@ public class ManagementModeController : MonoBehaviour
         StationNode hoveredTarget = null;
         if (IsCapturingFlow)
         {
-            hoveredTarget = FindFlowStationUnderRay(ray);
+            hoveredTarget = FindStationAtPointer(ray);
             if (hoveredTarget != null)
                 to = KitchenEmployee.GetInteractionPosition(hoveredTarget.gameObject);
             else
@@ -691,7 +718,7 @@ public class ManagementModeController : MonoBehaviour
 
     void ApplyOutputLink(StationNode from, StationNode to)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (!CanLinkOutput(from, to, out string reason))
         {
             SetStatus(reason);
@@ -1004,7 +1031,7 @@ public class ManagementModeController : MonoBehaviour
 
     void TryAssignEmployeeToStation(KitchenEmployee emp, StationNode node)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (emp == null || node == null) return;
 
         if (!node.IsWorkStation)
@@ -1144,7 +1171,7 @@ public class ManagementModeController : MonoBehaviour
             productListContainer.gameObject.SetActive(false);
         if (productionOutputSelectButton != null)
             productionOutputSelectButton.interactable = hasOutputChoices && !recipePickerOpen
-                && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
+                && !IsShiftConfigurationLocked;
         RefreshHeatLampInventory();
         RefreshStationSummary();
         ApplyPanelLayout(isHeatLamp);
@@ -2753,7 +2780,7 @@ public class ManagementModeController : MonoBehaviour
 
     void OpenRecipePicker()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (selectedStation == null) return;
         EnsureRecipePickerUI();
         if (recipePickerRoot == null || recipePickerContent == null) return;
@@ -3097,7 +3124,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SetSelectedProduct(ItemDefinition item)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (selectedStation == null || item == null) return;
         var grill = selectedStation.GetComponent<GrillStation>();
         if (grill != null)
@@ -3173,7 +3200,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SetSelectedAssemblyRecipe(AssemblyRecipeDefinition recipe)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (selectedStation == null || recipe == null) return;
         AssemblyStation assembly = selectedStation.GetComponent<AssemblyStation>();
         if (assembly == null) return;
@@ -3260,7 +3287,7 @@ public class ManagementModeController : MonoBehaviour
 
     void AssignWorkerToSelected(KitchenEmployee emp)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (selectedStation == null || emp == null) return;
         if (!selectedStation.IsWorkStation)
         {
@@ -3279,7 +3306,7 @@ public class ManagementModeController : MonoBehaviour
 
     public void OnAssignWorkerClicked()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (IsShiftConfigurationLocked) return;
         if (selectedStation == null) return;
         if (!selectedStation.IsWorkStation)
         {
@@ -3489,8 +3516,7 @@ public class ManagementModeController : MonoBehaviour
 
     public void BeginFlowCapture(ProductionFlowPlan flow, bool isNew = true)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress
-            && !ShiftPlanningUI.IsPlanning) return;
+        if (IsShiftConfigurationLocked) return;
         if (flow == null) return;
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);
@@ -4309,6 +4335,19 @@ public class ManagementModeController : MonoBehaviour
             }
         }
         return nearest;
+    }
+
+    StationNode FindStationAtPointer(Ray ray)
+    {
+        // During flow capture, prefer the station on the first collider under
+        // the pointer. The bounds fallback handles station surfaces without a
+        // collider, but can overlap the neighboring Freezer/Grill footprints.
+        if (Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+        {
+            StationNode direct = StationNode.FindFromCollider(hit.collider);
+            if (IsValidFlowStation(direct)) return direct;
+        }
+        return FindFlowStationUnderRay(ray);
     }
 
     static bool IsValidFlowStation(StationNode station)

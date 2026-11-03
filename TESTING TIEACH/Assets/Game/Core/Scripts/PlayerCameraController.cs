@@ -420,11 +420,20 @@ public static class UIInputFocusGuard
                     && cachedManagementScreen.managementPanel != null
                     && hit.transform.IsChildOf(cachedManagementScreen.managementPanel.transform);
 
-                if (!insideBuildPanel && !insideBusinessPanel)
-                    return true;
-
+                // Stations and registers use world-space canvases for labels,
+                // status markers, and other decoration. Those graphics should
+                // not consume the world click intended for the object beneath.
+                // Real controls still block the click, including controls on a
+                // world-space canvas.
                 if (hit.GetComponentInParent<Selectable>() != null
                     || hit.GetComponentInParent<ScrollRect>() != null)
+                    return true;
+
+                Canvas hitCanvas = hit.GetComponentInParent<Canvas>();
+                if (hitCanvas != null && hitCanvas.renderMode == RenderMode.WorldSpace)
+                    continue;
+
+                if (!insideBuildPanel && !insideBusinessPanel)
                     return true;
             }
 

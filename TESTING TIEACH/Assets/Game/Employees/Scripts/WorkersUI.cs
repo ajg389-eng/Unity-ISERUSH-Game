@@ -1772,10 +1772,12 @@ public class WorkersUI : MonoBehaviour
         RefreshFlowSection();
     }
 
-    public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow)
+    public void AssignDraggedWorker(KitchenEmployee employee, ProductionFlowPlan flow, bool droppedOnFlowZone = false)
     {
         if (production == null || employee == null || flow == null) return;
         production.AddWorkerToFlow(flow, employee);
+        if (droppedOnFlowZone)
+            OnboardingTutorial.NotifyWorkerDroppedOnFlow();
         int flowIndex = production.productionFlows.IndexOf(flow);
         if (flowIndex >= 0)
             production.SelectProductionFlow(flowIndex);
@@ -2036,6 +2038,18 @@ public class WorkersUI : MonoBehaviour
         var dragSource = cardGo.GetComponent<WorkerFlowDragSource>();
         if (dragSource == null) dragSource = cardGo.AddComponent<WorkerFlowDragSource>();
         dragSource.Bind(card);
+
+        // The worker name is a TMP_InputField, which handles its own drag
+        // events for text selection and otherwise prevents the parent card's
+        // drag handler from seeing a drag started there. Share the worker drag
+        // source on that field too, so the obvious name area can drag to a flow.
+        if (card.nameInputObject != null)
+        {
+            var nameDragSource = card.nameInputObject.GetComponent<WorkerFlowDragSource>();
+            if (nameDragSource == null)
+                nameDragSource = card.nameInputObject.AddComponent<WorkerFlowDragSource>();
+            nameDragSource.Bind(card);
+        }
         return card;
     }
 }
@@ -2085,7 +2099,26 @@ class WorkerFlowDragSource : MonoBehaviour, IBeginDragHandler, IDragHandler, IEn
 
     public void OnEndDrag(PointerEventData eventData)
     {
+        // Some nested worker-card controls handle their own drag events. Check
+        // the release point once more so a drop on the flow target still lands.
+        TryDropOnFlowUnderPointer(eventData);
         CleanupDrag();
+    }
+
+    static void TryDropOnFlowUnderPointer(PointerEventData eventData)
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null || ActiveWorker == null || eventData == null) return;
+
+        var hits = new List<RaycastResult>();
+        eventSystem.RaycastAll(eventData, hits);
+        foreach (RaycastResult hit in hits)
+        {
+            WorkerFlowDropTarget target = hit.gameObject != null
+                ? hit.gameObject.GetComponentInParent<WorkerFlowDropTarget>() : null;
+            if (target != null && target.TryDropActiveWorker())
+                return;
+        }
     }
 
     void OnDisable()
@@ -2197,9 +2230,15 @@ class WorkerFlowDropTarget : MonoBehaviour, IDropHandler, IPointerEnterHandler, 
 
     public void OnDrop(PointerEventData eventData)
     {
+        TryDropActiveWorker();
+    }
+
+    public bool TryDropActiveWorker()
+    {
         KitchenEmployee employee = WorkerFlowDragSource.ActiveWorker;
-        if (employee == null || owner == null || flow == null) return;
+        if (employee == null || owner == null || flow == null) return false;
         WorkerFlowDragSource.FinishActiveDrag();
-        owner.AssignDraggedWorker(employee, flow);
+        owner.AssignDraggedWorker(employee, flow, droppedOnFlowZone: true);
+        return true;
     }
 }

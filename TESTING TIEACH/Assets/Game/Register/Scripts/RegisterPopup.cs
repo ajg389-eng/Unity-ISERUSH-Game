@@ -16,20 +16,23 @@ public class RegisterPopup : MonoBehaviour
     {
         target = reg;
         bound = true;
+        if (toggleButton != null)
+        {
+            toggleButton.interactable = true;
+            toggleButton.onClick.RemoveListener(ToggleTarget);
+            toggleButton.onClick.AddListener(ToggleTarget);
+        }
         target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(true);
         UpdateText();
         GameUITheme.ApplyButton(toggleButton);
     }
 
-    void Start()
+    void ToggleTarget()
     {
-        toggleButton.onClick.AddListener(() =>
-        {
-            if (!target) return;
-            target.Toggle();
-            UpdateText();
-            GameUITheme.ApplyButton(toggleButton);
-        });
+        if (!target) return;
+        target.Toggle();
+        UpdateText();
+        GameUITheme.ApplyButton(toggleButton);
     }
 
     void OnEnable()

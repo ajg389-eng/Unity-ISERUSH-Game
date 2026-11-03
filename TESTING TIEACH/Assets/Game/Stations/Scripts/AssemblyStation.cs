@@ -146,12 +146,18 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
         AssemblyRecipeDefinition recipe = GetSelectedRecipe();
         if (recipe == null || item == null || amount <= 0) return false;
         if (item == recipe.pantryInput)
-            return bufferedPantryInputs + amount <= PantryInputCapacity;
+            return bufferedPantryInputs
+                + processingUnits * Mathf.Max(1, recipe.pantryInputAmount)
+                + amount <= PantryInputCapacity;
         if (item == recipe.thirdInput)
-            return IsMk2 && bufferedThirdInputs + amount <= ThirdInputCapacity;
+            return IsMk2 && bufferedThirdInputs
+                + processingUnits * Mathf.Max(1, recipe.thirdInputAmount)
+                + amount <= ThirdInputCapacity;
         return recipe.RequiresProcessedInput
             && (recipe.processedInput == null || item == recipe.processedInput)
-            && bufferedProcessedInputs + amount <= ProcessedInputCapacity;
+            && bufferedProcessedInputs
+                + processingUnits * Mathf.Max(1, recipe.processedInputAmount)
+                + amount <= ProcessedInputCapacity;
     }
 
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)

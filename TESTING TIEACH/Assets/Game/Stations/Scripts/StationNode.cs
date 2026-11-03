@@ -17,7 +17,7 @@ public interface IStationBuffer
     int TakeOutput(ItemDefinition item, int amount);
 }
 
-/// <summary>Operational buffering is independent from the number of visible item markers.</summary>
+/// <summary>Default buffer capacity for stations without a smaller physical slot limit.</summary>
 public static class StationBufferLimits
 {
     public const int PerItem = 30;

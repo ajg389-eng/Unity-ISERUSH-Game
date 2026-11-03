@@ -702,19 +702,21 @@ public partial class KitchenEmployee : MonoBehaviour
                 ItemDefinition freezerItem = production?.GetBranchTransferItem(job);
                 if (freezer == null || freezerItem == null || !freezer.CanSupply(freezerItem)) continue;
                 if (requireReady && freezer.GetOutputCount(freezerItem) <= 0) continue;
-                // Do not let a worker pick up a patty and carry it to a Grill
-                // that cannot cook it yet. With one worker, doing so strands
-                // that worker at the Grill and prevents the cheese supply task
-                // (Pantry -> Cutting -> Grill) from ever running.
-                if (requireReady && !job.isAssemblySupply)
+                // Clear finished grill output before sending another raw input
+                // to that grill. This avoids workers arriving with a new batch
+                // while cooked patties are still waiting for the Assembly handoff.
+                if (requireReady)
                 {
                     GameObject destination = production != null
                         ? production.GetFlowOutput(this, candidate, job) : null;
                     GrillStation destinationGrill = destination != null
                         ? destination.GetComponent<GrillStation>() : null;
+                    if (destinationGrill != null && destinationGrill.IsCooked())
+                        continue;
                     ItemDefinition secondary = destinationGrill != null
                         ? destinationGrill.GetSelectedSecondaryInput() : null;
-                    if (secondary != null && destinationGrill.GetInputCount(secondary) <= 0)
+                    if (!job.isAssemblySupply && secondary != null
+                        && destinationGrill.GetInputCount(secondary) <= 0)
                         continue;
                 }
             }
@@ -2315,6 +2317,31 @@ public partial class KitchenEmployee : MonoBehaviour
             return;
         }
 
+        GrillStation grillDeliveryTarget = deliverTarget.GetComponent<GrillStation>();
+        if (grillDeliveryTarget != null && grillDeliveryTarget.IsCooked()
+            && heldUnits > 0 && heldDeliveryItem == grillDeliveryTarget.GetSelectedInput())
+        {
+            // Return the incoming raw batch to shared stock, then let this worker
+            // claim the grill's cooked-output task. The original production job
+            // remains queued at its source and can resume after the grill clears.
+            QueueCookedGrillOutputTask(grillDeliveryTarget);
+            ReturnExcessToKitchenStock(heldDeliveryItem, heldUnits);
+            currentJob.hasPatty = false;
+            currentJob.heldUnits = 0;
+            currentJob.ingredientsHeld.Clear();
+            manager.ReleaseJobAfterHandoff(currentJob, this);
+            ClearHeldInventory();
+            currentJob = null;
+            deliverTarget = null;
+            awaitingOutputDelivery = false;
+            step = Step.None;
+            stateTimer = 0f;
+            path.Clear();
+            pathDestination = Vector3.zero;
+            ScheduleNextRunnableFlowTask();
+            return;
+        }
+
         int outputUnits = Mathf.Max(1, heldUnits);
         if (outputPlacementTarget != deliverTarget)
         {
@@ -3642,9 +3669,11 @@ public partial class KitchenEmployee : MonoBehaviour
                             break;
                         }
 
+                        int grillFreeSlots = grill != null
+                            ? Mathf.Max(0, grill.InputSlotCapacity - grill.BufferedPattyCount) : heldUnits;
+                        int reservedGrillSlots = manager.GetReservedInputUnits(currentJob);
                         int grillLoad = grill != null
-                            ? Mathf.Min(heldUnits, Mathf.Max(0,
-                                grill.InputSlotCapacity - grill.GetInputCount(grill.GetSelectedInput()))) : heldUnits;
+                            ? Mathf.Min(heldUnits, Mathf.Min(grillFreeSlots, reservedGrillSlots)) : heldUnits;
                         if (heldUnits > 0 && !WaitForItemHandling(ItemHandlingAction.Place,
                                 grill != null ? grill.gameObject : null, grillLoad))
                             break;

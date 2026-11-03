@@ -1603,13 +1603,13 @@ public partial class ProductionManager : MonoBehaviour
             if (recipe.pantryInput != null && orderConfig?.GetAssemblyRecipe(recipe.pantryInput) == null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe,
                     orderConfig != null ? orderConfig.GetAssemblySupplySource(recipe) : recipe.pantryInput,
-                    recipe.pantryInput, station.BufferedPantryInputCount,
+                    recipe.pantryInput, station.GetHeldInputCount(recipe.pantryInput),
                     orderConfig != null && orderConfig.AssemblySupplyRequiresCutting(recipe),
                     recipe.supplyPipeline, recipe.supplyStageOutputs);
             if ((recipe.processedInputFromPantry || recipe.processedInputFromFreezer)
                 && recipe.processedInput != null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe, recipe.processedInput,
-                    recipe.processedInput, station.BufferedProcessedInputCount, false, null, null);
+                    recipe.processedInput, station.GetHeldInputCount(recipe.processedInput), false, null, null);
             else if (recipe.processedInput != null && orderConfig != null)
             {
                 // Input 1 normally arrives from the main production chain. Some
@@ -1622,7 +1622,7 @@ public partial class ProductionManager : MonoBehaviour
                     StationType sourceType = orderConfig.IsFreezerIngredient(processedRecipe.input)
                         ? StationType.Freezer : StationType.Pantry;
                     EnsureAssemblyIngredientSupplyJob(station, recipe, processedRecipe.input,
-                        recipe.processedInput, station.BufferedProcessedInputCount, true,
+                        recipe.processedInput, station.GetHeldInputCount(recipe.processedInput), true,
                         new[] { sourceType, StationType.Cutting },
                         new[] { processedRecipe.input, recipe.processedInput });
                 }
@@ -1630,7 +1630,7 @@ public partial class ProductionManager : MonoBehaviour
             if (recipe.thirdInput != null && orderConfig?.GetAssemblyRecipe(recipe.thirdInput) == null)
                 EnsureAssemblyIngredientSupplyJob(station, recipe,
                     orderConfig != null ? orderConfig.GetAssemblyThirdSupplySource(recipe) : recipe.thirdInput,
-                    recipe.thirdInput, station.BufferedThirdInputCount,
+                    recipe.thirdInput, station.GetHeldInputCount(recipe.thirdInput),
                     orderConfig != null && orderConfig.AssemblyThirdSupplyRequiresProcessing(recipe),
                     recipe.thirdSupplyPipeline, recipe.thirdSupplyStageOutputs);
         }
@@ -1653,15 +1653,27 @@ public partial class ProductionManager : MonoBehaviour
     {
         if (grill == null || inputItem == null) return;
         int target = grill.InputSlotCapacity;
-        int reserved = grill.GetInputCount(inputItem);
+        // Recipes with two inputs need room for both ingredients. Plan a balanced
+        // target per input while still accounting for every job against the grill's
+        // shared visible slots.
+        bool hasSecondaryInput = grill.GetSelectedSecondaryInput() != null;
+        int perItemTarget = hasSecondaryInput ? Mathf.Max(1, target / 2) : target;
+        int reservedForItem = grill.GetHeldInputCount(inputItem)
+            + GetReservedInputCount(grill.gameObject, inputItem);
+        int sharedReserved = grill.BufferedPattyCount + GetReservedInputCount(grill.gameObject);
         foreach (ProductionJob queued in pendingJobs)
         {
-            if (queued == null || !queued.isAssemblySupply || queued.grillSupplyTarget != grill
-                || queued.assemblySupplyOutputItem != inputItem)
+            if (queued == null || !queued.isAssemblySupply || queued.grillSupplyTarget != grill)
                 continue;
-            reserved += Mathf.Max(1, queued.requestedSupplyUnits);
+            // Active jobs already contribute through their destination reservation.
+            if (queued.reservedDestinationStation == grill.gameObject) continue;
+            int plannedUnits = Mathf.Max(1, queued.requestedSupplyUnits);
+            sharedReserved += plannedUnits;
+            if (queued.assemblySupplyOutputItem == inputItem)
+                reservedForItem += plannedUnits;
         }
-        if (reserved >= target) return;
+        int requestable = Mathf.Min(perItemTarget - reservedForItem, target - sharedReserved);
+        if (requestable <= 0) return;
 
         CuttingRecipeDefinition cuttingRecipe = orderConfig.GetCuttingRecipe(inputItem);
         ItemDefinition sourceItem = cuttingRecipe != null && cuttingRecipe.input != null
@@ -1674,7 +1686,7 @@ public partial class ProductionManager : MonoBehaviour
         ItemDefinition[] stageItems = pipeline.Length > 1
             ? new[] { sourceItem, inputItem }
             : new[] { inputItem };
-        int requestBatch = Mathf.Min(target - reserved,
+        int requestBatch = Mathf.Min(requestable,
             GetLargestCarryCapacityForFlowStation(grill.gameObject));
         if (requestBatch <= 0) return;
 
@@ -3058,12 +3070,15 @@ public partial class ProductionManager : MonoBehaviour
         if (receiver != null && item != null)
         {
             int freeSlots = GetAvailableInputCapacity(receiver, destination, item, job);
+            GrillStation grillReceiver = destination.GetComponent<GrillStation>();
             AssemblyStation assembly = destination.GetComponent<AssemblyStation>();
             int itemCapacity = assembly != null
                 ? GetAssemblyInputCapacity(assembly, item)
+                : grillReceiver != null ? grillReceiver.InputSlotCapacity
                 : receiver.InputSlotCapacity;
-            int occupiedSlots = receiver.GetInputCount(item)
-                + GetReservedInputCount(destination, item);
+            int occupiedSlots = grillReceiver != null
+                ? grillReceiver.BufferedPattyCount + GetReservedInputCount(destination)
+                : receiver.GetInputCount(item) + GetReservedInputCount(destination, item);
 
             if (freeSlots > 0)
             {
@@ -3849,8 +3864,11 @@ public partial class ProductionManager : MonoBehaviour
                 - ReservedInputCount(station, null, except));
         else if (station.GetComponent<GrillStation>() is GrillStation grillStation)
         {
-            if (ReservedInputCount(station, item, except) > 0) return 0;
-            occupied = grillStation.GetInputCount(item);
+            // A grill has one shared physical buffer for raw, cooking, secondary
+            // ingredients, and cooked output. Reservations for every item must
+            // consume that same capacity.
+            return Mathf.Max(0, grillStation.InputSlotCapacity - grillStation.BufferedPattyCount
+                - ReservedInputCount(station, null, except));
         }
         else if (station.GetComponent<FryerStation>() is FryerStation fryerStation)
         {
@@ -3860,7 +3878,7 @@ public partial class ProductionManager : MonoBehaviour
         else if (station.GetComponent<CuttingStation>() is CuttingStation cuttingStation)
             occupied = cuttingStation.GetInputCount(item);
         else if (station.GetComponent<AssemblyStation>() is AssemblyStation assembly)
-            return Mathf.Max(0, GetAssemblyInputCapacity(assembly, item) - buffer.GetInputCount(item)
+            return Mathf.Max(0, GetAssemblyInputCapacity(assembly, item) - assembly.GetHeldInputCount(item)
                 - ReservedInputCount(station, item, except));
         else
             occupied = buffer.GetInputCount(item);
