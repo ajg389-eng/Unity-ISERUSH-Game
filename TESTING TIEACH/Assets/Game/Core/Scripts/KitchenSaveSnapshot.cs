@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 29;
+    public const int CurrentVersion = 32;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -38,7 +38,12 @@ public class KitchenSaveSnapshot
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
-    [Serializable] public class Stock { public string item; public int count, acquired, reorderTarget; }
+    [Serializable] public class Stock
+    {
+        public string item;
+        public int count, acquired, reorderTarget, supplyRatePerMinute;
+        public float supplyUnitProgress, supplyCostRemainder;
+    }
     [Serializable] public class IngredientShipment { public float remaining, duration; public List<IngredientShipmentPack> packs = new List<IngredientShipmentPack>(); }
     [Serializable] public class IngredientShipmentPack { public string item; public int amount; }
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; public ProductionStationCheckpoint productionState; }
@@ -129,7 +134,7 @@ public class KitchenSaveSnapshot
                     var groundPickup = go.GetComponent<GroundPickupStationPlacement>();
                     bool match = placed != null ? placed.itemDefinition == item : mounted != null ? mounted.itemDefinition == item
                         : go.name.Replace("(Clone)", "").Trim() == item.prefab.name
-                            || (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(go)) && WorkerFlowAssigner.GetStationId(go) == WorkerFlowAssigner.GetStationId(item.prefab));
+                            || HasMatchingStationComponent(go, item.prefab);
                     if (!match) continue;
                     objects.Add(go);
                     var grill = go.GetComponent<GrillStation>();
@@ -156,9 +161,8 @@ public class KitchenSaveSnapshot
                         : pantry != null ? pantry.selectedItem
                         : cutting != null ? (cuttingRecipe != null ? cuttingRecipe.output : cutting.selectedProduct)
                         : null;
-                    Register register = go.GetComponent<Register>();
                     s.equipment.Add(new Equipment { item=item.name, product=product != null ? product.name : "", position=candidate.position, rotation=candidate.rotation, scale=candidate.lossyScale,
-                        registerEnabled=register == null || register.isEnabled,
+                        registerEnabled=true,
                         slot=mounted != null ? mounted.slotIndex : groundPickup != null ? groundPickup.slotIndex : -1,
                         counterPosition=mounted != null && mounted.surface != null ? mounted.surface.transform.position
                             : groundPickup != null && groundPickup.surface != null ? groundPickup.surface.transform.position : Vector3.zero,
@@ -180,7 +184,14 @@ public class KitchenSaveSnapshot
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
         }
         var kitchen=KitchenInventory.Instance;
-        if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock {item=entry.item.name,count=entry.quantity,reorderTarget=entry.reorderTarget});
+        if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock
+        {
+            item = entry.item.name,
+            count = entry.quantity,
+            supplyRatePerMinute = entry.supplyRatePerMinute,
+            supplyUnitProgress = entry.supplyUnitProgress,
+            supplyCostRemainder = entry.supplyCostRemainder
+        });
         IngredientDeliveryService.Instance?.CaptureSaveState(s.ingredientShipments);
         var pm=ProductionManager.Instance;
         if(pm!=null) {
@@ -189,7 +200,7 @@ public class KitchenSaveSnapshot
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
                 PartyCharacterRandomizer look = employee.GetComponent<PartyCharacterRandomizer>();
-                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=employee.UpgradeLevel,priority=(int)employee.taskPriority,
+                var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=0,priority=0,
                     productionState=pm.useScheduledProduction ? pm.ScheduledProduction.CaptureWorker(employee) : null,
                     bodyIndex=look != null ? look.bodyIndex : 0,
                     faceIndex=look != null ? look.faceIndex : 0,
@@ -256,6 +267,12 @@ public class KitchenSaveSnapshot
                 definitions[legacyName]=item;
             }
         }
+        if (version < 32)
+        {
+            Transform[] sceneTransforms = UnityEngine.Object.FindObjectsByType<Transform>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            equipment.RemoveAll(entry => IsLegacyAncestorEquipment(entry, definitions, sceneTransforms));
+        }
         foreach(var e in equipment) if(!definitions.ContainsKey(e.item) || definitions[e.item].prefab==null) return false;
         foreach(var e in equipment) if(!string.IsNullOrEmpty(e.pantrySecondProduct) && !definitions.ContainsKey(e.pantrySecondProduct)) return false;
         if(workers != null && workers.Count > 0
@@ -276,7 +293,11 @@ public class KitchenSaveSnapshot
                 continue;
             var placed=candidate.GetComponent<PlacedBuildItem>(); var mounted=candidate.GetComponent<CounterMountedItem>();
             bool match=placed!=null || mounted!=null;
-            if (!string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(candidate.gameObject))) match = true;
+            // Only classify this GameObject as a station when the station
+            // component is attached directly to it. GetStationId searches
+            // inactive descendants, which made scene roots such as Environment
+            // look like stations when they contained inactive register models.
+            if (!match) match = HasStationComponent(candidate.gameObject);
             if(!match) foreach(var item in inv.allItems) if(item!=null && item.prefab!=null && candidate.name.Replace("(Clone)","").Trim()==item.prefab.name) {match=true;break;}
             if(!match) continue;
             if(mounted!=null && mounted.surface!=null) mounted.surface.Release(mounted);
@@ -284,7 +305,20 @@ public class KitchenSaveSnapshot
             candidate.gameObject.SetActive(false); UnityEngine.Object.Destroy(candidate.gameObject);
         }
         var grid=GridManager.Instance;
-        if(grid!=null) { grid.ResyncOccupancyFromScene(); grid.TryExpand(Mathf.Max(0,width-grid.Width),Mathf.Max(0,height-grid.Height)); }
+        if (grid != null)
+        {
+            grid.ResyncOccupancyFromScene();
+            if (width > 0 && height > 0)
+            {
+                int shrinkWidth = Mathf.Max(0, grid.Width - width);
+                int shrinkHeight = Mathf.Max(0, grid.Height - height);
+                if ((shrinkWidth > 0 || shrinkHeight > 0)
+                    && !grid.TryShrink(shrinkWidth, shrinkHeight))
+                    Debug.LogWarning("Save restore could not shrink the kitchen grid to its saved size.");
+
+                grid.TryExpand(Mathf.Max(0, width - grid.Width), Mathf.Max(0, height - grid.Height));
+            }
+        }
         var objects=new List<GameObject>();
         foreach(var e in equipment) {
             var item=definitions[e.item]; var go=UnityEngine.Object.Instantiate(item.prefab,e.position,e.rotation);
@@ -295,9 +329,6 @@ public class KitchenSaveSnapshot
                 : item.itemName=="Pantry" ? item.placementScale : e.scale;
             BuildPlacer.ConfigurePlacedObject(go,item);
             var placed=go.GetComponent<PlacedBuildItem>() ?? go.AddComponent<PlacedBuildItem>(); placed.itemDefinition=item;
-            Register restoredRegister = go.GetComponent<Register>();
-            if (restoredRegister != null)
-                restoredRegister.isEnabled = e.registerEnabled;
             objects.Add(go);
         }
         // Recipe lookup is milestone-filtered. Restore progression before applying
@@ -398,10 +429,11 @@ public class KitchenSaveSnapshot
         foreach(var entry in inventory) if(definitions.TryGetValue(entry.item,out var item)) inv.RestoreCounts(item,entry.count,entry.acquired);
         if(KitchenInventory.Instance!=null) {
             KitchenInventory.Instance.ClearAllStock();
-            KitchenInventory.Instance.ClearAllReorderTargets();
+            KitchenInventory.Instance.ClearAllSupplySettings();
             foreach(var entry in ingredients) if(definitions.TryGetValue(entry.item,out var item)) {
                 KitchenInventory.Instance.AddStock(item,entry.count);
-                KitchenInventory.Instance.SetReorderTarget(item,entry.reorderTarget);
+                KitchenInventory.Instance.RestoreSupplySettings(item, entry.supplyRatePerMinute,
+                    entry.supplyUnitProgress, entry.supplyCostRemainder);
             }
         }
         IngredientDeliveryService.Instance?.RestoreSaveState(ingredientShipments, definitions);
@@ -427,7 +459,7 @@ public class KitchenSaveSnapshot
                 look.hatIndex = w.hatIndex;
                 look.ApplyCurrent();
             }
-            employee.employeeName=w.name; employee.RestoreUpgradeLevel(w.level); employee.taskPriority=(KitchenEmployee.TaskPriority)Mathf.Clamp(w.priority,0,System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length-1); pm.RegisterEmployee(employee); staff.Add(employee);
+            employee.employeeName=w.name; pm.RegisterEmployee(employee); staff.Add(employee);
             if (pm.useScheduledProduction && w.productionState != null) pm.ScheduledProduction.RestoreWorker(employee,w.productionState);
             var restoredAssignments = new HashSet<GameObject>();
             int assignmentCount = Mathf.Max(w.stations != null ? w.stations.Count : 0,
@@ -511,6 +543,16 @@ public class KitchenSaveSnapshot
             else if (restoredTutorialStep >= 5)
                 restoredTutorialStep -= 2;
         }
+        // Version 30 introduces a persistent Plan tutorial lesson and moves
+        // menu selection before Supply. Revisit the plan/menu/supply section
+        // for saves already in that section; keep later lessons aligned.
+        if (version < 30 && !tutorialComplete)
+        {
+            if (restoredTutorialStep >= 6 && restoredTutorialStep <= 9)
+                restoredTutorialStep = 6;
+            else if (restoredTutorialStep >= 10)
+                restoredTutorialStep++;
+        }
         // Version 11 replaces the active milestone task definitions. Preserve the
         // saved milestone checkpoint from v10, but don't carry old task progress
         // into tasks whose objectives have changed.
@@ -569,6 +611,13 @@ public class KitchenSaveSnapshot
             placer.EnsureCustomerEntrance();
         else
             UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>()?.RequestRefresh();
+        KitchenPerimeterWalls perimeter = UnityEngine.Object.FindFirstObjectByType<KitchenPerimeterWalls>();
+        if (perimeter != null)
+        {
+            perimeter.generateAtRuntime = true;
+            perimeter.FitToGrid();
+        }
+        StoreAppearanceController.Instance?.RefreshNow();
         if (wallPhotos != null)
             foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
                 foreach (WallPhoto saved in wallPhotos)
@@ -580,6 +629,71 @@ public class KitchenSaveSnapshot
         if (OnboardingTutorial.Instance != null)
             OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed);
         return true;
+    }
+
+    static bool HasStationComponent(GameObject candidate)
+    {
+        if (candidate == null) return false;
+        foreach (FlowStationDef station in WorkerFlowAssigner.Catalog)
+        {
+            if (station != null && station.componentType != null
+                && candidate.GetComponent(station.componentType) != null)
+                return true;
+        }
+        return false;
+    }
+
+    static bool HasMatchingStationComponent(GameObject candidate, GameObject prefab)
+    {
+        if (candidate == null || prefab == null) return false;
+        foreach (FlowStationDef station in WorkerFlowAssigner.Catalog)
+        {
+            if (station == null || station.componentType == null
+                || candidate.GetComponent(station.componentType) == null)
+                continue;
+            if (prefab.GetComponent(station.componentType) != null
+                || prefab.GetComponentInChildren(station.componentType, true) != null)
+                return true;
+        }
+        return false;
+    }
+
+    static bool IsLegacyAncestorEquipment(Equipment entry,
+        Dictionary<string, ItemDefinition> definitions, Transform[] sceneTransforms)
+    {
+        if (entry == null || definitions == null || sceneTransforms == null
+            || !definitions.TryGetValue(entry.item, out ItemDefinition item)
+            || item == null || item.prefab == null)
+            return false;
+
+        string itemStationId = WorkerFlowAssigner.GetStationId(item.prefab);
+        if (string.IsNullOrEmpty(itemStationId)) return false;
+
+        for (int i = 0; i < sceneTransforms.Length; i++)
+        {
+            Transform candidate = sceneTransforms[i];
+            if (candidate == null) continue;
+            GameObject candidateObject = candidate.gameObject;
+            if (candidateObject.GetComponent<PlacedBuildItem>() != null
+                || candidateObject.GetComponent<CounterMountedItem>() != null
+                || candidateObject.GetComponentInChildren<PlacedBuildItem>(true) != null
+                || candidateObject.GetComponentInChildren<CounterMountedItem>(true) != null
+                || HasStationComponent(candidateObject))
+                continue;
+
+            string normalizedName = candidateObject.name.Replace("(Clone)", "").Trim();
+            if (normalizedName == item.prefab.name) continue;
+            if (WorkerFlowAssigner.GetStationId(candidateObject) != itemStationId) continue;
+            if ((candidate.position - entry.position).sqrMagnitude > 0.0001f
+                || Quaternion.Angle(candidate.rotation, entry.rotation) > 0.1f
+                || (candidate.lossyScale - entry.scale).sqrMagnitude > 0.0001f)
+                continue;
+
+            // Older capture logic mistook a station-containing scene ancestor
+            // for a placed station and saved the ancestor's transform as one.
+            return true;
+        }
+        return false;
     }
 
     static bool AreSavedOrderItemsAvailable(List<CustomerAI.SavedOrderLine> lines,

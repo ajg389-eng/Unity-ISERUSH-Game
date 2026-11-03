@@ -28,26 +28,16 @@ public class WorkerCardUI : MonoBehaviour
     public Toggle toggleAssembly;
 
     ProductionManager production;
-    Transform assignmentControls;
-    int assignmentSignature;
-    bool hasAssignmentSignature;
     bool detailsExpanded;
     Button expandButton;
     TextMeshProUGUI expandArrowLabel;
-    TMP_Dropdown priorityDropdown;
-    bool priorityDropdownConfigured;
-    bool priorityListenerAttached;
-    bool settingPriorityDropdown;
     Image cardImage;
     Outline selectionOutline;
     float nextDetailsRefreshTime;
     float nextSelectionRefreshTime;
-    float nextUpgradeRefreshTime;
-    bool displayedShiftState;
 
     const float DetailsRefreshInterval = 0.2f;
     const float SelectionRefreshInterval = 0.12f;
-    const float UpgradeRefreshInterval = 1f;
 
     void OnValidate()
     {
@@ -57,15 +47,8 @@ public class WorkerCardUI : MonoBehaviour
     void Update()
     {
         TrySelectFromCardClick();
-        bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
-        bool planPhase = !shiftInProgress;
-        if (displayedShiftState != shiftInProgress)
-        {
-            displayedShiftState = shiftInProgress;
-            RefreshUpgradeButton();
-        }
+        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
         if (fireButton != null) fireButton.interactable = planPhase;
-        if (priorityDropdown != null) priorityDropdown.interactable = planPhase;
         float now = Time.unscaledTime;
         if (employee != null && now >= nextDetailsRefreshTime)
             RefreshDetails();
@@ -206,23 +189,14 @@ public class WorkerCardUI : MonoBehaviour
             customizeButton.onClick.RemoveListener(OnCustomizeClicked);
         if (expandButton != null)
             expandButton.onClick.RemoveListener(ToggleDetailsExpanded);
-        if (priorityDropdown != null)
-        {
-            priorityDropdown.onValueChanged.RemoveListener(OnPriorityChanged);
-            priorityListenerAttached = false;
-        }
-
         employee = emp;
         production = ProductionManager.Instance != null ? ProductionManager.Instance : FindObjectOfType<ProductionManager>();
         detailsExpanded = false;
-        hasAssignmentSignature = false;
-        nextUpgradeRefreshTime = 0f;
-        displayedShiftState = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
 
         HideLegacyUi();
         EnsureLayout();
         BindReferences();
-        EnsurePriorityDropdown();
+        RemoveLegacyWorkerControls();
 
         if (emp == null)
         {
@@ -256,232 +230,21 @@ public class WorkerCardUI : MonoBehaviour
         if (employee == null)
         {
             SetDetailText(currentTaskText, "—");
+            SetDetailText(assignmentsText, "FLOW: Unassigned");
             SetDetailText(heldItemsText, "Nothing");
             if (stationsLabel != null) stationsLabel.text = "—";
             return;
         }
 
         SetDetailText(currentTaskText, employee.GetCurrentTaskDescription());
+        ProductionFlowPlan flow = production != null ? production.GetFlowForWorker(employee) : null;
+        string flowName = flow != null ? flow.flowName : employee.assignedFlowName;
+        if (string.IsNullOrWhiteSpace(flowName))
+            flowName = employee.OperatedStationCount > 0 ? employee.GetAssignmentDetailText() : "Unassigned";
+        SetDetailText(assignmentsText, "FLOW: " + flowName);
 
         if (stationsLabel != null)
             stationsLabel.gameObject.SetActive(false);
-
-        EnsureAssignmentControls();
-        if (Time.unscaledTime >= nextUpgradeRefreshTime)
-        {
-            nextUpgradeRefreshTime = Time.unscaledTime + UpgradeRefreshInterval;
-            RefreshUpgradeButton();
-        }
-    }
-
-    void EnsurePriorityDropdown()
-    {
-        Transform details = transform.Find("WorkerDetails");
-        Transform section = details?.Find("StatusRow/StationsSection")
-            ?? details?.Find("StationsSection");
-        if (section == null) return;
-
-        TextMeshProUGUI header = section.Find("Header")?.GetComponent<TextMeshProUGUI>();
-        if (header != null) header.text = "PRIORITY";
-        if (assignmentsText != null) assignmentsText.gameObject.SetActive(false);
-
-        if (priorityDropdown == null)
-        {
-            priorityDropdown = section.Find("PriorityDropdown")?.GetComponent<TMP_Dropdown>();
-            if (priorityDropdown != null)
-            {
-                priorityDropdownConfigured = false;
-                priorityListenerAttached = false;
-            }
-        }
-        if (priorityDropdown == null)
-        {
-            priorityDropdown = CreatePriorityDropdown(section);
-            priorityDropdownConfigured = false;
-            priorityListenerAttached = false;
-        }
-        if (priorityDropdown == null) return;
-
-        if (!priorityDropdownConfigured)
-        {
-            ConfigurePriorityDropdown(priorityDropdown);
-            priorityDropdownConfigured = true;
-        }
-        if (!priorityListenerAttached)
-        {
-            priorityDropdown.onValueChanged.AddListener(OnPriorityChanged);
-            priorityListenerAttached = true;
-        }
-        RefreshPriorityDropdown();
-    }
-
-    void RefreshPriorityDropdown()
-    {
-        if (priorityDropdown == null || priorityDropdown.options.Count == 0) return;
-        int value = employee != null ? (int)employee.taskPriority : 0;
-        value = Mathf.Clamp(value, 0, priorityDropdown.options.Count - 1);
-        if (priorityDropdown.value == value && (priorityDropdown.captionText == null
-            || priorityDropdown.captionText.text == priorityDropdown.options[value].text))
-            return;
-        settingPriorityDropdown = true;
-        priorityDropdown.SetValueWithoutNotify(value);
-        priorityDropdown.RefreshShownValue();
-        if (priorityDropdown.captionText != null)
-            priorityDropdown.captionText.text = priorityDropdown.options[value].text;
-        settingPriorityDropdown = false;
-    }
-
-    void OnPriorityChanged(int value)
-    {
-        if (settingPriorityDropdown || employee == null
-            || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)) return;
-        employee.taskPriority = (KitchenEmployee.TaskPriority)Mathf.Clamp(value, 0,
-            System.Enum.GetValues(typeof(KitchenEmployee.TaskPriority)).Length - 1);
-        RefreshPriorityDropdown();
-        Sfx.Play(SfxId.UiClick);
-    }
-
-    static TMP_Dropdown CreatePriorityDropdown(Transform parent)
-    {
-        GameObject go = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
-        if (go == null) return null;
-        go.name = "PriorityDropdown";
-        go.transform.SetParent(parent, false);
-
-        var layout = go.GetComponent<UnityEngine.UI.LayoutElement>();
-        if (layout == null) layout = go.AddComponent<UnityEngine.UI.LayoutElement>();
-        layout.minHeight = 22f;
-        layout.preferredHeight = 22f;
-        layout.minWidth = 126f;
-        layout.preferredWidth = 126f;
-        layout.flexibleWidth = 0f;
-
-        var rootImage = go.GetComponent<UnityEngine.UI.Image>();
-        if (rootImage != null) rootImage.color = new Color(0.10f, 0.12f, 0.17f, 1f);
-        TMP_Dropdown dropdown = go.GetComponent<TMP_Dropdown>();
-        dropdown.ClearOptions();
-        dropdown.AddOptions(new List<string>
-        {
-            "Any Task",
-            "Finish Products",
-            "Assembly",
-            "Grill",
-            "Cutting",
-            "Fryer",
-            "Ingredient Supply",
-            "Output Delivery"
-        });
-
-        if (dropdown.captionText != null)
-        {
-            dropdown.captionText.fontSize = 11.5f;
-            dropdown.captionText.fontStyle = FontStyles.Bold;
-            dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
-            dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
-            dropdown.captionText.overflowMode = TextOverflowModes.Truncate;
-        }
-        if (dropdown.itemText != null)
-        {
-            dropdown.itemText.fontSize = 11.5f;
-            dropdown.itemText.color = Color.white;
-        }
-        if (dropdown.template != null)
-        {
-            dropdown.template.sizeDelta = new Vector2(0f, 180f);
-            UnityEngine.UI.Image templateImage = dropdown.template.GetComponent<UnityEngine.UI.Image>();
-            if (templateImage != null) templateImage.color = new Color(0.08f, 0.10f, 0.15f, 1f);
-            dropdown.template.gameObject.SetActive(false);
-        }
-        dropdown.RefreshShownValue();
-        return dropdown;
-    }
-
-    static void ConfigurePriorityDropdown(TMP_Dropdown dropdown)
-    {
-        if (dropdown == null) return;
-
-        var layout = dropdown.GetComponent<UnityEngine.UI.LayoutElement>();
-        if (layout == null) layout = dropdown.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
-        layout.minWidth = 126f;
-        layout.preferredWidth = 126f;
-        layout.flexibleWidth = 0f;
-        layout.minHeight = 20f;
-        layout.preferredHeight = 20f;
-
-        if (dropdown.captionText != null)
-        {
-            dropdown.captionText.enableAutoSizing = false;
-            dropdown.captionText.fontSize = 11f;
-            dropdown.captionText.fontStyle = FontStyles.Bold;
-            dropdown.captionText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
-            dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
-            dropdown.captionText.textWrappingMode = TextWrappingModes.NoWrap;
-            dropdown.captionText.overflowMode = TextOverflowModes.Truncate;
-            dropdown.captionText.raycastTarget = false;
-            if (TMP_Settings.defaultFontAsset != null)
-                dropdown.captionText.font = TMP_Settings.defaultFontAsset;
-
-            RectTransform captionRect = dropdown.captionText.rectTransform;
-            captionRect.anchorMin = Vector2.zero;
-            captionRect.anchorMax = Vector2.one;
-            captionRect.pivot = new Vector2(0.5f, 0.5f);
-            captionRect.offsetMin = new Vector2(8f, 0f);
-            captionRect.offsetMax = new Vector2(-24f, 0f);
-            captionRect.SetAsLastSibling();
-        }
-
-        // The generated dropdown has no arrow sprite resource, which renders as a white square.
-        Transform arrow = dropdown.transform.Find("Arrow");
-        if (arrow != null)
-        {
-            var arrowImage = arrow.GetComponent<UnityEngine.UI.Image>();
-            if (arrowImage != null) arrowImage.enabled = false;
-
-            // A GameObject that already has an Image cannot also host TMP_Text because
-            // both are Graphics. Put the replacement glyph on a child instead.
-            Transform arrowLabel = arrow.Find("ArrowLabel");
-            if (arrowLabel == null)
-            {
-                var labelGo = new GameObject("ArrowLabel", typeof(RectTransform));
-                labelGo.transform.SetParent(arrow, false);
-                arrowLabel = labelGo.transform;
-            }
-
-            var arrowRect = arrowLabel as RectTransform;
-            if (arrowRect != null)
-            {
-                arrowRect.anchorMin = Vector2.zero;
-                arrowRect.anchorMax = Vector2.one;
-                arrowRect.offsetMin = Vector2.zero;
-                arrowRect.offsetMax = Vector2.zero;
-            }
-
-            var arrowText = arrowLabel.GetComponent<TextMeshProUGUI>();
-            if (arrowText == null) arrowText = arrowLabel.gameObject.AddComponent<TextMeshProUGUI>();
-            arrowText.text = "V";
-            arrowText.fontSize = 10f;
-            arrowText.fontStyle = FontStyles.Bold;
-            arrowText.color = new Color(0.82f, 0.88f, 0.96f, 1f);
-            arrowText.alignment = TextAlignmentOptions.Center;
-            arrowText.raycastTarget = false;
-            if (TMP_Settings.defaultFontAsset != null)
-                arrowText.font = TMP_Settings.defaultFontAsset;
-            arrowLabel.SetAsLastSibling();
-            arrow.SetAsLastSibling();
-        }
-    }
-
-    static string FormatRate(float rate)
-    {
-        return rate.ToString("0.#");
-    }
-
-    static string FormatAssignments(string detailText)
-    {
-        if (string.IsNullOrEmpty(detailText) || detailText == "No stations assigned")
-            return "No stations assigned";
-
-        return detailText.Replace("• ", "  • ").Replace("\n", "\n\n");
     }
 
     void EnsureLayout()
@@ -507,6 +270,30 @@ public class WorkerCardUI : MonoBehaviour
             carryingSection.gameObject.SetActive(false);
         if (detailsRoot != null && detailsRoot.gameObject.activeSelf != detailsExpanded)
             detailsRoot.gameObject.SetActive(detailsExpanded);
+    }
+
+    void RemoveLegacyWorkerControls()
+    {
+        Transform details = transform.Find("WorkerDetails");
+        if (details == null) return;
+
+        string[] obsoleteNames = { "PriorityControls", "AssignmentControls" };
+        foreach (string obsoleteName in obsoleteNames)
+        {
+            Transform obsolete = details.Find(obsoleteName);
+            if (obsolete != null) Destroy(obsolete.gameObject);
+        }
+
+        Transform section = details.Find("StatusRow/StationsSection")
+            ?? details.Find("StationsSection");
+        if (section == null) return;
+
+        Transform obsoleteDropdown = section.Find("PriorityDropdown");
+        if (obsoleteDropdown != null) Destroy(obsoleteDropdown.gameObject);
+        TextMeshProUGUI header = section.Find("Header")?.GetComponent<TextMeshProUGUI>();
+        if (header != null) header.text = "FLOW";
+        if (assignmentsText != null && !assignmentsText.gameObject.activeSelf)
+            assignmentsText.gameObject.SetActive(true);
     }
 
     void EnsureExpandArrow()
@@ -602,7 +389,7 @@ public class WorkerCardUI : MonoBehaviour
         if (cardLe == null) cardLe = gameObject.AddComponent<LayoutElement>();
         if (detailsExpanded)
         {
-            cardLe.minHeight = 112;
+            cardLe.minHeight = 88;
             cardLe.preferredHeight = -1;
         }
         else
@@ -893,157 +680,6 @@ public class WorkerCardUI : MonoBehaviour
 
         statusRow.SetAsFirstSibling();
         return statusRow;
-    }
-
-    void EnsureAssignmentControls()
-    {
-        var details = transform.Find("WorkerDetails");
-        if (details == null) return;
-
-        if (assignmentControls == null)
-        {
-            Transform oldPriorities = details.Find("PriorityControls");
-            if (oldPriorities != null) Destroy(oldPriorities.gameObject);
-            Transform oldAssignments = details.Find("AssignmentControls");
-            if (oldAssignments != null) Destroy(oldAssignments.gameObject);
-        }
-
-        int signature = employee != null ? employee.GetInstanceID() : 0;
-        if (employee != null)
-            signature = unchecked(signature * 397 ^ employee.UpgradeLevel);
-        if (employee != null && employee.operatedStations != null)
-            foreach (GameObject station in employee.operatedStations)
-                signature = unchecked(signature * 397 ^ (station != null ? station.GetInstanceID() : 0));
-        if (assignmentControls != null && hasAssignmentSignature && assignmentSignature == signature) return;
-        assignmentSignature = signature;
-        hasAssignmentSignature = true;
-
-        if (assignmentControls != null)
-            Destroy(assignmentControls.gameObject);
-
-        var root = new GameObject("AssignmentControls", typeof(RectTransform));
-        root.transform.SetParent(details, false);
-        assignmentControls = root.transform;
-        var vertical = root.AddComponent<VerticalLayoutGroup>();
-        vertical.spacing = 3;
-        vertical.childControlWidth = true;
-        vertical.childControlHeight = true;
-        vertical.childForceExpandWidth = true;
-        vertical.childForceExpandHeight = false;
-        var rootLayout = root.AddComponent<LayoutElement>();
-        rootLayout.minHeight = 28f;
-        rootLayout.preferredHeight = rootLayout.minHeight;
-
-        Button upgrade = CreateControlButton(assignmentControls, GetUpgradeButtonLabel(), 28f);
-        upgrade.name = "UpgradeTransport";
-        upgrade.onClick.AddListener(OnUpgradeClicked);
-        ApplyUpgradeButtonStyle(upgrade);
-    }
-
-    float GetTrainedTransportRateForDisplay(int level)
-    {
-        if (employee == null) return 0f;
-        return KitchenEmployee.GetTransportItemsPerMinuteForLevel(level);
-    }
-
-    string GetUpgradeButtonLabel()
-    {
-        if (employee == null) return "Upgrade";
-        float currentRate = GetTrainedTransportRateForDisplay(employee.UpgradeLevel);
-        if (employee.UpgradeLevel >= KitchenEmployee.MaxUpgradeLevel)
-            return "Transport " + FormatRate(currentRate) + " items/min max";
-
-        float nextRate = GetTrainedTransportRateForDisplay(employee.UpgradeLevel + 1);
-        if (employee.IsMaxUpgraded)
-            return "Transport " + FormatRate(currentRate) + " items/min max | Milestone unlock: "
-                + FormatRate(nextRate) + " items/min";
-
-        int cost = employee.GetNextUpgradeCost();
-        return "Upgrade Transport: " + FormatRate(currentRate) + " → " + FormatRate(nextRate)
-            + " items/min  ($" + cost + ")";
-    }
-
-    void RefreshUpgradeButton()
-    {
-        if (assignmentControls == null) return;
-        Transform t = assignmentControls.Find("UpgradeTransport");
-        if (t == null) return;
-        var btn = t.GetComponent<Button>();
-        if (btn == null) return;
-        var label = t.Find("Text")?.GetComponent<TextMeshProUGUI>();
-        if (label != null)
-            label.text = GetUpgradeButtonLabel();
-        ApplyUpgradeButtonStyle(btn);
-    }
-
-    void ApplyUpgradeButtonStyle(Button btn)
-    {
-        if (btn == null) return;
-        var img = btn.GetComponent<Image>();
-        var money = FindObjectOfType<MoneyManager>();
-        bool maxed = employee != null && employee.IsMaxUpgraded;
-        int cost = employee != null ? employee.GetNextUpgradeCost() : -1;
-        bool canPay = maxed || cost <= 0 || money == null || money.CanAfford(cost);
-        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
-        btn.interactable = planPhase && employee != null && !maxed && canPay;
-        if (img != null)
-        {
-            if (maxed)
-                img.color = new Color(0.22f, 0.28f, 0.34f, 0.98f);
-            else if (!canPay)
-                img.color = new Color(0.32f, 0.24f, 0.24f, 0.98f);
-            else
-                img.color = new Color(0.28f, 0.42f, 0.36f, 0.98f);
-        }
-    }
-
-    void OnUpgradeClicked()
-    {
-        if (employee == null || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)) return;
-        if (!employee.TryUpgrade())
-        {
-            Sfx.Play(SfxId.UiError);
-            RefreshUpgradeButton();
-            return;
-        }
-        hasAssignmentSignature = false; // force rebuild so label/level update
-        nextUpgradeRefreshTime = 0f;
-        RefreshDetails();
-    }
-
-    static Button CreateControlButton(Transform parent, string text, float height)
-    {
-        var go = new GameObject(text, typeof(RectTransform), typeof(Image), typeof(Button));
-        go.transform.SetParent(parent, false);
-        go.GetComponent<Image>().color = new Color(0.25f, 0.32f, 0.42f, 0.98f);
-        var layout = go.AddComponent<LayoutElement>();
-        layout.minHeight = height;
-        layout.preferredHeight = height;
-        if (text.Length <= 2)
-        {
-            layout.minWidth = 28f;
-            layout.preferredWidth = 28f;
-        }
-        else
-            layout.flexibleWidth = 1f;
-
-        var textObject = new GameObject("Text", typeof(RectTransform));
-        textObject.transform.SetParent(go.transform, false);
-        var rect = (RectTransform)textObject.transform;
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-        var tmp = textObject.AddComponent<TextMeshProUGUI>();
-        tmp.text = text;
-        tmp.fontSize = 11f;
-        tmp.enableAutoSizing = true;
-        tmp.fontSizeMin = 9f;
-        tmp.fontSizeMax = 11f;
-        tmp.color = Color.white;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.raycastTarget = false;
-        return go.GetComponent<Button>();
     }
 
     static void CompactSection(Transform section, float minHeight)

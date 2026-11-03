@@ -227,11 +227,11 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
         ShiftGrade grade = new ShiftGrade
         {
-            ordersPoints = Mathf.RoundToInt(Mathf.Clamp01(orders / (float)orderTarget) * 25f),
-            revenuePoints = Mathf.RoundToInt(Mathf.Clamp01(revenue / (float)revenueTarget) * 25f),
-            servicePoints = Mathf.RoundToInt(Mathf.Clamp01(serviceRate / 100f) * 25f),
+            ordersPoints = Mathf.RoundToInt(Mathf.Clamp01(orders / (float)orderTarget) * 20f),
+            revenuePoints = Mathf.RoundToInt(Mathf.Clamp01(revenue / (float)revenueTarget) * 20f),
+            servicePoints = Mathf.RoundToInt(Mathf.Clamp01(serviceRate / 100f) * 40f),
             waitPoints = orders > 0
-                ? Mathf.RoundToInt(Mathf.Clamp01(waitTarget / Mathf.Max(averageWait, 0.01f)) * 15f)
+                ? Mathf.RoundToInt(Mathf.Clamp01(waitTarget / Mathf.Max(averageWait, 0.01f)) * 10f)
                 : 0,
             wastePoints = Mathf.Max(0, 10 - waste * 2)
         };
@@ -278,8 +278,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
         return "<color=#AAB7D1><b>SHIFT GRADE</b></color>  "
             + $"<color=#{scoreColor}><b>{grade.letter}  {grade.score}/100</b></color>\n"
-            + $"Orders {grade.ordersPoints}/25  |  Revenue {grade.revenuePoints}/25  |  Service {grade.servicePoints}/25  |  "
-            + $"Wait {grade.waitPoints}/15  |  Waste {grade.wastePoints}/10";
+            + $"Orders {grade.ordersPoints}/20  |  Revenue {grade.revenuePoints}/20  |  Service {grade.servicePoints}/40  |  "
+            + $"Wait {grade.waitPoints}/10  |  Waste {grade.wastePoints}/10";
     }
 
     static string BuildShiftGoals(StoreStatisticsManager stats, GameTimeManager timeManager)

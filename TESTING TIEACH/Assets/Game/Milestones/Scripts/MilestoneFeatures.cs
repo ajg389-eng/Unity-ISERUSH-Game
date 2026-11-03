@@ -35,9 +35,6 @@ public static class MilestoneFeatures
         { "recipe_upgrades_5", 5 },
         { "mk2_stations", 3 },
         { "core_workforce", 0 },
-        { "carry_training", 2 },
-        { "carry_training_2", 3 },
-        { "carry_training_3", 4 },
         { "manual_operations", 0 },
         { "express_ordering", 2 },
         { "automatic_ordering", 5 },
@@ -58,30 +55,30 @@ public static class MilestoneFeatures
         if (milestone == null) return System.Array.Empty<string>();
         switch (milestone.milestoneId)
         {
+            case "tutorial":
+                return new[] { "Hamburger recipe" };
             case "milestone_01":
                 return new[] { "Fries production and menu item", "Shake production and menu item", "Shake Station MK1" };
             case "milestone_02":
                 return new[]
                 {
                     "Cheeseburger", "Cheese Fries", "Whipped Cream Shake",
-                    "Express ingredient ordering", "Worker transport upgrades up to 80 items/min"
+                    "Express ingredient ordering"
                 };
             case "milestone_03":
                 return new[]
                 {
-                    "Bacon Cheeseburger", "Classic Burger", "MK2 Stations",
-                    "Worker transport upgrades up to 100 items/min"
+                    "Bacon Cheeseburger", "Classic Burger", "MK2 Stations"
                 };
             case "milestone_04":
                 return new[]
                 {
-                    "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake",
-                    "Worker transport upgrades up to 120 items/min"
+                    "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake"
                 };
             case "milestone_05":
-                return new[] { "Super Burger", "Automatic ingredient ordering" };
+                return new[] { "Super Burger", "Automatic supply rates up to 40 items/min" };
             case "milestone_06":
-                return new[] { "Integrated Supply Planning: reorder targets up to 8 packs" };
+                return new[] { "Integrated Supply Planning: supply rates up to 80 items/min" };
             default:
                 return System.Array.Empty<string>();
         }

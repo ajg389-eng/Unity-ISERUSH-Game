@@ -102,6 +102,7 @@ public static class GameSaveSlots
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
         SlotInfo info = GetSlot(slotIndex);
+        ResetTransientUiBeforeLoad();
         bool hadPreviousActiveSlot = PlayerPrefs.HasKey(ActiveSlotKey);
         int previousActiveSlot = PlayerPrefs.GetInt(ActiveSlotKey, 0);
         bool previousSessionSelection = slotSelectedThisSession;
@@ -192,6 +193,24 @@ public static class GameSaveSlots
         RestoreMenuSelection(slotIndex);
         SaveActiveSlot();
         return true;
+    }
+
+    static void ResetTransientUiBeforeLoad()
+    {
+        BuildPlacer placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+        if (placer != null) placer.CancelPlacement();
+
+        InventoryUI inventory = UnityEngine.Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inventory != null)
+        {
+            if (inventory.IsPanelOpen) inventory.TogglePanel();
+            inventory.SelectTab(0);
+        }
+
+        ManagementScreenController management = UnityEngine.Object.FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (management != null && management.IsOpen) management.Close();
+
+        AnalyticsPopupUI.CloseIfOpen();
     }
 
     /// <summary>

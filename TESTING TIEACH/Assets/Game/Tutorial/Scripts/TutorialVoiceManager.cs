@@ -75,18 +75,14 @@ public class TutorialVoiceManager : MonoBehaviour
 
     void EnsureVoiceUI()
     {
-        if (voiceUI != null) return;
-
-        var child = transform.Find("TutorialVoiceUI");
-        if (child != null)
-            voiceUI = child.GetComponent<TutorialVoiceUI>();
-
         if (voiceUI == null)
-        {
-            var uiGo = new GameObject("TutorialVoiceUI");
-            uiGo.transform.SetParent(transform, false);
-            voiceUI = uiGo.AddComponent<TutorialVoiceUI>();
-        }
+            voiceUI = GetComponentInChildren<TutorialVoiceUI>(true);
+
+        // Keep legacy/scene-assigned subtitle objects hidden. Tutorial guidance
+        // is shown on the tutorial card, so a second floating text bubble only
+        // duplicates instructions over the game view.
+        if (voiceUI != null)
+            voiceUI.Hide();
     }
 
     void OnEnable()
@@ -109,10 +105,8 @@ public class TutorialVoiceManager : MonoBehaviour
     {
         SyncPauseWithSimulation();
 
-        // Tutorial subtitles are guidance from Gus. Keep the voice system
-        // available for audio during normal play, but do not leave the
-        // tutorial subtitle bubble over regular gameplay once onboarding ends.
-        if (!OnboardingTutorial.IsActive && voiceUI != null && voiceUI.IsVisible)
+        // Voice lines remain audible, but subtitles are intentionally disabled.
+        if (voiceUI != null && voiceUI.IsVisible)
             voiceUI.Hide();
     }
 
@@ -180,9 +174,8 @@ public class TutorialVoiceManager : MonoBehaviour
     {
         if (line == null) yield break;
 
-        string text = string.IsNullOrEmpty(line.subtitleText) ? "" : line.subtitleText;
-        if (voiceUI != null && OnboardingTutorial.IsActive)
-            voiceUI.Show(text);
+        if (voiceUI != null)
+            voiceUI.Hide();
 
         float wait = Mathf.Max(0.1f, line.displayDuration);
 
@@ -202,8 +195,6 @@ public class TutorialVoiceManager : MonoBehaviour
 
         yield return new WaitForSeconds(wait);
 
-        if (voiceUI != null && OnboardingTutorial.IsActive)
-            voiceUI.Hide();
     }
 
     public void SetVolume(float value)

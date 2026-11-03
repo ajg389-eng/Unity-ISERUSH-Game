@@ -83,6 +83,17 @@ public class BuildPlacer : MonoBehaviour
             return selectedObjects.Count;
         }
     }
+    public bool HasFixedDoorSelected
+    {
+        get
+        {
+            CleanupSelection();
+            for (int i = 0; i < selectedObjects.Count; i++)
+                if (selectedObjects[i].GetComponent<CustomerWallDoor>() != null)
+                    return true;
+            return false;
+        }
+    }
     public bool IsCounterPlacementActive =>
         (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
         || draggingMountedItem != null;
@@ -398,7 +409,6 @@ public class BuildPlacer : MonoBehaviour
         foreach (var previewRegister in ghost.GetComponentsInChildren<Register>(true))
         {
             previewRegister.isPlacementPreview = true;
-            previewRegister.isEnabled = false;
         }
         ghost.transform.localScale = GetPlacementScale(item);
         ghost.transform.rotation = Quaternion.Euler(item.placementEuler + Vector3.up * (placementRotation * 90f));
@@ -1052,6 +1062,12 @@ public class BuildPlacer : MonoBehaviour
         return null;
     }
 
+    /// <summary>Resolve the same placed object Build mode targets under the pointer.</summary>
+    public GameObject GetBuildObjectUnderPointer()
+    {
+        return GetStationUnderPointer();
+    }
+
     bool FootprintContainsCell(GameObject root, BuildFootprint footprint, int cellX, int cellY)
     {
         if (root == null || footprint == null) return false;
@@ -1095,6 +1111,12 @@ public class BuildPlacer : MonoBehaviour
         if (IsStationEditingLocked) return;
         CleanupSelection();
         if (selectedObjects.Count == 0 || IsDragging || IsPlacing) return;
+        if (HasFixedDoorSelected)
+        {
+            Sfx.Play(SfxId.UiError);
+            actionBar?.ShowMessage("The entrance door cannot be moved");
+            return;
+        }
         if (selectedObjects.Count == 1) BeginSingleDrag(selectedObjects[0]);
         else BeginGroupMove();
         actionBar?.Refresh();
@@ -1106,15 +1128,7 @@ public class BuildPlacer : MonoBehaviour
         CustomerWallDoor wallDoor = target.GetComponent<CustomerWallDoor>();
         if (wallDoor != null)
         {
-            draggingObject = target;
-            draggingWallDoor = wallDoor;
-            dragOriginalPosition = target.transform.position;
-            dragOriginalWorldRotation = target.transform.rotation;
-            dragOriginalWallSide = wallDoor.wallSide;
-            wallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(true);
-            SetDraggedObjectHighlighted(target);
-            SetHint(true, true);
-            Sfx.Play(SfxId.BuildPickup);
+            Sfx.Play(SfxId.UiError);
             return;
         }
 
@@ -1468,16 +1482,7 @@ public class BuildPlacer : MonoBehaviour
             CustomerWallDoor wallDoor = hit.collider.GetComponentInParent<CustomerWallDoor>();
             if (wallDoor != null)
             {
-                if (!IsDoubleClickEdit(wallDoor.gameObject)) return;
-                draggingObject = wallDoor.gameObject;
-                draggingWallDoor = wallDoor;
-                dragOriginalPosition = draggingObject.transform.position;
-                dragOriginalWorldRotation = draggingObject.transform.rotation;
-                dragOriginalWallSide = wallDoor.wallSide;
-                wallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(true);
-                SetDraggedObjectHighlighted(draggingObject);
-                SetHint(true, true);
-                Sfx.Play(SfxId.BuildPickup);
+                Sfx.Play(SfxId.UiError);
                 return;
             }
 
@@ -2684,11 +2689,6 @@ public class BuildPlacer : MonoBehaviour
                 placed.AddComponent<BoxCollider>();
             Register register = placed.GetComponent<Register>();
             if (register == null) register = placed.AddComponent<Register>();
-            // Placement only puts the register on the counter. During the
-            // tutorial the player must explicitly open it and click Enable.
-            // Outside onboarding, a newly placed register keeps the normal
-            // enabled behavior.
-            register.isEnabled = !OnboardingTutorial.IsActive;
             RegisterHover hover = placed.GetComponent<RegisterHover>();
             if (hover == null) hover = placed.AddComponent<RegisterHover>();
             if (hover.rend == null) hover.rend = placed.GetComponentInChildren<Renderer>();
@@ -2751,6 +2751,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     bool displayedBuildMode;
     int displayedSelectionCount = -1;
     bool displayedDragging;
+    bool displayedFixedDoorSelected;
 
     public bool IsPointerOver
     {
@@ -2979,13 +2980,18 @@ public sealed class BuildStationActionBar : MonoBehaviour
     {
         if (placer == null || selectionLabel == null) return;
         int count = placer.SelectedStationCount;
+        bool fixedDoorSelected = placer.HasFixedDoorSelected;
         if (!placementInstructionActive && (messageLabel == null || !messageLabel.gameObject.activeSelf)
-            && (displayedSelectionCount != count || displayedDragging != placer.IsDragging))
+            && (displayedSelectionCount != count || displayedDragging != placer.IsDragging
+                || displayedFixedDoorSelected != fixedDoorSelected))
         {
             displayedSelectionCount = count;
             displayedDragging = placer.IsDragging;
+            displayedFixedDoorSelected = fixedDoorSelected;
             selectionLabel.text = count == 0
                 ? "Select a station"
+                : fixedDoorSelected && count == 1 ? "Entrance door is fixed"
+                : fixedDoorSelected ? count + " selected  |  Entrance door is fixed"
                 : placer.IsDragging ? "Click a tile to place"
                 : count == 1 ? "Double-click a station or tile to move"
                 : count + " selected  |  Double-click or Move";
@@ -2995,7 +3001,8 @@ public sealed class BuildStationActionBar : MonoBehaviour
                 || (messageLabel != null && messageLabel.gameObject.activeSelf));
         bool planPhase = GameTimeManager.Instance == null
             || !GameTimeManager.Instance.IsShiftInProgress || ShiftPlanningUI.IsPlanning;
-        if (moveButton != null) moveButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
+        if (moveButton != null) moveButton.interactable = planPhase && count > 0
+            && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
         if (clearButton != null) clearButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
     }
 

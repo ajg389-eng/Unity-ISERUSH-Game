@@ -531,7 +531,8 @@ public static class WorkerFlowAssigner
     {
         if (station == null) return null;
         for (int i = 0; i < Catalog.Length; i++)
-            if (station.GetComponent(Catalog[i].componentType) != null)
+            if (station.GetComponent(Catalog[i].componentType) != null
+                || station.GetComponentInChildren(Catalog[i].componentType, true) != null)
                 return Catalog[i].id;
         return null;
     }
@@ -993,18 +994,13 @@ public static class WorkflowAnalysis
     }
 
     /// <summary>
-    /// Trained maximum transport rate for one worker. Route travel is included in
+    /// Fixed maximum handling rate for one worker. Route travel is included in
     /// the system's required rate, so it must not reduce this cap a second time.
     /// </summary>
     public static float GetEstimatedDeliveryPerMinute(KitchenEmployee employee)
     {
-        return GetEstimatedDeliveryPerMinute(employee, employee != null ? employee.UpgradeLevel : 0);
-    }
-
-    public static float GetEstimatedDeliveryPerMinute(KitchenEmployee employee, int upgradeLevel)
-    {
         if (employee == null || employee.OperatedStationCount <= 0) return 0f;
-        return Mathf.Max(0.01f, KitchenEmployee.GetTransportItemsPerMinuteForLevel(upgradeLevel));
+        return KitchenEmployee.BaseTransportItemsPerMinute;
     }
 
     public sealed class SystemRateSummary
@@ -1080,7 +1076,7 @@ public static class WorkflowAnalysis
 
     public static int GetBaseWorkersNeeded(float requiredRatePerMinute)
     {
-        float baseRate = KitchenEmployee.GetTransportItemsPerMinuteForLevel(0);
+        float baseRate = KitchenEmployee.BaseTransportItemsPerMinute;
         return requiredRatePerMinute > 0.01f
             ? Mathf.CeilToInt(requiredRatePerMinute / Mathf.Max(0.01f, baseRate))
             : 0;
@@ -1658,7 +1654,7 @@ public static class WorkflowAnalysis
             return;
         }
 
-        averageTransportRate = KitchenEmployee.GetTransportItemsPerMinuteForLevel(0);
+        averageTransportRate = KitchenEmployee.BaseTransportItemsPerMinute;
         averageMoveSpeed = GetDefaultMoveSpeed();
         travelSecondsPerItemTile = cellSize / Mathf.Max(0.1f, averageMoveSpeed);
     }

@@ -126,6 +126,7 @@ public class MainHudTabs : MonoBehaviour
         RefreshPageControllerReferences();
         GameUITheme.EnsureHudCanvas(transform, 10);
         var rt = (RectTransform)transform;
+        rt.localScale = Vector3.one * TopHudBar.HudScale;
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayout(rt);
 
@@ -156,6 +157,29 @@ public class MainHudTabs : MonoBehaviour
         RefreshVisuals();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
         built = true;
+    }
+
+    /// <summary>Restores the primary navigation after cutscene presentation hides canvases.</summary>
+    public void RestoreNavigation()
+    {
+        if (!gameObject.activeSelf)
+            gameObject.SetActive(true);
+
+        Build();
+
+        Canvas canvas = GetComponent<Canvas>();
+        if (canvas != null)
+            canvas.enabled = true;
+        GraphicRaycaster raycaster = GetComponent<GraphicRaycaster>();
+        if (raycaster != null)
+            raycaster.enabled = true;
+
+        if (inventoryTabButton != null && !inventoryTabButton.gameObject.activeSelf)
+            inventoryTabButton.gameObject.SetActive(true);
+        if (businessTabButton != null && !businessTabButton.gameObject.activeSelf)
+            businessTabButton.gameObject.SetActive(true);
+
+        RefreshVisuals();
     }
 
     public void ApplyDefaultLayout()

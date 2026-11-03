@@ -11,6 +11,11 @@ public class ManagementModeController : MonoBehaviour
 {
     public static ManagementModeController Instance { get; private set; }
 
+    static readonly List<UnityEngine.EventSystems.RaycastResult> FlowUiRaycastResults =
+        new List<UnityEngine.EventSystems.RaycastResult>(16);
+    static UnityEngine.EventSystems.PointerEventData flowUiPointerData;
+    static UnityEngine.EventSystems.EventSystem flowUiEventSystem;
+
     public GameModeManager modeManager;
     public LayerMask clickLayer = -1;
 
@@ -179,13 +184,6 @@ public class ManagementModeController : MonoBehaviour
         return null;
     }
 
-    public void ClearTutorialStationSelectionExcept(GameObject expectedStation)
-    {
-        if (selectedStation == null || selectedStation.gameObject == expectedStation) return;
-        CancelOutputDrag();
-        ClearSelection();
-    }
-
     void Awake()
     {
         Instance = this;
@@ -263,14 +261,6 @@ public class ManagementModeController : MonoBehaviour
 
     void Update()
     {
-        // This tutorial step selects stations directly in the world while the
-        // Business list is hidden. Keep Manage mode active in case another UI
-        // transition changed it after the tutorial opened the step.
-        if (OnboardingTutorial.IsRecipeStationSelectionActive
-            && modeManager != null
-            && modeManager.CurrentMode != GameModeManager.Mode.Manage)
-            modeManager.SetMode(GameModeManager.Mode.Manage);
-
         if (!IsManageMode)
         {
             CustomerWallDoor.HideActivePopup();
@@ -346,27 +336,8 @@ public class ManagementModeController : MonoBehaviour
 
         if (!Input.GetMouseButtonDown(0)) return;
         if (Camera.main == null) return;
-        bool tutorialStationSelection = OnboardingTutorial.IsRecipeStationSelectionActive;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        bool tutorialFlowSourceUnderPointer = IsCapturingFlow
-            && OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
-                out GameObject expectedSource, out _)
-            && FindTutorialStationUnderRay(ray, expectedSource) != null;
-        if (!tutorialStationSelection && IsPointerOverUI() && !tutorialFlowSourceUnderPointer) return;
-
-        if (tutorialStationSelection)
-        {
-            // During recipe onboarding, select the exact highlighted station
-            // directly. General scene colliders and decorative UI can overlap
-            // the station, so the normal first-hit raycast is unreliable here.
-            GameObject target = OnboardingTutorial.Instance != null
-                ? OnboardingTutorial.Instance.RecipeTutorialStationTarget
-                : null;
-            StationNode tutorialNode = FindTutorialStationUnderRay(ray, target);
-            if (tutorialNode != null)
-                SelectStation(tutorialNode);
-            return;
-        }
+        if (IsPointerOverUI()) return;
 
         if (IsCapturingFlow)
         {
@@ -406,12 +377,7 @@ public class ManagementModeController : MonoBehaviour
 
         CustomerWallDoor.HideActivePopup();
 
-        // Prefer the exact collider under the pointer. The footprint fallback
-        // is useful when a station part has no collider, but broad rendered
-        // bounds can overlap nearby stations such as Pantry and Cutting Station.
-        StationNode node = hasPhysicsHit ? StationNode.FindFromCollider(hit.collider) : null;
-        if (node == null)
-            node = FindFlowStationUnderRay(ray);
+        StationNode node = FindSelectableStationUnderRay(ray);
         if (node == null)
         {
             if (pending == PendingAction.None && !IsCapturingFlow)
@@ -443,45 +409,6 @@ public class ManagementModeController : MonoBehaviour
         SelectStation(node);
     }
 
-    static StationNode FindTutorialStationUnderRay(Ray ray, GameObject target)
-    {
-        if (target == null || !target.activeInHierarchy) return null;
-
-        StationNode node = StationNode.EnsureOn(target);
-        Collider[] colliders = target.GetComponentsInChildren<Collider>();
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Collider collider = colliders[i];
-            if (collider == null || !collider.enabled || !collider.gameObject.activeInHierarchy)
-                continue;
-            if (collider.Raycast(ray, out _, 500f))
-                return node;
-        }
-
-        // Some station prefabs have sparse or missing colliders. Their visible
-        // model bounds still provide a forgiving click target for this guided step.
-        Renderer[] renderers = target.GetComponentsInChildren<Renderer>();
-        bool hasBounds = false;
-        Bounds bounds = default;
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer renderer = renderers[i];
-            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
-                continue;
-            if (!hasBounds)
-            {
-                bounds = renderer.bounds;
-                hasBounds = true;
-            }
-            else
-                bounds.Encapsulate(renderer.bounds);
-        }
-
-        return hasBounds && bounds.IntersectRay(ray, out float distance) && distance <= 500f
-            ? node
-            : null;
-    }
-
     void HandleMouseUp()
     {
         if (!outputDragActive)
@@ -498,8 +425,7 @@ public class ManagementModeController : MonoBehaviour
             if (IsCapturingFlow)
             {
                 target = FindFlowCaptureDropStation(ray);
-                if (IsPointerOverUI()
-                    && !OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow, out _, out _))
+                if (IsPointerOverUI())
                     target = null;
             }
             else if (!IsPointerOverUI()
@@ -1150,6 +1076,7 @@ public class ManagementModeController : MonoBehaviour
             stationTitleText.text = selectedStation.DisplayName;
 
         bool isHeatLamp = selectedStation.GetComponent<HeatLampStation>() != null;
+        bool isRegister = selectedStation.GetComponent<Register>() != null;
 
         // Flows own worker/output assignment — hide these controls on every station.
         if (assignWorkerButton != null) assignWorkerButton.gameObject.SetActive(false);
@@ -1171,8 +1098,14 @@ public class ManagementModeController : MonoBehaviour
         }
 
         RefreshProductSection();
-        bool hasOutputChoices = productListContainer != null && productListContainer.childCount > 0;
-        if (productInfoText != null && hasOutputChoices)
+        bool hasOutputChoices = !isRegister && productListContainer != null
+            && productListContainer.childCount > 0;
+        if (isRegister)
+        {
+            if (productInfoText != null) productInfoText.gameObject.SetActive(false);
+            if (productListContainer != null) productListContainer.gameObject.SetActive(false);
+        }
+        else if (productInfoText != null && hasOutputChoices)
         {
             productInfoText.text = "CLICK OUTPUT TO CHANGE";
             productInfoText.gameObject.SetActive(true);
@@ -1184,7 +1117,7 @@ public class ManagementModeController : MonoBehaviour
                 && !IsShiftConfigurationLocked;
         RefreshHeatLampInventory();
         RefreshStationSummary();
-        ApplyPanelLayout(isHeatLamp);
+        ApplyPanelLayout(isHeatLamp, isRegister);
         ApplyStationPopupTheme();
     }
 
@@ -1850,6 +1783,7 @@ public class ManagementModeController : MonoBehaviour
         var fryer = node.GetComponent<FryerStation>();
         var drink = node.GetComponent<DrinkStation>();
         var pantry = node.GetComponent<PantryStation>();
+        var register = node.GetComponent<Register>();
 
         bool outputOnly = false;
         CustomerOrderConfig modelConfig = ProductionManager.Instance != null
@@ -1860,7 +1794,13 @@ public class ManagementModeController : MonoBehaviour
         GameObject cookedPattyModel = modelConfig != null && modelConfig.cookedPattyIngredient != null
             && modelConfig.cookedPattyIngredient.prefab != null
             ? modelConfig.cookedPattyIngredient.prefab : cookedPattyPreviewPrefab;
-        if (freezer != null)
+        if (register != null)
+        {
+            outputName = "Customer Orders";
+            cycleSeconds = 60f / Register.MaxOrdersPerMinute;
+            outputOnly = true;
+        }
+        else if (freezer != null)
         {
             ItemDefinition stored = freezer.selectedItem;
             outputItem = stored;
@@ -2007,6 +1947,35 @@ public class ManagementModeController : MonoBehaviour
         hasThreeInputs = hasThreeInputs
             || (assembly != null && assembly.GetSelectedRecipe()?.thirdInput != null);
         SetProductionDiagramMode(outputOnly, hasTwoInputs, hasThreeInputs);
+        if (register != null)
+        {
+            // Registers have no item preview or recipe selection. Collapse the
+            // manufacturing diagram into a small service-capacity card.
+            Transform previewFrame = productionOutputPreview != null
+                ? productionOutputPreview.transform.parent : null;
+            if (previewFrame != null) previewFrame.gameObject.SetActive(false);
+            if (productionConversionRoot != null) productionConversionRoot.SetActive(false);
+            LayoutElement diagramSize = productionDiagramRoot.GetComponent<LayoutElement>();
+            if (diagramSize != null)
+            {
+                diagramSize.minHeight = 72f;
+                diagramSize.preferredHeight = 72f;
+                diagramSize.flexibleHeight = 0f;
+            }
+            LayoutElement outputSize = productionOutputCard.GetComponent<LayoutElement>();
+            if (outputSize != null)
+            {
+                outputSize.minWidth = 250f;
+                outputSize.preferredWidth = 280f;
+                outputSize.flexibleWidth = 0f;
+            }
+            if (productionOutputSelectButton != null)
+                productionOutputSelectButton.interactable = false;
+        }
+        else if (productionOutputPreview != null && productionOutputPreview.transform.parent != null)
+        {
+            productionOutputPreview.transform.parent.gameObject.SetActive(true);
+        }
         if (!outputOnly)
             SetDiagramPreview(productionInputPreview, inputPrefab, inputName);
         if (hasTwoInputs)
@@ -2033,14 +2002,27 @@ public class ManagementModeController : MonoBehaviour
             productionThirdInputRate.text = FormatPerMinute(thirdInputRate) + "/min";
         }
         productionOutputName.text = outputName;
-        productionOutputHeld.text = FormatHeldCount(GetStationItemCount(node, outputItem, true));
-        float baseRate = node.BaseOutputAmountPerMinute;
-        StationRuntimeMetrics runtimeMetrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
-        float actualRate = runtimeMetrics != null ? runtimeMetrics.ActualOutputPerMinute : 0f;
-        productionOutputRate.text = "<color=#B7BEC5>ACTUAL</color> "
-            + FormatPerMinute(actualRate) + "/min";
-        RefreshProductionRateControls(node, baseRate);
-        productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
+        if (register != null)
+        {
+            productionOutputHeld.text = "QUEUE " + register.QueueCount;
+            productionOutputRate.text = "ACTUAL "
+                + FormatPerMinute(register.AcceptedOrdersPerMinute) + "/min\nMAX "
+                + FormatPerMinute(Register.MaxOrdersPerMinute) + "/min";
+            if (productionRateControlRoot != null)
+                productionRateControlRoot.SetActive(false);
+            productionCycleText.text = FormatSeconds(cycleSeconds) + "s/order";
+        }
+        else
+        {
+            productionOutputHeld.text = FormatHeldCount(GetStationItemCount(node, outputItem, true));
+            float baseRate = node.BaseOutputAmountPerMinute;
+            StationRuntimeMetrics runtimeMetrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
+            float actualRate = runtimeMetrics != null ? runtimeMetrics.ActualOutputPerMinute : 0f;
+            productionOutputRate.text = "<color=#B7BEC5>ACTUAL</color> "
+                + FormatPerMinute(actualRate) + "/min";
+            RefreshProductionRateControls(node, baseRate);
+            productionCycleText.text = FormatSeconds(cycleSeconds) + "s";
+        }
     }
 
     static string FormatHeldCount(int count) => count < 0
@@ -2265,7 +2247,7 @@ public class ManagementModeController : MonoBehaviour
         rt.sizeDelta = new Vector2(width, height);
     }
 
-    void ApplyPanelLayout(bool heatLampCompact)
+    void ApplyPanelLayout(bool heatLampCompact, bool registerCompact = false)
     {
         if (stationPopup == null) return;
 
@@ -2363,7 +2345,8 @@ public class ManagementModeController : MonoBehaviour
         bool hasThreeInputRecipe = selectedAssembly != null
             && selectedAssembly.GetSelectedRecipe()?.thirdInput != null;
         bool needsWideProductionDiagram = productionInputCard != null && productionInputCard.activeSelf;
-        float width = hasRecipeControls || needsWideProductionDiagram ? 500f : 360f;
+        float width = registerCompact ? 320f
+            : (hasRecipeControls || needsWideProductionDiagram ? 500f : 360f);
         if (!usingScenePopup)
             ApplyPopupLayout(rt, width, rt.sizeDelta.y);
         else
@@ -2379,7 +2362,7 @@ public class ManagementModeController : MonoBehaviour
         // global canvas flush also rebuilds the large Business/Inventory lists.
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
 
-        float minimumHeight = heatLampCompact ? 246f : 310f;
+        float minimumHeight = registerCompact ? 142f : (heatLampCompact ? 246f : 310f);
         float preferredHeight = LayoutUtility.GetPreferredHeight(rt);
         float height = Mathf.Max(minimumHeight, preferredHeight);
         rt.sizeDelta = new Vector2(rt.sizeDelta.x, height);
@@ -4305,25 +4288,101 @@ public class ManagementModeController : MonoBehaviour
         if (Camera.main == null || IsPointerOverUI()) return null;
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (IsCapturingFlow) return FindFlowStationUnderRay(ray);
-        return Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer)
-            ? StationNode.FindFromCollider(hit.collider)
-            : null;
+        return FindSelectableStationUnderRay(ray);
     }
 
-    StationNode FindFlowStationUnderRay(Ray ray)
+    StationNode FindSelectableStationUnderRay(Ray ray)
     {
-        // Mounted stations can overlap the counter collider. Look through scenery
-        // while capturing a flow, choosing the nearest actual station on the ray.
-        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, clickLayer);
+        // Use Build mode's object resolver first. It accounts for station
+        // colliders, counter slots, and floor footprints, keeping the same placed
+        // object under the pointer selected in both modes.
+        BuildPlacer buildPlacer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+        if (buildPlacer != null)
+        {
+            StationNode placedStation = FindStationOnPlacedObject(
+                buildPlacer.GetBuildObjectUnderPointer());
+            if (placedStation != null)
+                return placedStation;
+        }
+
+        // Unlike flow editing, selecting a station does not require it to already
+        // belong to a flow. Scan remaining station colliders if Build mode's
+        // resolver did not find a station.
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, -1, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
         foreach (RaycastHit hit in hits)
         {
             StationNode node = StationNode.FindFromCollider(hit.collider);
-            if (node == null) continue;
-            if (string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(node.gameObject))) continue;
-            Register register = node.GetComponent<Register>();
-            if (register != null && !register.IsPlacedRegister) continue;
-            return node;
+            if (node != null && node.gameObject.activeInHierarchy)
+                return node;
+        }
+
+        // Some station models have no collider on the visible mesh. Build mode
+        // still lets the player target their footprint, so Business selection
+        // falls back to the rendered station bounds on that same pointer ray.
+        StationNode nearestStation = null;
+        float nearestDistance = float.MaxValue;
+        StationNode[] stations = FindObjectsByType<StationNode>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (StationNode station in stations)
+        {
+            if (station == null || !station.gameObject.activeInHierarchy
+                || !TryGetFlowStationBounds(station.gameObject, out Bounds bounds)
+                || !bounds.IntersectRay(ray, out float distance))
+                continue;
+
+            if (distance < nearestDistance)
+            {
+                nearestStation = station;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestStation;
+    }
+
+    static StationNode FindStationOnPlacedObject(GameObject placedObject)
+    {
+        if (placedObject == null) return null;
+        StationNode node = placedObject.GetComponent<StationNode>()
+            ?? placedObject.GetComponentInChildren<StationNode>(true);
+        if (node != null) return node;
+
+        Component station = placedObject.GetComponentInChildren<FreezerStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<GrillStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<PantryStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<AssemblyStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<CuttingStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<FryerStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<DrinkStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<HeatLampStation>(true);
+        if (station == null) station = placedObject.GetComponentInChildren<Register>(true);
+        return station != null ? StationNode.EnsureOn(station.gameObject) : null;
+    }
+
+    StationNode FindFlowStationUnderRay(Ray ray)
+    {
+        // Reuse Build mode's object resolver first so flow capture targets the
+        // same placed station, including stations selected through their floor
+        // footprint or a counter slot.
+        BuildPlacer buildPlacer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+        if (buildPlacer != null)
+        {
+            StationNode placedStation = FindStationOnPlacedObject(
+                buildPlacer.GetBuildObjectUnderPointer());
+            if (IsValidFlowStation(placedStation))
+                return placedStation;
+        }
+
+        // Flow capture must inspect every physics layer. The configured click
+        // mask is used for ordinary interaction and can exclude colliders on
+        // station prefab children, which makes clicks and drags appear ignored.
+        RaycastHit[] hits = Physics.RaycastAll(ray, 500f, -1, QueryTriggerInteraction.Collide);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
+        {
+            StationNode node = StationNode.FindFromCollider(hit.collider);
+            if (IsValidFlowStation(node)) return node;
         }
         // Some two-tile stations only expose a collider over one half of their
         // model. If the pointer is over the other half, use the station's full
@@ -4362,17 +4421,11 @@ public class ManagementModeController : MonoBehaviour
 
     StationNode FindFlowCaptureStartStation(Ray ray)
     {
-        if (OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
-            out GameObject expectedSource, out _))
-            return FindTutorialStationUnderRay(ray, expectedSource);
         return FindStationAtPointer(ray);
     }
 
     StationNode FindFlowCaptureDropStation(Ray ray)
     {
-        if (OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
-            out _, out GameObject expectedDestination))
-            return FindTutorialStationUnderRay(ray, expectedDestination);
         return FindStationAtPointer(ray);
     }
 
@@ -4380,7 +4433,8 @@ public class ManagementModeController : MonoBehaviour
     {
         if (station == null || !station.gameObject.activeInHierarchy) return false;
         if (string.IsNullOrEmpty(WorkerFlowAssigner.GetStationId(station.gameObject))) return false;
-        Register register = station.GetComponent<Register>();
+        Register register = station.GetComponent<Register>()
+            ?? station.GetComponentInChildren<Register>(true);
         return register == null || register.IsPlacedRegister;
     }
 
@@ -4448,6 +4502,28 @@ public class ManagementModeController : MonoBehaviour
 
     static bool IsPointerOverUI()
     {
+        // While drawing a flow, only actual controls should consume pointer
+        // input. Decorative overlays and transparent HUD backgrounds otherwise
+        // intercept the initial press or release and cancel the world drag.
+        if (Instance != null && Instance.IsCapturingFlow)
+        {
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+            if (eventSystem == null) return false;
+            if (flowUiPointerData == null || flowUiEventSystem != eventSystem)
+            {
+                flowUiEventSystem = eventSystem;
+                flowUiPointerData = new UnityEngine.EventSystems.PointerEventData(eventSystem);
+            }
+            flowUiPointerData.Reset();
+            flowUiPointerData.position = Input.mousePosition;
+            FlowUiRaycastResults.Clear();
+            eventSystem.RaycastAll(flowUiPointerData, FlowUiRaycastResults);
+            foreach (var result in FlowUiRaycastResults)
+                if (result.gameObject != null
+                    && result.gameObject.GetComponentInParent<Selectable>() != null)
+                    return true;
+            return false;
+        }
         return UIInputFocusGuard.IsPointerOverInteractiveUI;
     }
 

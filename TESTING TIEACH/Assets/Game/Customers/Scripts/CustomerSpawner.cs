@@ -405,7 +405,10 @@ public class CustomerSpawner : MonoBehaviour
 
     public bool SpawnTutorialCustomer()
     {
-        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(false, true);
+        // Practice orders are independent from the menu's live demand setting.
+        // A player may remove the burger from the menu during Plan, but the
+        // tutorial still needs its single scripted burger to demonstrate service.
+        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(true, true);
     }
 
     bool TrySpawn(bool force = false, bool tutorialPractice = false)
@@ -436,12 +439,12 @@ public class CustomerSpawner : MonoBehaviour
         {
             LastSpawnError = GetAnyRegister() != null
                 ? "All register queues are full"
-                : "Need an open register";
+                : "Need a placed register";
             return false;
         }
 
         CustomerOrder manualOrder = tutorialPractice ? null : GenerateSupplementalOrder();
-        return SpawnOnFoot(r, false, Vector3.zero, null, manualOrder);
+        return SpawnOnFoot(r, false, Vector3.zero, null, manualOrder, tutorialPractice);
     }
 
     /// <summary>
@@ -458,7 +461,7 @@ public class CustomerSpawner : MonoBehaviour
         Register r = GetLeastLoadedRegister();
         if (r == null)
         {
-            LastSpawnError = "Need an open register";
+            LastSpawnError = "Need a placed register";
             return false;
         }
 
@@ -502,7 +505,7 @@ public class CustomerSpawner : MonoBehaviour
             Register register = GetLeastLoadedRegisterFromCurrentList();
             if (register == null)
             {
-                LastSpawnError = "Waiting for an enabled register";
+                LastSpawnError = "Waiting for a placed register";
                 nextDispatchRetryTime = Time.time + PendingDispatchRetrySeconds;
                 break;
             }
@@ -574,7 +577,7 @@ public class CustomerSpawner : MonoBehaviour
     }
 
     bool SpawnOnFoot(Register r, bool fromVehicle, Vector3 doorWorld, LotArrivalVehicle rideHome,
-        CustomerOrder assignedOrder)
+        CustomerOrder assignedOrder, bool tutorialPractice = false)
     {
         if (customerPrefab == null || customerPrefab.GetComponent<CustomerAI>() == null)
         {
@@ -584,7 +587,10 @@ public class CustomerSpawner : MonoBehaviour
             return false;
         }
 
-        BuildEntryPoints(entryPointsBuffer, r, !fromVehicle);
+        // The tutorial's single practice customer starts at the entrance and
+        // follows the in-store route. Avoid a random street spawn that can make
+        // the tutorial depend on outdoor pathfinding and parked-vehicle layout.
+        BuildEntryPoints(entryPointsBuffer, r, !fromVehicle && !tutorialPractice);
         Vector3 spawnPos;
         if (fromVehicle)
         {

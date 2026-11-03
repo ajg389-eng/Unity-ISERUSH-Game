@@ -48,6 +48,7 @@ public class CustomerAI : MonoBehaviour
     bool patienceActive;
     bool waitingForPickup;
     HeatLampStation pickupStation;
+    float nextRegisterRetryTime;
     bool leaving;
     bool leavingImpatient;
     bool orderCompletionReported;
@@ -706,10 +707,38 @@ public class CustomerAI : MonoBehaviour
 
     public void SetTargetRegister(Register r)
     {
-        if (r != null && !r.IsPlacedRegister) return;
+        if (r != null && !r.IsPlacedRegister)
+        {
+            if (reg == r) reg = null;
+            return;
+        }
         reg = r;
         if (reg == null) return;
-        reg.TryJoinQueue(this);
+        if (!reg.TryJoinQueue(this))
+            reg = null;
+    }
+
+    bool TryJoinAvailableRegister()
+    {
+        if (leaving || waitingForPickup || orderRevealed || reg != null)
+            return false;
+
+        IReadOnlyList<Register> registers = Register.ActiveRegisters;
+        Register best = null;
+        int bestQueueCount = int.MaxValue;
+        for (int i = 0; i < registers.Count; i++)
+        {
+            Register candidate = registers[i];
+            if (candidate == null || !candidate.IsPlacedRegister) continue;
+            int queueCount = candidate.QueueCount;
+            if (queueCount >= bestQueueCount) continue;
+            best = candidate;
+            bestQueueCount = queueCount;
+        }
+
+        if (best == null) return false;
+        SetTargetRegister(best);
+        return reg == best;
     }
 
     /// <summary>
@@ -923,6 +952,25 @@ public class CustomerAI : MonoBehaviour
             return;
         }
 
+        // A pre-order customer must remain attached to a live register queue.
+        // Check both the register reference and actual queue membership: stale
+        // references can otherwise leave a customer walking to an obsolete
+        // slot or waiting at the end of the entry route without a valid slot.
+        bool registerUnavailable = reg == null || !reg.IsPlacedRegister || !reg.isEnabled;
+        bool missingQueueMembership = reg != null && !reg.HasCustomerInOrderQueue(this);
+        if (!leaving && !waitingForPickup && !orderRevealed
+            && (registerUnavailable || missingQueueMembership)
+            && Time.time >= nextRegisterRetryTime)
+        {
+            nextRegisterRetryTime = Time.time + 0.5f;
+            if (reg != null)
+            {
+                reg.LeaveQueue(this);
+                reg = null;
+            }
+            TryJoinAvailableRegister();
+        }
+
         switch (phase)
         {
             case Phase.Entering:
@@ -1078,6 +1126,10 @@ public class CustomerAI : MonoBehaviour
         else if (reg != null)
         {
             reg.RefreshQueueTargets();
+        }
+        else
+        {
+            TryJoinAvailableRegister();
         }
     }
 

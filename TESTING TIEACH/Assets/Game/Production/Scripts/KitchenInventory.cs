@@ -7,7 +7,9 @@ public class IngredientStockEntry
 {
     public ItemDefinition item;
     public int quantity;
-    public int reorderTarget;
+    public int supplyRatePerMinute;
+    public float supplyUnitProgress;
+    public float supplyCostRemainder;
 }
 
 /// <summary>
@@ -18,6 +20,7 @@ public class KitchenInventory : MonoBehaviour
 {
     public const int ExpressDeliveryFee = 200;
     public const int MaxIngredientStock = 100;
+    public const int MaxSupplyRatePerMinute = 80;
 
     public static KitchenInventory Instance { get; private set; }
 
@@ -36,7 +39,6 @@ public class KitchenInventory : MonoBehaviour
     public List<IngredientStockEntry> stock = new List<IngredientStockEntry>();
 
     MoneyManager money;
-    float nextAutomaticRestockCheck;
 
     void Awake()
     {
@@ -59,9 +61,13 @@ public class KitchenInventory : MonoBehaviour
 
     void Update()
     {
-        if (Time.time < nextAutomaticRestockCheck) return;
-        nextAutomaticRestockCheck = Time.time + 2f;
-        TryAutomaticRestock();
+        if (Time.timeScale <= 0f || ShiftPlanningUI.IsPlanning
+            || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftOver))
+            return;
+
+        // Rates are measured per one-minute simulation interval. Time.deltaTime
+        // includes fast-forward, so the supplier scales with the rest of the shift.
+        DeliverConfiguredSupplyRates(Time.deltaTime / 60f);
     }
 
     public IReadOnlyList<ItemDefinition> GetOrderableItems()
@@ -212,57 +218,84 @@ public class KitchenInventory : MonoBehaviour
         return GetCount(item) >= amount;
     }
 
-    public int GetReorderTarget(ItemDefinition item)
+    public int GetSupplyRatePerMinute(ItemDefinition item)
     {
-        return EnsureEntry(item)?.reorderTarget ?? 0;
+        return EnsureEntry(item)?.supplyRatePerMinute ?? 0;
     }
 
-    public void SetReorderTarget(ItemDefinition item, int target)
+    public void SetSupplyRatePerMinute(ItemDefinition item, int rate)
     {
         IngredientStockEntry entry = EnsureEntry(item);
         if (entry == null) return;
-        entry.reorderTarget = Mathf.Max(0, target);
+        int clampedRate = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(0, rate) / 5f) * 5,
+            0, MaxSupplyRatePerMinute);
+        entry.supplyRatePerMinute = clampedRate;
+        if (clampedRate == 0)
+            entry.supplyUnitProgress = 0f;
     }
 
-    public void ClearAllReorderTargets()
+    public void RestoreSupplySettings(ItemDefinition item, int rate, float unitProgress, float costRemainder)
+    {
+        IngredientStockEntry entry = EnsureEntry(item);
+        if (entry == null) return;
+        entry.supplyRatePerMinute = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(0, rate) / 5f) * 5,
+            0, MaxSupplyRatePerMinute);
+        entry.supplyUnitProgress = Mathf.Clamp(unitProgress, 0f, 0.9999f);
+        entry.supplyCostRemainder = Mathf.Clamp(costRemainder, 0f, 0.9999f);
+    }
+
+    public void ClearAllSupplySettings()
     {
         foreach (IngredientStockEntry entry in stock)
-            if (entry != null) entry.reorderTarget = 0;
+        {
+            if (entry == null) continue;
+            entry.supplyRatePerMinute = 0;
+            entry.supplyUnitProgress = 0f;
+            entry.supplyCostRemainder = 0f;
+        }
     }
 
-    void TryAutomaticRestock()
+    void DeliverConfiguredSupplyRates(float elapsedMinutes)
     {
-        if (!MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
-        IngredientDeliveryService service = IngredientDeliveryService.Instance;
-        if (!ShiftPlanningUI.IsPlanning && service != null && service.HasPending) return;
-
+        if (elapsedMinutes <= 0f || !MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
         if (money == null) money = FindObjectOfType<MoneyManager>();
-        var cart = new Dictionary<ItemDefinition, int>();
-        long estimatedCost = 0;
-        foreach (ItemDefinition item in GetOrderableItems())
+        bool stockChanged = false;
+        for (int i = 0; i < stock.Count; i++)
         {
-            if (item == null || !IsOrderItemUnlocked(item)) continue;
-            int target = GetReorderTarget(item);
-            if (target <= 0) continue;
+            IngredientStockEntry entry = stock[i];
+            ItemDefinition item = entry != null ? entry.item : null;
+            if (item == null || entry.supplyRatePerMinute <= 0 || !IsOrderItemUnlocked(item)) continue;
 
-            int available = GetCount(item) + (service != null ? service.GetIncomingCount(item) : 0);
-            available = Mathf.Min(available, MaxIngredientStock);
-            if (available >= target) continue;
+            int availableSpace = GetAvailableStockCapacity(item);
+            if (availableSpace <= 0)
+            {
+                entry.supplyUnitProgress = Mathf.Min(entry.supplyUnitProgress, 0.9999f);
+                continue;
+            }
 
-            int packSize = GetPackSize(item);
-            int packs = Mathf.CeilToInt((target - available) / (float)packSize);
-            packs = Mathf.Min(packs, GetAvailableStockCapacity(item) / packSize);
-            if (packs <= 0) continue;
-            long itemCost = (long)GetPackPrice(item) * packs;
-            if (money != null && estimatedCost + itemCost > money.CurrentMoney) continue;
+            entry.supplyUnitProgress += entry.supplyRatePerMinute * elapsedMinutes;
+            int units = Mathf.Min(Mathf.FloorToInt(entry.supplyUnitProgress), availableSpace);
+            if (units <= 0) continue;
 
-            cart.Add(item, packs);
-            estimatedCost += itemCost;
+            float unitCost = GetPackPrice(item) / (float)GetPackSize(item);
+            float accumulatedCost = entry.supplyCostRemainder + unitCost * units;
+            int charge = Mathf.FloorToInt(accumulatedCost + 0.0001f);
+            if (money != null && charge > 0 && !money.TrySpend(charge))
+            {
+                entry.supplyUnitProgress = Mathf.Min(entry.supplyUnitProgress, 0.9999f);
+                continue;
+            }
+
+            entry.quantity = Mathf.Min(MaxIngredientStock, entry.quantity + units);
+            entry.supplyUnitProgress -= units;
+            if (entry.supplyUnitProgress >= 1f)
+                entry.supplyUnitProgress = 0.9999f;
+            entry.supplyCostRemainder = Mathf.Clamp(accumulatedCost - charge, 0f, 0.9999f);
+            stockChanged = true;
         }
 
-        // Batch all affordable automatic restocks through the same plan/shift ordering path.
-        if (cart.Count > 0)
-            TryOrderCart(cart, false, false);
+        if (stockChanged)
+            ProductionManager.Instance?.NotifyProductionStateChanged();
     }
 
     public bool TryConsume(ItemDefinition item, int amount = 1)

@@ -22,8 +22,10 @@ public class IngredientsOrderUI : MonoBehaviour
     public GameObject drinkPreviewPrefab;
 
     public float refreshInterval = 0.35f;
-    const float SupplyCardHeight = 72f;
+    const float SupplyCardHeight = 62f;
     const float SupplyGridGap = 6f;
+    static readonly int[] BasicSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40 };
+    static readonly int[] AdvancedSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40, 60, 80 };
     float nextRefresh;
     float nextCatalogCheck;
     const float CatalogCheckInterval = 2f;
@@ -1803,8 +1805,8 @@ public class IngredientsOrderUI : MonoBehaviour
         var go = new GameObject("IngredientGroup_" + category, typeof(RectTransform));
         go.transform.SetParent(listContainer, false);
         var layout = go.AddComponent<LayoutElement>();
-        layout.minHeight = 34f;
-        layout.preferredHeight = 34f;
+        layout.minHeight = 30f;
+        layout.preferredHeight = 30f;
         var text = go.AddComponent<TextMeshProUGUI>();
         text.text = category;
         text.fontSize = 18f;
@@ -1933,6 +1935,7 @@ public class IngredientsOrderUI : MonoBehaviour
         hlg.childControlWidth = true;
         hlg.childForceExpandWidth = false;
         hlg.childControlHeight = true;
+        hlg.childForceExpandHeight = false;
 
         var previewGo = new GameObject("IngredientIcon", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         previewGo.transform.SetParent(row.transform, false);
@@ -1977,8 +1980,10 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI autoOrderLabel;
-        Button autoOrderButton = CreateCartButton(row.transform, "AutoRestock", "Auto", 52f,
+        Button autoOrderButton = CreateCartButton(row.transform, "AutoRestock", "Off", 52f,
             GameUITheme.SurfaceHover, out autoOrderLabel);
+        DelayedTooltip.Attach(autoOrderButton,
+            "Automatic supplier rate. Click to cycle the items received per minute; set to Off to stop.");
         SetCompactCartButton(autoOrderButton, 52f, 38f);
         autoOrderLabel.fontSize = 10.5f;
         autoOrderLabel.enableAutoSizing = true;
@@ -2011,12 +2016,20 @@ public class IngredientsOrderUI : MonoBehaviour
         autoOrderButton.onClick.AddListener(() =>
         {
             if (!MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
-            int packSize = inventory != null ? inventory.GetPackSize(captured) : 1;
-            int currentTarget = inventory != null ? inventory.GetReorderTarget(captured) : 0;
-            int maxPacks = MilestoneFeatures.IsResearchComplete("smart_operations") ? 8 : 4;
-            int maximumTarget = packSize * maxPacks;
-            int nextTarget = currentTarget >= maximumTarget ? 0 : currentTarget + packSize;
-            inventory?.SetReorderTarget(captured, nextTarget);
+            int currentRate = inventory != null ? inventory.GetSupplyRatePerMinute(captured) : 0;
+            int[] options = MilestoneFeatures.IsResearchComplete("smart_operations")
+                ? AdvancedSupplyRateOptions : BasicSupplyRateOptions;
+            int maxRate = options[options.Length - 1];
+            currentRate = Mathf.Min(currentRate, maxRate);
+            int currentIndex = 0;
+            for (int i = 0; i < options.Length; i++)
+                if (options[i] == currentRate)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            int nextRate = options[(currentIndex + 1) % options.Length];
+            inventory?.SetSupplyRatePerMinute(captured, nextRate);
             RefreshAll();
         });
         removeButton.onClick.AddListener(() =>
@@ -2441,7 +2454,7 @@ public class IngredientsOrderUI : MonoBehaviour
             int price = inventory.GetPackPrice(row.item);
             int stock = inventory.GetCount(row.item);
             int incoming = delivery != null ? delivery.GetIncomingCount(row.item) : 0;
-            int reorderTarget = inventory.GetReorderTarget(row.item);
+            int supplyRate = inventory.GetSupplyRatePerMinute(row.item);
             int maxPacks = pack > 0 ? inventory.GetAvailableStockCapacity(row.item) / pack : 0;
             if (!unlocked && GetCartPacks(row.item) != 0) SetCartPacks(row.item, 0);
             int selected = unlocked ? GetCartPacks(row.item) : 0;
@@ -2468,7 +2481,7 @@ public class IngredientsOrderUI : MonoBehaviour
                     row.lockedOverlay.SetActive(!unlocked);
             }
             if (unlockChanged || row.displayedStock != stock || row.displayedIncoming != incoming
-                || row.displayedReorderTarget != reorderTarget
+                || row.displayedSupplyRatePerMinute != supplyRate
                 || row.displayedAutomaticOrderingUnlocked != automaticOrderingUnlocked)
             {
                 if (row.stockText != null)
@@ -2478,14 +2491,17 @@ public class IngredientsOrderUI : MonoBehaviour
                     {
                         string stockValue = stock + "/" + KitchenInventory.MaxIngredientStock
                             + (incoming > 0 ? "  (" + incoming + " incoming)" : string.Empty);
-                        string autoValue = !automaticOrderingUnlocked ? "Locked"
-                            : reorderTarget > 0 ? "Tgt " + reorderTarget : "Off";
-                        row.stockText.text = "Stock\n" + stockValue + "\n" + autoValue;
+                        string rateValue = !automaticOrderingUnlocked ? "Locked"
+                            : supplyRate > 0 ? "Rate " + supplyRate + "/min" : "Rate Off";
+                        row.stockText.text = "Stock\n" + stockValue + "\n" + rateValue;
                     }
                     row.stockText.color = GameUITheme.TextSecondary;
                 }
                 SetButtonState(row.autoOrderButton, unlocked && automaticOrderingUnlocked,
-                    reorderTarget > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
+                    supplyRate > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
+                if (row.autoOrderLabel != null)
+                    row.autoOrderLabel.text = !automaticOrderingUnlocked ? "Locked"
+                        : supplyRate > 0 ? supplyRate + "/m" : "Off";
             }
             if (unlockChanged || row.displayedCartPacks != selected)
                 if (row.cartCountText != null) row.cartCountText.text = unlocked ? "x" + selected : string.Empty;
@@ -2497,7 +2513,7 @@ public class IngredientsOrderUI : MonoBehaviour
             row.displayedPrice = price;
             row.displayedStock = stock;
             row.displayedIncoming = incoming;
-            row.displayedReorderTarget = reorderTarget;
+            row.displayedSupplyRatePerMinute = supplyRate;
             row.displayedAutomaticOrderingUnlocked = automaticOrderingUnlocked;
             row.displayedCartPacks = selected;
             row.displayedDeliveryActive = deliveryActive;
@@ -2678,7 +2694,7 @@ public class IngredientOrderRow : MonoBehaviour
     internal int displayedPrice;
     internal int displayedStock;
     internal int displayedIncoming;
-    internal int displayedReorderTarget;
+    internal int displayedSupplyRatePerMinute;
     internal bool displayedAutomaticOrderingUnlocked;
     internal int displayedCartPacks;
     internal bool displayedDeliveryActive;

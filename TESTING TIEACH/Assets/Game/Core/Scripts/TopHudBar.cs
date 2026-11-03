@@ -13,6 +13,7 @@ public class TopHudBar : MonoBehaviour
     public const string TimeSectionName = "TimeSection";
     public const string MoneyTextName = "MoneyText";
     public const string HudActionsName = "HudActions";
+    public const float HudScale = 1.08f;
     const float BarWidth = 760f;
     const float CompactBarHeight = 60f;
     const int StoreReputationMaxStars = 5;
@@ -68,7 +69,7 @@ public class TopHudBar : MonoBehaviour
         bool barHeightMismatch = barRect != null
             && Mathf.Abs(barRect.rect.height - CompactBarHeight) > 0.5f;
         bool backdropHeightMismatch = connectedBackdrop != null
-            && Mathf.Abs(connectedBackdrop.rect.height - CompactBarHeight) > 0.5f;
+            && Mathf.Abs(connectedBackdrop.rect.height - CompactBarHeight * HudScale) > 0.5f;
         if (barHeightMismatch || backdropHeightMismatch)
             ApplyFitLayout();
 
@@ -166,11 +167,12 @@ public class TopHudBar : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = Vector2.zero;
+        rt.localScale = Vector3.one * HudScale;
         // 760 fits between the 550-wide left and right tab strips at 1920
         // without either side covering the money or notification controls.
         rt.sizeDelta = new Vector2(BarWidth, CompactBarHeight);
 
-        EnsureConnectedBackdrop(rt.parent, CompactBarHeight);
+        EnsureConnectedBackdrop(rt.parent, CompactBarHeight * HudScale);
         connectedBackdrop = rt.parent != null
             ? rt.parent.Find(BackdropObjectName) as RectTransform
             : null;
@@ -245,16 +247,17 @@ public class TopHudBar : MonoBehaviour
         {
             var le = hudActions.GetComponent<LayoutElement>() ?? hudActions.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
-            le.minWidth = 240f;
-            le.preferredWidth = 240f;
+            le.minWidth = 264f;
+            le.preferredWidth = 264f;
             le.flexibleWidth = 0f;
             hudActions.anchorMin = new Vector2(1f, 1f);
             hudActions.anchorMax = new Vector2(1f, 1f);
             hudActions.pivot = new Vector2(1f, 1f);
+            hudActions.localScale = Vector3.one * HudScale;
             // Keep the action buttons between the notification control and the
             // objectives card, instead of crowding the card at the screen edge.
-            hudActions.anchoredPosition = new Vector2(-308f, -8f);
-            hudActions.sizeDelta = new Vector2(240f, 48f);
+            hudActions.anchoredPosition = new Vector2(-280f, -8f);
+            hudActions.sizeDelta = new Vector2(264f, 48f);
         }
 
         if (moneyText != null)
@@ -329,6 +332,19 @@ public class TopHudBar : MonoBehaviour
         section.sizeDelta = size;
     }
 
+    public static void ApplyHudPanelScale(RectTransform panel)
+    {
+        if (panel == null) return;
+        float previousScale = panel.localScale.x;
+        if (Mathf.Abs(previousScale - HudScale) > 0.001f)
+        {
+            Vector2 position = panel.anchoredPosition;
+            position.x += panel.rect.width * panel.pivot.x * (HudScale - previousScale);
+            panel.anchoredPosition = position;
+            panel.localScale = Vector3.one * HudScale;
+        }
+    }
+
     void EnsureUtilityControls()
     {
         var controls = GetComponent<TopHudUtilityControls>();
@@ -356,14 +372,14 @@ public class TopHudBar : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         Button recipes = FindOrCreateHudAction(section.transform, "RecipesButton", "Recipes", GameIconId.MenuList);
-        Button research = FindOrCreateHudAction(section.transform, "ResearchButton", "Research", GameIconId.Gear);
         Button analytics = FindOrCreateHudAction(section.transform, "AnalyticsButton", "Analytics", GameIconId.Analytics);
+        Transform oldResearchButton = section.transform.Find("ResearchButton");
+        if (oldResearchButton != null)
+            Destroy(oldResearchButton.gameObject);
         EnsureStoreReputationDisplay(section.transform, recipes);
 
         recipes.onClick.RemoveAllListeners();
         recipes.onClick.AddListener(OpenRecipesFromHud);
-        research.onClick.RemoveAllListeners();
-        research.onClick.AddListener(OpenResearchFromHud);
         analytics.onClick.RemoveAllListeners();
         analytics.onClick.AddListener(OpenAnalyticsFromHud);
     }
@@ -595,30 +611,42 @@ public class TopHudBar : MonoBehaviour
             go.transform.SetParent(parent, false);
             button = go.GetComponent<Button>();
             button.targetGraphic = go.GetComponent<Image>();
-
-            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-            labelGo.transform.SetParent(go.transform, false);
-            RectTransform labelRect = (RectTransform)labelGo.transform;
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
-            TextMeshProUGUI text = labelGo.GetComponent<TextMeshProUGUI>();
-            text.text = label;
-            text.fontSize = 12f;
-            text.alignment = TextAlignmentOptions.Center;
-            text.color = Color.white;
-            text.raycastTarget = false;
-            if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         }
 
+        Transform labelTransform = button.transform.Find("Label");
+        if (labelTransform == null)
+        {
+            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelGo.transform.SetParent(button.transform, false);
+            labelTransform = labelGo.transform;
+        }
+        RectTransform labelRect = (RectTransform)labelTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        TextMeshProUGUI text = labelTransform.GetComponent<TextMeshProUGUI>();
+        text.enabled = true;
+        text.text = label;
+        text.fontSize = 10.5f;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = 9f;
+        text.fontSizeMax = 10.5f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+
         var layout = button.GetComponent<LayoutElement>() ?? button.gameObject.AddComponent<LayoutElement>();
-        layout.minWidth = 42f;
-        layout.preferredWidth = 42f;
+        float buttonWidth = label == "Recipes" ? 82f : label == "Analytics" ? 86f : 42f;
+        layout.minWidth = buttonWidth;
+        layout.preferredWidth = buttonWidth;
         layout.flexibleWidth = 0f;
         layout.minHeight = 40f;
         layout.preferredHeight = 40f;
         button.GetComponent<Image>().color = GameUITheme.Surface;
-        GameIconLibrary.ApplyToButton(button, icon, 23f, 0f, true);
+        GameIconLibrary.ApplyToButton(button, icon, 17f, 7f, false);
         GameUITheme.ApplyCompactControlEffects(button);
         DelayedTooltip.Attach(button, label + ": open");
         return button;
@@ -632,14 +660,6 @@ public class TopHudBar : MonoBehaviour
         IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
         if (ingredients != null)
             ingredients.OpenRecipesFromHud();
-    }
-
-    void OpenResearchFromHud()
-    {
-        Sfx.Play(SfxId.UiClick);
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas != null)
-            ResearchTreeUI.Open(canvas.rootCanvas != null ? canvas.rootCanvas.transform : canvas.transform);
     }
 
     void OpenAnalyticsFromHud()

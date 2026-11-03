@@ -286,11 +286,9 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
     bool TryGetCautionDetails(out string details)
     {
         Register register = GetComponent<Register>();
-        if (register != null && !register.isEnabled)
-        {
-            details = "REGISTER DISABLED\nClick the register and choose Enable.";
+        if (register != null && register.IsPlacedRegister
+            && TryGetRegisterCapacityWarning(out details))
             return true;
-        }
 
         if (!HasConfiguration())
         {
@@ -307,6 +305,36 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         }
         details = "";
         return false;
+    }
+
+    bool TryGetRegisterCapacityWarning(out string details)
+    {
+        details = string.Empty;
+        int placedRegisterCount = 0;
+        IReadOnlyList<Register> activeRegisters = Register.ActiveRegisters;
+        for (int i = 0; i < activeRegisters.Count; i++)
+        {
+            Register placed = activeRegisters[i];
+            if (placed != null && placed.IsPlacedRegister)
+                placedRegisterCount++;
+        }
+
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config == null)
+        {
+            CustomerSpawner spawner = FindFirstObjectByType<CustomerSpawner>();
+            if (spawner != null) config = spawner.orderConfig;
+        }
+        if (config == null || placedRegisterCount == 0) return false;
+
+        int demand = config.DemandCustomersPerMinute;
+        float capacity = placedRegisterCount * Register.MaxOrdersPerMinute;
+        if (demand <= capacity) return false;
+
+        details = "REGISTER CAPACITY LOW\nDemand " + demand + "/min exceeds "
+            + capacity.ToString("0") + "/min capacity. Add a register.";
+        return true;
     }
 
     bool HasConfiguration()
@@ -455,6 +483,14 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
                 indicatorRect, Input.mousePosition, null)) return;
         if (explanation == null || explanationGroup == null || string.IsNullOrEmpty(currentDetails)) return;
         explanation.text = currentDetails;
+        RectTransform explanationPanel = explanation.transform.parent as RectTransform;
+        if (explanationPanel != null)
+        {
+            float textWidth = Mathf.Max(1f, explanationPanel.rect.width - 24f);
+            float textHeight = explanation.GetPreferredValues(currentDetails, textWidth, 0f).y;
+            explanationPanel.sizeDelta = new Vector2(explanationPanel.sizeDelta.x,
+                Mathf.Max(78f, textHeight + 16f));
+        }
         explanationGroup.gameObject.SetActive(true);
         explanationGroup.alpha = 1f;
         explanationShownAt = Time.unscaledTime;

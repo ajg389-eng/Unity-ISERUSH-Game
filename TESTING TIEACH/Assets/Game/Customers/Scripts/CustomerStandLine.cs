@@ -11,6 +11,11 @@ public static class CustomerStandLine
 
     public static Vector3 Place(Vector3 firstSlot, int index, float spacing)
     {
+        return Place(firstSlot, index, spacing, Vector3.right);
+    }
+
+    public static Vector3 Place(Vector3 firstSlot, int index, float spacing, Vector3 direction)
+    {
         index = Mathf.Max(0, index);
         GridManager grid = GridManager.Instance;
         if (grid != null)
@@ -27,7 +32,13 @@ public static class CustomerStandLine
             spacing = Mathf.Max(MinimumSpacingWithoutGrid, spacing);
         }
 
-        Vector3 slot = firstSlot + Vector3.right * (spacing * index);
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = Vector3.right;
+        else
+            direction.Normalize();
+
+        Vector3 slot = firstSlot + direction * (spacing * index);
         slot.y = firstSlot.y;
         return slot;
     }

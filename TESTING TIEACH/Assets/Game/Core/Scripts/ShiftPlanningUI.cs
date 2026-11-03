@@ -183,8 +183,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     {
         if (panelRoot != null && preShiftPlanningActive && !planHiddenForStationPopup)
         {
-            // Keep planning controls active for tutorial setup, but show the
-            // card only in tutorial steps that ask the player to use it.
+            // Once Gus introduces the plan, keep it visible throughout setup.
             bool showPlan = !OnboardingTutorial.IsActive
                 || OnboardingTutorial.ShouldShowPlanCardDuringTutorial;
             if (panelRoot.activeSelf != showPlan)
@@ -252,6 +251,49 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         Sfx.Play(SfxId.UiOpen);
     }
 
+    public static void ReturnToPlanPhaseAfterTutorial()
+    {
+        ShiftPlanningUI planning = Instance != null
+            ? Instance
+            : FindFirstObjectByType<ShiftPlanningUI>(FindObjectsInactive.Include);
+        GameTimeManager clock = GameTimeManager.Instance;
+        if (clock != null)
+            clock.ResetDayClock();
+        if (planning == null)
+            return;
+
+        planning.timeManager = clock != null ? clock : planning.timeManager;
+        planning.planHiddenForStationPopup = false;
+        planning.ShowPlanningCard();
+    }
+
+    /// <summary>Restores the HUD and, when interrupted, the active Plan phase after a Gus cutscene.</summary>
+    public static void RestoreAfterGusCutscene(bool returnToPlan)
+    {
+        ShiftPlanningUI planning = Instance != null
+            ? Instance
+            : FindFirstObjectByType<ShiftPlanningUI>(FindObjectsInactive.Include);
+        if (planning == null)
+        {
+            MainHudTabs fallbackTabs = MainHudTabs.EnsureInScene();
+            if (fallbackTabs != null)
+                fallbackTabs.RestoreNavigation();
+            return;
+        }
+
+        if (returnToPlan)
+        {
+            planning.timeManager = GameTimeManager.Instance != null
+                ? GameTimeManager.Instance : planning.timeManager;
+            planning.planHiddenForStationPopup = false;
+            planning.ShowPlanningCard();
+        }
+        else
+        {
+            planning.EnsureMainHudNavigation();
+        }
+    }
+
     void EnsureMainHudNavigation()
     {
         MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
@@ -263,9 +305,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
 
         if (tabs == null) return;
-        if (!tabs.gameObject.activeSelf)
-            tabs.gameObject.SetActive(true);
-        tabs.Build();
+        tabs.RestoreNavigation();
         tabs.transform.SetAsLastSibling();
     }
 
@@ -440,7 +480,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         previewObject.transform.SetParent(rowRoot.transform, false);
         LayoutElement previewSize = previewObject.GetComponent<LayoutElement>();
         previewSize.minWidth = previewSize.preferredWidth = 32f;
-        previewSize.minHeight = previewSize.preferredHeight = 32f;
+        previewSize.minHeight = previewSize.preferredHeight = 30f;
         RawImage preview = previewObject.GetComponent<RawImage>();
         preview.color = Color.white;
         preview.raycastTarget = false;
@@ -451,9 +491,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             preview = preview,
             itemName = CreateDemandCell(rowRoot.transform, "ItemName", string.Empty, 0f, true,
                 14f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
-            changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 30f, 10f,
+            changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 28f, 10f,
                 GameUITheme.Surface),
-            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 30f, 9f,
+            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 28f, 9f,
                 GameUITheme.Danger),
             rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 72f, false,
                 14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
@@ -609,7 +649,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = false;
-        layout.childForceExpandHeight = true;
+        layout.childForceExpandHeight = false;
 
         LayoutElement size = row.GetComponent<LayoutElement>();
         size.minHeight = height;
@@ -932,6 +972,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (isOpen)
         {
             if (!planning.panelRoot.activeSelf) return;
+            if (OnboardingTutorial.ShouldShowPlanCardDuringTutorial)
+            {
+                planning.planHiddenForStationPopup = false;
+                return;
+            }
             planning.planHiddenForStationPopup = true;
             planning.panelRoot.SetActive(false);
             return;

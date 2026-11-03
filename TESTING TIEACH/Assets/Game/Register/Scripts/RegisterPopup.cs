@@ -1,64 +1,18 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 
+/// <summary>
+/// Legacy popup component retained for prefab compatibility. Registers no
+/// longer expose an enable/disable control, so any old popup instance closes.
+/// </summary>
 public class RegisterPopup : MonoBehaviour
 {
-    public Vector3 offset = new Vector3(0, 2.5f, 0);
-
-    public Button toggleButton;
-    public TextMeshProUGUI buttonText;
-
-    Register target;
-    bool bound;
-
-    public void Bind(Register reg)
+    public void Bind(Register register)
     {
-        target = reg;
-        bound = true;
-        if (toggleButton != null)
-        {
-            toggleButton.interactable = true;
-            toggleButton.onClick.RemoveListener(ToggleTarget);
-            toggleButton.onClick.AddListener(ToggleTarget);
-        }
-        target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(true);
-        UpdateText();
-        GameUITheme.ApplyButton(toggleButton);
+        Destroy(gameObject);
     }
 
-    void ToggleTarget()
+    void Awake()
     {
-        if (!target) return;
-        target.Toggle();
-        UpdateText();
-        GameUITheme.ApplyButton(toggleButton);
-    }
-
-    void OnEnable()
-    {
-        if (target != null) target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(true);
-    }
-
-    void OnDisable()
-    {
-        if (target != null) target.GetComponent<StationConfigurationCaution>()?.SetControlPopupVisible(false);
-    }
-
-    void LateUpdate()
-    {
-        if (!bound) return;
-        if (!target) { Destroy(gameObject); return; }
-
-        transform.position = target.transform.position + offset;
-
-        if (Camera.main)
-            transform.forward = Camera.main.transform.forward;
-    }
-
-    void UpdateText()
-    {
-        if (!buttonText || !target) return;
-        buttonText.text = target.isEnabled ? "Disable" : "Enable";
+        Destroy(gameObject);
     }
 }

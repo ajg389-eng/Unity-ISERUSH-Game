@@ -3,10 +3,14 @@ using UnityEngine;
 
 public class Register : MonoBehaviour
 {
+    public const float MaxOrdersPerMinute = 30f;
+    const float MinimumOrderTakeSeconds = 60f / MaxOrdersPerMinute;
+
     static readonly List<Register> activeRegisters = new List<Register>();
     public static IReadOnlyList<Register> ActiveRegisters => activeRegisters;
 
-    public bool isEnabled = true;
+    /// <summary>Registers are always open for customer orders.</summary>
+    public bool isEnabled => true;
     [System.NonSerialized] public bool isPlacementPreview;
     public bool IsPlacedRegister => !isPlacementPreview && isActiveAndEnabled;
 
@@ -26,8 +30,24 @@ public class Register : MonoBehaviour
 
     readonly List<CustomerAI> queue = new List<CustomerAI>();
     readonly List<CustomerAI> pickup = new List<CustomerAI>();
+    readonly Queue<float> acceptedOrderTimes = new Queue<float>();
     public int QueueCount => queue.Count;
     public int PickupCount => pickup.Count;
+
+    public bool HasCustomerInOrderQueue(CustomerAI customer)
+    {
+        return customer != null && queue.Contains(customer);
+    }
+
+    /// <summary>Orders accepted at this register during the last 60 simulated seconds.</summary>
+    public int AcceptedOrdersPerMinute
+    {
+        get
+        {
+            PruneAcceptedOrderTimes();
+            return acceptedOrderTimes.Count;
+        }
+    }
 
     [Header("Prepared orders")]
     [Tooltip("Legacy single-slot buffer. Prefer HeatLampStation for fast-food serving.")]
@@ -45,7 +65,8 @@ public class Register : MonoBehaviour
 
     [Header("Ordering")]
     [Tooltip("Seconds the front customer spends ordering before moving to the Pickup Station line.")]
-    public float orderTakeSeconds = 1.25f;
+    [Min(MinimumOrderTakeSeconds)]
+    public float orderTakeSeconds = MinimumOrderTakeSeconds;
     [Tooltip("Menu used when the customer finishes ordering. Defaults to ProductionManager.orderConfig.")]
     public CustomerOrderConfig orderConfig;
 
@@ -214,6 +235,8 @@ public class Register : MonoBehaviour
         if (customer == null) return;
         if (!queue.Contains(customer)) return;
 
+        acceptedOrderTimes.Enqueue(Time.time);
+        PruneAcceptedOrderTimes();
         queue.Remove(customer);
         if (!pickup.Contains(customer))
             pickup.Add(customer);
@@ -221,6 +244,13 @@ public class Register : MonoBehaviour
         UpdateQueueTargets();
         customer.OnOrderPlacedAtRegister();
         Sfx.Play(SfxId.CustomerArrive);
+    }
+
+    void PruneAcceptedOrderTimes()
+    {
+        float cutoff = Time.time - 60f;
+        while (acceptedOrderTimes.Count > 0 && acceptedOrderTimes.Peek() <= cutoff)
+            acceptedOrderTimes.Dequeue();
     }
 
     /// <summary>
@@ -239,11 +269,16 @@ public class Register : MonoBehaviour
         }
 
         orderTimer += Time.deltaTime;
-        if (orderTimer < Mathf.Max(0.15f, orderTakeSeconds))
+        // Enforce a hard ceiling of 30 accepted orders per simulated minute,
+        // including when an older prefab or save still has a shorter duration.
+        if (orderTimer < Mathf.Max(MinimumOrderTakeSeconds, orderTakeSeconds))
             return false;
 
-        CustomerOrderConfig menu = ResolveOrderConfig();
         bool tutorialOrder = OnboardingTutorial.IsActive;
+        CustomerOrderConfig menu = tutorialOrder && ProductionManager.Instance != null
+            && ProductionManager.Instance.orderConfig != null
+                ? ProductionManager.Instance.orderConfig
+                : ResolveOrderConfig();
         CustomerOrder selectedOrder = tutorialOrder
             ? (menu != null ? CustomerOrder.FromItem(menu.burgerBase, 1) : null)
             : front.GetOrder();
@@ -507,23 +542,6 @@ public class Register : MonoBehaviour
         FloatingMoneyText.Spawn(pos, sale, transform);
     }
 
-    public void Toggle()
-    {
-        isEnabled = !isEnabled;
-
-        if (!isEnabled)
-        {
-            foreach (var c in queue)
-                if (c != null) c.OnRegisterDisabled();
-            foreach (var c in pickup)
-                if (c != null) c.OnRegisterDisabled();
-            queue.Clear();
-            pickup.Clear();
-        }
-
-        UpdateQueueTargets();
-    }
-
     public void ResetRuntimeState()
     {
         CustomerAI[] waiting = queue.ToArray();
@@ -599,7 +617,17 @@ public class Register : MonoBehaviour
     {
         get
         {
-            if (queueDirection.sqrMagnitude > 0.0001f) return queueDirection.normalized;
+            if (queueStart != null)
+            {
+                Vector3 fromRegister = queueStart.position - transform.position;
+                fromRegister.y = 0f;
+                if (fromRegister.sqrMagnitude > 0.04f)
+                    return fromRegister.normalized;
+            }
+
+            Vector3 configured = queueDirection;
+            configured.y = 0f;
+            if (configured.sqrMagnitude > 0.0001f) return configured.normalized;
             return Vector3.back;
         }
     }
@@ -748,9 +776,7 @@ public class Register : MonoBehaviour
     /// </summary>
     Vector3 GetLobbyDir()
     {
-        // Customer floor is always on the world-east side of the counter.
-        // Keep this independent of the prefab rotation and worker stand tiles.
-        return Vector3.right;
+        return QueueDir;
     }
 
     Vector3 SlotHeight(Vector3 pos)
@@ -764,20 +790,29 @@ public class Register : MonoBehaviour
 
     Vector3 GetQueueSlot(int index)
     {
-        Bounds bounds = GetRegisterBounds();
         GridManager placementGrid = GridManager.Instance;
         float cell = placementGrid != null ? Mathf.Max(0.01f, placementGrid.cellSize) : 1f;
-        Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
+        Vector3 first;
+        if (queueStart != null)
+        {
+            // QueuePoint1 is authored on the lobby side of the register prefab.
+            // Use it as the actual front-of-line destination so customers do not
+            // get sent to a guessed tile on the kitchen side of a rotated counter.
+            first = queueStart.position;
+        }
+        else
+        {
+            Bounds bounds = GetRegisterBounds();
+            Vector3 origin = placementGrid != null ? placementGrid.Origin : Vector3.zero;
+            int firstX = Mathf.FloorToInt((bounds.max.x + 0.01f - origin.x) / cell);
+            int rowZ = Mathf.FloorToInt((bounds.center.z - origin.z) / cell);
+            first = new Vector3(
+                origin.x + (firstX + 0.5f) * cell,
+                transform.position.y,
+                origin.z + (rowZ + 0.5f) * cell);
+        }
 
-        // First cell immediately east of the register. Each following customer
-        // stands on the next cell in the same row.
-        int firstX = Mathf.FloorToInt((bounds.max.x + 0.01f - origin.x) / cell);
-        int rowZ = Mathf.FloorToInt((bounds.center.z - origin.z) / cell);
-        Vector3 first = new Vector3(
-            origin.x + (firstX + 0.5f) * cell,
-            transform.position.y,
-            origin.z + (rowZ + 0.5f) * cell);
-        return SlotHeight(CustomerStandLine.Place(first, index, Mathf.Max(cell, spacing)));
+        return SlotHeight(CustomerStandLine.Place(first, index, Mathf.Max(cell, spacing), QueueDir));
     }
 
     /// <summary>

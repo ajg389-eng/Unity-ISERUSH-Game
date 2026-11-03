@@ -401,17 +401,6 @@ public static class UIInputFocusGuard
                 GameObject hit = PointerRaycastResults[i].gameObject;
                 if (hit == null) continue;
 
-                // Tutorial cards sit on a screen-space canvas while the player
-                // needs to click highlighted objects in the world. Only actual
-                // tutorial controls (such as Next) should consume that click.
-                if (hit.GetComponentInParent<OnboardingTutorial>() != null)
-                {
-                    if (hit.GetComponentInParent<Selectable>() != null
-                        || hit.GetComponentInParent<ScrollRect>() != null)
-                        return true;
-                    continue;
-                }
-
                 bool insideBuildPanel = cachedInventoryUI != null
                     && cachedInventoryUI.IsPanelOpen
                     && hit.transform.IsChildOf(cachedInventoryUI.panel.transform);
@@ -425,16 +414,20 @@ public static class UIInputFocusGuard
                 // not consume the world click intended for the object beneath.
                 // Real controls still block the click, including controls on a
                 // world-space canvas.
-                if (hit.GetComponentInParent<Selectable>() != null
-                    || hit.GetComponentInParent<ScrollRect>() != null)
+                if (hit.GetComponentInParent<Selectable>() != null)
                     return true;
 
                 Canvas hitCanvas = hit.GetComponentInParent<Canvas>();
                 if (hitCanvas != null && hitCanvas.renderMode == RenderMode.WorldSpace)
                     continue;
 
-                if (!insideBuildPanel && !insideBusinessPanel)
-                    return true;
+                // Empty panel and scroll-view space is visual/navigation area,
+                // not a world-click blocker. Buttons and other Selectables above
+                // still consume their own clicks.
+                if (insideBuildPanel || insideBusinessPanel)
+                    continue;
+
+                return true;
             }
 
             return false;

@@ -492,11 +492,22 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     Transform EnsureWallGroup(int index)
     {
-        while (wallGroupPool.Count <= index)
+        while (wallGroupPool.Count <= index || wallGroupPool[index] == null)
         {
-            var go = new GameObject("KitchenWallGroup_" + wallGroupPool.Count);
+            if (wallGroupPool.Count <= index)
+                wallGroupPool.Add(null);
+
+            string name = "KitchenWallGroup_" + index;
+            Transform existing = root != null ? root.Find(name) : null;
+            if (existing != null)
+            {
+                wallGroupPool[index] = existing;
+                continue;
+            }
+
+            var go = new GameObject(name);
             go.transform.SetParent(root != null ? root : transform, false);
-            wallGroupPool.Add(go.transform);
+            wallGroupPool[index] = go.transform;
         }
         return wallGroupPool[index];
     }
@@ -729,17 +740,36 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     Transform EnsureWindow(int index)
     {
-        while (windowPool.Count <= index)
+        while (windowPool.Count <= index || windowPool[index] == null)
         {
-            var go = new GameObject("KitchenWindow_" + windowPool.Count);
-            go.transform.SetParent(windowRoot, false);
+            if (windowPool.Count <= index)
+                windowPool.Add(null);
 
-            CreateWindowPart(go.transform, "GlassA", brick: false);
-            CreateWindowPart(go.transform, "GlassB", brick: false);
-            windowPool.Add(go.transform);
+            string name = "KitchenWindow_" + index;
+            Transform existing = windowRoot != null ? windowRoot.Find(name) : null;
+            if (existing != null)
+            {
+                windowPool[index] = existing;
+                EnsureWindowParts(existing);
+                continue;
+            }
+
+            var go = new GameObject(name);
+            go.transform.SetParent(windowRoot, false);
+            windowPool[index] = go.transform;
+            EnsureWindowParts(go.transform);
         }
 
         return windowPool[index];
+    }
+
+    void EnsureWindowParts(Transform window)
+    {
+        if (window == null) return;
+        if (window.Find("GlassA") == null)
+            CreateWindowPart(window, "GlassA", brick: false);
+        if (window.Find("GlassB") == null)
+            CreateWindowPart(window, "GlassB", brick: false);
     }
 
     void HideLegacyGlassFrames()
@@ -780,10 +810,21 @@ public class KitchenPerimeterWalls : MonoBehaviour
 
     Transform EnsureBrick(int index)
     {
-        while (brickPool.Count <= index)
+        while (brickPool.Count <= index || brickPool[index] == null)
         {
+            if (brickPool.Count <= index)
+                brickPool.Add(null);
+
+            string name = "KitchenWallBrick_" + index;
+            Transform pooledBrick = windowRoot != null ? windowRoot.Find(name) : null;
+            if (pooledBrick != null)
+            {
+                brickPool[index] = pooledBrick;
+                continue;
+            }
+
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = "KitchenWallBrick_" + brickPool.Count;
+            go.name = name;
             go.transform.SetParent(windowRoot, false);
             var col = go.GetComponent<Collider>();
             if (col != null) col.enabled = false;
@@ -799,7 +840,7 @@ public class KitchenPerimeterWalls : MonoBehaviour
                 else if (sharedMaterials != null && sharedMaterials.Length > 0)
                     rend.sharedMaterials = sharedMaterials;
             }
-            brickPool.Add(go.transform);
+            brickPool[index] = go.transform;
         }
 
         // Refresh material on pooled bricks (in case look was cached later).

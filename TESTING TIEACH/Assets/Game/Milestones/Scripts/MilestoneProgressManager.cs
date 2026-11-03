@@ -353,7 +353,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
     void EvaluateActiveMilestone()
     {
-        if (OnboardingTutorial.BlocksProgression) return;
+        if (TitleScreenController.IsTitleScreenActive || OnboardingTutorial.BlocksProgression) return;
 
         if (string.IsNullOrEmpty(activeMilestoneId)) return;
         if (completedMilestoneIds.Contains(activeMilestoneId)) return;
@@ -366,6 +366,12 @@ public class MilestoneProgressManager : MonoBehaviour
     {
         EvaluateActiveMilestone();
         OnMilestonesChanged?.Invoke();
+    }
+
+    /// <summary>Evaluate restored progress only after the player enters gameplay.</summary>
+    public void NotifyGameplayStarted()
+    {
+        EvaluateActiveMilestone();
     }
 
 }

@@ -794,6 +794,10 @@ public class TitleScreenController : MonoBehaviour
         if (inGameUIRoot != null)
             inGameUIRoot.SetActive(true);
 
+        MainHudTabs tabs = MainHudTabs.EnsureInScene();
+        if (tabs != null)
+            tabs.RestoreNavigation();
+
         if (GameTimeManager.Instance != null)
             GameTimeManager.Instance.ReleaseExternalPause(GameTimeManager.PauseTitleScreen);
         else
@@ -817,6 +821,8 @@ public class TitleScreenController : MonoBehaviour
             : FindFirstObjectByType<OnboardingTutorial>();
         if (onboarding != null)
             onboarding.NotifyGameStarted();
+
+        MilestoneProgressManager.Instance?.NotifyGameplayStarted();
     }
 
     void OnSettings()
@@ -955,6 +961,7 @@ public class TitleScreenController : MonoBehaviour
 
     IEnumerator PlayGusCutscene(GusCutsceneRequest request)
     {
+        bool wasPlanning = ShiftPlanningUI.IsPlanning;
         GameObject gus = EnsureGusInScene();
         Camera gameplayCamera = gameCamera != null ? gameCamera : Camera.main;
         Camera cutsceneCamera = titleCamera != null ? titleCamera : gameplayCamera;
@@ -1055,6 +1062,12 @@ public class TitleScreenController : MonoBehaviour
                 if (cameraControllers[i] != null) cameraControllers[i].enabled = cameraControllerEnabledStates[i];
 
             CutscenePresentation.End();
+
+            // Cutscenes suppress every gameplay canvas. Restore the HUD after that
+            // suppression ends, and keep the Plan pause/card if the cutscene
+            // interrupted Day 1 setup.
+            if (gameStartCompleted)
+                ShiftPlanningUI.RestoreAfterGusCutscene(wasPlanning);
 
             if (usedTimeManagerPause && timeManager != null)
                 timeManager.ReleaseExternalPause(GusCutscenePauseSource);

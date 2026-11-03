@@ -321,14 +321,17 @@ public class GameTimeUI : MonoBehaviour
         if (strip.anchorMin != topCenter) strip.anchorMin = topCenter;
         if (strip.anchorMax != topCenter) strip.anchorMax = topCenter;
         if (strip.pivot != topCenter) strip.pivot = topCenter;
+        strip.localScale = Vector3.one * TopHudBar.HudScale;
         Vector2 size = new Vector2(202f, 36f);
         if (strip.sizeDelta != size) strip.sizeDelta = size;
 
-        float y = -62f;
+        float y = -62f * TopHudBar.HudScale;
         if (bar != null)
         {
             var barRt = (RectTransform)bar.transform;
-            y = barRt.anchoredPosition.y - barRt.rect.height - 6f;
+            y = barRt.anchoredPosition.y
+                - barRt.rect.height * TopHudBar.HudScale
+                - 6f * TopHudBar.HudScale;
         }
         Vector2 position = new Vector2(0f, y);
         if (strip.anchoredPosition != position) strip.anchoredPosition = position;

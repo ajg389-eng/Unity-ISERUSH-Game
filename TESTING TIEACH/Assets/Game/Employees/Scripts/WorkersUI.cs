@@ -443,11 +443,9 @@ public class WorkersUI : MonoBehaviour
         {
             if (rebuildFlowLayout) LayoutRebuilder.ForceRebuildLayoutImmediate(flowPanel);
             float panelHeight = Mathf.Max(44f, flowPanel.rect.height);
-            // The header ends near the top of the content area; keep the flow
-            // panel and worker list on the same compact baseline.
-            // Keep the panel below the Business submenu row. This space is
-            // required in planning as well as during live management.
-            topInset = 44f + panelHeight + 10f;
+            // The parent tab content already starts below the Business tabs.
+            // Keep only a small gap between the flow card and worker list.
+            topInset = 8f + panelHeight + 8f;
         }
 
         scroll.anchorMin = new Vector2(0f, 0f);
@@ -1107,7 +1105,7 @@ public class WorkersUI : MonoBehaviour
         flowPanel.anchorMin = new Vector2(0f, 1f);
         flowPanel.anchorMax = new Vector2(1f, 1f);
         flowPanel.pivot = new Vector2(0.5f, 1f);
-        flowPanel.anchoredPosition = new Vector2(0f, -44f);
+        flowPanel.anchoredPosition = new Vector2(0f, -8f);
         flowPanel.sizeDelta = new Vector2(-24f, flowPanel.sizeDelta.y);
 
         var fitter = flowPanel.GetComponent<ContentSizeFitter>();
@@ -1746,7 +1744,7 @@ public class WorkersUI : MonoBehaviour
                 .Append("; add ").Append(extraWorkers)
                 .Append(extraWorkers == 1 ? " worker" : " workers")
                 .Append(" at ")
-                .Append(FormatItemRate(KitchenEmployee.GetTransportItemsPerMinuteForLevel(0)))
+                .Append(FormatItemRate(KitchenEmployee.BaseTransportItemsPerMinute))
                 .Append("/min");
         }
         else

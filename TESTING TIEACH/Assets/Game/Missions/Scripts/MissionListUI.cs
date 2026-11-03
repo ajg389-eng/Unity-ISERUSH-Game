@@ -935,7 +935,7 @@ public class MissionListUI : MonoBehaviour
         researchButton = CreateButton(progressionPage.transform, "ResearchButton", "Research",
             new Color(0.22f, 0.48f, 0.58f, 1f));
         researchButton.onClick.AddListener(OpenResearch);
-        researchButton.gameObject.SetActive(false);
+        researchButton.gameObject.SetActive(ResearchProgressManager.ResearchEnabled);
         progressionListContent = CreateSectionList(progressionPage.transform, "ProgressionList");
 
         tasksPage.SetActive(true);
@@ -1011,7 +1011,7 @@ public class MissionListUI : MonoBehaviour
                 researchButton.transform.SetSiblingIndex(progressionList.GetSiblingIndex());
         }
         if (researchButton != null)
-            researchButton.gameObject.SetActive(false);
+            researchButton.gameObject.SetActive(ResearchProgressManager.ResearchEnabled);
         if (openQuizButton == null)
             openQuizButton = panelRoot.transform.Find("ProgressionPage/OpenQuizButton")?.GetComponent<Button>();
         if (openQuizButton != null)
@@ -1062,6 +1062,7 @@ public class MissionListUI : MonoBehaviour
             topTabsRoot.transform.SetParent(targetCanvas.transform, false);
 
         var rt = (RectTransform)topTabsRoot.transform;
+        rt.localScale = Vector3.one * TopHudBar.HudScale;
         rt.anchorMin = new Vector2(1f, 1f);
         rt.anchorMax = new Vector2(1f, 1f);
         rt.pivot = new Vector2(1f, 1f);
@@ -1179,8 +1180,8 @@ public class MissionListUI : MonoBehaviour
             lastTopTabOpen = open;
             topTabVisualInitialized = topObjectivesButton != null;
         }
-        if (topResearchButton != null && topResearchButton.gameObject.activeSelf)
-            topResearchButton.gameObject.SetActive(false);
+        if (topResearchButton != null)
+            topResearchButton.gameObject.SetActive(ResearchProgressManager.ResearchEnabled);
     }
 
     static void SetTopTabVisual(Button button, bool active)

@@ -427,7 +427,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "expandarrow", "expandbutton"))
         {
             if (ContainsAny(path, "worker"))
-                return "Expands this worker card to show their task, flow assignment, and transport upgrade.";
+                return "Expands this worker card to show their current task and flow assignment.";
             if (ContainsAny(path, "expandfloorrow") || ContainsAny(identity, "expand floor"))
                 return "Buys more floor space for the restaurant at the displayed price.";
             return "Expands this card to show more information and actions.";
@@ -454,7 +454,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
             return $"Selects the {label} flow so you can review its stations and workers.";
 
         if (ContainsAny(identity, "autorestock", "autoorder"))
-            return "Cycles this ingredient's automatic reorder target. It keeps stock near the chosen level.";
+            return "Cycles the automatic supplier rate for this ingredient. The selected rate arrives in items per minute during the shift.";
         if (ContainsAny(identity, "addall"))
             return "Adds one pack of each orderable ingredient to the cart.";
         if (ContainsAny(identity, "clearcart"))
@@ -468,7 +468,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "add") && ContainsAny(path, "ingredientorderrow", "cart", "supply", "order"))
             return "Adds one pack of this ingredient to the cart.";
         if (ContainsAny(identity, "auto") && ContainsAny(path, "ingredient", "supply", "pantry", "freezer"))
-            return "Changes this ingredient's automatic reorder level.";
+            return "Changes the automatic supplier rate for this ingredient, measured in items per minute.";
         if (ContainsAny(identity, "suppliestab"))
             return "Shows ingredients stocked by the pantry and freezer that you can order.";
         if (ContainsAny(identity, "menutab"))
@@ -502,7 +502,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "inventorytab", "buildtab"))
             return "Opens Build to buy equipment and place it in the restaurant.";
         if (ContainsAny(identity, "managementtab", "stafftab"))
-            return "Opens Staff to hire workers, assign flows, and upgrade transport.";
+            return "Opens Staff to hire workers and assign them to production flows.";
         if (ContainsAny(identity, "businesstab"))
             return "Opens Business to manage supplies and the items customers can order.";
         if (ContainsAny(identity, "purchaseundo", "undobutton"))
@@ -535,7 +535,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (button.gameObject.name == "Dim" && ContainsAny(path, "workercustomize"))
             return "Closes worker customization without applying another change.";
         if (ContainsAny(identity, "transport", "carry", "upgrade"))
-            return "Raises this worker's maximum transport rate, so they can move more items per minute.";
+            return "Worker handling pace is fixed. Route length and station interaction time affect delivery capacity.";
         if (ContainsAny(identity, "work at"))
             return "Chooses the station this worker operates.";
         if (ContainsAny(identity, "deliver to"))
@@ -651,7 +651,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "ingredients")) return "Adds the displayed amount of every ingredient to stock.";
         if (ContainsAny(identity, "clear pickup")) return "Empties the pickup station for testing.";
         if (ContainsAny(identity, "place stations")) return "Automatically places any missing stations that fit in the restaurant.";
-        if (ContainsAny(identity, "reset stations")) return "Clears station items in progress and aborts active worker tasks. Keeps station placement, recipes, assignments, upgrades, and stock.";
+        if (ContainsAny(identity, "reset stations")) return "Clears station items in progress and aborts active worker tasks. Keeps station placement, recipes, assignments, and stock.";
         if (ContainsAny(identity, "clear all stations")) return "Removes all placed equipment from the restaurant.";
         if (label == "1x") return "Sets simulation speed to normal.";
         if (label == "3x") return "Sets simulation speed to 3x.";

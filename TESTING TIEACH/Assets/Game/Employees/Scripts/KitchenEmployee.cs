@@ -24,18 +24,6 @@ public partial class KitchenEmployee : MonoBehaviour
         WorkerAssignmentsChanged?.Invoke();
     }
 
-    public enum TaskPriority
-    {
-        AnyTask,
-        FinishProducts,
-        Assembly,
-        Grill,
-        Cutting,
-        Fryer,
-        IngredientSupply,
-        OutputDelivery
-    }
-
     public enum WorkerActivityState
     {
         Unassigned,
@@ -60,18 +48,11 @@ public partial class KitchenEmployee : MonoBehaviour
         ItemPrefab
     }
 
-    public const int MaxUpgradeLevel = 3;
-
-    static readonly float[] TransportRatesByLevel = { 60f, 80f, 100f, 120f };
-    /// <summary>Cost to go from level 0→1, 1→2, 2→3.</summary>
-    static readonly int[] UpgradeCosts = { 50, 100, 200 };
+    public const float BaseTransportItemsPerMinute = 60f;
 
     public float moveSpeed = 3f;
     [Tooltip("Unused for grid travel (workers move cell-to-cell). Kept for inspector compatibility.")]
     public float moveSmoothTime = 0.12f;
-    [Tooltip("Transport upgrade level (0–3). Trained transport rates are 60/80/100/120 items per min.")]
-    [Range(0, MaxUpgradeLevel)]
-    [SerializeField] int upgradeLevel;
     public float groundHeight;
     public GridManager grid;
     [Tooltip("How close to a cell center counts as arrived (then snaps exactly to center).")]
@@ -115,8 +96,6 @@ public partial class KitchenEmployee : MonoBehaviour
     [Header("Legacy")]
     public AssignmentRow[] assignmentRows = new AssignmentRow[4];
     public List<StationType> assignedStations = new List<StationType>();
-    [Tooltip("Preferred work to claim first. The worker falls back to any runnable flow task.")]
-    public TaskPriority taskPriority = TaskPriority.AnyTask;
     public GrillStation targetGrill;
 
     ProductionJob currentJob;
@@ -159,59 +138,9 @@ public partial class KitchenEmployee : MonoBehaviour
             return WorkerActivityState.Idle;
         }
     }
-    public int UpgradeLevel => Mathf.Clamp(upgradeLevel, 0, MaxUpgradeLevel);
-    public void RestoreUpgradeLevel(int level) { upgradeLevel = Mathf.Clamp(level, 0, MaxUpgradeLevel); }
-    public int MaxUnlockedUpgradeLevel
-    {
-        get
-        {
-            int researchedLimit = 0;
-            if (MilestoneFeatures.IsResearchComplete("carry_training")) researchedLimit = 1;
-            if (MilestoneFeatures.IsResearchComplete("carry_training_2")) researchedLimit = 2;
-            if (MilestoneFeatures.IsResearchComplete("carry_training_3")) researchedLimit = MaxUpgradeLevel;
-            return Mathf.Max(UpgradeLevel, researchedLimit);
-        }
-    }
-    public bool IsMaxUpgraded => UpgradeLevel >= MaxUnlockedUpgradeLevel;
-
-    // Workers carry a useful batch from the start so long routes do not turn
-    // into one physical trip per item. Training improves handling throughput;
-    // route distance still limits how quickly those batches can be delivered.
-    public static int GetCarryCapacityForLevel(int level) => 4;
-
-    public static float GetTransportItemsPerMinuteForLevel(int level) =>
-        TransportRatesByLevel[Mathf.Clamp(level, 0, MaxUpgradeLevel)];
-
-    /// <summary>How many items this worker can carry per trip.</summary>
-    public int CarryCapacity => GetCarryCapacityForLevel(UpgradeLevel);
-
-    /// <summary>Enforced item-transfer pace before route travel (60 / 80 / 100 / 120 per min).</summary>
-    public float transportItemsPerMinute => GetTransportItemsPerMinuteForLevel(UpgradeLevel);
-
-    /// <summary>Cost of the next upgrade, or -1 if maxed.</summary>
-    public int GetNextUpgradeCost()
-    {
-        int level = UpgradeLevel;
-        if (level >= MaxUnlockedUpgradeLevel) return -1;
-        return UpgradeCosts[level];
-    }
-
-    public bool TryUpgrade(MoneyManager money = null)
-    {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return false;
-        int cost = GetNextUpgradeCost();
-        if (cost < 0 || UpgradeLevel >= MaxUnlockedUpgradeLevel) return false;
-        if (money == null)
-            money = FindObjectOfType<MoneyManager>();
-        if (cost > 0)
-        {
-            if (money == null || !money.TrySpend(cost))
-                return false;
-            Sfx.Play(SfxId.SpendMoney);
-        }
-        upgradeLevel = Mathf.Min(MaxUpgradeLevel, UpgradeLevel + 1);
-        return true;
-    }
+    /// <summary>Workers carry a fixed batch size and have a fixed handling pace.</summary>
+    public int CarryCapacity => 4;
+    public float transportItemsPerMinute => BaseTransportItemsPerMinute;
 
     public bool IsAssignedTo(GameObject station)
     {
@@ -581,27 +510,6 @@ public partial class KitchenEmployee : MonoBehaviour
     public bool CanTakeJobStep(ProductionJob job, bool searchEntireFlow)
     {
         return FindStationForJob(job, searchEntireFlow, true) != null;
-    }
-
-    public bool PrefersJob(ProductionJob job)
-    {
-        if (job == null || taskPriority == TaskPriority.AnyTask) return true;
-        if (taskPriority == TaskPriority.OutputDelivery)
-            return job.taskPhase == ProductionTaskPhase.CollectOutput || job.IsHeatLampStep;
-        if (taskPriority == TaskPriority.FinishProducts)
-            return !job.isAssemblySupply && job.CurrentStationType == StationType.Assembly
-                && job.pipeline != null && job.currentStepIndex == job.pipeline.Length - 1;
-        if (taskPriority == TaskPriority.IngredientSupply)
-            return job.isAssemblySupply || job.CurrentStationType == StationType.Freezer
-                || job.CurrentStationType == StationType.Pantry;
-        return taskPriority switch
-        {
-            TaskPriority.Assembly => job.CurrentStationType == StationType.Assembly,
-            TaskPriority.Grill => job.CurrentStationType == StationType.Grill,
-            TaskPriority.Cutting => job.CurrentStationType == StationType.Cutting,
-            TaskPriority.Fryer => job.CurrentStationType == StationType.Fryer,
-            _ => false
-        };
     }
 
     /// <summary>

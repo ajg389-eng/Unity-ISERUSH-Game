@@ -185,7 +185,6 @@ public sealed class DeterministicProductionController : IDisposable
                     if (worker == null) continue;
                     hash = hash * 31 + worker.GetInstanceID();
                     hash = hash * 31 + worker.moveSpeed.GetHashCode();
-                    hash = hash * 31 + worker.UpgradeLevel;
                     hash = hash * 31 + worker.pickupTimeSeconds.GetHashCode();
                     hash = hash * 31 + worker.placementTimeSeconds.GetHashCode();
                     hash = hash * 31 + (worker.isActiveAndEnabled ? 1 : 0);

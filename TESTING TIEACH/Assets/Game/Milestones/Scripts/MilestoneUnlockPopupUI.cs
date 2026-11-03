@@ -26,6 +26,13 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         popup.ShowImmediately(milestone, false);
     }
 
+    public static void ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone)
+    {
+        MilestoneUnlockPopupUI popup = GetOrCreateInstance(tutorialMilestone);
+        if (popup == null) return;
+        popup.ShowImmediately(tutorialMilestone, true);
+    }
+
     static MilestoneUnlockPopupUI GetOrCreateInstance(MilestoneDefinition milestone)
     {
         if (milestone == null) return null;
@@ -143,7 +150,10 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         string milestoneLabel = manager != null
             ? manager.GetMilestoneDisplayLabel(milestone)
             : milestone.displayName;
-        CreateLayoutText(panel.transform, "Overline", newlyUnlocked ? "NEW MILESTONE" : "MILESTONE DETAILS", 13f,
+        string overline = newlyUnlocked
+            ? milestone.isTutorial ? "TUTORIAL UNLOCK" : "NEW MILESTONE"
+            : "MILESTONE DETAILS";
+        CreateLayoutText(panel.transform, "Overline", overline, 13f,
             FontStyles.Bold, 24f, GameUITheme.Accent, TextAlignmentOptions.Left);
         CreateLayoutText(panel.transform, "Title", milestoneLabel, 27f,
             FontStyles.Bold, 42f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
