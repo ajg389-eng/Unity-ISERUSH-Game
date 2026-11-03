@@ -6,8 +6,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Adds a reversible pre-shift planning card and measures station constraints
-/// for the existing end-of-day review. It does not change production or saves.
+/// Handles pre-shift menu planning, presents the active plan, and measures
+/// station constraints for the end-of-day review.
 /// </summary>
 public sealed class ShiftPlanningUI : MonoBehaviour
 {
@@ -50,9 +50,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     sealed class DemandRow
     {
         public GameObject root;
+        public ItemDefinition item;
+        public RawImage preview;
         public TextMeshProUGUI itemName;
         public TextMeshProUGUI rate;
         public TextMeshProUGUI shiftTotal;
+        public Button changeButton;
+        public Button removeButton;
     }
 
     public static ShiftPlanningUI Instance { get; private set; }
@@ -63,6 +67,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     static bool hasPendingRestoreState;
 
     readonly Dictionary<int, StationSnapshot> stationBaseline = new Dictionary<int, StationSnapshot>();
+    readonly Dictionary<ItemDefinition, Button> itemPickerOptionButtons = new Dictionary<ItemDefinition, Button>();
     readonly List<ItemDefinition> goalItems = new List<ItemDefinition>();
     readonly List<DemandRow> demandRows = new List<DemandRow>();
     GameTimeManager timeManager;
@@ -73,8 +78,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     GameObject demandHeaderRow;
     GameObject demandRowsRoot;
     TextMeshProUGUI demandEmptyText;
-    TextMeshProUGUI demandMoreText;
     LayoutElement demandRowsLayout;
+    Button addMenuItemButton;
+    GameObject itemPickerRoot;
+    TextMeshProUGUI itemPickerTitle;
+    GameObject itemPickerRowsRoot;
+    TextMeshProUGUI itemPickerEmptyText;
+    DemandRow itemPickerTargetRow;
     TextMeshProUGUI goalComparisonText;
     TextMeshProUGUI liveItemRatesText;
     TextMeshProUGUI liveStatsText;
@@ -90,6 +100,22 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     bool preShiftPlanningActive;
     float nextLiveRefreshTime;
     int lastPlanDemandRevision = int.MinValue;
+
+    public Button TutorialAddMenuItemButton => addMenuItemButton;
+    public bool IsMenuItemPickerOpen => itemPickerRoot != null && itemPickerRoot.activeSelf;
+
+    public Button TutorialMenuItemButton(ItemDefinition item)
+    {
+        return item != null && itemPickerOptionButtons.TryGetValue(item, out Button button) ? button : null;
+    }
+
+    public void FocusPlanningCard()
+    {
+        if (panelRoot == null || !IsPlanning) return;
+        planHiddenForStationPopup = false;
+        panelRoot.SetActive(true);
+        panelRoot.transform.SetAsLastSibling();
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -138,7 +164,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // Save restoration and the title or intro sequence can finish after this
         // component starts. Wait for them so a resumed mid-shift save is not
         // interrupted by a fresh planning card.
-        while (TitleScreenController.IsTitleScreenActive || OnboardingTutorial.BlocksProgression)
+        while (TitleScreenController.IsTitleScreenActive
+            || (OnboardingTutorial.BlocksProgression && !OnboardingTutorial.IsActive))
             yield return null;
 
         initialized = true;
@@ -153,6 +180,12 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void Update()
     {
+        if (startShiftButton != null)
+        {
+            CustomerOrderConfig menu = ResolveOrderConfig();
+            startShiftButton.interactable = OnboardingTutorial.CanStartShiftFromPlan
+                && menu != null && menu.HasEnabledItems;
+        }
         if (Time.unscaledTime < nextLiveRefreshTime) return;
         nextLiveRefreshTime = Time.unscaledTime + LiveRefreshSeconds;
         if (panelRoot != null && panelRoot.activeSelf)
@@ -183,7 +216,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     void ShowPlanningCard()
     {
         if (timeManager == null || timeManager.IsShiftOver
-            || TitleScreenController.IsTitleScreenActive || OnboardingTutorial.BlocksProgression)
+            || TitleScreenController.IsTitleScreenActive
+            || (OnboardingTutorial.BlocksProgression && !OnboardingTutorial.IsActive))
             return;
 
         EnsurePanel();
@@ -260,11 +294,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         demandEmptyText.gameObject.SetActive(false);
         demandRowsRoot = CreateDemandRowsRoot(panelRoot.transform);
         demandRowsLayout = demandRowsRoot.GetComponent<LayoutElement>();
-        for (int i = 0; i < 6; i++)
-            demandRows.Add(CreateDemandRow(demandRowsRoot.transform, i));
-        demandMoreText = CreateText(demandRowsRoot.transform, "DemandMoreItems", string.Empty, 12f,
-            FontStyles.Normal, 18f, GameUITheme.TextSecondary);
-        demandMoreText.gameObject.SetActive(false);
+        EnsureDemandRowCapacity(11);
+        addMenuItemButton = CreateCompactButton(panelRoot.transform, "AddMenuItemButton", "+ ADD ITEM TO MENU",
+            34f, 12f, GameUITheme.Positive);
+        addMenuItemButton.onClick.AddListener(() => ShowItemPicker(null));
+        CreateItemPicker(panelRoot.transform);
 
         goalComparisonText = CreateText(panelRoot.transform, "PreviousShiftResult", "No previous shift result yet.",
             13f, FontStyles.Normal, 38f, GameUITheme.TextSecondary);
@@ -336,9 +370,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         GameObject row = CreateDemandColumnRow(parent, "DemandColumnHeader", 20f);
         CreateDemandCell(row.transform, "ItemHeader", "ITEM", 0f, true,
             12f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextSecondary);
-        CreateDemandCell(row.transform, "RateHeader", "ITEMS/MIN", 78f, false,
+        CreateDemandCell(row.transform, "RateHeader", "ITEMS/MIN", 72f, false,
             11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
-        CreateDemandCell(row.transform, "TotalHeader", "SHIFT TOTAL", 90f, false,
+        CreateDemandCell(row.transform, "TotalHeader", "SHIFT TOTAL", 74f, false,
             11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
         return row;
     }
@@ -365,19 +399,166 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     DemandRow CreateDemandRow(Transform parent, int index)
     {
-        GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 23f);
+        GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 36f);
+        var previewObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
+        previewObject.transform.SetParent(rowRoot.transform, false);
+        LayoutElement previewSize = previewObject.GetComponent<LayoutElement>();
+        previewSize.minWidth = previewSize.preferredWidth = 32f;
+        previewSize.minHeight = previewSize.preferredHeight = 32f;
+        RawImage preview = previewObject.GetComponent<RawImage>();
+        preview.color = Color.white;
+        preview.raycastTarget = false;
+
         DemandRow row = new DemandRow
         {
             root = rowRoot,
+            preview = preview,
             itemName = CreateDemandCell(rowRoot.transform, "ItemName", string.Empty, 0f, true,
-                15f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
-            rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 78f, false,
+                14f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
+            changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 30f, 10f,
+                GameUITheme.Surface),
+            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 30f, 9f,
+                GameUITheme.Danger),
+            rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 72f, false,
                 14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
-            shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 90f, false,
-                15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
+            shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 74f, false,
+                14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
         };
+        row.itemName.enableAutoSizing = true;
+        row.itemName.fontSizeMin = 11f;
+        row.itemName.fontSizeMax = 14f;
+        row.changeButton.onClick.AddListener(() => ShowItemPicker(row));
+        row.removeButton.onClick.AddListener(() => RemoveMenuItem(row));
         rowRoot.SetActive(false);
         return row;
+    }
+
+    void CreateItemPicker(Transform parent)
+    {
+        itemPickerRoot = new GameObject("MenuItemPicker", typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        itemPickerRoot.transform.SetParent(parent, false);
+        itemPickerRoot.GetComponent<Image>().color = GameUITheme.Surface;
+        itemPickerRoot.GetComponent<Image>().raycastTarget = true;
+        VerticalLayoutGroup layout = itemPickerRoot.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(8, 8, 6, 6);
+        layout.spacing = 3f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        itemPickerRoot.GetComponent<LayoutElement>().flexibleHeight = 0f;
+
+        var headingRow = new GameObject("PickerHeading", typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(LayoutElement));
+        headingRow.transform.SetParent(itemPickerRoot.transform, false);
+        headingRow.GetComponent<LayoutElement>().preferredHeight = 32f;
+        HorizontalLayoutGroup headingLayout = headingRow.GetComponent<HorizontalLayoutGroup>();
+        headingLayout.childControlWidth = true;
+        headingLayout.childControlHeight = true;
+        headingLayout.childForceExpandWidth = true;
+        headingLayout.childForceExpandHeight = true;
+        itemPickerTitle = CreateText(headingRow.transform, "PickerTitle", "CHOOSE ITEM", 12f,
+            FontStyles.Bold, 28f, GameUITheme.Accent);
+        Button cancel = CreateCompactButton(headingRow.transform, "CancelPicker", "CANCEL", 28f, 10f,
+            GameUITheme.Danger);
+        cancel.onClick.AddListener(CloseItemPicker);
+
+        itemPickerRowsRoot = new GameObject("PickerItems", typeof(RectTransform), typeof(GridLayoutGroup),
+            typeof(LayoutElement));
+        itemPickerRowsRoot.transform.SetParent(itemPickerRoot.transform, false);
+        GridLayoutGroup rowsLayout = itemPickerRowsRoot.GetComponent<GridLayoutGroup>();
+        rowsLayout.cellSize = new Vector2(200f, 40f);
+        rowsLayout.spacing = new Vector2(4f, 3f);
+        rowsLayout.childAlignment = TextAnchor.UpperCenter;
+        rowsLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        rowsLayout.constraintCount = 2;
+        itemPickerRowsRoot.GetComponent<LayoutElement>().flexibleHeight = 0f;
+        itemPickerEmptyText = CreateText(itemPickerRoot.transform, "PickerEmpty", "No other unlocked items are available.",
+            13f, FontStyles.Normal, 28f, GameUITheme.TextSecondary);
+        itemPickerEmptyText.gameObject.SetActive(false);
+        itemPickerRoot.SetActive(false);
+    }
+
+    GameObject CreatePickerOption(ItemDefinition item)
+    {
+        Button button = CreateCompactButton(itemPickerRowsRoot.transform, "Option_" + item.name,
+            item.itemName, 38f, 13f, GameUITheme.Charcoal);
+        button.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        GameObject previewObject = new GameObject("Preview", typeof(RectTransform), typeof(RawImage),
+            typeof(LayoutElement));
+        previewObject.transform.SetParent(button.transform, false);
+        RectTransform previewRect = (RectTransform)previewObject.transform;
+        previewRect.anchorMin = new Vector2(0f, 0.5f);
+        previewRect.anchorMax = new Vector2(0f, 0.5f);
+        previewRect.pivot = new Vector2(0f, 0.5f);
+        previewRect.anchoredPosition = new Vector2(6f, 0f);
+        previewRect.sizeDelta = new Vector2(30f, 30f);
+        RawImage preview = previewObject.GetComponent<RawImage>();
+        preview.texture = GetMenuItemPreview(item);
+        preview.raycastTarget = false;
+        TextMeshProUGUI label = button.transform.Find("Label").GetComponent<TextMeshProUGUI>();
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.margin = new Vector4(42f, 0f, 8f, 0f);
+        ItemDefinition capturedItem = item;
+        button.onClick.AddListener(() => SelectMenuItem(capturedItem));
+        return button.gameObject;
+    }
+
+    static Button CreateCompactButton(Transform parent, string name, string label, float height,
+        float fontSize, Color color)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button),
+            typeof(LayoutElement));
+        go.transform.SetParent(parent, false);
+        LayoutElement size = go.GetComponent<LayoutElement>();
+        size.minHeight = size.preferredHeight = height;
+        size.minWidth = 0f;
+        size.preferredWidth = label == "REMOVE" ? 48f : label == "CHANGE" ? 58f : 92f;
+        size.flexibleWidth = 0f;
+        Image image = go.GetComponent<Image>();
+        image.color = color;
+        Button button = go.GetComponent<Button>();
+        GameUITheme.ApplyButton(button);
+
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelObject.transform.SetParent(go.transform, false);
+        RectTransform labelRect = (RectTransform)labelObject.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(3f, 0f);
+        labelRect.offsetMax = new Vector2(-3f, 0f);
+        TextMeshProUGUI text = labelObject.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = fontSize;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = GameUITheme.TextPrimary;
+        text.raycastTarget = false;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = Mathf.Max(8f, fontSize - 2f);
+        text.fontSizeMax = fontSize;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        return button;
+    }
+
+    Texture GetMenuItemPreview(ItemDefinition item)
+    {
+        if (item == null) return null;
+        GameObject prefab = item.prefab;
+        if (prefab == null)
+        {
+            IngredientsOrderUI menuUi = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+            CustomerOrderConfig config = ResolveOrderConfig();
+            if (menuUi != null && config != null)
+            {
+                if (config.IsBurger(item)) prefab = menuUi.burgerPreviewPrefab;
+                else if (config.IsFries(item)) prefab = menuUi.friesPreviewPrefab;
+                else if (config.IsDrink(item)) prefab = menuUi.drinkPreviewPrefab;
+            }
+        }
+        if (prefab != null) return ItemPreviewThumbnails.GetPrefab(prefab, item.itemName);
+        return item.previewIcon != null ? item.previewIcon.texture : null;
     }
 
     static GameObject CreateDemandColumnRow(Transform parent, string name, float height)
@@ -447,7 +628,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         });
 
         foreach (ItemDefinition item in items)
-            if (item != null && config.GetCustomerDemandPerMinute(item) > 0)
+            if (item != null)
                 goalItems.Add(item);
 
         if (selectedGoalItem != null && !ContainsGoalItem(selectedGoalItem.itemName))
@@ -463,45 +644,144 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             selectedGoalItem = goalItems[0];
         selectedGoalItemName = selectedGoalItem != null ? selectedGoalItem.itemName : string.Empty;
 
+        EnsureDemandRowCapacity(goalItems.Count);
         if (goalItems.Count == 0)
         {
-            SetDemandEmptyState("No menu items are enabled. Open Business > Menu to choose what to sell.");
+            SetDemandEmptyState("No items selected. Add items here to choose what customers can order.");
+            if (addMenuItemButton != null) addMenuItemButton.interactable = config != null;
         }
         else
         {
-            int visibleItems = Mathf.Min(6, goalItems.Count);
+            int visibleItems = goalItems.Count;
             for (int i = 0; i < visibleItems; i++)
             {
                 ItemDefinition item = goalItems[i];
                 float rate = config.GetCustomerDemandPerMinute(item);
                 int shiftTotal = Mathf.RoundToInt(rate * GetShiftDurationMinutes());
                 DemandRow row = demandRows[i];
+                row.item = item;
+                row.preview.texture = GetMenuItemPreview(item);
+                row.preview.enabled = row.preview.texture != null;
                 row.itemName.text = item.itemName;
                 row.rate.text = rate.ToString("0.#") + "/min";
                 row.shiftTotal.text = shiftTotal.ToString("N0");
                 row.root.SetActive(true);
             }
             for (int i = visibleItems; i < demandRows.Count; i++)
-                demandRows[i].root.SetActive(false);
-
-            bool hasMoreItems = goalItems.Count > visibleItems;
-            if (demandMoreText != null)
             {
-                demandMoreText.text = hasMoreItems
-                    ? "+" + (goalItems.Count - visibleItems) + " more items"
-                    : string.Empty;
-                demandMoreText.gameObject.SetActive(hasMoreItems);
+                demandRows[i].item = null;
+                demandRows[i].root.SetActive(false);
             }
 
             if (demandEmptyText != null) demandEmptyText.gameObject.SetActive(false);
             if (demandHeaderRow != null) demandHeaderRow.SetActive(true);
             if (demandRowsRoot != null) demandRowsRoot.SetActive(true);
-            SetDemandListHeight(visibleItems, hasMoreItems);
+            if (addMenuItemButton != null) addMenuItemButton.interactable = true;
+            SetDemandListHeight(visibleItems);
         }
 
+        if (addMenuItemButton != null && itemPickerRoot != null && !itemPickerRoot.activeSelf)
+            addMenuItemButton.gameObject.SetActive(true);
+        if (startShiftButton != null)
+            startShiftButton.interactable = OnboardingTutorial.CanStartShiftFromPlan
+                && config.HasEnabledItems;
         if (goalComparisonText != null)
             goalComparisonText.text = GetLatestShiftResultText();
         FitPlanPanel();
+    }
+
+    void EnsureDemandRowCapacity(int count)
+    {
+        while (demandRows.Count < count)
+            demandRows.Add(CreateDemandRow(demandRowsRoot.transform, demandRows.Count));
+    }
+
+    void ShowItemPicker(DemandRow targetRow)
+    {
+        if (itemPickerRoot == null || GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress)
+            return;
+
+        itemPickerTargetRow = targetRow;
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (itemPickerTitle != null)
+            itemPickerTitle.text = targetRow != null ? "CHOOSE A REPLACEMENT ITEM" : "CHOOSE AN ITEM TO SELL";
+        for (int i = itemPickerRowsRoot.transform.childCount - 1; i >= 0; i--)
+            Destroy(itemPickerRowsRoot.transform.GetChild(i).gameObject);
+        itemPickerOptionButtons.Clear();
+
+        int optionCount = 0;
+        if (config != null)
+        {
+            foreach (ItemDefinition item in config.GetMenuItems())
+            {
+                if (item == null || item == (targetRow != null ? targetRow.item : null)
+                    || config.IsItemEnabled(item) || !config.IsCustomerRecipeUnlocked(item))
+                    continue;
+                GameObject option = CreatePickerOption(item);
+                itemPickerOptionButtons[item] = option.GetComponent<Button>();
+                optionCount++;
+            }
+        }
+
+        if (itemPickerEmptyText != null)
+        {
+            itemPickerEmptyText.text = config == null
+                ? "Menu data is not ready yet."
+                : "No other unlocked menu items are available.";
+            itemPickerEmptyText.gameObject.SetActive(optionCount == 0);
+        }
+        LayoutElement rowsSize = itemPickerRowsRoot.GetComponent<LayoutElement>();
+        if (rowsSize != null)
+        {
+            int optionRows = Mathf.CeilToInt(optionCount / 2f);
+            rowsSize.minHeight = rowsSize.preferredHeight = optionRows * 43f;
+        }
+
+        if (demandHeaderRow != null) demandHeaderRow.SetActive(false);
+        if (demandRowsRoot != null) demandRowsRoot.SetActive(false);
+        if (demandEmptyText != null) demandEmptyText.gameObject.SetActive(false);
+        if (addMenuItemButton != null) addMenuItemButton.gameObject.SetActive(false);
+        itemPickerRoot.SetActive(true);
+        FitPlanPanel();
+    }
+
+    void CloseItemPicker()
+    {
+        if (itemPickerRoot != null) itemPickerRoot.SetActive(false);
+        itemPickerTargetRow = null;
+        RefreshPlan();
+    }
+
+    void SelectMenuItem(ItemDefinition item)
+    {
+        if (item == null || GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress)
+            return;
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (config == null) return;
+
+        if (itemPickerTargetRow != null && itemPickerTargetRow.item != null)
+            config.SetItemEnabled(itemPickerTargetRow.item, false);
+        config.SetItemEnabled(item, true);
+        selectedGoalItem = item;
+        selectedGoalItemName = item.itemName;
+        GameSaveSlots.SaveEnabledMenuSelection(config);
+        lastPlanDemandRevision = int.MinValue;
+        CloseItemPicker();
+    }
+
+    void RemoveMenuItem(DemandRow row)
+    {
+        if (row == null || row.item == null || GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress)
+            return;
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (config == null) return;
+        config.SetItemEnabled(row.item, false);
+        GameSaveSlots.SaveEnabledMenuSelection(config);
+        lastPlanDemandRevision = int.MinValue;
+        RefreshPlan();
     }
 
     float GetShiftDurationMinutes()
@@ -539,12 +819,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
         if (demandHeaderRow != null) demandHeaderRow.SetActive(false);
         if (demandRowsRoot != null) demandRowsRoot.SetActive(false);
+        if (addMenuItemButton != null)
+        {
+            addMenuItemButton.gameObject.SetActive(true);
+            addMenuItemButton.interactable = ResolveOrderConfig() != null;
+        }
     }
 
-    void SetDemandListHeight(int rowCount, bool hasMoreItems)
+    void SetDemandListHeight(int rowCount)
     {
         if (demandRowsLayout == null) return;
-        float height = rowCount * 23f + (hasMoreItems ? 18f : 0f);
+        float height = rowCount * 36f;
         demandRowsLayout.minHeight = height;
         demandRowsLayout.preferredHeight = height;
     }
@@ -583,7 +868,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void StartShift()
     {
+        if (!OnboardingTutorial.CanStartShiftFromPlan) return;
         preShiftPlanningActive = false;
+        if (OnboardingTutorial.IsActive && timeManager != null)
+            timeManager.BeginTutorialPracticeShift();
         ProductionManager.Instance?.BeginShiftThroughputTracking();
         StoreStatisticsManager.Instance?.BeginShiftThroughputTracking();
         CaptureStationBaseline();

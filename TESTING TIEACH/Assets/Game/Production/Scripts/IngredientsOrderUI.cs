@@ -5,7 +5,7 @@ using UnityEngine.EventSystems;
 using TMPro;
 
 /// <summary>
-/// Management Food tab: choose the items sold and order ingredient packs.
+/// Management Food tab: browse menu recipes and order ingredient packs.
 /// </summary>
 public class IngredientsOrderUI : MonoBehaviour
 {
@@ -41,6 +41,7 @@ public class IngredientsOrderUI : MonoBehaviour
     readonly List<ItemDefinition> ingredientCatalog = new List<ItemDefinition>();
     bool deliveryDisplayValid;
     bool displayedDeliveryActive;
+    bool displayedPlanning;
     int displayedDeliveryCountdown;
     int displayedCartPackCount = -1;
     int displayedCartTotal = -1;
@@ -78,18 +79,6 @@ public class IngredientsOrderUI : MonoBehaviour
     public Button TutorialMenuTab => menuTab;
     public Button TutorialPlaceOrderButton => placeOrderButton;
     public int TutorialCartPacks(ItemDefinition item) => GetCartPacks(item);
-
-    public Toggle TutorialMenuToggle(ItemDefinition item)
-    {
-        if (item == null || menuRows == null) return null;
-        foreach (GameObject rowObject in menuRows)
-        {
-            if (rowObject == null) continue;
-            MilestoneLockedMenuRow row = rowObject.GetComponent<MilestoneLockedMenuRow>();
-            if (row != null && row.item == item) return row.toggle;
-        }
-        return null;
-    }
 
     public void ConfigureBusinessSection(bool menu)
     {
@@ -358,6 +347,7 @@ public class IngredientsOrderUI : MonoBehaviour
         ingredientCatalog.AddRange(inventory.GetIngredientCatalogItems());
         if (menu != null)
         {
+            menuLayoutRows.Add(CreateMenuPlanningHint());
             var burgers = new List<ItemDefinition>();
             var fries = new List<ItemDefinition>();
             var shakes = new List<ItemDefinition>();
@@ -445,14 +435,31 @@ public class IngredientsOrderUI : MonoBehaviour
         for (int i = 0; i < items.Count; i += 2)
         {
             GameObject pair = CreateMenuGridRow(grid.transform);
-            menuRows.Add(CreateMenuToggleRow(menu, items[i], pair.transform));
+            menuRows.Add(CreateMenuCatalogRow(menu, items[i], pair.transform));
             if (i + 1 < items.Count)
             {
-                menuRows.Add(CreateMenuToggleRow(menu, items[i + 1], pair.transform));
+                menuRows.Add(CreateMenuCatalogRow(menu, items[i + 1], pair.transform));
             }
             else
                 CreateMenuGridSpacer(pair.transform);
         }
+    }
+
+    GameObject CreateMenuPlanningHint()
+    {
+        var go = new GameObject("MenuPlanningHint", typeof(RectTransform), typeof(TextMeshProUGUI),
+            typeof(LayoutElement));
+        go.transform.SetParent(listContainer, false);
+        LayoutElement layout = go.GetComponent<LayoutElement>();
+        layout.minHeight = layout.preferredHeight = 34f;
+        TextMeshProUGUI text = go.GetComponent<TextMeshProUGUI>();
+        text.text = "Choose items to sell from the Plan card before starting each shift.";
+        text.fontSize = 13f;
+        text.color = GameUITheme.TextSecondary;
+        text.textWrappingMode = TextWrappingModes.Normal;
+        text.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
+        return go;
     }
 
     int GetCatalogHash()
@@ -533,7 +540,7 @@ public class IngredientsOrderUI : MonoBehaviour
         menuTab = CreateCartButton(navigation.transform, "MenuTab", "Menu", 96, GameUITheme.Surface, out label);
         MakeNavigationTabFill(menuTab);
         menuTab.onClick.AddListener(() => SelectSection(true));
-        DelayedTooltip.Attach(menuTab, "Menu: choose which unlocked recipes to sell");
+        DelayedTooltip.Attach(menuTab, "Menu: browse unlocked recipes and production flows");
         if (standaloneBusinessTabs)
             navigation.SetActive(false);
     }
@@ -1504,7 +1511,7 @@ public class IngredientsOrderUI : MonoBehaviour
         layout.minHeight = 62f;
     }
 
-    GameObject CreateMenuToggleRow(CustomerOrderConfig menu, ItemDefinition item, Transform parent)
+    GameObject CreateMenuCatalogRow(CustomerOrderConfig menu, ItemDefinition item, Transform parent)
     {
         const float collapsedHeight = 62f;
         const float expandedHeight = 190f;
@@ -1588,8 +1595,6 @@ public class IngredientsOrderUI : MonoBehaviour
         nameText.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) nameText.font = TMP_Settings.defaultFontAsset;
 
-        ItemDefinition captured = item;
-
         var chevronGo = new GameObject("Chevron", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
         chevronGo.transform.SetParent(header.transform, false);
         var chevronLe = chevronGo.GetComponent<LayoutElement>();
@@ -1604,15 +1609,20 @@ public class IngredientsOrderUI : MonoBehaviour
         chevron.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) chevron.font = TMP_Settings.defaultFontAsset;
 
-        Toggle toggle = CreateCheckbox(header.transform);
-        toggle.SetIsOnWithoutNotify(menu.IsItemEnabled(item));
-        toggle.interactable = itemUnlocked
-            && (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress);
-        toggle.onValueChanged.AddListener(enabled =>
-        {
-            menu.SetItemEnabled(captured, enabled);
-            GameSaveSlots.SaveEnabledMenuSelection(menu);
-        });
+        var saleStateGo = new GameObject("PlanMenuStatus", typeof(RectTransform),
+            typeof(TextMeshProUGUI), typeof(LayoutElement));
+        saleStateGo.transform.SetParent(header.transform, false);
+        LayoutElement saleStateLayout = saleStateGo.GetComponent<LayoutElement>();
+        saleStateLayout.minWidth = saleStateLayout.preferredWidth = 60f;
+        saleStateLayout.minHeight = saleStateLayout.preferredHeight = 30f;
+        TextMeshProUGUI saleState = saleStateGo.GetComponent<TextMeshProUGUI>();
+        saleState.text = menu.IsItemEnabled(item) ? "ON PLAN" : "OFF PLAN";
+        saleState.fontSize = 10f;
+        saleState.fontStyle = FontStyles.Bold;
+        saleState.color = menu.IsItemEnabled(item) ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
+        saleState.alignment = TextAlignmentOptions.Center;
+        saleState.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) saleState.font = TMP_Settings.defaultFontAsset;
 
         var workflowGo = new GameObject("WorkflowDropdown", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         workflowGo.transform.SetParent(row.transform, false);
@@ -1653,12 +1663,12 @@ public class IngredientsOrderUI : MonoBehaviour
         rowState.item = item;
         rowState.label = nameText;
         rowState.workflowText = workflowText;
+        rowState.saleState = saleState;
         rowState.workflowWasUnlocked = itemUnlocked;
         rowState.workflowUnlockedStateCached = true;
         rowState.preview = preview;
         rowState.lockVisual = lockVisual;
         rowState.rowBackground = row.GetComponent<Image>();
-        rowState.toggle = toggle;
         rowState.lockedOverlay = lockedOverlay;
         rowState.workflowUnlockedStateCached = false;
         menuRowBindings.Add(rowState);
@@ -1774,41 +1784,6 @@ public class IngredientsOrderUI : MonoBehaviour
         if (menu.IsFries(item)) return friesPreviewPrefab;
         if (menu.IsDrink(item)) return drinkPreviewPrefab;
         return null;
-    }
-
-    static Toggle CreateCheckbox(Transform parent)
-    {
-        var toggleGo = new GameObject("SellToggle", typeof(RectTransform), typeof(LayoutElement), typeof(Toggle));
-        toggleGo.transform.SetParent(parent, false);
-        var le = toggleGo.GetComponent<LayoutElement>();
-        le.minWidth = 34;
-        le.preferredWidth = 34;
-        le.minHeight = 34;
-        le.preferredHeight = 34;
-
-        var backgroundGo = new GameObject("Background", typeof(RectTransform), typeof(Image));
-        backgroundGo.transform.SetParent(toggleGo.transform, false);
-        var bgRect = (RectTransform)backgroundGo.transform;
-        bgRect.anchorMin = new Vector2(0.5f, 0.5f);
-        bgRect.anchorMax = new Vector2(0.5f, 0.5f);
-        bgRect.sizeDelta = new Vector2(30f, 30f);
-        var background = backgroundGo.GetComponent<Image>();
-        background.color = GameUITheme.Charcoal;
-
-        var checkGo = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
-        checkGo.transform.SetParent(backgroundGo.transform, false);
-        var checkRect = (RectTransform)checkGo.transform;
-        checkRect.anchorMin = new Vector2(0.18f, 0.18f);
-        checkRect.anchorMax = new Vector2(0.82f, 0.82f);
-        checkRect.offsetMin = Vector2.zero;
-        checkRect.offsetMax = Vector2.zero;
-        var check = checkGo.GetComponent<Image>();
-        check.color = GameUITheme.PositiveAccent;
-
-        var toggle = toggleGo.GetComponent<Toggle>();
-        toggle.targetGraphic = background;
-        toggle.graphic = check;
-        return toggle;
     }
 
     void CreateInfoRow(string message)
@@ -2281,6 +2256,12 @@ public class IngredientsOrderUI : MonoBehaviour
     void SetCartPacks(ItemDefinition item, int count)
     {
         if (item == null) return;
+        if (inventory != null && count > 0)
+        {
+            int packSize = inventory.GetPackSize(item);
+            int maxPacks = packSize > 0 ? inventory.GetAvailableStockCapacity(item) / packSize : 0;
+            count = Mathf.Min(count, maxPacks);
+        }
         if (count <= 0) cartPacks.Remove(item);
         else cartPacks[item] = count;
     }
@@ -2336,7 +2317,8 @@ public class IngredientsOrderUI : MonoBehaviour
         }
 
         var delivery = IngredientDeliveryService.Instance;
-        bool deliveryActive = delivery != null && delivery.HasPending;
+        bool planning = ShiftPlanningUI.IsPlanning;
+        bool deliveryActive = !planning && delivery != null && delivery.HasPending;
         bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
         if (addAllButton != null) addAllButton.interactable = !deliveryActive;
         RefreshSupplyRows(delivery, deliveryActive, automaticOrderingUnlocked,
@@ -2350,15 +2332,18 @@ public class IngredientsOrderUI : MonoBehaviour
         {
             float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
             int countdown = Mathf.Max(0, Mathf.CeilToInt(remaining));
-            if (!deliveryDisplayValid || deliveryActive != displayedDeliveryActive
+            if (!deliveryDisplayValid || planning != displayedPlanning || deliveryActive != displayedDeliveryActive
                 || (deliveryActive && countdown != displayedDeliveryCountdown))
             {
-                deliveryStatusText.text = deliveryActive
-                    ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
-                    : "Build cart, then order.";
+                deliveryStatusText.text = planning
+                    ? "Plan orders are added to stock immediately."
+                    : deliveryActive
+                        ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
+                        : "Build cart, then order.";
                 deliveryStatusText.color = deliveryActive
                     ? GameUITheme.Accent : GameUITheme.TextSecondary;
                 deliveryDisplayValid = true;
+                displayedPlanning = planning;
                 displayedDeliveryActive = deliveryActive;
                 displayedDeliveryCountdown = countdown;
             }
@@ -2382,8 +2367,13 @@ public class IngredientsOrderUI : MonoBehaviour
         if (expressLockedOverlay != null && expressLockedOverlay.activeSelf == expressUnlocked)
             expressLockedOverlay.SetActive(!expressUnlocked);
         if (expressOrderButton != null)
+        {
+            expressOrderButton.gameObject.SetActive(!planning);
             expressOrderButton.interactable = expressUnlocked && !deliveryActive && cartPackCount > 0 && expressAffordable
                 && cartLockMilestone == 0;
+        }
+        if (placeOrderLabel != null && planning && cartLockMilestone == 0 && affordable)
+            placeOrderLabel.text = "Add to Stock";
         if (expressOrderLabel != null)
             expressOrderLabel.text = !expressUnlocked ? "Research"
                 : deliveryActive ? "Busy"
@@ -2396,7 +2386,6 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         CustomerOrderConfig menu = inventory.orderConfig;
         if (menu == null) return;
-        bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
         bool lockedIngredient = HasLockedIngredient();
         foreach (MilestoneLockedMenuRow row in menuRowBindings)
         {
@@ -2415,8 +2404,6 @@ public class IngredientsOrderUI : MonoBehaviour
                 if (row.lockVisual != null) row.lockVisual.alpha = 0f;
                 if (row.lockedOverlay != null && row.lockedOverlay.activeSelf == unlocked)
                     row.lockedOverlay.SetActive(!unlocked);
-                if (row.toggle != null && row.toggle.targetGraphic is Image toggleBackground)
-                    toggleBackground.color = unlocked ? GameUITheme.Charcoal : GameUITheme.PanelSlate;
                 row.displayedUnlocked = unlocked;
                 row.displayedName = name;
                 row.displayValid = true;
@@ -2431,13 +2418,11 @@ public class IngredientsOrderUI : MonoBehaviour
                 row.workflowHadLockedIngredient = lockedIngredient;
                 row.workflowUnlockedStateCached = true;
             }
-            if (row.toggle != null)
+            if (row.saleState != null)
             {
-                // Save restores and external menu edits still update retained rows.
                 bool enabled = menu.IsItemEnabled(row.item);
-                if (row.toggle.isOn != enabled) row.toggle.SetIsOnWithoutNotify(enabled);
-                bool interactable = unlocked && planPhase;
-                if (row.toggle.interactable != interactable) row.toggle.interactable = interactable;
+                row.saleState.text = enabled ? "ON PLAN" : "OFF PLAN";
+                row.saleState.color = enabled ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
             }
         }
     }
@@ -2457,8 +2442,14 @@ public class IngredientsOrderUI : MonoBehaviour
             int stock = inventory.GetCount(row.item);
             int incoming = delivery != null ? delivery.GetIncomingCount(row.item) : 0;
             int reorderTarget = inventory.GetReorderTarget(row.item);
+            int maxPacks = pack > 0 ? inventory.GetAvailableStockCapacity(row.item) / pack : 0;
             if (!unlocked && GetCartPacks(row.item) != 0) SetCartPacks(row.item, 0);
             int selected = unlocked ? GetCartPacks(row.item) : 0;
+            if (selected > maxPacks)
+            {
+                SetCartPacks(row.item, maxPacks);
+                selected = maxPacks;
+            }
             cartTotal += selected * price;
             cartPackCount += selected;
             bool unlockChanged = !row.displayValid || row.displayedUnlocked != unlocked;
@@ -2485,7 +2476,8 @@ public class IngredientsOrderUI : MonoBehaviour
                     if (!unlocked) row.stockText.text = string.Empty;
                     else
                     {
-                        string stockValue = stock + (incoming > 0 ? " (+" + incoming + ")" : string.Empty);
+                        string stockValue = stock + "/" + KitchenInventory.MaxIngredientStock
+                            + (incoming > 0 ? "  (" + incoming + " incoming)" : string.Empty);
                         string autoValue = !automaticOrderingUnlocked ? "Locked"
                             : reorderTarget > 0 ? "Tgt " + reorderTarget : "Off";
                         row.stockText.text = "Stock\n" + stockValue + "\n" + autoValue;
@@ -2497,11 +2489,8 @@ public class IngredientsOrderUI : MonoBehaviour
             }
             if (unlockChanged || row.displayedCartPacks != selected)
                 if (row.cartCountText != null) row.cartCountText.text = unlocked ? "x" + selected : string.Empty;
-            if (unlockChanged || row.displayedDeliveryActive != deliveryActive || row.displayedCartPacks != selected)
-            {
-                SetButtonState(row.removeButton, !deliveryActive && unlocked && selected > 0, GameUITheme.Danger);
-                SetButtonState(row.addButton, !deliveryActive && unlocked, GameUITheme.Positive);
-            }
+            SetButtonState(row.removeButton, !deliveryActive && unlocked && selected > 0, GameUITheme.Danger);
+            SetButtonState(row.addButton, !deliveryActive && unlocked && selected < maxPacks, GameUITheme.Positive);
             row.displayedUnlocked = unlocked;
             row.displayedName = name;
             row.displayedPack = pack;
@@ -2703,7 +2692,7 @@ public sealed class MilestoneLockedMenuRow : MonoBehaviour
     public RawImage preview;
     public CanvasGroup lockVisual;
     public Image rowBackground;
-    public Toggle toggle;
+    public TextMeshProUGUI saleState;
     public GameObject lockedOverlay;
     public bool workflowWasUnlocked;
     public bool workflowUnlockedStateCached;

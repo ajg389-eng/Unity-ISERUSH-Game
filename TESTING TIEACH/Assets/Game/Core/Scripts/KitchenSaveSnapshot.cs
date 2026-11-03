@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 27;
+    public const int CurrentVersion = 29;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -495,7 +495,22 @@ public class KitchenSaveSnapshot
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1
             : tutorialStep;
-        if(OnboardingTutorial.Instance!=null) OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete,restoredTutorialStep,tutorialOrderServed);
+        if (version < 28 && !tutorialComplete)
+        {
+            if (restoredTutorialStep >= 3 && restoredTutorialStep <= 8)
+                restoredTutorialStep = 2;
+            else if (restoredTutorialStep >= 9)
+                restoredTutorialStep -= 5;
+        }
+        // Version 29 folds the separate fryer and pickup placement lessons into
+        // the station checklist at step 2, removing the two old tutorial steps.
+        if (version < 29 && !tutorialComplete)
+        {
+            if (restoredTutorialStep >= 3 && restoredTutorialStep <= 4)
+                restoredTutorialStep = 2;
+            else if (restoredTutorialStep >= 5)
+                restoredTutorialStep -= 2;
+        }
         // Version 11 replaces the active milestone task definitions. Preserve the
         // saved milestone checkpoint from v10, but don't carry old task progress
         // into tasks whose objectives have changed.
@@ -558,6 +573,12 @@ public class KitchenSaveSnapshot
             foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
                 foreach (WallPhoto saved in wallPhotos)
                     if (saved != null && saved.name == photo.gameObject.name) photo.SetPlacementPosition(saved.position);
+        // Apply tutorial state only after the full checkpoint is restored. An
+        // incomplete tutorial can start as soon as gameplay is activated, and its
+        // setup must not run while stations, research, missions, or customers are
+        // still being rebuilt from this save.
+        if (OnboardingTutorial.Instance != null)
+            OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed);
         return true;
     }
 

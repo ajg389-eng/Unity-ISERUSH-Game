@@ -108,15 +108,17 @@ public class ManagementScreenController : MonoBehaviour
         if (strip != null)
             Destroy(strip.gameObject);
 
-        // Older scenes can still contain the dormant Customers tab objects even
-        // when they are not serialized in tabButtons/tabPanels. Keep them out of
-        // the Business screen so the only visible tabs are Workers, Supply, and Menu.
+        // Older scenes can still contain dormant Customers or Menu tab objects
+        // even when they are not serialized in tabButtons/tabPanels.
         var legacyButton = FindDeep(managementPanel.transform, "Tab_Other");
         if (legacyButton != null)
             legacyButton.gameObject.SetActive(false);
         var legacyPanel = FindDeep(managementPanel.transform, "OtherPanel");
         if (legacyPanel != null)
             legacyPanel.gameObject.SetActive(false);
+        var legacyMenuButton = FindDeep(managementPanel.transform, "Tab_Menu");
+        if (legacyMenuButton != null)
+            legacyMenuButton.gameObject.SetActive(false);
     }
 
     void WireTabButtons()
@@ -142,14 +144,13 @@ public class ManagementScreenController : MonoBehaviour
         HudTabColors.ConfigureTabGroup(tabBar, tabButtons);
 
         // HudTabColors gives every management tab a common default footprint.
-        // Business has three tabs and must fit the same rendered row as the two
+        // Business has two tabs and must fit the same rendered row as the two
         // primary HUD tabs, so apply its row-specific widths after that pass.
-        if (tabButtons.Length == 3
+        if (tabButtons.Length == 2
             && tabButtons[0] != null && tabButtons[0].gameObject.name == "Tab_Workers"
-            && tabButtons[1] != null && tabButtons[1].gameObject.name == "Tab_Supplies"
-            && tabButtons[2] != null && tabButtons[2].gameObject.name == "Tab_Menu")
+            && tabButtons[1] != null && tabButtons[1].gameObject.name == "Tab_Supplies")
         {
-            ConfigureBusinessTabWidths(tabBar, tabButtons[0], tabButtons[1], tabButtons[2]);
+            ConfigureBusinessTabWidths(tabBar, tabButtons[0], tabButtons[1]);
         }
     }
 
@@ -181,15 +182,6 @@ public class ManagementScreenController : MonoBehaviour
         }
     }
 
-    int FindButtonIndex(string objectName)
-    {
-        if (tabButtons == null) return -1;
-        for (int i = 0; i < tabButtons.Length; i++)
-            if (tabButtons[i] != null && tabButtons[i].gameObject.name == objectName)
-                return i;
-        return -1;
-    }
-
     void EnsureManagementModeController()
     {
         if (FindObjectOfType<ManagementModeController>() != null) return;
@@ -206,7 +198,7 @@ public class ManagementScreenController : MonoBehaviour
         {
             var ingredients = tabPanels[index].GetComponentInChildren<IngredientsOrderUI>(true);
             if (ingredients != null)
-                ingredients.ConfigureBusinessSection(index == FindButtonIndex("Tab_Menu"));
+                ingredients.ConfigureBusinessSection(false);
             AlignBusinessContentArea();
             return;
         }
@@ -233,10 +225,7 @@ public class ManagementScreenController : MonoBehaviour
 
             var ingredients = selectedPanel.GetComponentInChildren<IngredientsOrderUI>(true);
             if (ingredients != null)
-            {
-                int menuIndex = FindButtonIndex("Tab_Menu");
-                ingredients.ConfigureBusinessSection(index == menuIndex);
-            }
+                ingredients.ConfigureBusinessSection(false);
         }
 
         if (tabButtons != null)
@@ -295,17 +284,12 @@ public class ManagementScreenController : MonoBehaviour
         SetTabLabel(supplies, "Supply");
 
         Transform tabBar = supplies.transform.parent;
-        Button menu = tabBar != null ? tabBar.Find("Tab_Menu")?.GetComponent<Button>() : null;
-        if (menu == null)
-        {
-            var clone = Instantiate(supplies.gameObject, tabBar);
-            clone.name = "Tab_Menu";
-            menu = clone.GetComponent<Button>();
-        }
-        SetTabLabel(menu, "Menu");
+        var legacyMenu = tabBar != null ? tabBar.Find("Tab_Menu") : null;
+        if (legacyMenu != null)
+            legacyMenu.gameObject.SetActive(false);
 
-        var buttons = new Button[] { workers, supplies, menu };
-        var panels = new GameObject[] { tabPanels[staffIndex], tabPanels[foodIndex], tabPanels[foodIndex] };
+        var buttons = new Button[] { workers, supplies };
+        var panels = new GameObject[] { tabPanels[staffIndex], tabPanels[foodIndex] };
         tabButtons = buttons;
         tabPanels = panels;
 
@@ -314,7 +298,7 @@ public class ManagementScreenController : MonoBehaviour
             foodUi.ConfigureBusinessSection(false);
     }
 
-    static void ConfigureBusinessTabWidths(Transform tabBar, Button workers, Button supplies, Button menu)
+    static void ConfigureBusinessTabWidths(Transform tabBar, Button workers, Button supplies)
     {
         if (tabBar == null) return;
 
@@ -332,7 +316,7 @@ public class ManagementScreenController : MonoBehaviour
         if (layout != null)
         {
             // Keep the existing padding, gap, height, colors, and alignment. Only
-            // stop the group from forcing all three buttons to the same width.
+            // stop the group from forcing both buttons to the same width.
             layout.childForceExpandWidth = false;
             layout.childControlWidth = true;
         }
@@ -340,7 +324,7 @@ public class ManagementScreenController : MonoBehaviour
         MatchBusinessTabBarWidth(tabBar);
 
         float workersWidth = 184f;
-        float otherWidth = 170f;
+        float supplyWidth = 170f;
         if (layout != null)
         {
             var tabRect = tabBar as RectTransform;
@@ -349,15 +333,14 @@ public class ManagementScreenController : MonoBehaviour
                 float available = tabRect.rect.width - layout.padding.horizontal - layout.spacing * 2f;
                 if (available > 0f)
                 {
-                    workersWidth = available * (184f / 524f);
-                    otherWidth = available * (170f / 524f);
+                    workersWidth = available * (184f / 354f);
+                    supplyWidth = available * (170f / 354f);
                 }
             }
         }
 
         SetBusinessTabWidth(workers, workersWidth);
-        SetBusinessTabWidth(supplies, otherWidth);
-        SetBusinessTabWidth(menu, otherWidth);
+        SetBusinessTabWidth(supplies, supplyWidth);
     }
 
     static void MatchBusinessTabBarWidth(Transform tabBar)
@@ -516,9 +499,10 @@ public class ManagementScreenController : MonoBehaviour
         if (rootImage != null)
         {
             // ContentBox supplies the visible surface. Leaving the root clear
-            // avoids doubling the translucent HUD color where both overlap.
+            // avoids doubling the translucent HUD color where both overlap and
+            // lets clicks pass through its fullscreen transparent rect.
             rootImage.color = Color.clear;
-            rootImage.raycastTarget = true;
+            rootImage.raycastTarget = false;
         }
 
         // ContentBox is the visible fill in the scene-authored hierarchy. Match
@@ -526,7 +510,10 @@ public class ManagementScreenController : MonoBehaviour
         Transform contentBox = managementPanel.transform.Find("ContentBox");
         var contentImage = contentBox != null ? contentBox.GetComponent<Image>() : null;
         if (contentImage != null)
+        {
             contentImage.color = HudTabColors.Strip;
+            contentImage.raycastTarget = false;
+        }
     }
 
     /// <summary>
@@ -615,8 +602,7 @@ public class ManagementScreenController : MonoBehaviour
                 tabButtons[i].gameObject.SetActive(true);
 
             var label = tabButtons[i].GetComponentInChildren<TextMeshProUGUI>(true);
-            string desiredLabel = workers ? "Workers"
-                : tabButtons[i].gameObject.name == "Tab_Menu" ? "Menu" : "Supply";
+            string desiredLabel = workers ? "Workers" : "Supply";
             if (label != null && label.text != desiredLabel)
                 label.text = desiredLabel;
         }
@@ -677,10 +663,7 @@ public class ManagementScreenController : MonoBehaviour
 
     public bool IsOpen => isOpen;
 
-    /// <summary>
-    /// The panel's full visible rect must receive pointer events, even in empty
-    /// space between controls, so world station selection cannot leak through it.
-    /// </summary>
+    /// <summary>Keep the management backdrop from swallowing world clicks.</summary>
     static void EnsurePanelClickBlocker(GameObject panel)
     {
         if (panel == null) return;
@@ -690,6 +673,6 @@ public class ManagementScreenController : MonoBehaviour
             image = panel.AddComponent<Image>();
             image.color = Color.clear;
         }
-        image.raycastTarget = true;
+        image.raycastTarget = false;
     }
 }

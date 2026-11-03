@@ -185,6 +185,18 @@ public class InventoryManager : MonoBehaviour
         acquired[item] = Mathf.Max(counts[item], totalAcquired);
     }
 
+    public void ResetToStartingInventory()
+    {
+        SelectedItem = null;
+        foreach (ItemDefinition item in allItems)
+        {
+            if (item == null) continue;
+            int start = Mathf.Max(0, item.startingQuantity);
+            counts[item] = start;
+            acquired[item] = start;
+        }
+    }
+
     public void AddOne(ItemDefinition item)
     {
         if (item == null) return;

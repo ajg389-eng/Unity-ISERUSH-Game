@@ -102,6 +102,9 @@ public static class GameSaveSlots
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
         SlotInfo info = GetSlot(slotIndex);
+        bool hadPreviousActiveSlot = PlayerPrefs.HasKey(ActiveSlotKey);
+        int previousActiveSlot = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        bool previousSessionSelection = slotSelectedThisSession;
         PlayerPrefs.SetInt(ActiveSlotKey, slotIndex);
         slotSelectedThisSession = true;
         NotificationCenter.Clear(true);
@@ -119,7 +122,11 @@ public static class GameSaveSlots
                 catch (Exception ex) { Debug.LogError("Could not read kitchen save: " + ex.Message); }
                 if (checkpoint == null || !checkpoint.Restore())
                 {
-                    slotSelectedThisSession = false;
+                    if (hadPreviousActiveSlot)
+                        PlayerPrefs.SetInt(ActiveSlotKey, previousActiveSlot);
+                    else
+                        PlayerPrefs.DeleteKey(ActiveSlotKey);
+                    slotSelectedThisSession = previousSessionSelection;
                     Debug.LogError("Kitchen save could not be restored. The saved checkpoint has been preserved.");
                     return false;
                 }
@@ -132,6 +139,15 @@ public static class GameSaveSlots
                 if (money != null) money.SetMoney(info.cash);
                 StoreStatisticsManager.Instance?.ResetCareerStatistics();
                 StoreStatisticsManager.Instance?.BeginDay();
+                MissionProgressManager.Instance?.ResetProgress();
+                MilestoneProgressManager.Instance?.ResetAllProgress();
+                ResearchProgressManager.Ensure()?.ResetProgress();
+                ProductionManager.Instance?.orderConfig?.ClearEnabledMenuItems();
+                UnityEngine.Object.FindFirstObjectByType<InventoryManager>()?.ResetToStartingInventory();
+                KitchenInventory.Instance?.RestoreStartingStock();
+                IngredientDeliveryService.Instance?.RestoreSaveState(null, null);
+                CustomerAI.DespawnAllCustomers();
+                OnboardingTutorial.Instance?.RestoreCheckpoint(true, 0);
 
                 // There is no saved kitchen to restore, so clear any scene state
                 // left over from the previously selected slot.
@@ -157,6 +173,7 @@ public static class GameSaveSlots
 
             if (ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null)
                 ProductionManager.Instance.orderConfig.ClearEnabledMenuItems();
+            UnityEngine.Object.FindFirstObjectByType<InventoryManager>()?.ResetToStartingInventory();
 
             StoreStatisticsManager.Instance?.ResetCareerStatistics();
             StoreStatisticsManager.Instance?.BeginDay();
@@ -165,6 +182,10 @@ public static class GameSaveSlots
                 MissionProgressManager.Instance.ResetProgress();
             if (MilestoneProgressManager.Instance != null)
                 MilestoneProgressManager.Instance.ResetAllProgress();
+            ResearchProgressManager.Ensure()?.ResetProgress();
+            KitchenInventory.Instance?.RestoreStartingStock();
+            IngredientDeliveryService.Instance?.RestoreSaveState(null, null);
+            CustomerAI.DespawnAllCustomers();
             PlayerPrefs.DeleteKey(Key(slotIndex, "MenuItems"));
         }
 

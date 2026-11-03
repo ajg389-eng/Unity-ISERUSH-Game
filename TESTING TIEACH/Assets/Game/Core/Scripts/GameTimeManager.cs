@@ -124,6 +124,14 @@ public class GameTimeManager : MonoBehaviour
         OnTimeChanged?.Invoke();
     }
 
+    /// <summary>Marks the start of the isolated tutorial service without advancing its campaign clock.</summary>
+    public void BeginTutorialPracticeShift()
+    {
+        if (!OnboardingTutorial.IsActive || IsShiftOver) return;
+        CurrentMinutes = Mathf.Max(CurrentMinutes, DayStartMinutes + 0.02f);
+        OnTimeChanged?.Invoke();
+    }
+
     public void StartNextDay()
     {
         CurrentDay++;

@@ -17,6 +17,7 @@ public class IngredientStockEntry
 public class KitchenInventory : MonoBehaviour
 {
     public const int ExpressDeliveryFee = 200;
+    public const int MaxIngredientStock = 100;
 
     public static KitchenInventory Instance { get; private set; }
 
@@ -146,6 +147,9 @@ public class KitchenInventory : MonoBehaviour
 
     void EnsureCatalogStock()
     {
+        foreach (IngredientStockEntry entry in stock)
+            if (entry != null)
+                entry.quantity = Mathf.Clamp(entry.quantity, 0, MaxIngredientStock);
         foreach (var item in GetOrderableItems())
             EnsureEntry(item);
     }
@@ -157,7 +161,7 @@ public class KitchenInventory : MonoBehaviour
             var entry = EnsureEntry(item);
             if (entry.quantity > 0) continue;
             int start = item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
-            entry.quantity = Mathf.Max(0, start);
+            entry.quantity = Mathf.Clamp(start, 0, MaxIngredientStock);
         }
     }
 
@@ -180,7 +184,7 @@ public class KitchenInventory : MonoBehaviour
         foreach (var e in stock)
         {
             if (e != null && e.item == item)
-                return e.quantity;
+                return Mathf.Clamp(e.quantity, 0, MaxIngredientStock);
         }
 
         // A newly introduced ingredient will not exist in older saves or in a
@@ -189,9 +193,18 @@ public class KitchenInventory : MonoBehaviour
         if (grantStartingStock && created != null)
         {
             int start = item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
-            created.quantity = Mathf.Max(0, start);
+            created.quantity = Mathf.Clamp(start, 0, MaxIngredientStock);
         }
-        return created != null ? created.quantity : 0;
+        return created != null ? Mathf.Clamp(created.quantity, 0, MaxIngredientStock) : 0;
+    }
+
+    public int GetAvailableStockCapacity(ItemDefinition item, bool includeIncoming = true)
+    {
+        if (item == null) return 0;
+        int incoming = 0;
+        IngredientDeliveryService service = IngredientDeliveryService.Instance;
+        if (includeIncoming && service != null) incoming = service.GetIncomingCount(item);
+        return Mathf.Max(0, MaxIngredientStock - GetCount(item) - incoming);
     }
 
     public bool Has(ItemDefinition item, int amount = 1)
@@ -221,7 +234,7 @@ public class KitchenInventory : MonoBehaviour
     {
         if (!MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
         IngredientDeliveryService service = IngredientDeliveryService.Instance;
-        if (service != null && service.HasPending) return;
+        if (!ShiftPlanningUI.IsPlanning && service != null && service.HasPending) return;
 
         if (money == null) money = FindObjectOfType<MoneyManager>();
         var cart = new Dictionary<ItemDefinition, int>();
@@ -233,10 +246,13 @@ public class KitchenInventory : MonoBehaviour
             if (target <= 0) continue;
 
             int available = GetCount(item) + (service != null ? service.GetIncomingCount(item) : 0);
+            available = Mathf.Min(available, MaxIngredientStock);
             if (available >= target) continue;
 
             int packSize = GetPackSize(item);
             int packs = Mathf.CeilToInt((target - available) / (float)packSize);
+            packs = Mathf.Min(packs, GetAvailableStockCapacity(item) / packSize);
+            if (packs <= 0) continue;
             long itemCost = (long)GetPackPrice(item) * packs;
             if (money != null && estimatedCost + itemCost > money.CurrentMoney) continue;
 
@@ -244,7 +260,7 @@ public class KitchenInventory : MonoBehaviour
             estimatedCost += itemCost;
         }
 
-        // Queue all affordable automatic restocks as one regular shipment.
+        // Batch all affordable automatic restocks through the same plan/shift ordering path.
         if (cart.Count > 0)
             TryOrderCart(cart, false, false);
     }
@@ -263,7 +279,7 @@ public class KitchenInventory : MonoBehaviour
     {
         if (item == null || amount <= 0) return;
         var entry = EnsureEntry(item);
-        entry.quantity += amount;
+        entry.quantity = Mathf.Min(MaxIngredientStock, Mathf.Max(0, entry.quantity) + amount);
         ProductionManager.Instance?.NotifyProductionStateChanged();
     }
 
@@ -295,7 +311,7 @@ public class KitchenInventory : MonoBehaviour
         {
             var entry = EnsureEntry(item);
             int start = item != null && item.startingQuantity > 0 ? item.startingQuantity : defaultStartingStock;
-            entry.quantity = Mathf.Max(0, start);
+            entry.quantity = Mathf.Clamp(start, 0, MaxIngredientStock);
         }
         ProductionManager.Instance?.NotifyProductionStateChanged(0f);
     }
@@ -321,7 +337,7 @@ public class KitchenInventory : MonoBehaviour
         return item.name;
     }
 
-    /// <summary>Spend money and queue a one-minute ingredient delivery.</summary>
+    /// <summary>Purchase one ingredient pack. During planning, stock is added immediately.</summary>
     public bool TryOrderPack(ItemDefinition item)
     {
         if (item == null) return false;
@@ -329,7 +345,7 @@ public class KitchenInventory : MonoBehaviour
         return TryOrderCart(cart);
     }
 
-    /// <summary>Pay for and dispatch every selected pack as one atomic shipment.</summary>
+    /// <summary>Pay for an ingredient cart. During planning, stock is added immediately.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
     {
         return TryOrderCart(packCounts, false, true);
@@ -346,13 +362,14 @@ public class KitchenInventory : MonoBehaviour
         if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
+        bool instantPurchase = ShiftPlanningUI.IsPlanning;
         IngredientDeliveryService service = IngredientDeliveryService.Instance;
-        if (service == null)
+        if (!instantPurchase && service == null)
         {
             var host = new GameObject("IngredientDeliveryService");
             service = host.AddComponent<IngredientDeliveryService>();
         }
-        if (!express && service.HasPending) return false;
+        if (!instantPurchase && !express && service.HasPending) return false;
 
         var items = new List<ItemDefinition>();
         var amounts = new List<int>();
@@ -361,21 +378,32 @@ public class KitchenInventory : MonoBehaviour
         {
             if (pair.Key == null || pair.Value <= 0) continue;
             if (!IsOrderItemUnlocked(pair.Key)) return false;
+            int amount = GetPackSize(pair.Key) * pair.Value;
+            if (amount > GetAvailableStockCapacity(pair.Key)) return false;
             items.Add(pair.Key);
-            amounts.Add(GetPackSize(pair.Key) * pair.Value);
+            amounts.Add(amount);
             totalPrice += GetPackPrice(pair.Key) * pair.Value;
         }
         if (items.Count == 0) return false;
 
-        if (express)
+        if (express && !instantPurchase)
             totalPrice += ExpressDeliveryFee;
 
         if (money != null && !money.TrySpend(totalPrice))
             return false;
 
-        bool accepted = express
-            ? service.QueueExpressOrder(items, amounts)
-            : service.QueueOrder(items, amounts);
+        bool accepted = instantPurchase;
+        if (instantPurchase)
+        {
+            for (int i = 0; i < items.Count; i++)
+                AddStock(items[i], amounts[i]);
+        }
+        else
+        {
+            accepted = express
+                ? service.QueueExpressOrder(items, amounts)
+                : service.QueueOrder(items, amounts);
+        }
         if (!accepted)
         {
             if (money != null) money.AddMoney(totalPrice);

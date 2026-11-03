@@ -37,6 +37,7 @@ public class MainHudTabs : MonoBehaviour
     bool visualStateKnown;
     bool displayedInventoryOpen;
     bool displayedManagementOpen;
+    bool displayedBuildLocked;
     bool sourceButtonsResolved;
     Button inventorySourceButton;
     Button managementSourceButton;
@@ -271,6 +272,9 @@ public class MainHudTabs : MonoBehaviour
                 businessTabButton.targetGraphic = businessBg;
             GameUITheme.ApplyTabButton(businessTabButton, false);
         }
+
+        if (inventoryTabButton != null)
+            DelayedTooltip.Attach(inventoryTabButton, "Build is available during the Plan phase.");
     }
 
     Image CreateTab(string objectName, string label)
@@ -319,6 +323,12 @@ public class MainHudTabs : MonoBehaviour
 
     void TogglePage(PrimaryPage page)
     {
+        if (page == PrimaryPage.Build && IsBuildLocked())
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+
         if (IsPageOpen(page))
         {
             CloseAll();
@@ -349,6 +359,12 @@ public class MainHudTabs : MonoBehaviour
 
     void SwitchTo(PrimaryPage page)
     {
+        if (page == PrimaryPage.Build && IsBuildLocked())
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
+
         var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
         lastPage = page;
@@ -487,18 +503,46 @@ public class MainHudTabs : MonoBehaviour
     void RefreshVisuals()
     {
         RefreshPageControllerReferences();
+        bool buildLocked = IsBuildLocked();
+        if (buildLocked && cachedInventoryUI != null && cachedInventoryUI.IsPanelOpen)
+            cachedInventoryUI.TogglePanel();
         bool inventoryOpen = cachedInventoryUI != null && cachedInventoryUI.IsPanelOpen;
         bool managementOpen = cachedManagementScreen != null && cachedManagementScreen.IsOpen;
 
         if (visualStateKnown && inventoryOpen == displayedInventoryOpen
-            && managementOpen == displayedManagementOpen)
+            && managementOpen == displayedManagementOpen
+            && buildLocked == displayedBuildLocked)
             return;
 
         HudTabColors.Apply(inventoryTabButton, inventoryOpen);
         HudTabColors.Apply(businessTabButton, managementOpen);
+        if (inventoryTabButton != null)
+        {
+            inventoryTabButton.interactable = !buildLocked;
+            SetTabLabel(inventoryBg, buildLocked ? "Build (Plan)" : "Build");
+            var label = inventoryBg != null
+                ? inventoryBg.GetComponentInChildren<TextMeshProUGUI>(true) : null;
+            if (label != null)
+            {
+                label.color = buildLocked ? GameUITheme.TextSecondary : Color.white;
+                label.enableAutoSizing = buildLocked;
+                label.fontSizeMin = buildLocked ? 11f : 16f;
+                label.fontSizeMax = buildLocked ? 14f : 16f;
+            }
+            if (buildLocked && inventoryBg != null)
+                inventoryBg.color = GameUITheme.PanelSlate;
+        }
         displayedInventoryOpen = inventoryOpen;
         displayedManagementOpen = managementOpen;
+        displayedBuildLocked = buildLocked;
         visualStateKnown = true;
+    }
+
+    static bool IsBuildLocked()
+    {
+        return GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress
+            && !ShiftPlanningUI.IsPlanning;
     }
 
     void RefreshPageControllerReferences()

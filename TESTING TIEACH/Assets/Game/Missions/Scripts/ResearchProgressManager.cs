@@ -161,7 +161,7 @@ public sealed class ResearchProgressManager : MonoBehaviour
 
     public List<string> CaptureCompleted() => new List<string>(completed);
 
-    public void DebugResetAll()
+    public void ResetProgress()
     {
         completed.Clear();
         activeId = null;
@@ -170,6 +170,8 @@ public sealed class ResearchProgressManager : MonoBehaviour
         lastAbsoluteMinute = AbsoluteMinute;
         Changed?.Invoke();
     }
+
+    public void DebugResetAll() => ResetProgress();
 
     public void DebugCompleteAll()
     {

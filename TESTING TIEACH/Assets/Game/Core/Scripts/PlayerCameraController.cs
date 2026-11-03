@@ -340,6 +340,9 @@ public static class UIInputFocusGuard
 {
     static InventoryUI cachedInventoryUI;
     static ManagementScreenController cachedManagementScreen;
+    static EventSystem cachedEventSystem;
+    static PointerEventData cachedPointerData;
+    static readonly List<RaycastResult> PointerRaycastResults = new List<RaycastResult>(32);
 
     /// <summary>
     /// True only when the pointer is inside the visible Inventory or Management
@@ -362,6 +365,59 @@ public static class UIInputFocusGuard
             return cachedManagementScreen != null
                 && cachedManagementScreen.IsOpen
                 && ContainsPointer(cachedManagementScreen.managementPanel);
+        }
+    }
+
+    /// <summary>
+    /// Blocks world interaction over actual controls, but lets clicks pass
+    /// through non-interactive backgrounds inside the Build and Business panels.
+    /// This keeps their buttons usable while allowing stations behind transparent
+    /// panel space to be selected.
+    /// </summary>
+    public static bool IsPointerOverInteractiveUI
+    {
+        get
+        {
+            EventSystem eventSystem = EventSystem.current;
+            if (eventSystem == null) return false;
+            if (cachedPointerData == null || cachedEventSystem != eventSystem)
+            {
+                cachedEventSystem = eventSystem;
+                cachedPointerData = new PointerEventData(eventSystem);
+            }
+
+            cachedPointerData.Reset();
+            cachedPointerData.position = Input.mousePosition;
+            PointerRaycastResults.Clear();
+            eventSystem.RaycastAll(cachedPointerData, PointerRaycastResults);
+
+            if (cachedInventoryUI == null)
+                cachedInventoryUI = Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (cachedManagementScreen == null)
+                cachedManagementScreen = Object.FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+
+            for (int i = 0; i < PointerRaycastResults.Count; i++)
+            {
+                GameObject hit = PointerRaycastResults[i].gameObject;
+                if (hit == null) continue;
+
+                bool insideBuildPanel = cachedInventoryUI != null
+                    && cachedInventoryUI.IsPanelOpen
+                    && hit.transform.IsChildOf(cachedInventoryUI.panel.transform);
+                bool insideBusinessPanel = cachedManagementScreen != null
+                    && cachedManagementScreen.IsOpen
+                    && cachedManagementScreen.managementPanel != null
+                    && hit.transform.IsChildOf(cachedManagementScreen.managementPanel.transform);
+
+                if (!insideBuildPanel && !insideBusinessPanel)
+                    return true;
+
+                if (hit.GetComponentInParent<Selectable>() != null
+                    || hit.GetComponentInParent<ScrollRect>() != null)
+                    return true;
+            }
+
+            return false;
         }
     }
 

@@ -1,5 +1,4 @@
 ﻿using UnityEngine;
-using UnityEngine.EventSystems;
 
 public class RegisterInteractionManager : MonoBehaviour
 {
@@ -13,8 +12,9 @@ public class RegisterInteractionManager : MonoBehaviour
     {
         if (!cam) cam = Camera.main;
 
-        // If you click on UI (the popup button), don't treat it as "elsewhere"
-        if (Input.GetMouseButtonDown(0) && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        // Ignore actual controls, but allow a register click through transparent
+        // space in the open Build or Business panel.
+        if (Input.GetMouseButtonDown(0) && UIInputFocusGuard.IsPointerOverInteractiveUI)
             return;
 
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);

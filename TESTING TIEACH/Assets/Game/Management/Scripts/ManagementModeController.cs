@@ -4322,8 +4322,7 @@ public class ManagementModeController : MonoBehaviour
 
     static bool IsPointerOverUI()
     {
-        return UnityEngine.EventSystems.EventSystem.current != null &&
-               UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+        return UIInputFocusGuard.IsPointerOverInteractiveUI;
     }
 
     void EnsurePopup()

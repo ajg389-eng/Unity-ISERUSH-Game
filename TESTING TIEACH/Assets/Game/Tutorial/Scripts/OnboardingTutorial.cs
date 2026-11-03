@@ -4,8 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Guided first-run tour: empty kitchen, buy/place stations, order ingredients,
-/// then one practice customer. Skip from the debug menu restores the starter kitchen.
+/// Guided first-run tour: plan and build the kitchen, then run one practice customer.
+/// Skip from the debug menu restores the starter kitchen.
 /// </summary>
 public class OnboardingTutorial : MonoBehaviour
 {
@@ -16,6 +16,8 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
     public static bool IsActive => Instance != null && Instance.running;
+    public static bool CanStartShiftFromPlan => !IsActive
+        || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length && Steps[Instance.stepIndex].liveCustomer);
     public static bool BlocksAutoCustomers => IsActive || !IsComplete;
     public static bool AllowsPracticeCustomer => IsActive && Steps[Instance.stepIndex].liveCustomer;
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
@@ -107,6 +109,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
+        stationChecklistInitialized = false;
+        nextStationChecklistRefresh = 0f;
         furthestStepIndex = stepIndex;
         if (stepIndex == 0)
             ResetCameraTutorialInputs();
@@ -147,6 +151,10 @@ public class OnboardingTutorial : MonoBehaviour
     int recipeTutorialStationIndex;
     int ingredientTutorialStep;
     float ingredientExplanationUntil;
+    readonly bool[] stationChecklistStatus = new bool[7];
+    bool stationChecklistInitialized;
+    bool stationChecklistComplete;
+    float nextStationChecklistRefresh;
     string tutorialFocusText;
     string tutorialTextBeingRevealed;
     string lastTutorialHighlightedText;
@@ -163,6 +171,7 @@ public class OnboardingTutorial : MonoBehaviour
     GameObject panel;
     TextMeshProUGUI titleText;
     TextMeshProUGUI bodyText;
+    TextMeshProUGUI coreStationChecklistText;
     TextMeshProUGUI stepLabel;
     Button backButton;
     Button nextButton;
@@ -207,6 +216,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool openIngredients;
         public bool openWorkers;
         public bool requirePlaced;
+        public bool requireStationChecklist;
         public bool requireAllStations;
         public bool requireFlow;
         public bool requireWorkerOnFlow;
@@ -255,7 +265,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireHamburger = false,
             bool requireOrderServed = false,
             bool requireRegisterEnabled = false,
-            bool requireCameraControls = false)
+            bool requireCameraControls = false,
+            bool requireStationChecklist = false)
         {
             this.title = title;
             this.body = body;
@@ -267,6 +278,7 @@ public class OnboardingTutorial : MonoBehaviour
             this.openIngredients = openIngredients;
             this.openWorkers = openWorkers;
             this.requirePlaced = requirePlaced;
+            this.requireStationChecklist = requireStationChecklist;
             this.requireAllStations = requireAllStations;
             this.requireFlow = requireFlow;
             this.requireWorkerOnFlow = requireWorkerOnFlow;
@@ -293,7 +305,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         new Step(
             "Move around the kitchen",
-            "Before we start building, get comfortable looking around. Use <b>WASD</b> to move the camera, hold <b>right mouse</b> and drag to turn the view, then use the <b>scroll wheel</b> to zoom. Try each control and I will wait here until you have.",
+            "We start in the <b>Plan phase</b>. The shift is paused while you design the kitchen, set recipes and rates, order supplies, choose the menu, and assign workers. The Plan screen fills in menu demand and full-shift totals as you enable items. <b>Start Shift</b> opens the restaurant when the plan is ready.\n\n" +
+            "First, get comfortable looking around. Use <b>WASD</b> to move the camera, hold <b>right mouse</b> and drag to turn the view, then use the <b>scroll wheel</b> to zoom. Try each control and I will wait here until you have.",
             "Next", Highlight.None, requireCameraControls: true),
         new Step(
             "Empty kitchen",
@@ -301,47 +314,10 @@ public class OnboardingTutorial : MonoBehaviour
             "You will buy each workstation, stock ingredients, then serve one customer. Use <b>Back</b> and <b>Next</b> to move through the steps.",
             "Next", Highlight.None),
         new Step(
-            "Buy stations",
-            "Open <b>Build</b> (top-left, or press 1). Each station's <b>first copy is free</b>. Click Buy, then click a floor tile to place it.\n\n" +
-            "Place stations in the kitchen, not the lobby. You can rotate while placing if the ghost shows a facing arrow. <b>Human factors and work design</b> means arranging tasks and equipment around the people doing the work: keep stations reachable, routes direct, and aisles clear so workers spend less time walking and handling items.\n\n" +
-            "Stations unlock one at a time as you reach their tutorial section. Previously introduced stations stay available. Next stays locked until the required station is on the floor.",
-            "Next", Highlight.Inventory),
-        new Step(
-            "Register",
-            "Customers enter and line up at the <b>register</b>. They order a burger, fries, drink, or combo here. The queue grows when arrivals outpace your service capacity.\n\n" +
-            "Open <b>Build</b> and buy your free <b>register</b>. Placement starts automatically: click a free <b>counter</b> on the lobby side.\n\n" +
-            "Keep the queue area clear. After placing it, click the register and choose <b>Enable</b>. Next unlocks after the register is both placed and enabled.",
-            "Next", Highlight.Register, openInventory: true, requirePlaced: true, requireRegisterEnabled: true),
-        new Step(
-            "Freezer",
-            "Buy and place a <b>freezer</b>. Each freezer stores one ingredient. Select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>. A cook carries those patties to the grill.\n\n" +
-            "If the freezer is unconfigured or empty, burgers never start.\n\nPlace one to continue.",
-            "Next", Highlight.Freezer, openInventory: true, requirePlaced: true),
-        new Step(
-            "Grill",
-            "Buy and place a <b>grill</b> next in the burger line. After the freezer, this cooks the patty.\n\n" +
-            "Later, under Business > Staff, point the grill's output toward assembly so cooked patties keep moving.\n\nPlace one to continue.",
-            "Next", Highlight.Grill, openInventory: true, requirePlaced: true),
-        new Step(
-            "Fryer",
-            "Buy and place a <b>fryer</b>. Fries skip the freezer and grill — they are their own short path.\n\n" +
-            "The fries flow is Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, then Assembly combines them with a fry container from a second Pantry.\n\nPlace one to continue.",
-            "Next", Highlight.Fryer, openInventory: true, requirePlaced: true),
-        new Step(
-            "Pantry",
-            "Buy and place a <b>pantry</b>. Each pantry stores exactly one ingredient. Select it under <b>Business > Staff</b> and choose <b>Bun</b> for this burger line.\n\n" +
-            "Later, use separate pantries for potatoes, raw cheese, lettuce, or tomatoes.\n\nPlace one to continue.",
-            "Next", Highlight.Pantry, openInventory: true, requirePlaced: true),
-        new Step(
-            "Assembly",
-            "Buy and place an <b>assembly</b> table. It always combines two inputs into one output.\n\n" +
-            "For the Hamburger recipe, the inputs are one cooked patty and one bun. Assembly output should point to the Pickup Station.\n\nPlace one to continue.",
-            "Next", Highlight.Assembly, openInventory: true, requirePlaced: true),
-        new Step(
-            "Pickup Station",
-            "Buy and place a <b>Pickup Station</b> on the pass. Any finished item can wait here for customer pickup, including food, drinks, and future products.\n\n" +
-            "Pickup quality is freshness-linked sale value. Sold within <b>8 seconds</b> of arrival, an item earns <b>50% more</b>; it returns to base value by 28 seconds, then falls to <b>50% below base</b> by 56 seconds. Items remain available, but stale stock earns less. Match production to customer demand to protect freshness and avoid overproduction. Item reputation in Analytics separately affects demand next shift.\n\nPlace one to continue.",
-            "Next", Highlight.HeatLamp, openInventory: true, requirePlaced: true),
+            "Build the production line",
+            "Build these seven stations in any order. The live checklist below tracks each one as you place it. The first copy of each station is free. Keep the register on the lobby counter, the Pickup Station on the pass, and production stations in the kitchen. The Fryer starts the fries process. Pickup freshness affects sale value: +50% within 8 seconds, base value by 28 seconds, and -50% by 56 seconds.\n\n" +
+            "<b>Human factors and work design</b> means arranging tasks and equipment around the people doing the work: keep stations reachable, routes direct, and aisles clear so workers spend less time walking and handling items.",
+            "Next", Highlight.None, openInventory: true, requireStationChecklist: true),
         new Step(
             "Research the three foundations",
             "Before we choose a recipe, open <b>Research</b>. Gus needs you to complete the first card in each branch: Restaurant Basics, Core Workforce, and Manual Operations. Each tutorial card finishes in one second.",
@@ -371,8 +347,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
         new Step(
             "Choose what to sell",
-            "Click the highlighted <b>Menu</b> tab. Every item starts turned off so you choose exactly what customers can order. Enable <b>Hamburger</b> to make the burger line available.",
-            "Next", Highlight.Management, requireMenuScreen: true, requireHamburger: true),
+            "Choose menu items on the <b>Plan card</b>. Click <b>Add Item to Menu</b>, then choose <b>Hamburger</b> so customers can order it.",
+            "Next", Highlight.None, requireHamburger: true),
         new Step(
             "Edit a flow",
             "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
@@ -387,6 +363,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true, requireStationSequence: true),
         new Step(
             "One customer loop",
+            "Your setup is still in the <b>Plan phase</b>. Review menu demand and full-shift totals on the Plan screen; its list fills in as you enable menu items. Place stations, choose recipes and menu items, and design flows before opening. During a shift, you can still adjust target rates, reorder supplies, and move workers between flows, but station placement, recipe and menu choices, and flow redesign are locked.\n\n" +
             "Here is the basic service loop:\n\n" +
             "1. Customer arrives and orders at the register.\n" +
             "2. Workers follow the flow you built: freezer > grill > assembly for burgers, pantry > cutting > fryer for fries, with both grill and pantry feeding burger assembly.\n" +
@@ -395,8 +372,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
         new Step(
             "Serve one order",
-            "The clock is running. Only <b>one customer</b> will come in and order <b>one burger</b> so you can watch the loop.\n\n" +
-            "If nobody is cooking, check workers, outputs, and that you bought ingredient packs.\n\n" +
+            "Click <b>Start Shift</b> on the Plan screen to open the restaurant. Only <b>one practice customer</b> will arrive and order <b>one burger</b>, so you can watch the loop without a crowd hiding problems.\n\n" +
+            "If production stops, check the worker assignment, station connections, ingredient stock, station buffers, and worker travel.\n\n" +
             "Serve that order, then continue to Analytics. Extra customers stay away until the tutorial ends.",
             "Next", Highlight.Register, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true, requireOrderServed: true),
         new Step(
@@ -408,7 +385,8 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] GusDialogue =
     {
-        "Before we start building, get comfortable looking around. Use WASD to move the camera, hold the right mouse button and drag to turn the view, then use the scroll wheel to zoom. Try each control and I will wait here until you have.",
+        "We start in the <b>Plan phase</b>. The shift is paused while you design the kitchen, set recipes and rates, order supplies, choose the menu, and assign workers. Start Shift opens the restaurant when the plan is ready.\n\n" +
+        "Get comfortable looking around. Use WASD to move the camera, hold the right mouse button and drag to turn the view, then use the scroll wheel to zoom. Try each control and I will wait here until you have.",
 
         "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
@@ -448,7 +426,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
 
         "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Your first worker is free. Later hires cost progressively more, so staffing is a capacity decision.\n\n" +
-        "Transport upgrades raise a worker's trained limit up to 120 items per minute. Route travel lowers their delivery rate, and workers not assigned to a flow remain idle.",
+        "Workers carry up to <b>4 items per trip</b>. Transport upgrades raise their pacing limit from 60 to 80, 100, and 120 items per minute. Travel and station handling still take time, so an upgrade helps when worker transport is the bottleneck.",
 
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +
         "In ONE flow, drag Freezer to Grill, Grill to Assembly, Pantry to Assembly, and Assembly to Pickup Station. Release on each destination and click Finish. The pantry supplies buns to the same assembly station.",
@@ -466,36 +444,29 @@ public class OnboardingTutorial : MonoBehaviour
         "1. A customer orders at the register.\n2. Workers follow the flows you designed.\n3. Finished items wait at a Pickup Station.\n4. The customer collects each item and leaves.\n\n" +
         "Waiting, walking, and blocked stations are all clues.",
 
-        "I am opening the doors for one test customer. They will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
-        "If production stops, check the worker assignment, station sequence, and ingredient stock. Serve the order, then continue to Analytics.",
+        "Click <b>Start Shift</b> on the Plan screen. I am opening the doors for one test customer, who will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
+        "If production stops, check the worker assignment, station connections, ingredient stock, station buffers, and worker travel. Serve the order, then continue to Analytics.",
 
         "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Produced / Min in the item table counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then Finish."
     };
 
     static readonly string[] CompactTutorialText =
     {
-        "Use <b>WASD</b> to move around. Hold <b>right mouse</b> and drag to turn the camera, then scroll to zoom. Try all three controls before continuing.",
+        "The restaurant starts in the <b>Plan phase</b>. The shift is paused while you design stations and flows, set recipes and rates, order supplies, choose the menu, and assign workers. Menu demand and daily totals appear as you enable items. <b>Start Shift</b> opens the restaurant. Use <b>WASD</b> to move, hold <b>right mouse</b> and drag to turn, then scroll to zoom.",
         "You are the <b>industrial and systems engineer</b> for this restaurant. Design a connected operation, balance people, equipment, materials, and customer demand, then use evidence to improve the whole system.",
-        "Open <b>Build</b>. <b>Human factors and work design</b> means shaping tasks and layout around workers. Keep stations reachable, routes direct, and aisles clear to reduce walking and handling time.",
-        "Buy the <b>Register</b>, place it on a lobby counter, then click it and choose <b>Enable</b>. Its queue shows when customer demand is greater than service capacity.",
-        "Buy a <b>Freezer</b>. You will assign Raw Patty after placement. This is the start of a process: it supplies an input another station needs.",
-        "Buy a <b>Grill</b>. It turns Raw Patty into Cooked Patty.",
-        "Buy a <b>Fryer</b>. Fries use Potato Slices, then combine Cooked Potato Slices with a Fry Container at Assembly.",
-        "Buy a <b>Pantry</b> for Buns. Milk, lettuce, and tomatoes come from Freezers.",
-        "Buy an <b>Assembly Station</b>. A recipe is a process specification: it defines the inputs needed for each finished item.",
-        "Buy a <b>Pickup Station</b> and <b>click a counter slot to place it</b>. Freshness changes sale value: within 8 seconds an item earns +50%; by 28 seconds it is at base value; by 56 seconds it reaches -50%. It stays available, but stale stock earns less. Match production with demand. Item reputation is a separate signal that changes next shift's demand.",
+        "Open <b>Build</b> and use the checklist to buy and place a Freezer, Grill, Pantry, Assembly Station, Register, Fryer, and Pickup Station. Place them in any order. Keep the Register on a lobby counter, the Pickup Station on the pass, and leave queue space clear. The first copy of each station is free. The Fryer starts fries production. Pickup freshness affects sale value: +50% within 8 seconds, base by 28 seconds, and -50% by 56 seconds. <b>Human factors and work design</b> means keeping stations reachable, routes direct, and aisles clear.",
         "In <b>Research</b>, complete the first card in each of the three branches. Each first card finishes in one second during the tutorial.",
         "Open <b>Recipes</b> and inspect the Burger, Fries, and Shake production trees before configuring a station.",
         "In <b>Business > Staff</b>, set Freezer to Raw Patty, Grill to Cooked Patty, Pantry to Bun, and Assembly to Hamburger. <b>Target / Min</b> sets planned output from the selected recipe's base capacity. At <b>100%</b> a 15/min recipe makes one item every 4 seconds; a lower target slows the cycle and reduces input use proportionally. Match upstream supply to each recipe's required inputs.",
         "In <b>Food</b>, order Raw Patties and Buns. Stock prevents stations from starving, while excess stock ties up cash and can be wasted.",
-        "In <b>Staff</b>, hire one worker. This is <b>workforce planning</b>: assign clear work, then provide enough transport capacity for the flow. Short routes reduce walking and handling time.",
+        "In <b>Staff</b>, hire one worker. The first worker is free; each later hire costs more. Workers carry up to 4 items per trip, and transport upgrades raise their pacing limit from 60 to 120 items/min. Short routes reduce travel time, while upgrades help when transport is the bottleneck.",
         "Create one flow: Freezer > Grill > Assembly, Pantry > Assembly, then Assembly > Pickup Station. This process map includes two inputs merging at Assembly.",
-        "Open <b>Business > Menu</b> and enable <b>Hamburger</b>. All sellable items start off until you choose them.",
+        "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. All sellable items start off until you choose them.",
         "Use <b>Edit Flow</b> to adjust connections, then click Finish. ISE improvement is iterative: change the design, then check whether the result improves.",
-        "Assign a worker using the highlighted drop area. Route length and handling time reduce the worker's available transport capacity, so work design should keep connected stations reachable and the flow direct.",
-        "Customers order at the register. Stations produce at their set rates, and workers move finished food to the Pickup Station even before it is ordered. Balance output with demand to avoid shortages and waste.",
-        "Watch your worker prepare a <b>burger</b> and deliver it to the <b>Pickup Station</b>. The customer will collect the order and leave.",
-        "In <b>Analytics</b>, <b>In System</b> counts customers waiting or being served; <b>Avg Order Wait</b> is order to full pickup; <b>Orders Served / Min</b> counts orders; <b>Service Rate</b> is served divided by served plus lost; <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds. <b>Item Reputation</b> changes next shift's demand: serving an item raises its score, while an abandoned order lowers it; every 20 points adds 5 items/min. Compare demand, queues, and output to find the constraint, change one thing, and check the effect. That measure-and-improve loop is central to ISE. Review Analytics, close it, then Finish."
+        "Assign a worker using the highlighted drop area. Their transport upgrade sets a pacing limit, while physical travel and station handling still take time. Work design should keep connected stations reachable and routes direct.",
+        "Your setup is in the <b>Plan phase</b>. Review menu demand and full-shift totals, which fill in as you enable menu items. Before opening, place stations, choose recipes and menu items, and design flows. During a shift you can adjust target rates, reorder supplies, and move workers between flows, but station placement, recipe/menu choices, and flow redesign are locked. Customers order at the register; workers deliver production to Pickup even before it is ordered.",
+        "Click <b>Start Shift</b> on the Plan screen. One practice customer will order <b>one burger</b>; the tutorial keeps the campaign clock paused while we observe the system. If production stops, check worker assignment, connections, ingredient stock, station buffers, and travel. Serve the order, then continue to Analytics.",
+        "In <b>Analytics</b>, <b>In System</b> counts customers waiting or being served; <b>Avg Order Wait</b> is order to full pickup; <b>Orders Served / Min</b> counts orders; <b>Service Rate</b> is served divided by served plus lost; <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds. Completed items build recipe reputation toward stars, and each reputation threshold adds 5 items/min to that item's demand next shift. Compare demand, queues, and output to find the constraint, change one thing, and check the effect. That measure-and-improve loop is central to ISE. Review Analytics, close it, then Finish."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -597,14 +568,20 @@ public class OnboardingTutorial : MonoBehaviour
         pendingStart = true;
         running = false;
         stepIndex = 0;
+        stationChecklistInitialized = false;
+        nextStationChecklistRefresh = 0f;
         furthestStepIndex = -1;
         flowEditCompleted = false;
+        flowCreateCompleted = false;
+        recipeBusinessOpened = false;
         liveCustomerSpawned = false;
         researchScreenOpened = false;
         recipeScreenOpened = false;
         analyticsScreenOpened = false;
         menuScreenOpened = false;
         orderServed = false;
+        tutorialReviewShown = false;
+        cleanedOldWorldCallout = false;
         ResetCameraTutorialInputs();
         HideUI();
         ClearHighlight();
@@ -693,6 +670,12 @@ public class OnboardingTutorial : MonoBehaviour
             titleText.text = ISEVocabularyHighlighter.Highlight(step.title);
         SetTutorialBodyText(!string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
             : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body);
+        if (coreStationChecklistText != null)
+        {
+            coreStationChecklistText.gameObject.SetActive(step.requireStationChecklist);
+            if (step.requireStationChecklist)
+                RefreshStationChecklist();
+        }
         if (stepLabel != null)
             stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
         if (nextLabel != null)
@@ -1044,11 +1027,13 @@ public class OnboardingTutorial : MonoBehaviour
     string LockedLabel(Step step)
     {
         if (step.highlight == Highlight.Inventory) return "Open Build";
+        if (step.requireStationChecklist && !TutorialChecklistStationsPlaced())
+            return "Place the seven stations";
         if (step.requireResearch) return "Research all three foundations";
         if (step.requireRecipeScreen) return "Open Recipes";
         if (step.requireAnalyticsScreen) return "Open Analytics";
         if (step.requireMenuScreen && !menuScreenOpened) return "Open Menu";
-        if (step.requireHamburger) return "Enable Hamburger";
+        if (step.requireHamburger) return "Add Hamburger to the menu";
         if (step.requireCameraControls)
         {
             if (!tutorialCameraMoved) return "Move camera with WASD";
@@ -1127,6 +1112,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireAnalyticsScreen && !analyticsScreenOpened) return false;
         if (step.requireMenuScreen && !menuScreenOpened) return false;
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
+        if (step.requireStationChecklist && !TutorialChecklistStationsPlaced()) return false;
         if (step.requireRegisterEnabled && !IsTutorialRegisterEnabled()) return false;
         if (step.requireOrderServed && !orderServed) return false;
         if (step.requireRecipes && (!recipeBusinessOpened || !BurgerRecipesReady())) return false;
@@ -1149,11 +1135,56 @@ public class OnboardingTutorial : MonoBehaviour
 
     static bool AutomaticallyAdvances(Step step)
     {
-        return (step.liveCustomer && !step.requireOrderServed) || step.requirePlaced || step.requireAllStations
+        return (step.liveCustomer && !step.requireOrderServed) || step.requirePlaced || step.requireStationChecklist || step.requireAllStations
             || step.requireFlow || step.requireWorkerOnFlow || step.requireHiredWorker
             || step.requireEditedFlow || step.requireRecipes || step.requireIngredients
             || step.requireResearch || step.requireHamburger || step.requireRegisterEnabled
             || step.requireOrderServed;
+    }
+
+    bool TutorialChecklistStationsPlaced()
+    {
+        if (!stationChecklistInitialized || Time.unscaledTime >= nextStationChecklistRefresh)
+            RefreshStationChecklist();
+        return stationChecklistComplete;
+    }
+
+    void RefreshStationChecklist()
+    {
+        if (!stationChecklistInitialized || Time.unscaledTime >= nextStationChecklistRefresh)
+        {
+            stationChecklistStatus[0] = HasPlacedStation(Highlight.Freezer);
+            stationChecklistStatus[1] = HasPlacedStation(Highlight.Grill);
+            stationChecklistStatus[2] = HasPlacedStation(Highlight.Pantry);
+            stationChecklistStatus[3] = HasPlacedStation(Highlight.Assembly);
+            stationChecklistStatus[4] = HasPlacedStation(Highlight.Register);
+            stationChecklistStatus[5] = HasPlacedStation(Highlight.Fryer);
+            stationChecklistStatus[6] = HasPlacedStation(Highlight.HeatLamp);
+            stationChecklistComplete = true;
+            for (int i = 0; i < stationChecklistStatus.Length; i++)
+                stationChecklistComplete &= stationChecklistStatus[i];
+            stationChecklistInitialized = true;
+            nextStationChecklistRefresh = Time.unscaledTime + 0.25f;
+        }
+
+        if (coreStationChecklistText == null) return;
+        string text = ChecklistLine("Freezer", stationChecklistStatus[0]) + "\n"
+            + ChecklistLine("Grill", stationChecklistStatus[1]) + "\n"
+            + ChecklistLine("Pantry", stationChecklistStatus[2]) + "\n"
+            + ChecklistLine("Assembly Station", stationChecklistStatus[3]) + "\n"
+            + ChecklistLine("Register", stationChecklistStatus[4]) + "\n"
+            + ChecklistLine("Fryer", stationChecklistStatus[5]) + "\n"
+            + ChecklistLine("Pickup Station", stationChecklistStatus[6]);
+        if (coreStationChecklistText.text != text)
+            coreStationChecklistText.text = text;
+    }
+
+    static string ChecklistLine(string label, bool complete)
+    {
+        string marker = complete
+            ? "<color=#59D6A6>[x]</color>"
+            : "<color=#AEB7C4>[ ]</color>";
+        return marker + "  Buy and place " + label;
     }
 
     void RefreshAutomaticAdvance()
@@ -1316,8 +1347,9 @@ public class OnboardingTutorial : MonoBehaviour
 
     bool AllTutorialStationsPlaced()
     {
-        // Follow the authored placement lessons. A removed/replaced station
-        // must not remain a hidden requirement for the customer demonstration.
+        if (!TutorialChecklistStationsPlaced()) return false;
+        // Ensure the customer demonstration cannot start with a missing
+        // checklist station.
         foreach (var step in Steps)
             if (step.requirePlaced && !HasPlacedStation(step.highlight))
                 return false;
@@ -1373,6 +1405,7 @@ public class OnboardingTutorial : MonoBehaviour
     void SpawnPracticeCustomer()
     {
         if (liveCustomerSpawned) return;
+        if (ShiftPlanningUI.IsPlanning) return;
         var existing = FindObjectsByType<CustomerAI>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (existing != null && existing.Length > 0)
         {
@@ -1729,32 +1762,20 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
-        if (step.requireMenuScreen && !menuScreenOpened)
-        {
-            ManagementScreenController menuManagement = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-            // Open the Business panel so the tutorial can point directly at the
-            // action this step requires. The player should not have to guess
-            // that Business is only an intermediate click before Menu.
-            if (menuManagement != null && !menuManagement.IsOpen)
-                menuManagement.Open();
-            tutorialFocusText = "Click the <b>Menu</b> tab to choose what items to sell.";
-            SetTutorialBodyText(tutorialFocusText);
-            HighlightHudButton("Tab_Menu");
-            return;
-        }
         if (step.requireHamburger && !IsHamburgerEnabled())
         {
-            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
             CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
-            Toggle target = ingredients != null && config != null
-                ? ingredients.TutorialMenuToggle(config.burgerBase) : null;
+            ShiftPlanningUI planning = ShiftPlanningUI.Instance;
+            if (planning != null) planning.FocusPlanningCard();
+            Button target = planning != null && config != null && planning.IsMenuItemPickerOpen
+                ? planning.TutorialMenuItemButton(config.burgerBase)
+                : planning != null ? planning.TutorialAddMenuItemButton : null;
             if (target != null)
             {
-                tutorialFocusText = "Click the <b>Hamburger</b> toggle to add it to the menu.";
+                tutorialFocusText = planning.IsMenuItemPickerOpen
+                    ? "Choose <b>Hamburger</b> from the item list."
+                    : "Click <b>Add Item to Menu</b> on the Plan card.";
                 SetTutorialBodyText(tutorialFocusText);
-                // This step replaces the earlier Business-tab target with the
-                // actual menu toggle. Focus explicitly so both the border and
-                // arrow follow the action the player needs to take.
                 FocusTutorialControl(target);
             }
             return;
@@ -1877,6 +1898,8 @@ public class OnboardingTutorial : MonoBehaviour
         RefreshCameraPromptStatus();
         RefreshAdvanceGate();
         RefreshControlHighlights();
+        if (Steps[stepIndex].requireStationChecklist)
+            RefreshStationChecklist();
         UpdateContextualCallout();
         UpdateTutorialWorldHighlights();
         if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
@@ -2349,17 +2372,33 @@ public class OnboardingTutorial : MonoBehaviour
         return ItemMatchesHighlight(item, Instance.currentHighlight);
     }
 
-    // Use the authored station steps so the unlock order follows the tutorial.
-    // Non-station build items (such as counters) remain available.
+    // Checklist stations unlock together. Counters and other build items
+    // remain available through their normal progression rules.
     public static bool IsStationLocked(ItemDefinition item)
     {
         if (item == null || !BlocksProgression) return false;
+        if (IsChecklistStation(item))
+        {
+            int checklistStep = System.Array.FindIndex(Steps, step => step.requireStationChecklist);
+            return checklistStep > Instance.furthestStepIndex;
+        }
         for (int i = 0; i < Steps.Length; i++)
         {
             if (Steps[i].requirePlaced && ItemMatchesHighlight(item, Steps[i].highlight))
                 return i > Instance.furthestStepIndex;
         }
         return false;
+    }
+
+    static bool IsChecklistStation(ItemDefinition item)
+    {
+        return ItemMatchesHighlight(item, Highlight.Freezer)
+            || ItemMatchesHighlight(item, Highlight.Grill)
+            || ItemMatchesHighlight(item, Highlight.Pantry)
+            || ItemMatchesHighlight(item, Highlight.Assembly)
+            || ItemMatchesHighlight(item, Highlight.Register)
+            || ItemMatchesHighlight(item, Highlight.Fryer)
+            || ItemMatchesHighlight(item, Highlight.HeatLamp);
     }
 
     static bool ItemMatchesHighlight(ItemDefinition item, Highlight kind)
@@ -2557,6 +2596,11 @@ public class OnboardingTutorial : MonoBehaviour
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
+
+        coreStationChecklistText = CreateLabel(panel.transform, "", 15, FontStyles.Bold, GameUITheme.TextPrimary);
+        coreStationChecklistText.alignment = TextAlignmentOptions.TopLeft;
+        coreStationChecklistText.textWrappingMode = TextWrappingModes.Normal;
+        coreStationChecklistText.gameObject.SetActive(false);
 
         cameraPromptPanel = new GameObject("CameraControlPrompts", typeof(RectTransform),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));

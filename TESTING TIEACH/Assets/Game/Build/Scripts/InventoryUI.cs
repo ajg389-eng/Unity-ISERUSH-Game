@@ -193,6 +193,7 @@ public class InventoryUI : MonoBehaviour
 
     public void OpenPanel()
     {
+        if (IsBuildLocked()) return;
         if (panel != null && !panel.activeSelf)
             TogglePanel();
     }
@@ -201,6 +202,11 @@ public class InventoryUI : MonoBehaviour
     {
         if (!panel) return;
         bool opening = !panel.activeSelf;
+        if (opening && IsBuildLocked())
+        {
+            Sfx.Play(SfxId.UiError);
+            return;
+        }
         if (!opening && tabInfoUI != null)
             tabInfoUI.Close();
         Sfx.Play(opening ? SfxId.UiOpen : SfxId.UiClose);
@@ -488,6 +494,7 @@ public class InventoryUI : MonoBehaviour
 
     public void OpenBuildPage()
     {
+        if (IsBuildLocked()) return;
         OpenPanel();
         if (activeTab != 0)
             SelectTab(0);
@@ -792,6 +799,8 @@ public class InventoryUI : MonoBehaviour
 
     static bool IsShiftInProgress => GameTimeManager.Instance != null
         && GameTimeManager.Instance.IsShiftInProgress;
+
+    static bool IsBuildLocked() => IsShiftInProgress && !ShiftPlanningUI.IsPlanning;
 
     void CreateLegacyRow(ItemDefinition item)
     {
