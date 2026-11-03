@@ -32,12 +32,9 @@ public sealed class ResearchProgressManager : MonoBehaviour
         new Definition("recipe_upgrades_5", "Recipe Upgrades V", "<b>Unlocks</b><br>• Super Burger", 0, 5, 1500, 210, new Vector2(-270, -305), "recipe_upgrades_4"),
         new Definition("mk2_stations", "MK2 Stations", "Improve station speed", 0, 3, 500, 90, new Vector2(0, -305), "recipe_upgrades_1"),
         new Definition("core_workforce", "Core Workforce", "Hire and assign workers", 1, 1, 100, 30, new Vector2(0, 390)),
-        new Definition("fourth_worker", "Fourth Worker", "Hire up to 4 workers", 1, 2, 200, 60, new Vector2(-270, 145), "core_workforce"),
-        new Definition("fifth_worker", "Fifth Worker", "Hire up to 5 workers", 1, 5, 400, 75, new Vector2(-270, -5), "fourth_worker"),
-        new Definition("sixth_worker", "Sixth Worker", "Hire up to 6 workers", 1, 6, 700, 120, new Vector2(-270, -155), "fifth_worker"),
-        new Definition("carry_training", "Transport Training", "Unlock worker upgrades up to 80 items/min", 1, 2, 350, 75, new Vector2(-135, -305), "core_workforce"),
-        new Definition("carry_training_2", "Transport Training II", "Unlock worker upgrades up to 100 items/min", 1, 3, 550, 100, new Vector2(-135, -455), "carry_training"),
-        new Definition("carry_training_3", "Transport Training III", "Unlock worker upgrades up to 120 items/min", 1, 4, 850, 140, new Vector2(-135, -605), "carry_training_2"),
+        new Definition("carry_training", "Transport Training", "Unlock worker upgrades up to 80 items/min", 1, 2, 350, 75, new Vector2(0, 145), "core_workforce"),
+        new Definition("carry_training_2", "Transport Training II", "Unlock worker upgrades up to 100 items/min", 1, 3, 550, 100, new Vector2(0, -5), "carry_training"),
+        new Definition("carry_training_3", "Transport Training III", "Unlock worker upgrades up to 120 items/min", 1, 4, 850, 140, new Vector2(0, -155), "carry_training_2"),
         new Definition("manual_operations", "Manual Operations", "Order and track supplies", 2, 1, 100, 30, new Vector2(0, 390)),
         new Definition("express_ordering", "Express Ordering", "Speed up ingredient orders", 2, 2, 250, 45, new Vector2(-270, 145), "manual_operations"),
         new Definition("automatic_ordering", "Automatic Ordering", "Restock below target to prevent stockouts", 2, 5, 700, 120, new Vector2(-270, -115), "express_ordering"),
@@ -49,7 +46,8 @@ public sealed class ResearchProgressManager : MonoBehaviour
     {
         "station_capacity_1", "station_capacity_2", "station_capacity_3",
         "industrial_kitchen", "expanded_capacity",
-        "multi_worker_flows", "multi_worker_flows_2", "multi_worker_flows_3"
+        "multi_worker_flows", "multi_worker_flows_2", "multi_worker_flows_3",
+        "fourth_worker", "fifth_worker", "sixth_worker"
     };
     string activeId;
     float remainingMinutes;

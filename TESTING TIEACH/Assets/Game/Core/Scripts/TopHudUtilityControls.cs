@@ -157,7 +157,7 @@ public class TopHudUtilityControls : MonoBehaviour
         if (section.transform.parent != transform) section.transform.SetParent(transform, false);
 
         var layout = section.GetComponent<HorizontalLayoutGroup>() ?? section.AddComponent<HorizontalLayoutGroup>();
-        layout.spacing = 2f;
+        layout.spacing = 5f;
         layout.padding = new RectOffset(0, 0, 0, 0);
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
@@ -168,20 +168,15 @@ public class TopHudUtilityControls : MonoBehaviour
         trackText = FindText(section.transform, "TrackText");
         if (trackText == null)
         {
-            trackText = CreateLabel(section.transform, "TrackText", "No track", 17);
+            trackText = CreateLabel(section.transform, "TrackText", "No track", 13);
             var le = trackText.gameObject.AddComponent<LayoutElement>();
-            le.minWidth = 142f;
-            le.preferredWidth = 142f;
+            le.minWidth = 116f;
+            le.preferredWidth = 116f;
         }
         var trackLayout = trackText.GetComponent<LayoutElement>() ?? trackText.gameObject.AddComponent<LayoutElement>();
-        trackLayout.minWidth = 142f;
-        trackLayout.preferredWidth = 142f;
+        trackLayout.minWidth = 116f;
+        trackLayout.preferredWidth = 116f;
         trackLayout.flexibleWidth = 0f;
-        trackText.fontSize = 15f;
-        trackText.enableAutoSizing = true;
-        trackText.fontSizeMin = 10f;
-        trackText.fontSizeMax = 15f;
-        trackText.margin = Vector4.zero;
         trackText.alignment = TextAlignmentOptions.Center;
         trackText.overflowMode = TextOverflowModes.Truncate;
         trackText.enableWordWrapping = false;
@@ -196,21 +191,21 @@ public class TopHudUtilityControls : MonoBehaviour
 
         Button pause = FindButton(section.transform, "MusicPauseButton");
         if (pause == null)
-            pause = CreateButton(section.transform, "MusicPauseButton", "||", 48f, out playPauseText);
+            pause = CreateButton(section.transform, "MusicPauseButton", "||", 34f, out playPauseText);
         else
             playPauseText = pause.GetComponentInChildren<TextMeshProUGUI>(true);
-        SetSquareButtonLayout(pause, 48f);
+        SetSquareButtonLayout(pause, 34f);
         GameUITheme.ApplyCompactControlEffects(pause);
-        GameIconLibrary.ApplyToButton(pause, GameIconId.Pause, 26f, 0f, true);
+        GameIconLibrary.ApplyToButton(pause, GameIconId.Pause, 20f, 0f, true);
         pause.onClick.RemoveAllListeners();
         pause.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.TogglePause(); });
 
         Button next = FindButton(section.transform, "MusicNextButton");
         if (next == null)
-            next = CreateButton(section.transform, "MusicNextButton", ">>", 48f, out _);
-        SetSquareButtonLayout(next, 48f);
+            next = CreateButton(section.transform, "MusicNextButton", ">>", 34f, out _);
+        SetSquareButtonLayout(next, 34f);
         GameUITheme.ApplyCompactControlEffects(next);
-        GameIconLibrary.ApplyToButton(next, GameIconId.Next, 26f, 0f, true);
+        GameIconLibrary.ApplyToButton(next, GameIconId.Next, 20f, 0f, true);
         next.onClick.RemoveAllListeners();
         next.onClick.AddListener(() => { Sfx.Play(SfxId.UiClick); BindMusic(); music?.Next(); });
     }
@@ -223,7 +218,7 @@ public class TopHudUtilityControls : MonoBehaviour
 
         notificationButton = FindButton(section.transform, "NotificationButton");
         if (notificationButton == null)
-            notificationButton = CreateButton(section.transform, "NotificationButton", "!", 48f, out notificationButtonText);
+            notificationButton = CreateButton(section.transform, "NotificationButton", "!", 34f, out notificationButtonText);
         else
             notificationButtonText = notificationButton.GetComponentInChildren<TextMeshProUGUI>(true);
 
@@ -232,10 +227,10 @@ public class TopHudUtilityControls : MonoBehaviour
         buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
         buttonRect.pivot = new Vector2(0.5f, 0.5f);
         buttonRect.anchoredPosition = Vector2.zero;
-        buttonRect.sizeDelta = new Vector2(52f, 52f);
+        buttonRect.sizeDelta = new Vector2(34f, 34f);
         notificationButton.onClick.RemoveAllListeners();
         notificationButton.onClick.AddListener(ToggleHistory);
-        GameIconLibrary.ApplyToButton(notificationButton, GameIconId.Exclamation, 30f, 0f, true);
+        GameIconLibrary.ApplyToButton(notificationButton, GameIconId.Exclamation, 20f, 0f, true);
         GameUITheme.ApplyCompactControlEffects(notificationButton);
     }
 
@@ -309,7 +304,7 @@ public class TopHudUtilityControls : MonoBehaviour
 
         Button button = FindButton(section.transform, "GuidebookButton");
         if (button == null)
-            button = CreateButton(section.transform, "GuidebookButton", "i", 56f, out _);
+            button = CreateButton(section.transform, "GuidebookButton", "i", 42f, out _);
 
         RectTransform buttonRect = (RectTransform)button.transform;
         buttonRect.anchorMin = Vector2.zero;
@@ -326,7 +321,7 @@ public class TopHudUtilityControls : MonoBehaviour
             if (pauseMenu != null)
                 pauseMenu.OpenGuidebookFromHud();
         });
-        GameIconLibrary.ApplyToButton(button, GameIconId.Information, 28f, 0f, true);
+        GameIconLibrary.ApplyToButton(button, GameIconId.Information, 22f, 0f, true);
         GameUITheme.ApplyCompactControlEffects(button);
         DelayedTooltip.Attach(button, "Guidebook: open");
     }
@@ -346,7 +341,7 @@ public class TopHudUtilityControls : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 1f);
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(1f, 1f);
-        rt.anchoredPosition = new Vector2(430f, -126f);
+        rt.anchoredPosition = new Vector2(430f, -62f);
         rt.sizeDelta = new Vector2(390f, 340f);
         ApplyTopHudBackground(historyPanel.GetComponent<Image>());
 
@@ -486,7 +481,7 @@ public class TopHudUtilityControls : MonoBehaviour
         var rt = (RectTransform)musicPanel.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
         rt.pivot = new Vector2(1f, 1f);
-        rt.anchoredPosition = new Vector2(-216f, -126f);
+        rt.anchoredPosition = new Vector2(-216f, -62f);
         rt.sizeDelta = new Vector2(300f, 310f);
         musicPanel.GetComponent<Image>().color = Panel;
         if (musicPanel.transform.childCount == 0) BuildMusicPanel(musicPanel.transform);
@@ -707,11 +702,11 @@ public class TopHudUtilityControls : MonoBehaviour
         box.transform.SetSiblingIndex(siblingIndex);
 
         var layout = box.GetComponent<LayoutElement>() ?? box.AddComponent<LayoutElement>();
-        layout.minWidth = 142f;
-        layout.preferredWidth = 142f;
+        layout.minWidth = 116f;
+        layout.preferredWidth = 116f;
         layout.flexibleWidth = 0f;
-        layout.minHeight = 48f;
-        layout.preferredHeight = 48f;
+        layout.minHeight = 34f;
+        layout.preferredHeight = 34f;
         layout.flexibleHeight = 0f;
 
         var image = box.GetComponent<Image>() ?? box.AddComponent<Image>();
@@ -731,7 +726,7 @@ public class TopHudUtilityControls : MonoBehaviour
         if (trackText.transform.parent != box.transform)
             trackText.transform.SetParent(box.transform, false);
         SetRect(trackText.rectTransform, Vector2.zero, Vector2.one,
-            new Vector2(6f, 2f), new Vector2(-6f, -2f));
+            new Vector2(8f, 2f), new Vector2(-8f, -2f));
     }
 
     static TextMeshProUGUI CreateLabel(Transform parent, string name, string value, float size)

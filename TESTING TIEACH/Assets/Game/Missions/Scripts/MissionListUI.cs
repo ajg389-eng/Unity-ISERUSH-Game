@@ -12,7 +12,7 @@ public class MissionListUI : MonoBehaviour
     public const string PanelObjectName = "SideMenuPanel";
     const string TopTabsObjectName = "TasksProgressionTabs";
     const float TopTabsWidth = 210f;
-    const float TopTabsHeight = 120f;
+    const float TopTabsHeight = 60f;
 
     public enum SideTab
     {
@@ -1118,7 +1118,7 @@ public class MissionListUI : MonoBehaviour
             textRt.offsetMax = new Vector2(-8f, -2f);
             var text = textGo.AddComponent<TextMeshProUGUI>();
             text.text = label;
-            text.fontSize = 26f;
+            text.fontSize = 16f;
             text.fontStyle = FontStyles.Bold;
             text.alignment = TextAlignmentOptions.Center;
             text.color = Color.white;
@@ -1132,13 +1132,13 @@ public class MissionListUI : MonoBehaviour
         le.minWidth = 168f;
         le.preferredWidth = 168f;
         le.flexibleWidth = 1f;
-        le.minHeight = 80f;
-        le.preferredHeight = 80f;
+        le.minHeight = 40f;
+        le.preferredHeight = 40f;
         if (button.targetGraphic == null)
             button.targetGraphic = button.GetComponent<Graphic>();
         HudTabColors.Apply(button, false);
         var tabLabel = button.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (tabLabel != null) tabLabel.fontSize = 26f;
+        if (tabLabel != null) tabLabel.fontSize = 16f;
         return button;
     }
 
@@ -1158,11 +1158,11 @@ public class MissionListUI : MonoBehaviour
         layout.minWidth = 44f;
         layout.preferredWidth = 44f;
         layout.flexibleWidth = 0f;
-        layout.minHeight = 80f;
-        layout.preferredHeight = 80f;
+        layout.minHeight = 40f;
+        layout.preferredHeight = 40f;
         button.GetComponent<Image>().color = GameUITheme.Surface;
         button.transition = Selectable.Transition.ColorTint;
-        GameIconLibrary.ApplyToButton(button, GameIconId.Gear, 36f, 0f, true);
+        GameIconLibrary.ApplyToButton(button, GameIconId.Gear, 24f, 0f, true);
         GameUITheme.ApplyCompactControlEffects(button);
         return button;
     }
@@ -1187,7 +1187,7 @@ public class MissionListUI : MonoBehaviour
         // Inventory and Management tabs while keeping the label at a fixed size.
         HudTabColors.Apply(button, active);
         var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (label != null) label.fontSize = 26f;
+        if (label != null) label.fontSize = 16f;
     }
 
     void ApplyLayout()
@@ -1198,7 +1198,7 @@ public class MissionListUI : MonoBehaviour
         var rt = (RectTransform)panelRoot.transform;
         rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
         rt.pivot = new Vector2(1f, 1f);
-        rt.anchoredPosition = new Vector2(-25f, -128f);
+        rt.anchoredPosition = new Vector2(-25f, -68f);
         rt.sizeDelta = new Vector2(500f, 320f);
 
         if (headerText != null)

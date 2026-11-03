@@ -362,7 +362,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Hire workers",
             "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
-            "Click <b>Hire</b> at the top of the Workers tab to add staff. Each hire costs money. This is <b>workforce planning</b>: give each worker a clear flow and enough transport capacity for its workload. Direct station layouts reduce walking and leave more capacity for moving materials.\n\n" +
+            "Click <b>Hire</b> at the top of the Workers tab to add staff. Your first worker is free; each additional worker costs more than the previous one. This is <b>workforce planning</b>: give each worker a clear flow and enough transport capacity for its workload. Direct station layouts reduce walking and leave more capacity for moving materials.\n\n" +
             "Hire at least one worker to continue.",
             "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true, requireStationSequence: true),
         new Step(
@@ -447,7 +447,7 @@ public class OnboardingTutorial : MonoBehaviour
         "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Supply</b>.\n\n" +
         "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
 
-        "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Each employee costs money, so staffing is a capacity decision.\n\n" +
+        "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Your first worker is free. Later hires cost progressively more, so staffing is a capacity decision.\n\n" +
         "Transport upgrades raise a worker's trained limit up to 120 items per minute. Route travel lowers their delivery rate, and workers not assigned to a flow remain idle.",
 
         "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +

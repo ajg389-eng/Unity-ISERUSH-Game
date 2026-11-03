@@ -57,6 +57,7 @@ public class WorkersUI : MonoBehaviour
     TextMeshProUGUI flowHeaderLabel;
     bool flowExpanded = true;
     bool flowSectionNeedsTheme;
+    bool flowRefreshRequested;
     readonly HashSet<StationNode> efficiencyStations = new HashSet<StationNode>();
     readonly float[] efficiencyExact = new float[4];
     readonly float[] efficiencyRemainders = new float[4];
@@ -73,6 +74,7 @@ public class WorkersUI : MonoBehaviour
 
     void OnEnable()
     {
+        KitchenEmployee.WorkerAssignmentsChanged += OnWorkerAssignmentsChanged;
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged += Refresh;
         if (ResearchProgressManager.Instance != null)
@@ -85,6 +87,7 @@ public class WorkersUI : MonoBehaviour
 
     void OnDisable()
     {
+        KitchenEmployee.WorkerAssignmentsChanged -= OnWorkerAssignmentsChanged;
         if (MilestoneProgressManager.Instance != null)
             MilestoneProgressManager.Instance.OnMilestonesChanged -= Refresh;
         if (ResearchProgressManager.Instance != null)
@@ -96,6 +99,12 @@ public class WorkersUI : MonoBehaviour
 
     void Update()
     {
+        if (flowRefreshRequested)
+        {
+            flowRefreshRequested = false;
+            RefreshFlowSection();
+        }
+
         bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
         if (shiftInProgress != displayedShiftInProgress)
         {
@@ -107,6 +116,11 @@ public class WorkersUI : MonoBehaviour
             return;
         nextSystemEfficiencyRefresh = Time.unscaledTime + 0.5f;
         RefreshSystemEfficiency();
+    }
+
+    void OnWorkerAssignmentsChanged()
+    {
+        flowRefreshRequested = true;
     }
 
     void EnsureRefs()
@@ -1806,15 +1820,10 @@ public class WorkersUI : MonoBehaviour
                 canHire = false;
                 hireLabel = "Available after shift";
             }
-            else if (production.ExtraHireLocked)
-            {
-                canHire = false;
-                hireLabel = "Research required";
-            }
             else if (!production.CanHireWorker())
             {
                 canHire = false;
-                hireLabel = "Worker limit reached";
+                hireLabel = "Hiring unavailable";
             }
             else if (hireCostNow > 0 && money != null && !money.CanAfford(hireCostNow))
             {

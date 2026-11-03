@@ -12,7 +12,7 @@ public class MainHudTabs : MonoBehaviour
     public const string StripName = "MainHudTabs";
 
     const float TabWidth = 168f;
-    const float TabHeight = 80f;
+    const float TabHeight = 40f;
     const float TabSpacing = 10f;
 
     static readonly Color StripColor = HudTabColors.Strip;
@@ -127,8 +127,6 @@ public class MainHudTabs : MonoBehaviour
         var rt = (RectTransform)transform;
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayout(rt);
-        else if (rt.rect.height < TabHeight + 40f)
-            rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, TabHeight + 40f);
 
         var bg = GetComponent<Image>();
         if (bg == null) bg = gameObject.AddComponent<Image>();
@@ -141,7 +139,6 @@ public class MainHudTabs : MonoBehaviour
         if (hlg == null) hlg = gameObject.AddComponent<HorizontalLayoutGroup>();
         if (forceDefaultLayout || !useSceneLayout)
             ApplyDefaultLayoutGroup(hlg);
-        hlg.padding = new RectOffset(8, 8, 20, 20);
 
         // Scene-authored strips can retain a different expansion mode from an
         // earlier layout. Force the same 40px visible button height used by the
@@ -171,12 +168,12 @@ public class MainHudTabs : MonoBehaviour
         rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
         rt.anchoredPosition = screenOffset;
-        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 40f);
+        rt.sizeDelta = new Vector2(TabWidth * 2f + TabSpacing + 16f, TabHeight + 12f);
     }
 
     static void ApplyDefaultLayoutGroup(HorizontalLayoutGroup hlg)
     {
-        hlg.padding = new RectOffset(8, 8, 20, 20);
+        hlg.padding = new RectOffset(8, 8, 6, 6);
         hlg.spacing = TabSpacing;
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = true;
@@ -256,7 +253,6 @@ public class MainHudTabs : MonoBehaviour
             if (inventoryTabButton.targetGraphic == null)
                 inventoryTabButton.targetGraphic = inventoryBg;
             GameUITheme.ApplyTabButton(inventoryTabButton, false);
-            SetPrimaryTabTextSize(inventoryTabButton);
         }
 
         if (managementTabButton != null)
@@ -274,7 +270,6 @@ public class MainHudTabs : MonoBehaviour
             if (businessTabButton.targetGraphic == null)
                 businessTabButton.targetGraphic = businessBg;
             GameUITheme.ApplyTabButton(businessTabButton, false);
-            SetPrimaryTabTextSize(businessTabButton);
         }
     }
 
@@ -523,17 +518,7 @@ public class MainHudTabs : MonoBehaviour
     {
         if (tab == null) return;
         var label = tab.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (label != null)
-        {
-            label.text = value;
-            label.fontSize = 26f;
-        }
-    }
-
-    static void SetPrimaryTabTextSize(Button button)
-    {
-        var label = button != null ? button.GetComponentInChildren<TextMeshProUGUI>(true) : null;
-        if (label != null) label.fontSize = 26f;
+        if (label != null) label.text = value;
     }
 
     static Button FindInventoryButton()

@@ -234,6 +234,7 @@ public partial class ProductionManager : MonoBehaviour
     public GameObject employeePrefab;
     public Transform spawnPoint;
     public int hireCost = 100;
+    [HideInInspector] public int totalWorkersHired;
 
     [Header("Player-designed production flows")]
     public List<ProductionFlowPlan> productionFlows = new List<ProductionFlowPlan>();
@@ -975,6 +976,7 @@ public partial class ProductionManager : MonoBehaviour
             ? WorkerFlowAssigner.ApplyBalancedTeam(flow)
             : new TeamBalanceResult { message = "No workers assigned." };
         NotifyProductionStateChanged(0f);
+        KitchenEmployee.NotifyWorkerAssignmentsChanged();
     }
 
     public void RemoveProductionFlow(ProductionFlowPlan flow)
@@ -1337,6 +1339,7 @@ public partial class ProductionManager : MonoBehaviour
         targetFlow.workers.Add(employee);
         lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
         NotifyProductionStateChanged(0f);
+        KitchenEmployee.NotifyWorkerAssignmentsChanged();
     }
 
     /// <summary>Queues live worker reassignment until the worker finishes their current delivery.</summary>
@@ -1426,6 +1429,7 @@ public partial class ProductionManager : MonoBehaviour
         {
             emp.AssignRandomName();
             go.name = emp.employeeName;
+            RecordWorkerHire();
             RegisterEmployee(emp);
             RaiseFirstWorkerHiredEvent();
         }
@@ -1457,6 +1461,7 @@ public partial class ProductionManager : MonoBehaviour
         {
             emp.AssignRandomName();
             go.name = emp.employeeName;
+            RecordWorkerHire();
             RegisterEmployee(emp);
             Sfx.Play(SfxId.HireWorker);
             RaiseFirstWorkerHiredEvent();
@@ -1470,11 +1475,23 @@ public partial class ProductionManager : MonoBehaviour
         return emp;
     }
 
-    /// <summary>First worker is free; later hires use hireCost.</summary>
+    /// <summary>First worker is free; each later hire costs 20% more of the base hire cost.</summary>
     public int GetHireCost()
     {
-        int count = employees != null ? employees.Count : 0;
-        return count <= 0 ? 0 : Mathf.Max(0, hireCost);
+        int previousHires = Mathf.Max(totalWorkersHired, HiredWorkerCount);
+        if (previousHires <= 0) return 0;
+
+        int baseCost = Mathf.Max(0, hireCost);
+        if (baseCost == 0) return 0;
+
+        int increase = Mathf.Max(5, Mathf.RoundToInt(baseCost * 0.2f / 5f) * 5);
+        long nextCost = baseCost + (long)(previousHires - 1) * increase;
+        return nextCost >= int.MaxValue ? int.MaxValue : (int)nextCost;
+    }
+
+    void RecordWorkerHire()
+    {
+        totalWorkersHired = Mathf.Max(totalWorkersHired, HiredWorkerCount) + 1;
     }
 
     public int HiredWorkerCount
@@ -1489,25 +1506,10 @@ public partial class ProductionManager : MonoBehaviour
         }
     }
 
-    public const int StartingHireCap = 3;
-    public const int ExtraHiresFromFourthWorkerResearch = 1;
-    public const int ExtraHiresFromFifthWorkerResearch = 1;
-    public const int ExtraHiresFromSixthWorkerResearch = 1;
-
-    /// <summary>Hire limits grow through Fourth Worker, Fifth Worker, and Sixth Worker research.</summary>
-    public int MaxHiredWorkers => StartingHireCap
-        + (MilestoneFeatures.ExtraStaffingUnlocked ? ExtraHiresFromFourthWorkerResearch : 0)
-        + (MilestoneFeatures.IsResearchComplete("fifth_worker") ? ExtraHiresFromFifthWorkerResearch : 0)
-        + (MilestoneFeatures.IsResearchComplete("sixth_worker") ? ExtraHiresFromSixthWorkerResearch : 0);
-
     public bool CanHireWorker()
     {
-        if (IsShiftInProgress || employeePrefab == null) return false;
-        return HiredWorkerCount < MaxHiredWorkers;
+        return !IsShiftInProgress && employeePrefab != null;
     }
-
-    public bool ExtraHireLocked => HiredWorkerCount >= MaxHiredWorkers
-        && !MilestoneFeatures.ExpertStaffingUnlocked;
 
     static bool raisedFirstWorkerEvent;
 

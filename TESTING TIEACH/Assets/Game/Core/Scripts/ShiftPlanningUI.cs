@@ -47,6 +47,14 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         public bool blocked;
     }
 
+    sealed class DemandRow
+    {
+        public GameObject root;
+        public TextMeshProUGUI itemName;
+        public TextMeshProUGUI rate;
+        public TextMeshProUGUI shiftTotal;
+    }
+
     public static ShiftPlanningUI Instance { get; private set; }
     public static bool IsPlanning => Instance != null
         && Instance.preShiftPlanningActive
@@ -56,11 +64,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     readonly Dictionary<int, StationSnapshot> stationBaseline = new Dictionary<int, StationSnapshot>();
     readonly List<ItemDefinition> goalItems = new List<ItemDefinition>();
+    readonly List<DemandRow> demandRows = new List<DemandRow>();
     GameTimeManager timeManager;
     GameObject panelRoot;
     GameObject livePanelRoot;
     TextMeshProUGUI dayTitle;
-    TextMeshProUGUI demandText;
+    TextMeshProUGUI shiftDurationText;
+    GameObject demandHeaderRow;
+    GameObject demandRowsRoot;
+    TextMeshProUGUI demandEmptyText;
+    TextMeshProUGUI demandMoreText;
+    LayoutElement demandRowsLayout;
     TextMeshProUGUI goalComparisonText;
     TextMeshProUGUI liveItemRatesText;
     TextMeshProUGUI liveStatsText;
@@ -233,14 +247,24 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             13f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
         intro.textWrappingMode = TextWrappingModes.Normal;
 
-        CreateText(panelRoot.transform, "DemandHeading", "MENU DEMAND PER MINUTE", 13f,
+        shiftDurationText = CreateText(panelRoot.transform, "ShiftDuration",
+            "SHIFT LENGTH  10:00 AM–10:00 PM  |  12 MINUTES AT 1x",
+            13f, FontStyles.Bold, 20f, GameUITheme.TextSecondary);
+
+        CreateText(panelRoot.transform, "DemandHeading", "MENU DEMAND", 13f,
             FontStyles.Bold, 20f, GameUITheme.Accent);
-        demandText = CreateText(panelRoot.transform, "DemandList", "Loading demand...", 16f,
+        demandHeaderRow = CreateDemandHeader(panelRoot.transform);
+        demandEmptyText = CreateText(panelRoot.transform, "DemandEmptyMessage", "Loading demand...", 14f,
             FontStyles.Normal, 32f, GameUITheme.TextPrimary);
-        demandText.textWrappingMode = TextWrappingModes.Normal;
-        demandText.enableAutoSizing = true;
-        demandText.fontSizeMin = 12f;
-        demandText.fontSizeMax = 16f;
+        demandEmptyText.textWrappingMode = TextWrappingModes.Normal;
+        demandEmptyText.gameObject.SetActive(false);
+        demandRowsRoot = CreateDemandRowsRoot(panelRoot.transform);
+        demandRowsLayout = demandRowsRoot.GetComponent<LayoutElement>();
+        for (int i = 0; i < 6; i++)
+            demandRows.Add(CreateDemandRow(demandRowsRoot.transform, i));
+        demandMoreText = CreateText(demandRowsRoot.transform, "DemandMoreItems", string.Empty, 12f,
+            FontStyles.Normal, 18f, GameUITheme.TextSecondary);
+        demandMoreText.gameObject.SetActive(false);
 
         goalComparisonText = CreateText(panelRoot.transform, "PreviousShiftResult", "No previous shift result yet.",
             13f, FontStyles.Normal, 38f, GameUITheme.TextSecondary);
@@ -307,18 +331,104 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         livePanelRoot.SetActive(false);
     }
 
+    GameObject CreateDemandHeader(Transform parent)
+    {
+        GameObject row = CreateDemandColumnRow(parent, "DemandColumnHeader", 20f);
+        CreateDemandCell(row.transform, "ItemHeader", "ITEM", 0f, true,
+            12f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextSecondary);
+        CreateDemandCell(row.transform, "RateHeader", "ITEMS/MIN", 78f, false,
+            11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+        CreateDemandCell(row.transform, "TotalHeader", "SHIFT TOTAL", 90f, false,
+            11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+        return row;
+    }
+
+    GameObject CreateDemandRowsRoot(Transform parent)
+    {
+        GameObject root = new GameObject("DemandRows", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        root.transform.SetParent(parent, false);
+
+        VerticalLayoutGroup layout = root.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 1f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        LayoutElement size = root.GetComponent<LayoutElement>();
+        size.minHeight = 0f;
+        size.preferredHeight = 0f;
+        return root;
+    }
+
+    DemandRow CreateDemandRow(Transform parent, int index)
+    {
+        GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 23f);
+        DemandRow row = new DemandRow
+        {
+            root = rowRoot,
+            itemName = CreateDemandCell(rowRoot.transform, "ItemName", string.Empty, 0f, true,
+                15f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
+            rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 78f, false,
+                14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
+            shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 90f, false,
+                15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
+        };
+        rowRoot.SetActive(false);
+        return row;
+    }
+
+    static GameObject CreateDemandColumnRow(Transform parent, string name, float height)
+    {
+        GameObject row = new GameObject(name, typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+
+        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        LayoutElement size = row.GetComponent<LayoutElement>();
+        size.minHeight = height;
+        size.preferredHeight = height;
+        return row;
+    }
+
+    static TextMeshProUGUI CreateDemandCell(Transform parent, string name, string value,
+        float width, bool flexible, float fontSize, TextAlignmentOptions alignment, Color color)
+    {
+        TextMeshProUGUI text = CreateText(parent, name, value, fontSize,
+            name.EndsWith("Header") ? FontStyles.Bold : FontStyles.Normal, 22f, color);
+        text.alignment = alignment;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Truncate;
+
+        LayoutElement size = text.GetComponent<LayoutElement>();
+        size.minWidth = flexible ? 0f : width;
+        size.preferredWidth = flexible ? 0f : width;
+        size.flexibleWidth = flexible ? 1f : 0f;
+        return text;
+    }
+
     void RefreshPlan()
     {
         if (dayTitle != null)
             dayTitle.text = "DAY " + (timeManager != null ? timeManager.CurrentDay : 1) + "  |  PLAN";
+        if (shiftDurationText != null)
+            shiftDurationText.text = GetShiftDurationSummary();
 
         CustomerOrderConfig config = ResolveOrderConfig();
         goalItems.Clear();
         if (config == null)
         {
             lastPlanDemandRevision = -1;
-            if (demandText != null) demandText.text = "Demand schedule is not ready yet.";
-            SetDemandListHeight(2);
+            SetDemandEmptyState("Demand schedule is not ready yet.");
             FitPlanPanel();
             return;
         }
@@ -353,28 +463,40 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             selectedGoalItem = goalItems[0];
         selectedGoalItemName = selectedGoalItem != null ? selectedGoalItem.itemName : string.Empty;
 
-        if (demandText != null && goalItems.Count == 0)
+        if (goalItems.Count == 0)
         {
-            demandText.text = "No menu items are enabled. Open Business > Menu to choose what to sell.";
-            SetDemandListHeight(2);
+            SetDemandEmptyState("No menu items are enabled. Open Business > Menu to choose what to sell.");
         }
-        else if (demandText != null)
+        else
         {
-            var lines = new StringBuilder();
             int visibleItems = Mathf.Min(6, goalItems.Count);
             for (int i = 0; i < visibleItems; i++)
             {
                 ItemDefinition item = goalItems[i];
-                if (lines.Length > 0) lines.Append('\n');
-                lines.Append("-  ").Append(item.itemName).Append("    ")
-                    .Append(config.GetCustomerDemandPerMinute(item).ToString("0.#"))
-                    .Append(" items/min");
+                float rate = config.GetCustomerDemandPerMinute(item);
+                int shiftTotal = Mathf.RoundToInt(rate * GetShiftDurationMinutes());
+                DemandRow row = demandRows[i];
+                row.itemName.text = item.itemName;
+                row.rate.text = rate.ToString("0.#") + "/min";
+                row.shiftTotal.text = shiftTotal.ToString("N0");
+                row.root.SetActive(true);
             }
-            if (goalItems.Count > visibleItems)
-                lines.Append("\n+").Append(goalItems.Count - visibleItems).Append(" more items.");
-            demandText.text = lines.ToString();
-            SetDemandListHeight(Mathf.Max(2, visibleItems
-                + (goalItems.Count > visibleItems ? 1 : 0)));
+            for (int i = visibleItems; i < demandRows.Count; i++)
+                demandRows[i].root.SetActive(false);
+
+            bool hasMoreItems = goalItems.Count > visibleItems;
+            if (demandMoreText != null)
+            {
+                demandMoreText.text = hasMoreItems
+                    ? "+" + (goalItems.Count - visibleItems) + " more items"
+                    : string.Empty;
+                demandMoreText.gameObject.SetActive(hasMoreItems);
+            }
+
+            if (demandEmptyText != null) demandEmptyText.gameObject.SetActive(false);
+            if (demandHeaderRow != null) demandHeaderRow.SetActive(true);
+            if (demandRowsRoot != null) demandRowsRoot.SetActive(true);
+            SetDemandListHeight(visibleItems, hasMoreItems);
         }
 
         if (goalComparisonText != null)
@@ -382,14 +504,49 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         FitPlanPanel();
     }
 
-    void SetDemandListHeight(int lineCount)
+    float GetShiftDurationMinutes()
     {
-        if (demandText == null) return;
-        LayoutElement layout = demandText.GetComponent<LayoutElement>();
-        if (layout == null) return;
-        float height = Mathf.Clamp(lineCount * 20f + 4f, 28f, 144f);
-        layout.minHeight = height;
-        layout.preferredHeight = height;
+        if (timeManager == null) return 12f;
+        float shiftHours = Mathf.Max(0f, timeManager.dayEndHour - timeManager.dayStartHour);
+        return shiftHours * Mathf.Max(1f, timeManager.realSecondsPerGameHour) / 60f;
+    }
+
+    string GetShiftDurationSummary()
+    {
+        if (timeManager == null)
+            return "SHIFT LENGTH  12 MINUTES AT 1x";
+
+        float durationMinutes = GetShiftDurationMinutes();
+        return "SHIFT LENGTH  " + FormatShiftHour(timeManager.dayStartHour)
+            + "–" + FormatShiftHour(timeManager.dayEndHour)
+            + "  |  " + durationMinutes.ToString("0.#") + " MINUTES AT 1x";
+    }
+
+    static string FormatShiftHour(int hour24)
+    {
+        int hour = ((hour24 % 24) + 24) % 24;
+        int hour12 = hour % 12;
+        if (hour12 == 0) hour12 = 12;
+        return hour12 + ":00 " + (hour < 12 ? "AM" : "PM");
+    }
+
+    void SetDemandEmptyState(string message)
+    {
+        if (demandEmptyText != null)
+        {
+            demandEmptyText.text = message;
+            demandEmptyText.gameObject.SetActive(true);
+        }
+        if (demandHeaderRow != null) demandHeaderRow.SetActive(false);
+        if (demandRowsRoot != null) demandRowsRoot.SetActive(false);
+    }
+
+    void SetDemandListHeight(int rowCount, bool hasMoreItems)
+    {
+        if (demandRowsLayout == null) return;
+        float height = rowCount * 23f + (hasMoreItems ? 18f : 0f);
+        demandRowsLayout.minHeight = height;
+        demandRowsLayout.preferredHeight = height;
     }
 
     void FitPlanPanel()

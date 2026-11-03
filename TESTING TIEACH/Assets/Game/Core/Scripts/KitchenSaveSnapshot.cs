@@ -6,8 +6,9 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 26;
+    public const int CurrentVersion = 27;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int totalWorkersHired;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
@@ -183,6 +184,7 @@ public class KitchenSaveSnapshot
         IngredientDeliveryService.Instance?.CaptureSaveState(s.ingredientShipments);
         var pm=ProductionManager.Instance;
         if(pm!=null) {
+            s.totalWorkersHired = Mathf.Max(pm.totalWorkersHired, pm.HiredWorkerCount);
             var staff=new List<KitchenEmployee>();
             foreach(var employee in pm.employees) if(employee!=null) {
                 staff.Add(employee);
@@ -268,6 +270,7 @@ public class KitchenSaveSnapshot
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
         pm.ResetTransientProductionState();
         pm.employees.Clear(); pm.productionFlows.Clear();
+        pm.totalWorkersHired = 0;
         foreach(var candidate in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsSortMode.None)) {
             if (candidate.GetComponent<CustomerWallDoor>() != null || candidate.GetComponentInParent<CustomerWallDoor>() != null)
                 continue;
@@ -444,6 +447,7 @@ public class KitchenSaveSnapshot
             }
             employee.SyncFromOperatedStations();
         }
+        pm.totalWorkersHired = Mathf.Max(totalWorkersHired, staff.Count);
         if (flows == null) flows = new List<Flow>();
         foreach(var f in flows) {
             if (f == null) continue;

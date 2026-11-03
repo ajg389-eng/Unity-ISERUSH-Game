@@ -27,7 +27,5 @@ public static class MilestoneFeatures
 
     public static bool IsResearchComplete(string id) => Researched(id);
 
-    public static bool ExtraStaffingUnlocked => Researched("fourth_worker");
-    public static bool ExpertStaffingUnlocked => Researched("sixth_worker");
     public static bool Mk2StationsUnlocked => Researched("mk2_stations");
 }

@@ -17,6 +17,13 @@ public class AssignmentRow
 /// </summary>
 public partial class KitchenEmployee : MonoBehaviour
 {
+    public static event Action WorkerAssignmentsChanged;
+
+    public static void NotifyWorkerAssignmentsChanged()
+    {
+        WorkerAssignmentsChanged?.Invoke();
+    }
+
     public enum TaskPriority
     {
         AnyTask,
@@ -225,6 +232,7 @@ public partial class KitchenEmployee : MonoBehaviour
         if (operatedStations.Contains(station)) return true;
         operatedStations.Add(station);
         SyncFromOperatedStations();
+        NotifyWorkerAssignmentsChanged();
         return true;
     }
 
@@ -260,10 +268,11 @@ public partial class KitchenEmployee : MonoBehaviour
     public void RemoveOperatedStation(GameObject station)
     {
         if (operatedStations == null || station == null) return;
-        operatedStations.Remove(station);
+        if (!operatedStations.Remove(station)) return;
         SyncFromOperatedStations();
         if (operatedStations.Count == 0)
             AbortCurrentWork();
+        NotifyWorkerAssignmentsChanged();
     }
 
     public void ClearAllOperatedStations()
