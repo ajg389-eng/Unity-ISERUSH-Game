@@ -639,7 +639,10 @@ public class MissionListUI : MonoBehaviour
         go.GetComponent<LayoutElement>().minHeight = 52f;
         var rowImage = go.GetComponent<Image>();
         rowImage.color = ProgressionStateColor(state);
-        rowImage.raycastTarget = false;
+        rowImage.raycastTarget = true;
+        Button rowButton = go.AddComponent<Button>();
+        rowButton.transition = Selectable.Transition.None;
+        rowButton.onClick.AddListener(() => MilestoneUnlockPopupUI.ShowDetails(milestone));
 
         string milestoneLabel = milestones != null
             ? milestones.GetMilestoneDisplayLabel(milestone)

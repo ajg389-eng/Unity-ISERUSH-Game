@@ -27,6 +27,22 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsRecipeStationSelectionActive => IsCurrentStep(step => step.requireRecipes);
     public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen);
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
+    public static bool ShouldShowPlanCardDuringTutorial => IsCurrentStep(
+        step => step.requireHamburger || step.liveCustomer);
+
+    public static bool TryGetCurrentExpectedFlowLink(ProductionFlowPlan flow,
+        out GameObject source, out GameObject destination)
+    {
+        source = null;
+        destination = null;
+        if (!IsCurrentStep(step => step.requireFlow && !step.requireEditedFlow) || flow == null)
+            return false;
+
+        var expected = GetExpectedFlowLink(flow);
+        source = expected.source != null ? expected.source.gameObject : null;
+        destination = expected.destination != null ? expected.destination.gameObject : null;
+        return source != null && destination != null;
+    }
 
     static bool IsCurrentStep(System.Predicate<Step> predicate)
     {

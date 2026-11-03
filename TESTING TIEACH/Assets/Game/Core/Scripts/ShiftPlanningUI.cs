@@ -181,6 +181,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void Update()
     {
+        if (panelRoot != null && preShiftPlanningActive && !planHiddenForStationPopup)
+        {
+            // Keep planning controls active for tutorial setup, but show the
+            // card only in tutorial steps that ask the player to use it.
+            bool showPlan = !OnboardingTutorial.IsActive
+                || OnboardingTutorial.ShouldShowPlanCardDuringTutorial;
+            if (panelRoot.activeSelf != showPlan)
+            {
+                panelRoot.SetActive(showPlan);
+                if (showPlan) panelRoot.transform.SetAsLastSibling();
+            }
+        }
+
         if (startShiftButton != null)
         {
             CustomerOrderConfig menu = ResolveOrderConfig();
@@ -285,7 +298,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         background.raycastTarget = false;
 
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(18, 18, 16, 16);
+        // Keep the final action clear of the card edge even when the menu list
+        // or wrapped summary changes height.
+        layout.padding = new RectOffset(18, 18, 16, 44);
         layout.spacing = 6f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
@@ -328,6 +343,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             12f, FontStyles.Normal, 40f, GameUITheme.TextSecondary);
         runHint.textWrappingMode = TextWrappingModes.Normal;
 
+        // Keep Start Shift as a direct child of the same vertical layout as
+        // the full-width Add Item button so both span the card content width.
         startShiftButton = CreateButton(panelRoot.transform, "StartShiftButton", "START SHIFT");
         startShiftButton.onClick.AddListener(StartShift);
         panelRoot.SetActive(false);
@@ -870,7 +887,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             if (child != null && child.gameObject.activeSelf)
                 preferredHeight += LayoutUtility.GetPreferredHeight(child);
         }
-        float desiredHeight = Mathf.Max(360f, preferredHeight + 4f);
+        // Preserve a measured margin beneath Start Shift. The card is bottom
+        // anchored, so extra height grows upward while the button stays inside.
+        float desiredHeight = Mathf.Max(400f, preferredHeight + 48f);
         float availableHeight = canvasRect != null
             ? Mathf.Max(240f, canvasRect.rect.height - 40f)
             : Mathf.Max(240f, Screen.height - 40f);

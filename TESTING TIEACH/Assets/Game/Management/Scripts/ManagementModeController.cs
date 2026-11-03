@@ -347,9 +347,13 @@ public class ManagementModeController : MonoBehaviour
         if (!Input.GetMouseButtonDown(0)) return;
         if (Camera.main == null) return;
         bool tutorialStationSelection = OnboardingTutorial.IsRecipeStationSelectionActive;
-        if (!tutorialStationSelection && IsPointerOverUI()) return;
-
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        bool tutorialFlowSourceUnderPointer = IsCapturingFlow
+            && OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
+                out GameObject expectedSource, out _)
+            && FindTutorialStationUnderRay(ray, expectedSource) != null;
+        if (!tutorialStationSelection && IsPointerOverUI() && !tutorialFlowSourceUnderPointer) return;
+
         if (tutorialStationSelection)
         {
             // During recipe onboarding, select the exact highlighted station
@@ -367,7 +371,7 @@ public class ManagementModeController : MonoBehaviour
         if (IsCapturingFlow)
         {
             CustomerWallDoor.HideActivePopup();
-            StationNode flowStation = FindStationAtPointer(ray);
+            StationNode flowStation = FindFlowCaptureStartStation(ray);
             if (flowStation != null)
                 BeginOutputDrag(flowStation);
             return;
@@ -488,12 +492,18 @@ public class ManagementModeController : MonoBehaviour
             || (Vector2.Distance(outputDragStartScreen, Input.mousePosition) >= OutputDragThresholdPixels);
 
         StationNode target = null;
-        if (wasDrag && Camera.main != null && !IsPointerOverUI())
+        if (wasDrag && Camera.main != null)
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             if (IsCapturingFlow)
-                target = FindStationAtPointer(ray);
-            else if (Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
+            {
+                target = FindFlowCaptureDropStation(ray);
+                if (IsPointerOverUI()
+                    && !OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow, out _, out _))
+                    target = null;
+            }
+            else if (!IsPointerOverUI()
+                && Physics.Raycast(ray, out RaycastHit hit, 500f, clickLayer))
                 target = StationNode.FindFromCollider(hit.collider);
         }
 
@@ -584,7 +594,7 @@ public class ManagementModeController : MonoBehaviour
         StationNode hoveredTarget = null;
         if (IsCapturingFlow)
         {
-            hoveredTarget = FindStationAtPointer(ray);
+            hoveredTarget = FindFlowCaptureDropStation(ray);
             if (hoveredTarget != null)
                 to = KitchenEmployee.GetInteractionPosition(hoveredTarget.gameObject);
             else
@@ -4348,6 +4358,22 @@ public class ManagementModeController : MonoBehaviour
             if (IsValidFlowStation(direct)) return direct;
         }
         return FindFlowStationUnderRay(ray);
+    }
+
+    StationNode FindFlowCaptureStartStation(Ray ray)
+    {
+        if (OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
+            out GameObject expectedSource, out _))
+            return FindTutorialStationUnderRay(ray, expectedSource);
+        return FindStationAtPointer(ray);
+    }
+
+    StationNode FindFlowCaptureDropStation(Ray ray)
+    {
+        if (OnboardingTutorial.TryGetCurrentExpectedFlowLink(capturedFlow,
+            out _, out GameObject expectedDestination))
+            return FindTutorialStationUnderRay(ray, expectedDestination);
+        return FindStationAtPointer(ray);
     }
 
     static bool IsValidFlowStation(StationNode station)

@@ -261,7 +261,6 @@ public class MilestoneProgressManager : MonoBehaviour
         activeMilestoneId = target.milestoneId;
         ApplyActiveMissions(reset: true);
         OnMilestonesChanged?.Invoke();
-        MilestoneUnlockPopupUI.ShowAfterTransition(target);
         return true;
     }
 
