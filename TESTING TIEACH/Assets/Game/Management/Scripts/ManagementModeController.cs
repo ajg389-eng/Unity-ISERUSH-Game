@@ -255,7 +255,9 @@ public class ManagementModeController : MonoBehaviour
             if (selectedStation != null) RefreshPopup();
         }
 
-        if (shiftInProgress)
+        // The pre-shift planning card is shown while the shift clock is active,
+        // but players can still adjust stations and production flows then.
+        if (shiftInProgress && !ShiftPlanningUI.IsPlanning)
         {
             if (IsCapturingFlow) CancelFlowCapture();
             if (outputDragActive) CancelOutputDrag();
@@ -3426,7 +3428,8 @@ public class ManagementModeController : MonoBehaviour
 
     public void BeginFlowCapture(ProductionFlowPlan flow, bool isNew = true)
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress
+            && !ShiftPlanningUI.IsPlanning) return;
         if (flow == null) return;
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);

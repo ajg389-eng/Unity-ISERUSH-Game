@@ -1343,7 +1343,8 @@ public class WorkersUI : MonoBehaviour
 
     void EditFlow()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress
+            && !ShiftPlanningUI.IsPlanning) return;
         if (production == null) return;
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller == null)
@@ -1595,6 +1596,7 @@ public class WorkersUI : MonoBehaviour
             RefreshSystemEfficiency();
             ProductionFlowPlan flow = production.productionFlows[production.selectedFlowIndex];
             bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+            bool canEditFlow = planPhase || ShiftPlanningUI.IsPlanning;
             if (createFlowButton != null) createFlowButton.interactable = planPhase;
             if (flowNameInput != null) flowNameInput.interactable = planPhase;
             Button editButton = flowPanel != null
@@ -1604,7 +1606,7 @@ public class WorkersUI : MonoBehaviour
                     ?? flowPanel.Find("ActionsRow/EditFlow")?.GetComponent<Button>()
                     ?? flowPanel.Find("FlowListRow/EditFlow")?.GetComponent<Button>()
                 : null;
-            if (editButton != null) editButton.interactable = planPhase
+            if (editButton != null) editButton.interactable = canEditFlow
                 && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
             UpdateFlowHeader();
             if (flow != null
