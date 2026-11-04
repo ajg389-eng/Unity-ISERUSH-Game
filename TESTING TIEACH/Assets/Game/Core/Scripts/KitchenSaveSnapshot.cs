@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 32;
+    public const int CurrentVersion = 33;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -14,8 +14,11 @@ public class KitchenSaveSnapshot
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
     public int dailyCompletedOrders, dailyRevenue, careerDailyTasksCompleted;
+    public int dailyMealsWasted, dailyCustomersLost, dailyCustomersVisited, dailyMoneyAtStart;
     public bool dailyRevenueTaskAwarded, dailyWaitTaskAwarded;
+    public bool dailyTrackingStarted;
     public float dailyWaitTotalSeconds;
+    public int[] dailyVisitBuckets = Array.Empty<int>();
     public int careerOrdersServed, careerCustomersVisited, careerCustomersLost;
     public int careerShiftsCompleted, careerRevenue, careerMealsWasted;
     public int careerBestShiftRevenue, careerBestShiftOrders, careerLastCompletedDay;
@@ -46,7 +49,7 @@ public class KitchenSaveSnapshot
     }
     [Serializable] public class IngredientShipment { public float remaining, duration; public List<IngredientShipmentPack> packs = new List<IngredientShipmentPack>(); }
     [Serializable] public class IngredientShipmentPack { public string item; public int amount; }
-    [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f; public Vector3 counterPosition; public bool registerEnabled = true; public ProductionStationCheckpoint productionState; }
+    [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits, stationCurrentState; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f, stationWorkingSeconds, stationStarvedSeconds, stationBlockedSeconds, stationIdleSeconds, stationCurrentStateSeconds; public Vector3 counterPosition; public bool registerEnabled = true, hasStationMetrics; public ProductionStationCheckpoint productionState; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); public List<string> stationGuids = new List<string>(); public ProductionWorkerCheckpoint productionState; }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; public string fromGuid, toGuid; }
     [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<string> stationGuids = new List<string>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
@@ -79,7 +82,13 @@ public class KitchenSaveSnapshot
         {
             s.dailyCompletedOrders = statistics.OrdersCompletedToday;
             s.dailyRevenue = statistics.RevenueToday;
-            s.dailyWaitTotalSeconds = statistics.AverageWaitTimeTodaySeconds * statistics.OrdersCompletedToday;
+            s.dailyWaitTotalSeconds = statistics.WaitTotalTodaySeconds;
+            s.dailyMealsWasted = statistics.MealsWastedToday;
+            s.dailyCustomersLost = statistics.CustomersLostToday;
+            s.dailyCustomersVisited = statistics.CustomersVisitedToday;
+            s.dailyMoneyAtStart = statistics.MoneyAtDayStart;
+            s.dailyTrackingStarted = statistics.DayTrackingStarted;
+            s.dailyVisitBuckets = statistics.GetVisitTrendBuckets();
             s.careerDailyTasksCompleted = statistics.CareerDailyTasksCompleted;
             s.dailyRevenueTaskAwarded = statistics.DailyRevenueTaskAwarded;
             s.dailyWaitTaskAwarded = statistics.DailyWaitTaskAwarded;
@@ -147,6 +156,8 @@ public class KitchenSaveSnapshot
                     if (stationNode == null
                         && (go.GetComponent<IStationBuffer>() != null || go.GetComponent<Register>() != null))
                         stationNode = StationNode.EnsureOn(go);
+                    StationRuntimeMetrics stationMetrics = stationNode != null
+                        ? StationRuntimeMetrics.EnsureOn(go) : null;
                     // Persist the station's resolved assignment, not just its backing
                     // field. Several station types normalize or derive their active
                     // recipe, so the raw field can be null or stale while the UI and
@@ -177,6 +188,13 @@ public class KitchenSaveSnapshot
                         assemblyProcessProgress=assembly != null ? assembly.ProcessingProgressSeconds : 0f,
                         productionRatePercent=stationNode != null ? stationNode.ProductionRatePercent : 100f,
                         stationGuid=stationNode != null ? stationNode.StableStationId : "",
+                        hasStationMetrics=stationMetrics != null,
+                        stationWorkingSeconds=stationMetrics != null ? stationMetrics.WorkingSeconds : 0f,
+                        stationStarvedSeconds=stationMetrics != null ? stationMetrics.StarvedSeconds : 0f,
+                        stationBlockedSeconds=stationMetrics != null ? stationMetrics.BlockedSeconds : 0f,
+                        stationIdleSeconds=stationMetrics != null ? stationMetrics.IdleSeconds : 0f,
+                        stationCurrentState=stationMetrics != null ? (int)stationMetrics.CurrentState : 0,
+                        stationCurrentStateSeconds=stationMetrics != null ? stationMetrics.CurrentStateSeconds : 0f,
                         productionState=scheduleManager != null && scheduleManager.useScheduledProduction
                             ? scheduleManager.ScheduledProduction.CaptureStation(go) : null });
                 }
@@ -368,6 +386,10 @@ public class KitchenSaveSnapshot
                 restoredStationNode.SetProductionRatePercent(e.productionRatePercent > 0f
                     ? e.productionRatePercent : 100f);
             }
+            if (version >= 33 && e.hasStationMetrics && restoredStationNode != null)
+                StationRuntimeMetrics.EnsureOn(go).RestoreCumulativeState(
+                    e.stationWorkingSeconds, e.stationStarvedSeconds, e.stationBlockedSeconds,
+                    e.stationIdleSeconds, e.stationCurrentState, e.stationCurrentStateSeconds);
             if (item.stationFamily == "Pickup Station"
                 && item.placementSurface == ItemDefinition.PlacementSurface.Floor)
             {
@@ -585,7 +607,6 @@ public class KitchenSaveSnapshot
             appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
         ShiftPlanningUI.RestoreSaveState(version >= 23 ? shiftPlanningState : null);
-        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
         if (statistics != null)
         {
@@ -593,7 +614,13 @@ public class KitchenSaveSnapshot
                 statistics.RestoreDailyTaskProgress(dailyCompletedOrders, dailyRevenue, dailyWaitTotalSeconds,
                     version >= 26 ? careerDailyTasksCompleted : 0,
                     version >= 26 && dailyRevenueTaskAwarded,
-                    version >= 26 && dailyWaitTaskAwarded);
+                    version >= 26 && dailyWaitTaskAwarded,
+                    version >= 33 ? dailyMealsWasted : 0,
+                    version >= 33 ? dailyCustomersLost : 0,
+                    version >= 33 ? dailyCustomersVisited : 0,
+                    version >= 33 ? dailyMoneyAtStart : cash,
+                    version >= 33 ? dailyVisitBuckets : null,
+                    version < 33 || dailyTrackingStarted);
             else
                 statistics.BeginDay();
 
@@ -605,6 +632,10 @@ public class KitchenSaveSnapshot
             else
                 statistics.ResetCareerStatistics();
         }
+        // Restoring a checkpoint at the shift end raises OnDayEnded immediately.
+        // Apply all saved report values first so the EOD panel reads the checkpoint,
+        // not whatever statistics happened to be in memory before this load.
+        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
         if (placer != null)

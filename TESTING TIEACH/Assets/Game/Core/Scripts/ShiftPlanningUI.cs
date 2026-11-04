@@ -30,6 +30,16 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         public string selectedGoalItemName;
         public ShiftResult latestShift;
         public ShiftResult previousShift;
+        public List<StationBaselineRecord> stationBaselines = new List<StationBaselineRecord>();
+    }
+
+    [System.Serializable]
+    public sealed class StationBaselineRecord
+    {
+        public string stationGuid;
+        public float working;
+        public float starved;
+        public float blocked;
     }
 
     struct StationSnapshot
@@ -66,7 +76,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     static SavedState pendingRestoreState;
     static bool hasPendingRestoreState;
 
-    readonly Dictionary<int, StationSnapshot> stationBaseline = new Dictionary<int, StationSnapshot>();
+    readonly Dictionary<string, StationSnapshot> stationBaseline =
+        new Dictionary<string, StationSnapshot>(System.StringComparer.Ordinal);
     readonly Dictionary<ItemDefinition, Button> itemPickerOptionButtons = new Dictionary<ItemDefinition, Button>();
     readonly List<ItemDefinition> goalItems = new List<ItemDefinition>();
     readonly List<DemandRow> demandRows = new List<DemandRow>();
@@ -98,6 +109,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     bool initialized;
     bool planHiddenForStationPopup;
     bool preShiftPlanningActive;
+    bool hasSavedStationBaseline;
     float nextLiveRefreshTime;
     int lastPlanDemandRevision = int.MinValue;
 
@@ -174,7 +186,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             ShowPlanningCard();
         else
         {
-            CaptureStationBaseline();
+            if (!hasSavedStationBaseline)
+                CaptureStationBaseline();
             ShowLivePanel();
         }
     }
@@ -1091,6 +1104,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     void CaptureStationBaseline()
     {
         stationBaseline.Clear();
+        hasSavedStationBaseline = false;
         StationNode[] nodes = FindObjectsByType<StationNode>(
             FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         foreach (StationNode node in nodes)
@@ -1098,13 +1112,16 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             if (node == null) continue;
             StationRuntimeMetrics metrics = StationRuntimeMetrics.EnsureOn(node.gameObject);
             if (metrics == null) continue;
-            stationBaseline[metrics.GetInstanceID()] = new StationSnapshot
+            string stationGuid = node.StableStationId;
+            if (string.IsNullOrEmpty(stationGuid)) continue;
+            stationBaseline[stationGuid] = new StationSnapshot
             {
                 working = metrics.WorkingSeconds,
                 starved = metrics.StarvedSeconds,
                 blocked = metrics.BlockedSeconds
             };
         }
+        hasSavedStationBaseline = stationBaseline.Count > 0;
     }
 
     public static string GetShiftProductionDiagnosis()
@@ -1132,12 +1149,21 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     SavedState MakeSavedState()
     {
-        return new SavedState
+        var state = new SavedState
         {
             selectedGoalItemName = selectedGoalItemName,
             latestShift = CloneResult(latestShift),
             previousShift = CloneResult(previousShift)
         };
+        foreach (KeyValuePair<string, StationSnapshot> entry in stationBaseline)
+            state.stationBaselines.Add(new StationBaselineRecord
+            {
+                stationGuid = entry.Key,
+                working = entry.Value.working,
+                starved = entry.Value.starved,
+                blocked = entry.Value.blocked
+            });
+        return state;
     }
 
     void ApplySaveState(SavedState state)
@@ -1145,18 +1171,48 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         selectedGoalItemName = state != null ? state.selectedGoalItemName : string.Empty;
         latestShift = state != null ? CloneResult(state.latestShift) : null;
         previousShift = state != null ? CloneResult(state.previousShift) : null;
+        stationBaseline.Clear();
+        if (state != null && state.stationBaselines != null)
+        {
+            foreach (StationBaselineRecord saved in state.stationBaselines)
+            {
+                if (saved == null || string.IsNullOrEmpty(saved.stationGuid)) continue;
+                stationBaseline[saved.stationGuid] = new StationSnapshot
+                {
+                    working = Mathf.Max(0f, saved.working),
+                    starved = Mathf.Max(0f, saved.starved),
+                    blocked = Mathf.Max(0f, saved.blocked)
+                };
+            }
+        }
+        hasSavedStationBaseline = stationBaseline.Count > 0;
         selectedGoalItem = null;
         hasPendingRestoreState = false;
     }
 
     static SavedState CloneSavedState(SavedState state)
     {
-        return state == null ? null : new SavedState
+        if (state == null) return null;
+        var clone = new SavedState
         {
             selectedGoalItemName = state.selectedGoalItemName,
             latestShift = CloneResult(state.latestShift),
-            previousShift = CloneResult(state.previousShift)
+            previousShift = CloneResult(state.previousShift),
+            stationBaselines = state.stationBaselines != null
+                ? new List<StationBaselineRecord>(state.stationBaselines.Count)
+                : new List<StationBaselineRecord>()
         };
+        if (state.stationBaselines != null)
+            foreach (StationBaselineRecord baseline in state.stationBaselines)
+                if (baseline != null)
+                    clone.stationBaselines.Add(new StationBaselineRecord
+                    {
+                        stationGuid = baseline.stationGuid,
+                        working = baseline.working,
+                        starved = baseline.starved,
+                        blocked = baseline.blocked
+                    });
+        return clone;
     }
 
     static ShiftResult CloneResult(ShiftResult result)
@@ -1239,7 +1295,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             StationRuntimeMetrics metrics = node.GetComponent<StationRuntimeMetrics>();
             if (metrics == null) continue;
 
-            stationBaseline.TryGetValue(metrics.GetInstanceID(), out StationSnapshot start);
+            string stationGuid = node.StableStationId;
+            if (string.IsNullOrEmpty(stationGuid)) continue;
+            stationBaseline.TryGetValue(stationGuid, out StationSnapshot start);
             float working = Mathf.Max(0f, metrics.WorkingSeconds - start.working);
             float starved = Mathf.Max(0f, metrics.StarvedSeconds - start.starved);
             float blocked = Mathf.Max(0f, metrics.BlockedSeconds - start.blocked);

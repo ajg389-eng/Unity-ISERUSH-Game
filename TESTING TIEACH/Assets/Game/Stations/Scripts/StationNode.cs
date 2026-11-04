@@ -694,6 +694,20 @@ public sealed class StationRuntimeMetrics : MonoBehaviour
         MissionProgressManager.Instance?.RecordProducedItem(item, units);
     }
 
+    public void RestoreCumulativeState(float working, float starved, float blocked,
+        float idle, int currentState, float currentStateSeconds)
+    {
+        workingSeconds = Mathf.Max(0f, working);
+        starvedSeconds = Mathf.Max(0f, starved);
+        blockedSeconds = Mathf.Max(0f, blocked);
+        idleSeconds = Mathf.Max(0f, idle);
+        CurrentState = (StationRuntimeState)Mathf.Clamp(
+            currentState, (int)StationRuntimeState.Idle, (int)StationRuntimeState.Blocked);
+        previousState = CurrentState;
+        CurrentStateSeconds = Mathf.Max(0f, currentStateSeconds);
+        stateSampleElapsed = 0f;
+    }
+
     void PruneOutputSamples()
     {
         float cutoff = Time.time - 60f;

@@ -154,15 +154,28 @@ public class StoreStatisticsManager : MonoBehaviour
     }
 
     public void RestoreDailyTaskProgress(int completedOrders, int revenue, float waitTotalSeconds,
-        int completedDailyTasks = 0, bool revenueTaskAwarded = false, bool waitTaskAwarded = false)
+        int completedDailyTasks = 0, bool revenueTaskAwarded = false, bool waitTaskAwarded = false,
+        int mealsWasted = 0, int customersLost = 0, int customersVisited = 0,
+        int moneyAtDayStart = -1, int[] visitBuckets = null, bool trackingStarted = true)
     {
         dayOrdersCompleted = Mathf.Max(0, completedOrders);
         dayRevenue = Mathf.Max(0, revenue);
         dayWaitSum = Mathf.Max(0f, waitTotalSeconds);
+        dayMealsWasted = Mathf.Max(0, mealsWasted);
+        dayCustomersLost = Mathf.Max(0, customersLost);
+        dayCustomersVisited = Mathf.Max(0, customersVisited);
+        dayMoneyStart = moneyAtDayStart >= 0 ? moneyAtDayStart : GetCurrentMoney();
         careerDailyTasksCompleted = Mathf.Max(0, completedDailyTasks);
         dailyRevenueTaskAwarded = revenueTaskAwarded;
         dailyWaitTaskAwarded = waitTaskAwarded;
-        dayTrackingStarted = true;
+        dayTrackingStarted = trackingStarted;
+        EnsureHourBuckets(forceReset: true);
+        if (visitBuckets != null)
+        {
+            int count = Mathf.Min(hourVisitBuckets.Length, visitBuckets.Length);
+            for (int i = 0; i < count; i++)
+                hourVisitBuckets[i] = Mathf.Max(0, visitBuckets[i]);
+        }
         EvaluateDailyTaskReputation();
         OnStatisticsChanged?.Invoke();
     }
@@ -253,6 +266,7 @@ public class StoreStatisticsManager : MonoBehaviour
     public int UnservedCustomersToday => Mathf.Max(0, dayCustomersVisited - dayOrdersCompleted - dayCustomersLost);
     public int MoneyAtDayStart => dayMoneyStart;
     public bool DayTrackingStarted => dayTrackingStarted;
+    public float WaitTotalTodaySeconds => dayWaitSum;
 
     public int ShiftStartHour
     {
