@@ -24,9 +24,28 @@ public class SimsBuildingRoof : MonoBehaviour
     float visibility;
     bool opaqueMode = true;
     bool cutsceneForceVisible;
+    bool alwaysVisible;
     readonly Color roofColor = new Color(0.42f, 0.18f, 0.16f, 1f);
 
     public bool CutsceneForceVisible => cutsceneForceVisible;
+
+    void OnEnable()
+    {
+        SetAlwaysVisible(CameraWallCutaway.ForceArchitectureVisible);
+    }
+
+    public void SetAlwaysVisible(bool visible)
+    {
+        alwaysVisible = visible;
+        if (!alwaysVisible) return;
+
+        visibility = 1f;
+        if (meshRenderer != null)
+        {
+            meshRenderer.enabled = true;
+            ApplyFade(1f);
+        }
+    }
 
     public void SetCutsceneForceVisible(bool forceVisible)
     {
@@ -52,7 +71,7 @@ public class SimsBuildingRoof : MonoBehaviour
     {
         if (meshRenderer == null) return;
 
-        if (cutsceneForceVisible)
+        if (cutsceneForceVisible || alwaysVisible)
         {
             visibility = 1f;
             meshRenderer.enabled = true;

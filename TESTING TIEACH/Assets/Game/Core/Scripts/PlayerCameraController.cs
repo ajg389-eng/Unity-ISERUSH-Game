@@ -46,6 +46,9 @@ public class PlayerCameraController : MonoBehaviour
     float yawVelocity;
     float pitchVelocity;
     bool freeLooking;
+    bool freeCamera;
+
+    public bool FreeCameraEnabled => freeCamera;
 
     void Start()
     {
@@ -60,6 +63,9 @@ public class PlayerCameraController : MonoBehaviour
 
     void Update()
     {
+        if (Input.GetKeyDown(KeyCode.F3))
+            SetFreeCamera(!freeCamera);
+
         if (PauseMenuUI.IsOpen)
         {
             currentMoveVelocity = Vector3.zero;
@@ -87,6 +93,32 @@ public class PlayerCameraController : MonoBehaviour
         Zoom();
         Rotate();
         ClampToPlayableBounds();
+    }
+
+    void SetFreeCamera(bool enabled)
+    {
+        if (freeCamera == enabled) return;
+
+        freeCamera = enabled;
+        isFocusing = false;
+        focusVelocity = Vector3.zero;
+        currentMoveVelocity = Vector3.zero;
+
+        if (!freeCamera)
+        {
+            // Return to the standard camera envelope when free-camera mode ends.
+            Vector3 position = transform.position;
+            position.y = Mathf.Clamp(position.y, minY, maxY);
+            transform.position = position;
+            targetZoomY = position.y;
+            zoomVelocity = 0f;
+            ClampToPlayableBounds();
+        }
+        else
+        {
+            targetZoomY = transform.position.y;
+            zoomVelocity = 0f;
+        }
     }
 
     public void PanTo(Vector3 worldPoint)
@@ -212,6 +244,7 @@ public class PlayerCameraController : MonoBehaviour
         if (Mathf.Abs(scroll) > 0.01f && !ShouldBlockZoom())
         {
             targetZoomY -= scroll * zoomSpeed;
+        if (!freeCamera)
             targetZoomY = Mathf.Clamp(targetZoomY, minY, maxY);
         }
 
@@ -270,11 +303,14 @@ public class PlayerCameraController : MonoBehaviour
 
     void ClampToPlayableBounds()
     {
+        if (freeCamera) return;
         transform.position = ClampPositionToPlayableBounds(transform.position);
     }
 
     Vector3 ClampPositionToPlayableBounds(Vector3 cameraPosition)
     {
+        if (freeCamera) return cameraPosition;
+
         GridManager grid = GridManager.Instance;
         if (grid == null || grid.Width <= 0 || grid.Height <= 0)
             return cameraPosition;

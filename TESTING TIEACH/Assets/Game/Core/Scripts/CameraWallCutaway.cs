@@ -16,11 +16,18 @@ public class CameraWallCutaway : MonoBehaviour
     }
 
     public static CameraWallCutaway Instance { get; private set; }
+    public static bool ForceArchitectureVisible { get; private set; }
 
     static readonly List<CameraOcclusionWall> Walls = new List<CameraOcclusionWall>();
     static readonly bool[] LockedSides = new bool[4];
     static bool locksLoaded;
     static bool wallTargetsDirty = true;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetArchitectureVisibility()
+    {
+        ForceArchitectureVisible = false;
+    }
 
     const float CameraMoveThresholdSqr = 0.0001f;
     const float FocusMoveThresholdSqr = 0.0001f;
@@ -95,6 +102,31 @@ public class CameraWallCutaway : MonoBehaviour
             var pcc = FindObjectOfType<PlayerCameraController>();
             if (pcc != null) targetCamera = pcc.GetComponent<Camera>();
             if (targetCamera == null) targetCamera = Camera.main;
+        }
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.F4))
+            SetForceArchitectureVisible(!ForceArchitectureVisible);
+    }
+
+    static void SetForceArchitectureVisible(bool forceVisible)
+    {
+        ForceArchitectureVisible = forceVisible;
+
+        for (int i = 0; i < Walls.Count; i++)
+        {
+            if (Walls[i] != null)
+                Walls[i].SetAlwaysVisible(forceVisible);
+        }
+
+        SimsBuildingRoof[] roofs = FindObjectsByType<SimsBuildingRoof>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < roofs.Length; i++)
+        {
+            if (roofs[i] != null)
+                roofs[i].SetAlwaysVisible(forceVisible);
         }
     }
 

@@ -687,6 +687,15 @@ public class CustomerAI : MonoBehaviour
     public void LeaveImpatient(Transform exit)
     {
         if (leaving) return;
+        if (orderRevealed && !IsOrderFullyDelivered && !itemReputationFinalized)
+        {
+            CustomerOrderConfig config = ProductionManager.Instance != null
+                ? ProductionManager.Instance.orderConfig : null;
+            if (config != null)
+                config.RecordMissedOrder(OriginalOrder != null ? OriginalOrder : order);
+            itemReputationFinalized = true;
+        }
+
         Register currentRegister = reg;
         if (currentRegister != null)
             currentRegister.LeaveQueue(this);

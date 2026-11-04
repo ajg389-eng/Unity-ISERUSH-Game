@@ -91,7 +91,7 @@ public class CustomersUI : MonoBehaviour
             new Vector2(0, 1), new Vector2(1, 1),
             new Vector2(0, -176), new Vector2(-28, 34),
             12, TextAlignmentOptions.TopLeft);
-        demandHelp.text = "Demand/min is scheduled customer demand. Ordered/min is actual orders accepted at the register. Produced/min is output delivered to pickup over the last minute. Predicted/min estimates steady output from active flows with enough supply and pickup space.\nServe 50 items for star 1, then 100, 150, 200, and 250 more. Each star adds 5 requests/min next shift.";
+        demandHelp.text = "Demand/min is scheduled customer demand. Ordered/min is actual orders accepted at the register. Produced/min is output delivered to pickup over the last minute. Predicted/min estimates steady output from active flows with enough supply and pickup space.\nEach fulfilled item adds 1 reputation point; each missed item removes 10. Stars unlock at 50, 150, 300, 500, and 750 points. Each star changes that item's demand by 5/min at the start of the next shift. Demand stays fixed during a shift.";
         demandHelp.enableAutoSizing = true;
         demandHelp.fontSizeMin = 11f;
         demandHelp.fontSizeMax = 12f;
@@ -482,8 +482,8 @@ public class CustomersUI : MonoBehaviour
                         ? "MAX DEMAND"
                         : "+5/min at next star";
             string reputationProgress = starsEarned >= CustomerOrderConfig.MaxReputationStars
-                ? $"{reputation} items served"
-                : $"{progressToNextStar}/{servedForNextStar} to next star";
+                ? $"{reputation} reputation points"
+                : $"{progressToNextStar}/{servedForNextStar} points to next star";
             cells[6].text = $"{reputationProgress}\n{reputationDetail}";
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)

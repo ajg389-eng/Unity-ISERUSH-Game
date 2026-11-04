@@ -43,6 +43,7 @@ public class CameraOcclusionWall : MonoBehaviour
     bool usingOpacityMaterials;
     bool fullyHidden;
     bool cutsceneForceVisible;
+    bool alwaysVisible;
     Material[][] opacityMaterials;
     readonly List<Material> opacityMaterialInstances = new List<Material>();
     bool placementLocked;
@@ -104,6 +105,7 @@ public class CameraOcclusionWall : MonoBehaviour
     void OnEnable()
     {
         CameraWallCutaway.Register(this);
+        SetAlwaysVisible(CameraWallCutaway.ForceArchitectureVisible);
     }
 
     void OnDisable()
@@ -193,8 +195,18 @@ public class CameraOcclusionWall : MonoBehaviour
 
     public void SetDuckTarget(float target01)
     {
-        if (cutsceneForceVisible) return;
+        if (cutsceneForceVisible || alwaysVisible) return;
         targetCutaway = Mathf.Clamp01(target01);
+    }
+
+    public void SetAlwaysVisible(bool visible)
+    {
+        alwaysVisible = visible;
+        if (!alwaysVisible) return;
+
+        targetCutaway = 0f;
+        cutawayAmount = 0f;
+        ApplyCutaway(0f);
     }
 
     public void SetCutsceneForceVisible(bool forceVisible)
@@ -209,7 +221,7 @@ public class CameraOcclusionWall : MonoBehaviour
 
     void LateUpdate()
     {
-        if (cutsceneForceVisible) return;
+        if (cutsceneForceVisible || alwaysVisible) return;
 
         float desiredAmount = placementLocked ? 0f : targetCutaway;
         bool isMoving = !Mathf.Approximately(cutawayAmount, desiredAmount);

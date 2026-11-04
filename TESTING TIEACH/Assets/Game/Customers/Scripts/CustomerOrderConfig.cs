@@ -102,6 +102,8 @@ public class CustomerOrderConfig : ScriptableObject
     public const int MaxReputationStars = 5;
     public const int DemandBonusPerTier = 5;
     public const int MaxItemDemandBonusPerMinute = 25;
+    public const int ReputationPerServedItem = 1;
+    public const int ReputationPenaltyPerMissedItem = 10;
     const int LegacyReputationPerDemandTier = 20;
     static readonly int[] ReputationStarServedThresholds = { 50, 150, 300, 500, 750 };
 
@@ -735,7 +737,24 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (!IsTrackedMenuItem(item)) return;
         ItemReputationState state = GetOrCreateItemReputation(item);
-        state.reputation = Mathf.Min(MaxItemReputation, state.reputation + 1);
+        state.reputation = Mathf.Min(MaxItemReputation,
+            state.reputation + ReputationPerServedItem);
+    }
+
+    /// <summary>Penalizes every menu item in an order that a customer leaves without receiving.</summary>
+    public void RecordMissedOrder(CustomerOrder order)
+    {
+        if (order == null || order.lines == null) return;
+
+        foreach (CustomerOrder.OrderLine line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0 || !IsTrackedMenuItem(line.item))
+                continue;
+
+            ItemReputationState state = GetOrCreateItemReputation(line.item);
+            int penalty = line.quantity * ReputationPenaltyPerMissedItem;
+            state.reputation = Mathf.Max(0, state.reputation - penalty);
+        }
     }
 
     /// <summary>Counts one completed item toward that recipe's next reputation star.</summary>
