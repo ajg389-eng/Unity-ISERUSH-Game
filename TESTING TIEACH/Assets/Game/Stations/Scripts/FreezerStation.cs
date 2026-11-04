@@ -14,7 +14,7 @@ public partial class FreezerStation : MonoBehaviour, IStationBuffer
     [Tooltip("Total time for one freezer operation.")]
     [Min(0f)] public float processTimeSeconds = 0f;
     [Tooltip("Maximum sustained amount this freezer can dispense per minute.")]
-    [Min(0.1f)] public float maxOutputPerMinute = 15f;
+    [Min(0.1f)] public float maxOutputPerMinute = StationNode.MaximumStationOutputPerMinute;
     [Tooltip("Show the station caution sign when assigned stock reaches this amount or lower.")]
     [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
@@ -30,7 +30,9 @@ public partial class FreezerStation : MonoBehaviour, IStationBuffer
         get
         {
             StationNode node = GetComponent<StationNode>();
-            return Mathf.Max(0f, maxOutputPerMinute)
+            float ratedOutput = Mathf.Min(Mathf.Max(0f, maxOutputPerMinute),
+                StationNode.MaximumStationOutputPerMinute);
+            return ratedOutput
                 * (node != null ? node.ProductionRateMultiplier : 1f);
         }
     }

@@ -81,7 +81,9 @@ public static class StationBufferLayout
 /// </summary>
 public class StationNode : MonoBehaviour
 {
-    public const float ProductionRateStepPerMinute = 5f;
+    public const float ProductionRateStepPerMinute = 1f;
+    public const float MaximumStationOutputPerMinute = 5f;
+    public const float DefaultTargetOutputPerMinute = 5f;
     public const float MinimumProductionRatePercent = 1f;
     public const float MaximumProductionRatePercent = 100f;
     static readonly Dictionary<string, StationNode> activeStationsById =
@@ -123,6 +125,7 @@ public class StationNode : MonoBehaviour
     [Tooltip("Clock speed for this station. The target rate scales from the selected recipe's base capacity.")]
     [SerializeField, Range(MinimumProductionRatePercent, MaximumProductionRatePercent)]
     float productionRatePercent = 100f;
+    [SerializeField, HideInInspector] bool productionRateCustomized;
     [System.NonSerialized] float baseOutputAmountPerMinute;
 
     public float ProductionRatePercent => Mathf.Clamp(productionRatePercent,
@@ -147,8 +150,6 @@ public class StationNode : MonoBehaviour
         StationConfigurationCaution.Ensure(gameObject);
         // Re-apply balance defaults each run so rates stay consistent.
         EnsureIoDefaults(force: true);
-        if (SupportsProductionRateControl)
-            SetTargetOutputPerMinute(outputAmountPerMinute);
     }
 
     void OnEnable()
@@ -307,9 +308,29 @@ public class StationNode : MonoBehaviour
 
     void SetIo(float input, float output, string inUnit, string outUnit)
     {
-        baseOutputAmountPerMinute = Mathf.Max(0f, output);
-        float rateScale = SupportsProductionRateControl ? ProductionRateMultiplier : 1f;
-        inputAmountPerMinute = Mathf.Max(0f, input) * rateScale;
+        float uncappedOutputRate = Mathf.Max(0f, output);
+        bool rateControlled = SupportsProductionRateControl;
+        baseOutputAmountPerMinute = rateControlled
+            ? Mathf.Min(uncappedOutputRate, MaximumStationOutputPerMinute)
+            : uncappedOutputRate;
+        float capacityScale = uncappedOutputRate > 0.001f
+            ? baseOutputAmountPerMinute / uncappedOutputRate
+            : 1f;
+        float baseInputRate = Mathf.Max(0f, input) * capacityScale;
+        if (SupportsProductionRateControl && !productionRateCustomized
+            && baseOutputAmountPerMinute > 0.001f)
+        {
+            float maximumWholeRate = Mathf.Floor(
+                baseOutputAmountPerMinute / ProductionRateStepPerMinute + 0.0001f)
+                * ProductionRateStepPerMinute;
+            if (maximumWholeRate <= 0.001f)
+                maximumWholeRate = baseOutputAmountPerMinute;
+            float defaultTarget = Mathf.Min(DefaultTargetOutputPerMinute, maximumWholeRate);
+            productionRatePercent = Mathf.Clamp(defaultTarget / baseOutputAmountPerMinute * 100f,
+                MinimumProductionRatePercent, MaximumProductionRatePercent);
+        }
+        float rateScale = rateControlled ? ProductionRateMultiplier : 1f;
+        inputAmountPerMinute = baseInputRate * rateScale;
         outputAmountPerMinute = baseOutputAmountPerMinute * rateScale;
         inputUnit = inUnit;
         outputUnit = outUnit;
@@ -333,16 +354,25 @@ public class StationNode : MonoBehaviour
         EnsureIoDefaults(force: true);
         if (baseOutputAmountPerMinute <= 0.001f) return;
 
-        float minRate = Mathf.Min(ProductionRateStepPerMinute, baseOutputAmountPerMinute);
+        float maxRate = Mathf.Floor(
+            baseOutputAmountPerMinute / ProductionRateStepPerMinute + 0.0001f)
+            * ProductionRateStepPerMinute;
+        if (maxRate <= 0.001f)
+            maxRate = baseOutputAmountPerMinute;
+        float minRate = Mathf.Min(ProductionRateStepPerMinute, maxRate);
         float snappedRate = Mathf.Round(Mathf.Max(0f, targetRate) / ProductionRateStepPerMinute)
             * ProductionRateStepPerMinute;
-        snappedRate = Mathf.Clamp(snappedRate, minRate, baseOutputAmountPerMinute);
+        snappedRate = Mathf.Clamp(snappedRate, minRate, maxRate);
         productionRatePercent = snappedRate / baseOutputAmountPerMinute * 100f;
+        productionRateCustomized = true;
+        EnsureIoDefaults(force: true);
     }
 
     public float GetEffectiveCycleSeconds(float nominalSeconds)
     {
-        return nominalSeconds > 0f ? nominalSeconds / ProductionRateMultiplier : nominalSeconds;
+        if (SupportsProductionRateControl && outputAmountPerMinute > 0.001f)
+            return StationOutputRateLimiter.SecondsPerItem(outputAmountPerMinute);
+        return nominalSeconds;
     }
 
     public float GetEffectiveOutputRate(float nominalRate)

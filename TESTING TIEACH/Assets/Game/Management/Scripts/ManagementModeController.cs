@@ -1565,9 +1565,9 @@ public class ManagementModeController : MonoBehaviour
         field.textComponent = text;
         field.placeholder = placeholder;
         field.targetGraphic = background;
-        field.contentType = TMP_InputField.ContentType.DecimalNumber;
+        field.contentType = TMP_InputField.ContentType.IntegerNumber;
         field.lineType = TMP_InputField.LineType.SingleLine;
-        field.SetTextWithoutNotify("15");
+        field.SetTextWithoutNotify("5");
         return field;
     }
 
@@ -1607,7 +1607,7 @@ public class ManagementModeController : MonoBehaviour
         Slider slider = sliderObject.GetComponent<Slider>();
         slider.minValue = StationNode.MinimumProductionRatePercent;
         slider.maxValue = StationNode.MaximumProductionRatePercent;
-        slider.wholeNumbers = false;
+        slider.wholeNumbers = true;
         slider.direction = Slider.Direction.LeftToRight;
         slider.handleRect = handleRect;
         slider.targetGraphic = handleImage;
@@ -2090,21 +2090,25 @@ public class ManagementModeController : MonoBehaviour
         }
 
         syncingProductionRateControls = true;
-        float maxRate = baseRate * StationNode.MaximumProductionRatePercent / 100f;
+        float maxRate = Mathf.Floor(baseRate / StationNode.ProductionRateStepPerMinute + 0.0001f)
+            * StationNode.ProductionRateStepPerMinute;
+        if (maxRate <= 0.001f)
+            maxRate = baseRate;
         float minRate = Mathf.Min(StationNode.ProductionRateStepPerMinute, maxRate);
-        productionRateSlider.minValue = baseRate > 0.001f ? minRate / baseRate * 100f : 100f;
-        productionRateSlider.maxValue = StationNode.MaximumProductionRatePercent;
-        productionRateSlider.SetValueWithoutNotify(node.ProductionRatePercent);
+        productionRateSlider.minValue = minRate;
+        productionRateSlider.maxValue = maxRate;
+        productionRateSlider.wholeNumbers = maxRate >= StationNode.ProductionRateStepPerMinute;
+        productionRateSlider.SetValueWithoutNotify(node.outputAmountPerMinute);
         productionRatePercentText.text = node.ProductionRatePercent.ToString("0.#") + "%";
         if (productionTargetRateInput != null && !productionTargetRateInput.isFocused)
             productionTargetRateInput.SetTextWithoutNotify(node.outputAmountPerMinute.ToString("0"));
         syncingProductionRateControls = false;
     }
 
-    void HandleProductionRateSliderChanged(float percent)
+    void HandleProductionRateSliderChanged(float targetRate)
     {
         if (syncingProductionRateControls || selectedStation == null) return;
-        selectedStation.SetProductionRatePercent(percent);
+        selectedStation.SetTargetOutputPerMinute(targetRate);
         RefreshRecipeStationRatesLive();
         RefreshStationSummary();
     }

@@ -100,6 +100,7 @@ public class CustomerOrderConfig : ScriptableObject
 {
     public const int MaxItemReputation = 750;
     public const int MaxReputationStars = 5;
+    public const int DefaultItemDemandPerMinute = 5;
     public const int DemandBonusPerTier = 5;
     public const int MaxItemDemandBonusPerMinute = 25;
     public const int ReputationPerServedItem = 1;
@@ -969,16 +970,11 @@ public class CustomerOrderConfig : ScriptableObject
 
     int GetDemandRate(ItemDefinition item)
     {
-        AssemblyRecipeDefinition recipe = GetAssemblyRecipe(item);
-        float baseRate = recipe != null && recipe.baseCycleSeconds > 0.01f
-            ? 60f / recipe.baseCycleSeconds
-            : 15f;
-        // Each item starts at recipe output; reputation adds fixed five-item steps.
-        int baseDemand = Mathf.Max(5, Mathf.FloorToInt(baseRate / 5f + 0.5f) * 5);
         int reputationBonus = TryGetItemReputation(item, out ItemReputationState state)
             ? state.activeDemandTier * DemandBonusPerTier
             : 0;
-        return baseDemand + Mathf.Clamp(reputationBonus, 0, MaxItemDemandBonusPerMinute);
+        return DefaultItemDemandPerMinute
+            + Mathf.Clamp(reputationBonus, 0, MaxItemDemandBonusPerMinute);
     }
 
     static void AddCategoryDemandToCycle(List<DemandProduct> products, int categoryRate,

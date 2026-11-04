@@ -7697,6 +7697,7 @@ MonoBehaviour:
   employeePrefab: {fileID: 8879517237201228535, guid: f204490c17366ff458d0a8e36bc37f97, type: 3}
   spawnPoint: {fileID: 866130494}
   hireCost: 100
+  totalWorkersHired: 0
   productionFlows: []
   selectedFlowIndex: 0
   hireFlow: 1
@@ -11323,8 +11324,10 @@ MonoBehaviour:
   tasksTabButton: {fileID: 1015126902}
   progressionTabButton: {fileID: 1018457525}
   tasksPage: {fileID: 834900355}
+  milestoneTasksPage: {fileID: 0}
   progressionPage: {fileID: 1997163888}
   tasksListContent: {fileID: 228830239}
+  milestoneTasksListContent: {fileID: 0}
   progressionListContent: {fileID: 1161387480}
   progressionDetailText: {fileID: 2027053146}
   researchButton: {fileID: 0}
@@ -11337,9 +11340,12 @@ MonoBehaviour:
   panelColor: {r: 0.08, g: 0.1, b: 0.14, a: 0.88}
   tabActiveColor: {r: 0.28, g: 0.36, b: 0.48, a: 1}
   tabIdleColor: {r: 0.16, g: 0.18, b: 0.24, a: 1}
-  currentMissionColor: {r: 1, g: 0.92, b: 0.55, a: 1}
-  completeMissionColor: {r: 0.55, g: 0.85, b: 0.6, a: 1}
-  pendingMissionColor: {r: 0.78, g: 0.82, b: 0.88, a: 1}
+  recipeTaskColor: {r: 1, g: 0.82, b: 0.32, a: 1}
+  workflowTaskColor: {r: 0.45, g: 0.72, b: 0.96, a: 1}
+  serviceTaskColor: {r: 0.44, g: 0.82, b: 0.58, a: 1}
+  financeTaskColor: {r: 0.35, g: 0.78, b: 0.76, a: 1}
+  layoutTaskColor: {r: 0.72, g: 0.58, b: 0.94, a: 1}
+  generalTaskColor: {r: 0.78, g: 0.82, b: 0.88, a: 1}
 --- !u!1001 &968387477
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -13246,7 +13252,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 35155d197ffa85141a6b7cc68b72dc12, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Register
-  isEnabled: 0
   queueStart: {fileID: 594451285}
   queueDirection: {x: 1, y: 0, z: 0}
   spacing: 1.2
@@ -13998,6 +14003,7 @@ MonoBehaviour:
   rushText: {fileID: 0}
   pauseButton: {fileID: 0}
   playButton: {fileID: 0}
+  fastForwardRateButton: {fileID: 0}
   fastForwardButton: {fileID: 0}
 --- !u!114 &1190729278
 MonoBehaviour:
@@ -14781,7 +14787,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RegisterInteractionManager
   cam: {fileID: 330585545}
-  popupPrefab: {fileID: 5016927078375633086, guid: ad4dc90af98251440acb7bc93cbb4443, type: 3}
 --- !u!4 &1231197911 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 400000, guid: 0ee37198b24b2164fbbccfbe92fe5d35, type: 3}
@@ -17800,7 +17805,6 @@ MonoBehaviour:
   tabPanels:
   - {fileID: 1750027352}
   - {fileID: 1553644906}
-  expandCost: 150
   expandWidth: 1
   expandHeight: 1
 --- !u!114 &1463199600
@@ -17825,8 +17829,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 45e64f8f74b403b479acb252bd167985, type: 2}
   - {fileID: 11400000, guid: 95de563cd677c4347b86195272a184dc, type: 2}
   - {fileID: 11400000, guid: b4816a10c83443c0a62aa991cb8a7d51, type: 2}
-  baseStationCapacity: 2
-  capacityPerResearchProject: 1
   money: {fileID: 626923595}
 --- !u!4 &1463199601
 Transform:
@@ -17922,6 +17924,7 @@ MonoBehaviour:
   gusIntroCameraLookHeight: 1.25
   gusIntroCameraMoveDuration: 3.25
   gusIntroCameraHoldDuration: 0.65
+  milestoneCameraMoveDuration: 1.5
   titleCamera: {fileID: 105010214}
   gameCamera: {fileID: 330585545}
   inGameUIRoot: {fileID: 285744407}
@@ -21450,7 +21453,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 35155d197ffa85141a6b7cc68b72dc12, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Register
-  isEnabled: 0
   queueStart: {fileID: 2147468039}
   queueDirection: {x: 1, y: 0, z: 0}
   spacing: 1.2

@@ -488,7 +488,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Open <b>Business > Workers</b>, then select each highlighted station to open its settings. Choose the required input or recipe. <b>Target / Min</b> sets planned output rate.",
         "The <b>Plan</b> card shows forecast demand/min and <b>Shift Total</b> (rate × shift length). Use it to estimate ingredient needs. Review the card, then click <b>Next</b>.",
         "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. Its demand forecast and shift total appear.",
-        "Plan inputs from <b>Shift Total</b>: 10 burgers/min × 12 minutes = 120 patties and buns. Stock caps at 100 per ingredient, so replenish during the shift. Open <b>Business > Supply</b> and order packs.",
+        "Plan inputs from <b>Shift Total</b>: 5 burgers/min × 12 minutes = 60 patties and buns. Stock caps at 100 per ingredient, so replenish during the shift. Open <b>Business > Supply</b> and order packs.",
         "Open <b>Business > Workers</b> and hire one worker. The first is free; later hires cost more. Assign staff by flow and balance transport capacity with workload. Short routes reduce travel.",
         "Click <b>Create Flow</b>, then drag from each source to its destination. A flow maps material movement through the process.",
         "Select a flow and click <b>Edit Flow</b>. Drag to connect stations; click to select; Ctrl-click to remove. Press Esc to cancel or <b>Finish</b> to save.",
@@ -2140,7 +2140,7 @@ public class OnboardingTutorial : MonoBehaviour
                 recipeTutorialStationIndex++;
                 if (recipeTutorialStationIndex >= 4)
                 {
-                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger. <b>Target / Min</b> sets a production station's planned output rate. At <b>100%</b>, it runs at the selected recipe's base capacity; each cycle makes one item, so 15/min means one every 4 seconds. Lower targets slow production and reduce required input rates proportionally. Match upstream output to each downstream recipe's inputs. Actual output can still fall below target if stock, space, or worker transport is limited.";
+                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger. <b>Target / Min</b> sets a station's planned output rate from 1 to 5 items/min. At <b>5/min</b>, one item completes every 12 seconds. Lower targets slow production and reduce required input rates proportionally. Match upstream output to each downstream recipe's inputs. Actual output can still fall below target if stock, space, or worker transport is limited.";
                     SetTutorialBodyText(tutorialFocusText);
                     secondaryHighlightTarget = null;
                     return;

@@ -22,7 +22,7 @@ public class IngredientsOrderUI : MonoBehaviour
     public GameObject drinkPreviewPrefab;
 
     public float refreshInterval = 0.35f;
-    const float SupplyCardHeight = 62f;
+    const float SupplyCardHeight = 90f;
     const float SupplyGridGap = 6f;
     static readonly int[] BasicSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40 };
     static readonly int[] AdvancedSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40, 60, 80 };
@@ -389,9 +389,13 @@ public class IngredientsOrderUI : MonoBehaviour
         MoveLockedItemsToBottom(pantryItems, inventory.IsOrderItemUnlocked);
         MoveLockedItemsToBottom(freezerItems, inventory.IsOrderItemUnlocked);
         MoveLockedItemsToBottom(otherSupplyItems, inventory.IsOrderItemUnlocked);
-        AddSupplyCategory("Pantry", pantryItems);
-        AddSupplyCategory("Freezer", freezerItems);
-        AddSupplyCategory("Other", otherSupplyItems);
+        GameObject supplyColumns = CreateSupplyColumnsRoot();
+        supplyLayoutRows.Add(supplyColumns);
+        Transform pantryColumn = CreateSupplyColumn(supplyColumns.transform, "PantryColumn");
+        Transform freezerColumn = CreateSupplyColumn(supplyColumns.transform, "FreezerColumn");
+        AddSupplyCategory("Pantry", pantryItems, pantryColumn);
+        AddSupplyCategory("Freezer", freezerItems, freezerColumn);
+        AddSupplyCategory("Other", otherSupplyItems, listContainer);
 
         CreateCartFooter();
         BuildNavigation(menu);
@@ -416,12 +420,49 @@ public class IngredientsOrderUI : MonoBehaviour
         items.AddRange(locked);
     }
 
-    void AddSupplyCategory(string category, List<ItemDefinition> items)
+    GameObject CreateSupplyColumnsRoot()
+    {
+        var root = new GameObject("SupplyColumns", typeof(RectTransform),
+            typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        root.transform.SetParent(listContainer, false);
+        LayoutElement size = root.GetComponent<LayoutElement>();
+        size.flexibleWidth = 1f;
+        HorizontalLayoutGroup layout = root.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = 10f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = false;
+        return root;
+    }
+
+    Transform CreateSupplyColumn(Transform parent, string name)
+    {
+        var column = new GameObject(name, typeof(RectTransform),
+            typeof(LayoutElement), typeof(VerticalLayoutGroup));
+        column.transform.SetParent(parent, false);
+        LayoutElement size = column.GetComponent<LayoutElement>();
+        size.minWidth = 0f;
+        size.flexibleWidth = 1f;
+        VerticalLayoutGroup layout = column.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childForceExpandWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandHeight = false;
+        return column.transform;
+    }
+
+    void AddSupplyCategory(string category, List<ItemDefinition> items, Transform parent)
     {
         if (items == null || items.Count == 0) return;
 
-        supplyLayoutRows.Add(CreateSupplyCategoryHeader(category));
-        GameObject grid = CreateSupplyGrid(category);
+        GameObject header = CreateSupplyCategoryHeader(category);
+        header.transform.SetParent(parent, false);
+        supplyLayoutRows.Add(header);
+        GameObject grid = CreateSupplyGrid(category, parent);
         supplyLayoutRows.Add(grid);
         foreach (ItemDefinition item in items)
             supplyRows.Add(CreateOrderRow(item, grid.transform));
@@ -600,8 +641,10 @@ public class IngredientsOrderUI : MonoBehaviour
             if (root == null) continue;
             var grid = root.GetComponent<GridLayoutGroup>();
             if (grid == null) continue;
-            float cellWidth = availableWidth - 8f - grid.padding.horizontal;
-            cellWidth = Mathf.Max(250f, cellWidth);
+            RectTransform parentRect = root.transform.parent as RectTransform;
+            float parentWidth = parentRect != null ? parentRect.rect.width : 0f;
+            if (parentWidth <= 0f) parentWidth = availableWidth;
+            float cellWidth = Mathf.Max(160f, parentWidth - 8f - grid.padding.horizontal);
             if (Mathf.Abs(grid.cellSize.x - cellWidth) > 0.5f
                 || Mathf.Abs(grid.cellSize.y - SupplyCardHeight) > 0.5f)
                 grid.cellSize = new Vector2(cellWidth, SupplyCardHeight);
@@ -1819,11 +1862,11 @@ public class IngredientsOrderUI : MonoBehaviour
         return go;
     }
 
-    GameObject CreateSupplyGrid(string category)
+    GameObject CreateSupplyGrid(string category, Transform parent)
     {
         var go = new GameObject("IngredientGrid_" + category, typeof(RectTransform),
             typeof(LayoutElement), typeof(GridLayoutGroup), typeof(ContentSizeFitter));
-        go.transform.SetParent(listContainer, false);
+        go.transform.SetParent(parent, false);
 
         var layout = go.GetComponent<LayoutElement>();
         layout.flexibleWidth = 1f;
@@ -1834,14 +1877,14 @@ public class IngredientsOrderUI : MonoBehaviour
         grid.childAlignment = TextAnchor.UpperLeft;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
         grid.constraintCount = 1;
-        var listRect = listContainer as RectTransform;
-        float cellWidth = listRect != null ? listRect.rect.width : 0f;
+        var parentRect = parent as RectTransform;
+        float cellWidth = parentRect != null ? parentRect.rect.width : 0f;
         if (cellWidth <= 0f)
         {
             var panelRect = transform as RectTransform;
-            cellWidth = panelRect != null ? panelRect.rect.width - 48f : 500f;
+            cellWidth = panelRect != null ? panelRect.rect.width * 0.5f - 40f : 220f;
         }
-        grid.cellSize = new Vector2(Mathf.Max(250f, cellWidth - 8f), SupplyCardHeight);
+        grid.cellSize = new Vector2(Mathf.Max(160f, cellWidth - 8f), SupplyCardHeight);
         grid.spacing = new Vector2(SupplyGridGap, SupplyGridGap);
 
         var fitter = go.GetComponent<ContentSizeFitter>();
@@ -1928,20 +1971,21 @@ public class IngredientsOrderUI : MonoBehaviour
         var img = row.AddComponent<Image>();
         img.color = GameUITheme.Surface;
 
-        var hlg = row.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(8, 8, 5, 5);
-        hlg.spacing = 4;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true;
-        hlg.childForceExpandWidth = false;
-        hlg.childControlHeight = true;
-        hlg.childForceExpandHeight = false;
+        var cardLayout = row.AddComponent<HorizontalLayoutGroup>();
+        cardLayout.padding = new RectOffset(5, 5, 4, 4);
+        cardLayout.spacing = 5f;
+        cardLayout.childAlignment = TextAnchor.MiddleLeft;
+        cardLayout.childControlWidth = true;
+        cardLayout.childForceExpandWidth = false;
+        cardLayout.childControlHeight = true;
+        cardLayout.childForceExpandHeight = false;
 
         var previewGo = new GameObject("IngredientIcon", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         previewGo.transform.SetParent(row.transform, false);
         var previewLayout = previewGo.GetComponent<LayoutElement>();
-        previewLayout.minWidth = previewLayout.preferredWidth = 48f;
-        previewLayout.minHeight = previewLayout.preferredHeight = 48f;
+        float previewSide = SupplyCardHeight - cardLayout.padding.vertical;
+        previewLayout.minWidth = previewLayout.preferredWidth = previewSide;
+        previewLayout.minHeight = previewLayout.preferredHeight = previewSide;
         var preview = previewGo.GetComponent<RawImage>();
         preview.texture = ItemPreviewThumbnails.Get(item);
         if (preview.texture == null && item.previewIcon != null)
@@ -1949,16 +1993,54 @@ public class IngredientsOrderUI : MonoBehaviour
         preview.color = preview.texture != null ? Color.white : Color.clear;
         preview.raycastTarget = false;
 
+        var contentColumn = new GameObject("DetailsAndActions", typeof(RectTransform),
+            typeof(LayoutElement), typeof(VerticalLayoutGroup));
+        contentColumn.transform.SetParent(row.transform, false);
+        LayoutElement contentSize = contentColumn.GetComponent<LayoutElement>();
+        contentSize.minWidth = 120f;
+        contentSize.flexibleWidth = 1f;
+        VerticalLayoutGroup contentLayout = contentColumn.GetComponent<VerticalLayoutGroup>();
+        contentLayout.spacing = 3f;
+        contentLayout.childAlignment = TextAnchor.MiddleCenter;
+        contentLayout.childControlWidth = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandHeight = false;
+
+        var detailsRow = new GameObject("DetailsRow", typeof(RectTransform),
+            typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        detailsRow.transform.SetParent(contentColumn.transform, false);
+        detailsRow.GetComponent<LayoutElement>().preferredHeight = 40f;
+        var detailsLayout = detailsRow.GetComponent<HorizontalLayoutGroup>();
+        detailsLayout.spacing = 4f;
+        detailsLayout.childAlignment = TextAnchor.MiddleLeft;
+        detailsLayout.childControlWidth = true;
+        detailsLayout.childForceExpandWidth = false;
+        detailsLayout.childControlHeight = true;
+        detailsLayout.childForceExpandHeight = false;
+
+        var actionsRow = new GameObject("ActionsRow", typeof(RectTransform),
+            typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        actionsRow.transform.SetParent(contentColumn.transform, false);
+        actionsRow.GetComponent<LayoutElement>().preferredHeight = 34f;
+        var actionsLayout = actionsRow.GetComponent<HorizontalLayoutGroup>();
+        actionsLayout.spacing = 3f;
+        actionsLayout.childAlignment = TextAnchor.MiddleCenter;
+        actionsLayout.childControlWidth = true;
+        actionsLayout.childForceExpandWidth = false;
+        actionsLayout.childControlHeight = true;
+        actionsLayout.childForceExpandHeight = false;
+
         var infoGo = new GameObject("Info", typeof(RectTransform));
-        infoGo.transform.SetParent(row.transform, false);
+        infoGo.transform.SetParent(detailsRow.transform, false);
         var infoLayout = infoGo.AddComponent<LayoutElement>();
-        infoLayout.minWidth = 110f;
+        infoLayout.minWidth = 64f;
         infoLayout.flexibleWidth = 1f;
         var infoTmp = infoGo.AddComponent<TextMeshProUGUI>();
-        infoTmp.fontSize = 14f;
+        infoTmp.fontSize = 12f;
         infoTmp.enableAutoSizing = true;
-        infoTmp.fontSizeMin = 11.5f;
-        infoTmp.fontSizeMax = 14f;
+        infoTmp.fontSizeMin = 9.5f;
+        infoTmp.fontSizeMax = 12f;
         infoTmp.color = GameUITheme.TextPrimary;
         infoTmp.alignment = TextAlignmentOptions.Left;
         infoTmp.textWrappingMode = TextWrappingModes.Normal;
@@ -1966,25 +2048,25 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) infoTmp.font = TMP_Settings.defaultFontAsset;
 
         var stockGo = new GameObject("Stock", typeof(RectTransform));
-        stockGo.transform.SetParent(row.transform, false);
+        stockGo.transform.SetParent(detailsRow.transform, false);
         var stockLayout = stockGo.AddComponent<LayoutElement>();
-        stockLayout.minWidth = 68f;
-        stockLayout.preferredWidth = 68f;
+        stockLayout.minWidth = 54f;
+        stockLayout.preferredWidth = 54f;
         var stockTmp = stockGo.AddComponent<TextMeshProUGUI>();
-        stockTmp.fontSize = 11f;
+        stockTmp.fontSize = 10f;
         stockTmp.enableAutoSizing = true;
-        stockTmp.fontSizeMin = 9.5f;
-        stockTmp.fontSizeMax = 11f;
+        stockTmp.fontSizeMin = 8.5f;
+        stockTmp.fontSizeMax = 10f;
         stockTmp.color = GameUITheme.TextSecondary;
         stockTmp.alignment = TextAlignmentOptions.Center;
         if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI autoOrderLabel;
-        Button autoOrderButton = CreateCartButton(row.transform, "AutoRestock", "Off", 52f,
+        Button autoOrderButton = CreateCartButton(actionsRow.transform, "AutoRestock", "Off", 44f,
             GameUITheme.SurfaceHover, out autoOrderLabel);
         DelayedTooltip.Attach(autoOrderButton,
             "Automatic supplier rate. Click to cycle the items received per minute; set to Off to stop.");
-        SetCompactCartButton(autoOrderButton, 52f, 38f);
+        SetCompactCartButton(autoOrderButton, 44f, 30f);
         autoOrderLabel.fontSize = 10.5f;
         autoOrderLabel.enableAutoSizing = true;
         autoOrderLabel.fontSizeMin = 9f;
@@ -1993,14 +2075,14 @@ public class IngredientsOrderUI : MonoBehaviour
         autoOrderLabel.overflowMode = TextOverflowModes.Overflow;
 
         TextMeshProUGUI removeLabel;
-        Button removeButton = CreateCartButton(row.transform, "Remove", "-", 32f, GameUITheme.Danger, out removeLabel);
-        SetCompactCartButton(removeButton, 32f, 38f);
+        Button removeButton = CreateCartButton(actionsRow.transform, "Remove", "-", 24f, GameUITheme.Danger, out removeLabel);
+        SetCompactCartButton(removeButton, 24f, 30f);
 
         var countGo = new GameObject("CartCount", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
-        countGo.transform.SetParent(row.transform, false);
+        countGo.transform.SetParent(actionsRow.transform, false);
         var countLe = countGo.GetComponent<LayoutElement>();
-        countLe.minWidth = 34f;
-        countLe.preferredWidth = 34f;
+        countLe.minWidth = 24f;
+        countLe.preferredWidth = 24f;
         var countTmp = countGo.GetComponent<TextMeshProUGUI>();
         countTmp.fontSize = 13;
         countTmp.fontStyle = FontStyles.Bold;
@@ -2009,8 +2091,8 @@ public class IngredientsOrderUI : MonoBehaviour
         if (TMP_Settings.defaultFontAsset != null) countTmp.font = TMP_Settings.defaultFontAsset;
 
         TextMeshProUGUI addLabel;
-        Button addButton = CreateCartButton(row.transform, "Add", "+", 32f, GameUITheme.Positive, out addLabel);
-        SetCompactCartButton(addButton, 32f, 38f);
+        Button addButton = CreateCartButton(actionsRow.transform, "Add", "+", 24f, GameUITheme.Positive, out addLabel);
+        SetCompactCartButton(addButton, 24f, 30f);
 
         var captured = item;
         autoOrderButton.onClick.AddListener(() =>

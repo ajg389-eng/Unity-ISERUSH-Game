@@ -96,7 +96,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     GameObject itemPickerRowsRoot;
     TextMeshProUGUI itemPickerEmptyText;
     DemandRow itemPickerTargetRow;
-    TextMeshProUGUI goalComparisonText;
     TextMeshProUGUI liveItemRatesText;
     TextMeshProUGUI liveStatsText;
     TextMeshProUGUI liveDiagnosisText;
@@ -341,7 +340,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         rootRect.anchorMax = new Vector2(1f, 0f);
         rootRect.pivot = new Vector2(1f, 0f);
         rootRect.anchoredPosition = new Vector2(-20f, 20f);
-        rootRect.sizeDelta = new Vector2(480f, 400f);
+        rootRect.sizeDelta = new Vector2(520f, 400f);
 
         Image background = panelRoot.GetComponent<Image>();
         background.color = new Color(GameUITheme.Panel.r, GameUITheme.Panel.g,
@@ -353,26 +352,26 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
         // Keep the final action clear of the card edge even when the menu list
         // or wrapped summary changes height.
-        layout.padding = new RectOffset(18, 18, 16, 44);
-        layout.spacing = 6f;
+        layout.padding = new RectOffset(18, 18, 16, 18);
+        layout.spacing = 4f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        dayTitle = CreateText(panelRoot.transform, "DayTitle", "SHIFT PLAN", 24f,
+        dayTitle = CreateText(panelRoot.transform, "DayTitle", "SHIFT PLAN", 26f,
             FontStyles.Bold, 32f, GameUITheme.Accent);
         TextMeshProUGUI intro = CreateText(panelRoot.transform, "Intro",
             "Review demand, tune the kitchen, then start the shift.",
-            13f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
+            14f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
         intro.textWrappingMode = TextWrappingModes.Normal;
 
         shiftDurationText = CreateText(panelRoot.transform, "ShiftDuration",
             "SHIFT LENGTH  10:00 AM–10:00 PM  |  12 MINUTES AT 1x",
-            13f, FontStyles.Bold, 20f, GameUITheme.TextSecondary);
+            14f, FontStyles.Bold, 20f, GameUITheme.TextSecondary);
 
-        CreateText(panelRoot.transform, "DemandHeading", "MENU DEMAND", 13f,
+        CreateText(panelRoot.transform, "DemandHeading", "MENU DEMAND", 14f,
             FontStyles.Bold, 20f, GameUITheme.Accent);
         demandHeaderRow = CreateDemandHeader(panelRoot.transform);
         demandEmptyText = CreateText(panelRoot.transform, "DemandEmptyMessage", "Loading demand...", 14f,
@@ -386,15 +385,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             34f, 12f, GameUITheme.Positive);
         addMenuItemButton.onClick.AddListener(() => ShowItemPicker(null));
         CreateItemPicker(panelRoot.transform);
-
-        goalComparisonText = CreateText(panelRoot.transform, "PreviousShiftResult", "No previous shift result yet.",
-            13f, FontStyles.Normal, 38f, GameUITheme.TextSecondary);
-        goalComparisonText.textWrappingMode = TextWrappingModes.Normal;
-
-        TextMeshProUGUI runHint = CreateText(panelRoot.transform, "RunHint",
-            "Shift stays paused until you start. Pause or fast-forward during the run; review lost production time afterward.",
-            12f, FontStyles.Normal, 40f, GameUITheme.TextSecondary);
-        runHint.textWrappingMode = TextWrappingModes.Normal;
 
         // Keep Start Shift as a direct child of the same vertical layout as
         // the full-width Add Item button so both span the card content width.
@@ -488,12 +478,12 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     DemandRow CreateDemandRow(Transform parent, int index)
     {
-        GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 36f);
+        GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 52f);
         var previewObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         previewObject.transform.SetParent(rowRoot.transform, false);
         LayoutElement previewSize = previewObject.GetComponent<LayoutElement>();
-        previewSize.minWidth = previewSize.preferredWidth = 32f;
-        previewSize.minHeight = previewSize.preferredHeight = 30f;
+        previewSize.minWidth = previewSize.preferredWidth = 44f;
+        previewSize.minHeight = previewSize.preferredHeight = 44f;
         RawImage preview = previewObject.GetComponent<RawImage>();
         preview.color = Color.white;
         preview.raycastTarget = false;
@@ -503,19 +493,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             root = rowRoot,
             preview = preview,
             itemName = CreateDemandCell(rowRoot.transform, "ItemName", string.Empty, 0f, true,
-                14f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
-            changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 28f, 10f,
+                15f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
+            changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 36f, 11f,
                 GameUITheme.Surface),
-            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 28f, 9f,
+            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 36f, 10f,
                 GameUITheme.Danger),
             rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 72f, false,
-                14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
+                15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
             shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 74f, false,
-                14f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
+                15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
         };
         row.itemName.enableAutoSizing = true;
         row.itemName.fontSizeMin = 11f;
-        row.itemName.fontSizeMax = 14f;
+        row.itemName.fontSizeMax = 15f;
         row.changeButton.onClick.AddListener(() => ShowItemPicker(row));
         row.removeButton.onClick.AddListener(() => RemoveMenuItem(row));
         rowRoot.SetActive(false);
@@ -774,8 +764,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (startShiftButton != null)
             startShiftButton.interactable = OnboardingTutorial.CanStartShiftFromPlan
                 && config.HasEnabledItems;
-        if (goalComparisonText != null)
-            goalComparisonText.text = GetLatestShiftResultText();
         FitPlanPanel();
     }
 
@@ -918,7 +906,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     void SetDemandListHeight(int rowCount)
     {
         if (demandRowsLayout == null) return;
-        float height = rowCount * 36f;
+        float height = rowCount * 52f;
         demandRowsLayout.minHeight = height;
         demandRowsLayout.preferredHeight = height;
     }
@@ -931,24 +919,28 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (rect == null) return;
 
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
-        float preferredHeight = layout != null
-            ? layout.padding.vertical + layout.spacing * Mathf.Max(0, panelRoot.transform.childCount - 1)
-            : 0f;
+        float preferredHeight = layout != null ? layout.padding.vertical : 0f;
+        int activeChildCount = 0;
         for (int i = 0; i < panelRoot.transform.childCount; i++)
         {
             RectTransform child = panelRoot.transform.GetChild(i) as RectTransform;
             if (child != null && child.gameObject.activeSelf)
+            {
                 preferredHeight += LayoutUtility.GetPreferredHeight(child);
+                activeChildCount++;
+            }
         }
-        // Preserve a measured margin beneath Start Shift. The card is bottom
-        // anchored, so extra height grows upward while the button stays inside.
-        float desiredHeight = Mathf.Max(400f, preferredHeight + 48f);
+        if (layout != null)
+            preferredHeight += layout.spacing * Mathf.Max(0, activeChildCount - 1);
+        // Keep a small inset below Start Shift. Hidden UI elements do not add
+        // phantom spacing to the plan card's measured height.
+        float desiredHeight = Mathf.Max(360f, preferredHeight + 16f);
         float availableHeight = canvasRect != null
             ? Mathf.Max(240f, canvasRect.rect.height - 40f)
             : Mathf.Max(240f, Screen.height - 40f);
         float width = canvasRect != null
-            ? Mathf.Min(480f, Mathf.Max(320f, canvasRect.rect.width - 40f))
-            : Mathf.Min(480f, Mathf.Max(320f, Screen.width - 40f));
+            ? Mathf.Min(520f, Mathf.Max(320f, canvasRect.rect.width - 40f))
+            : Mathf.Min(520f, Mathf.Max(320f, Screen.width - 40f));
 
         rect.sizeDelta = new Vector2(width, desiredHeight);
         rect.localScale = desiredHeight > availableHeight
@@ -1242,26 +1234,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             ordersServed = stats != null ? stats.OrdersCompletedToday : 0,
             averageWait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f
         };
-    }
-
-    string GetLatestShiftResultText()
-    {
-        if (latestShift == null || string.IsNullOrEmpty(latestShift.itemName))
-            return "No previous shift result yet.";
-        string result = "Last shift: " + latestShift.itemName + " delivered "
-            + latestShift.deliveredRate.ToString("0.0") + "/"
-            + latestShift.targetRate.ToString("0.#") + " items/min.";
-        if (previousShift != null && previousShift.itemName == latestShift.itemName)
-        {
-            float change = latestShift.deliveredRate - previousShift.deliveredRate;
-            result += change >= 0f
-                ? " Up " + change.ToString("0.0") + "/min from the shift before."
-                : " Down " + Mathf.Abs(change).ToString("0.0") + "/min from the shift before.";
-        }
-        else
-            result += " Orders served " + latestShift.ordersServed
-                + "; average wait " + latestShift.averageWait.ToString("0") + "s.";
-        return result;
     }
 
     string BuildShiftComparisonSummary()
