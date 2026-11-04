@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -29,16 +28,13 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public float raiseHeight = 1.35f;
 
     readonly List<LineRenderer> lines = new List<LineRenderer>();
-    readonly List<TextMeshPro> labels = new List<TextMeshPro>();
     readonly List<Transform> recipePreviewBadges = new List<Transform>();
     readonly List<Mesh> generatedMeshes = new List<Mesh>();
     readonly List<WorkerHoverHighlight> flowWorkerHighlights = new List<WorkerHoverHighlight>();
     Material lineMaterial;
     Material lineOutlineMaterial;
     Material markerCenterMaterial;
-    Material labelBackgroundMaterial;
     Material arrowMaterial;
-    Material arrowOutlineMaterial;
     Material startMaterial;
     Material stopMaterial;
     Material endMaterial;
@@ -90,9 +86,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         DestroyMaterial(lineMaterial);
         DestroyMaterial(lineOutlineMaterial);
         DestroyMaterial(markerCenterMaterial);
-        DestroyMaterial(labelBackgroundMaterial);
         DestroyMaterial(arrowMaterial);
-        DestroyMaterial(arrowOutlineMaterial);
         DestroyMaterial(startMaterial);
         DestroyMaterial(stopMaterial);
         DestroyMaterial(endMaterial);
@@ -122,7 +116,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             && (cameraTransform.position - billboardCameraPosition).sqrMagnitude < 0.0001f
             && Quaternion.Angle(cameraTransform.rotation, billboardCameraRotation) < 0.1f)
             return;
-        FaceLabelsTowardCamera();
         FaceRecipePreviewsTowardCamera();
         billboardCamera = cameraTransform;
         billboardCameraPosition = cameraTransform.position;
@@ -257,8 +250,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             || production.productionFlows == null)
             return;
 
-        var edgePaths = new List<List<Vector3>>();
-        var edgeNames = new List<string>();
         var markedStations = new HashSet<GameObject>();
         GameObject selected = station.gameObject;
         for (int flowIndex = 0; flowIndex < production.productionFlows.Count; flowIndex++)
@@ -305,20 +296,21 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 AppendGridLeg(points, grid, from, to);
                 if (points.Count < 2) continue;
 
-                edgePaths.Add(points);
-                edgeNames.Add((string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
-                    + "_Station_Connection_" + flowIndex + "_" + edgeIndex);
+                Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
+                Color sourceColor = GetFlowNodeColor(connection.from, incoming, outgoing);
+                CreateGridLine(points,
+                    (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
+                    + "_Station_Connection_" + flowIndex + "_" + edgeIndex,
+                    branchColor, true, sourceColor);
             }
         }
+    }
 
-        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(edgePaths, grid.cellSize);
-        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
-        for (int i = 0; i < edgePaths.Count; i++)
-        {
-            List<Vector3> points = ApplySharedLaneOffsets(edgePaths[i], i,
-                overlapGroups, grid.cellSize, laneSpacing);
-            CreateGridLine(points, edgeNames[i], FlowBranchColors[i % FlowBranchColors.Length]);
-        }
+    Color GetFlowNodeColor(GameObject station, HashSet<GameObject> incoming,
+        HashSet<GameObject> outgoing)
+    {
+        if (station == null || !incoming.Contains(station)) return startColor;
+        return outgoing.Contains(station) ? stopColor : endColor;
     }
 
     void CreateStationConnectionMarker(GameObject station, GridManager grid,
@@ -395,7 +387,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
         }
 
-        var edgePaths = new List<List<Vector3>>();
+        int edgeIndex = 0;
         foreach (ProductionFlowConnection connection in flow.connections)
         {
             if (connection == null || connection.from == null || connection.to == null) continue;
@@ -403,190 +395,13 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             Vector3 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.from));
             Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
             AppendGridLeg(points, grid, from, to);
-            if (points.Count >= 2) edgePaths.Add(points);
-        }
-
-        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(edgePaths, grid.cellSize);
-        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
-        for (int edgeIndex = 0; edgeIndex < edgePaths.Count; edgeIndex++)
-        {
-            List<Vector3> points = ApplySharedLaneOffsets(edgePaths[edgeIndex], edgeIndex,
-                overlapGroups, grid.cellSize, laneSpacing);
+            if (points.Count < 2) continue;
             Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
+            Color sourceColor = GetFlowNodeColor(connection.from, incoming, outgoing);
             CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
-                + "_Branch_" + edgeIndex, branchColor);
+                + "_Branch_" + edgeIndex, branchColor, true, sourceColor);
+            edgeIndex++;
         }
-    }
-
-    static Dictionary<int, List<int>> BuildPathOverlapGroups(List<List<Vector3>> paths,
-        float cellSize)
-    {
-        var adjacent = new List<HashSet<int>>(paths.Count);
-        for (int i = 0; i < paths.Count; i++) adjacent.Add(new HashSet<int>());
-        float corridorTolerance = Mathf.Max(0.01f, cellSize * 0.04f);
-        float minimumSharedLength = Mathf.Max(0.04f, cellSize * 0.12f);
-        for (int first = 0; first < paths.Count; first++)
-            for (int second = first + 1; second < paths.Count; second++)
-                if (PathsShareCorridor(paths[first], paths[second], corridorTolerance,
-                        minimumSharedLength))
-                {
-                    adjacent[first].Add(second);
-                    adjacent[second].Add(first);
-                }
-
-        var groups = new Dictionary<int, List<int>>();
-        var visited = new HashSet<int>();
-        for (int start = 0; start < paths.Count; start++)
-        {
-            if (!visited.Add(start)) continue;
-            var group = new List<int>();
-            var open = new Stack<int>();
-            open.Push(start);
-            while (open.Count > 0)
-            {
-                int current = open.Pop();
-                group.Add(current);
-                foreach (int next in adjacent[current])
-                    if (visited.Add(next)) open.Push(next);
-            }
-            group.Sort();
-            foreach (int member in group) groups[member] = group;
-        }
-        return groups;
-    }
-
-    static bool PathsShareCorridor(List<Vector3> first, List<Vector3> second,
-        float tolerance, float minimumSharedLength)
-    {
-        if (first == null || second == null) return false;
-        for (int a = 1; a < first.Count; a++)
-            for (int b = 1; b < second.Count; b++)
-                if (SegmentsShareCorridor(first[a - 1], first[a], second[b - 1], second[b],
-                        tolerance, minimumSharedLength))
-                    return true;
-        return false;
-    }
-
-    static bool SegmentsShareCorridor(Vector3 a0, Vector3 a1, Vector3 b0, Vector3 b1,
-        float tolerance, float minimumSharedLength)
-    {
-        Vector2 aStart = new Vector2(a0.x, a0.z);
-        Vector2 aEnd = new Vector2(a1.x, a1.z);
-        Vector2 bStart = new Vector2(b0.x, b0.z);
-        Vector2 bEnd = new Vector2(b1.x, b1.z);
-        Vector2 aDelta = aEnd - aStart;
-        Vector2 bDelta = bEnd - bStart;
-        float aLength = aDelta.magnitude;
-        float bLength = bDelta.magnitude;
-        if (aLength <= 0.001f || bLength <= 0.001f) return false;
-
-        Vector2 aDirection = aDelta / aLength;
-        Vector2 bDirection = bDelta / bLength;
-        if (Mathf.Abs(Vector2.Dot(aDirection, bDirection)) < 0.999f) return false;
-
-        Vector2 normal = new Vector2(-aDirection.y, aDirection.x);
-        if (Mathf.Abs(Vector2.Dot(bStart - aStart, normal)) > tolerance
-            || Mathf.Abs(Vector2.Dot(bEnd - aStart, normal)) > tolerance)
-            return false;
-
-        float bProjection0 = Vector2.Dot(bStart - aStart, aDirection);
-        float bProjection1 = Vector2.Dot(bEnd - aStart, aDirection);
-        float bMin = Mathf.Min(bProjection0, bProjection1);
-        float bMax = Mathf.Max(bProjection0, bProjection1);
-        float overlap = Mathf.Min(aLength, bMax) - Mathf.Max(0f, bMin);
-        return overlap >= minimumSharedLength;
-    }
-
-    static List<Vector3> ApplySharedLaneOffsets(List<Vector3> source, int pathIndex,
-        Dictionary<int, List<int>> overlapGroups, float cellSize, float spacing)
-    {
-        float laneDistance = GetPathLaneDistance(pathIndex, overlapGroups, spacing);
-        var result = new List<Vector3>(source.Count);
-        for (int i = 0; i < source.Count; i++)
-        {
-            if (Mathf.Abs(laneDistance) <= 0.000001f)
-            {
-                result.Add(source[i]);
-                continue;
-            }
-            Vector3 previousOffset = Vector3.zero;
-            Vector3 nextOffset = Vector3.zero;
-            if (i > 0)
-                previousOffset = GetConsistentLaneOffset(
-                    source[i - 1], source[i], cellSize, laneDistance);
-            if (i + 1 < source.Count)
-                nextOffset = GetConsistentLaneOffset(
-                    source[i], source[i + 1], cellSize, laneDistance);
-
-            Vector3 offset;
-            if (previousOffset.sqrMagnitude <= 0.000001f) offset = nextOffset;
-            else if (nextOffset.sqrMagnitude <= 0.000001f) offset = previousOffset;
-            else if (Vector3.Dot(previousOffset.normalized, nextOffset.normalized) > 0.999f)
-                offset = (previousOffset + nextOffset) * 0.5f;
-            else
-                // The intersection of two perpendicular offset grid segments is
-                // the sum of their normals. Averaging here creates off-angle kinks.
-                offset = previousOffset + nextOffset;
-            result.Add(source[i] + offset);
-        }
-        // Lane separation is corridor-only. Every edge must still originate and
-        // terminate at the exact center of its station marker.
-        result[0] = source[0];
-        result[result.Count - 1] = source[source.Count - 1];
-        return EnsureOrthogonalPolyline(result);
-    }
-
-    static float GetPathLaneDistance(int pathIndex,
-        Dictionary<int, List<int>> overlapGroups, float spacing)
-    {
-        if (!overlapGroups.TryGetValue(pathIndex, out List<int> group) || group.Count < 2)
-            return 0f;
-        int lane = group.IndexOf(pathIndex);
-        if (lane < 0) return 0f;
-        return (lane - (group.Count - 1) * 0.5f) * spacing;
-    }
-
-    static Vector3 GetConsistentLaneOffset(Vector3 a, Vector3 b, float cellSize,
-        float laneDistance)
-    {
-        Vector3 direction = CanonicalSegmentDirection(a, b, cellSize);
-        return new Vector3(-direction.z, 0f, direction.x).normalized * laneDistance;
-    }
-
-    static List<Vector3> EnsureOrthogonalPolyline(List<Vector3> source)
-    {
-        if (source == null || source.Count < 2) return source;
-        var result = new List<Vector3> { source[0] };
-        const float epsilon = 0.001f;
-        for (int i = 1; i < source.Count; i++)
-        {
-            Vector3 from = result[result.Count - 1];
-            Vector3 to = source[i];
-            float dx = to.x - from.x;
-            float dz = to.z - from.z;
-            float ax = Mathf.Abs(dx);
-            float az = Mathf.Abs(dz);
-            if (ax > epsilon && az > epsilon)
-            {
-                // Every route segment must run along one grid axis. Prefer an
-                // X leg followed by a Z leg for a stable, repeatable elbow.
-                Vector3 bend = new Vector3(to.x, from.y, from.z);
-                AddPointIfDistinct(result, bend);
-            }
-            AddPointIfDistinct(result, to);
-        }
-        return result;
-    }
-
-    static Vector3 CanonicalSegmentDirection(Vector3 a, Vector3 b, float cellSize)
-    {
-        float scale = Mathf.Max(0.01f, cellSize);
-        var first = new Vector2Int(Mathf.RoundToInt(a.x / scale), Mathf.RoundToInt(a.z / scale));
-        var second = new Vector2Int(Mathf.RoundToInt(b.x / scale), Mathf.RoundToInt(b.z / scale));
-        bool reverse = first.x > second.x || (first.x == second.x && first.y > second.y);
-        Vector3 direction = reverse ? a - b : b - a;
-        direction.y = 0f;
-        return direction.sqrMagnitude > 0.000001f ? direction.normalized : Vector3.forward;
     }
 
     static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)
@@ -603,13 +418,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
 
         List<List<GameObject>> chains = BuildFlowChains(worker);
-        var workerPaths = new List<List<Vector3>>();
+        int pathIndex = 0;
         for (int chainIndex = 0; chainIndex < chains.Count; chainIndex++)
         {
             List<GameObject> chain = chains[chainIndex];
             if (chain.Count == 0) continue;
 
-            var routePoints = new List<Vector3>();
             for (int i = 0; i < chain.Count; i++)
             {
                 Vector3 stopPosition = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(chain[i]));
@@ -626,19 +440,16 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
                 if (i == 0) continue;
                 Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(chain[i - 1]));
-                AppendGridLeg(routePoints, grid, previous, stopPosition);
+                var edgePoints = new List<Vector3>();
+                AppendGridLeg(edgePoints, grid, previous, stopPosition);
+                if (edgePoints.Count >= 2)
+                {
+                    Color sourceColor = i == 1 ? startColor : stopColor;
+                    CreateGridLine(edgePoints,
+                        worker.employeeName + "_Flow_" + pathIndex++, workerColor, true,
+                        sourceColor);
+                }
             }
-
-            if (routePoints.Count >= 2) workerPaths.Add(routePoints);
-        }
-
-        Dictionary<int, List<int>> overlapGroups = BuildPathOverlapGroups(workerPaths, grid.cellSize);
-        float laneSpacing = lineWidth + lineOutlineWidth + 0.035f;
-        for (int pathIndex = 0; pathIndex < workerPaths.Count; pathIndex++)
-        {
-            List<Vector3> points = ApplySharedLaneOffsets(workerPaths[pathIndex], pathIndex,
-                overlapGroups, grid.cellSize, laneSpacing);
-            CreateGridLine(points, worker.employeeName + "_Flow_" + pathIndex, workerColor);
         }
     }
 
@@ -701,6 +512,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void AppendGridLeg(List<Vector3> points, GridManager grid, Vector3 from, Vector3 to)
     {
+        // Route vertices are always snapped to tile centers. GridManager uses
+        // four-neighbor pathfinding, so each segment is straight or a 90-degree turn.
+        from = grid.GetCellCenter(from);
+        to = grid.GetCellCenter(to);
         from.y = grid.Origin.y + floorOffset;
         to.y = grid.Origin.y + floorOffset;
         AddPointIfDistinct(points, from);
@@ -731,7 +546,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             points.Add(point);
     }
 
-    void CreateGridLine(List<Vector3> points, string routeName, Color color, bool showDirection = true)
+    void CreateGridLine(List<Vector3> points, string routeName, Color color,
+        bool showDirection = true, Color? directionColor = null)
     {
         var outlineObject = new GameObject(routeName + "_Outline");
         outlineObject.transform.SetParent(visualsRoot, false);
@@ -747,7 +563,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         lines.Add(lr);
 
         if (showDirection)
-            CreateDirectionArrow(points, routeName + "_Direction", color);
+            CreateDirectionArrow(points, routeName + "_Direction", directionColor ?? color);
     }
 
     static void ConfigureLine(LineRenderer line, List<Vector3> points, float width,
@@ -774,28 +590,39 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         if (points == null || points.Count < 2) return;
 
         float cellSize = GridManager.Instance != null ? GridManager.Instance.cellSize : 1f;
-        float minArrowSegmentLength = Mathf.Max(0.2f, cellSize * 0.65f);
-        int arrowIndex = 0;
+        if (TryGetFirstSegmentDirection(points, out Vector3 direction))
+            CreateDirectionArrowAtNode(points[0], direction, arrowName, color, cellSize);
+    }
+
+    void CreateDirectionArrowAtNode(Vector3 nodePosition, Vector3 direction,
+        string arrowName, Color color, float cellSize)
+    {
+        if (direction.sqrMagnitude < 0.0001f) return;
+
+        direction.y = 0f;
+        direction.Normalize();
+        Vector3 position = nodePosition + direction * (cellSize * 0.2f)
+            + Vector3.up * 0.025f;
+        CreateArrowMesh(arrowName,
+            position + Vector3.up * 0.002f, direction,
+            cellSize * arrowTileScale * 1.25f, GetArrowMaterial(), color);
+    }
+
+    static bool TryGetFirstSegmentDirection(List<Vector3> points, out Vector3 direction)
+    {
+        direction = Vector3.zero;
+        if (points == null || points.Count < 2) return false;
+
         for (int i = 1; i < points.Count; i++)
         {
-            Vector3 segment = points[i] - points[i - 1];
-            segment.y = 0f;
-            float length = segment.magnitude;
-            if (length < minArrowSegmentLength) continue;
-
-            // A direction cue on every straight leg makes the route readable
-            // through turns, instead of showing one arrow somewhere on the
-            // longest segment and leaving the bend ambiguous.
-            Vector3 position = Vector3.Lerp(points[i - 1], points[i], 0.5f);
-            Vector3 direction = segment.normalized;
-            CreateArrowMesh(arrowName + "_Outline_" + arrowIndex,
-                position + Vector3.up * 0.004f, direction,
-                cellSize * (arrowTileScale + 0.06f), GetArrowOutlineMaterial(), routeOutlineColor);
-            CreateArrowMesh(arrowName + "_" + arrowIndex,
-                position + Vector3.up * 0.012f, direction,
-                cellSize * arrowTileScale, GetArrowMaterial(), color);
-            arrowIndex++;
+            direction = points[i] - points[i - 1];
+            direction.y = 0f;
+            if (direction.sqrMagnitude <= 0.0001f) continue;
+            direction.Normalize();
+            return true;
         }
+
+        return false;
     }
 
     void CreateArrowMesh(string objectName, Vector3 position, Vector3 direction, float size,
@@ -813,8 +640,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             new Vector3(-size * 0.48f, 0f, -size * 0.42f),
             new Vector3(size * 0.48f, 0f, -size * 0.42f)
         };
-        mesh.triangles = new[] { 0, 1, 2 };
+        // The arrow lies flat on the floor. Reverse the winding so its front
+        // face points upward and remains visible from the player's camera.
+        mesh.triangles = new[] { 0, 2, 1 };
         mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
         generatedMeshes.Add(mesh);
         arrow.GetComponent<MeshFilter>().sharedMesh = mesh;
         var renderer = arrow.GetComponent<MeshRenderer>();
@@ -825,7 +655,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         renderer.SetPropertyBlock(colorBlock);
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
-        renderer.sortingOrder = 5;
+        renderer.sortingOrder = 15;
     }
 
     void CreateMarker(Vector3 position, string role, string stationName, Color color, float cellSize)
@@ -859,90 +689,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             centerRenderer.sortingOrder = 21;
         }
 
-        var labelObject = new GameObject("Label", typeof(RectTransform));
-        labelObject.transform.SetParent(visualsRoot, false);
-        labelObject.transform.position = position + Vector3.up * 0.26f;
-        var label = labelObject.AddComponent<TextMeshPro>();
-        string roleHex = ColorUtility.ToHtmlStringRGB(color);
-        string displayName = stationName.Replace("\n", " · ");
-        label.text = "<color=#" + roleHex + "><b>" + role + "</b></color>  " + displayName;
-        label.fontSize = 1.45f;
-        label.alignment = TextAlignmentOptions.Center;
-        label.color = Color.white;
-        label.fontStyle = FontStyles.Normal;
-        label.textWrappingMode = TextWrappingModes.NoWrap;
-        label.outlineColor = new Color32(8, 12, 18, 235);
-        label.outlineWidth = 0.24f;
-        label.rectTransform.sizeDelta = new Vector2(4.2f, 0.65f);
-        label.sortingOrder = 42;
-
-        var background = new GameObject("LabelBackground", typeof(MeshFilter), typeof(MeshRenderer));
-        background.name = "LabelBackground";
-        background.transform.SetParent(labelObject.transform, false);
-        background.transform.localPosition = new Vector3(0f, 0f, 0.025f);
-        float labelWidth = Mathf.Clamp(0.48f + (role.Length + displayName.Length) * 0.067f, 1.05f, 3.25f);
-        const float labelHeight = 0.31f;
-        Mesh capsuleMesh = CreateCapsuleMesh(labelWidth, labelHeight, 10);
-        generatedMeshes.Add(capsuleMesh);
-        background.GetComponent<MeshFilter>().sharedMesh = capsuleMesh;
-        var backgroundRenderer = background.GetComponent<MeshRenderer>();
-        if (backgroundRenderer != null)
-        {
-            backgroundRenderer.sharedMaterial = GetLabelBackgroundMaterial();
-            backgroundRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            backgroundRenderer.receiveShadows = false;
-            backgroundRenderer.sortingOrder = 41;
-        }
-        labels.Add(label);
-    }
-
-    static Mesh CreateCapsuleMesh(float width, float height, int arcSegments)
-    {
-        float radius = height * 0.5f;
-        float straightHalfWidth = Mathf.Max(0f, width * 0.5f - radius);
-        int safeSegments = Mathf.Max(3, arcSegments);
-        var perimeter = new List<Vector3>((safeSegments + 1) * 2);
-
-        for (int i = 0; i <= safeSegments; i++)
-        {
-            float angle = Mathf.Lerp(-90f, 90f, i / (float)safeSegments) * Mathf.Deg2Rad;
-            perimeter.Add(new Vector3(straightHalfWidth + Mathf.Cos(angle) * radius,
-                Mathf.Sin(angle) * radius, 0f));
-        }
-        for (int i = 0; i <= safeSegments; i++)
-        {
-            float angle = Mathf.Lerp(90f, 270f, i / (float)safeSegments) * Mathf.Deg2Rad;
-            perimeter.Add(new Vector3(-straightHalfWidth + Mathf.Cos(angle) * radius,
-                Mathf.Sin(angle) * radius, 0f));
-        }
-
-        var vertices = new Vector3[perimeter.Count + 1];
-        var uv = new Vector2[vertices.Length];
-        vertices[0] = Vector3.zero;
-        uv[0] = new Vector2(0.5f, 0.5f);
-        for (int i = 0; i < perimeter.Count; i++)
-        {
-            vertices[i + 1] = perimeter[i];
-            uv[i + 1] = new Vector2(perimeter[i].x / width + 0.5f,
-                perimeter[i].y / height + 0.5f);
-        }
-
-        var triangles = new int[perimeter.Count * 3];
-        for (int i = 0; i < perimeter.Count; i++)
-        {
-            int next = (i + 1) % perimeter.Count;
-            triangles[i * 3] = 0;
-            triangles[i * 3 + 1] = i + 1;
-            triangles[i * 3 + 2] = next + 1;
-        }
-
-        var mesh = new Mesh { name = "FlowLabelCapsule" };
-        mesh.vertices = vertices;
-        mesh.uv = uv;
-        mesh.triangles = triangles;
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
-        return mesh;
     }
 
     Material GetMarkerMaterial(Color color)
@@ -968,17 +714,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             b
         };
         CreateGridLine(points, "WorkerLink_" + fromWorker.name + "_to_" + toStation.name, routeColor, false);
-    }
-
-    void FaceLabelsTowardCamera()
-    {
-        Camera cam = Camera.main;
-        if (cam == null) return;
-        for (int i = 0; i < labels.Count; i++)
-        {
-            if (labels[i] == null) continue;
-            labels[i].transform.rotation = Quaternion.LookRotation(labels[i].transform.position - cam.transform.position, cam.transform.up);
-        }
     }
 
     static string GetDisplayName(GameObject go)
@@ -1191,25 +926,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         return markerCenterMaterial;
     }
 
-    Material GetLabelBackgroundMaterial()
-    {
-        if (labelBackgroundMaterial == null)
-            labelBackgroundMaterial = CreateMaterial(new Color(0.035f, 0.05f, 0.075f, 0.9f));
-        return labelBackgroundMaterial;
-    }
-
     Material GetArrowMaterial()
     {
         if (arrowMaterial == null)
             arrowMaterial = CreateMaterial(Color.white);
         return arrowMaterial;
-    }
-
-    Material GetArrowOutlineMaterial()
-    {
-        if (arrowOutlineMaterial == null)
-            arrowOutlineMaterial = CreateMaterial(routeOutlineColor);
-        return arrowOutlineMaterial;
     }
 
     static Material CreateMaterial(Color color)
@@ -1241,7 +962,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void ClearVisuals()
     {
         lines.Clear();
-        labels.Clear();
         recipePreviewBadges.Clear();
         for (int i = 0; i < generatedMeshes.Count; i++)
             if (generatedMeshes[i] != null) Destroy(generatedMeshes[i]);

@@ -203,6 +203,7 @@ public class ManagementModeController : MonoBehaviour
         HidePopup();
         EnsureLinkVisuals();
         EnsureWorkflowDecisionHud();
+        SetWorkflowDecisionHudVisible(false);
     }
 
     void EnsureLinkVisuals()
@@ -4253,34 +4254,7 @@ public class ManagementModeController : MonoBehaviour
 
     void RefreshWorkflowDecisionHud()
     {
-        if (selectedEmployee == null)
-        {
-            SetWorkflowDecisionHudVisible(false);
-            return;
-        }
-
-        if (Time.unscaledTime < nextWorkflowHudRefresh) return;
-        nextWorkflowHudRefresh = Time.unscaledTime + 0.12f;
-
-        EnsureWorkflowDecisionHud();
-        if (workflowDecisionText == null) return;
-        string summary = WorkflowAnalysis.GetWorkerDecisionSummary(selectedEmployee);
-        summary += "\n\n<b>Current task:</b> " + selectedEmployee.GetCurrentTaskDescription();
-        ProductionJob activeJob = selectedEmployee.ActiveJob;
-        if (activeJob == null && ProductionManager.Instance != null)
-            summary += "\n\n" + ProductionManager.Instance.GetFlowQueueStatus(selectedEmployee);
-        if (activeJob != null)
-        {
-            summary += "\n<b>Step:</b> " + activeJob.CurrentStationType
-                + "  |  <b>Carrying:</b> " + activeJob.heldUnits;
-            if (activeJob.reservedDestinationStation != null)
-                summary += "\n<b>Reserved destination:</b> "
-                    + StationNode.EnsureOn(activeJob.reservedDestinationStation).DisplayName;
-        }
-        StationNode hoveredStation = GetStationUnderPointer();
-        string preview = WorkflowAnalysis.GetAssignmentPreview(selectedEmployee, hoveredStation);
-        workflowDecisionText.text = string.IsNullOrEmpty(preview) ? summary : summary + "\n" + preview;
-        SetWorkflowDecisionHudVisible(true);
+        SetWorkflowDecisionHudVisible(false);
     }
 
     StationNode GetStationUnderPointer()

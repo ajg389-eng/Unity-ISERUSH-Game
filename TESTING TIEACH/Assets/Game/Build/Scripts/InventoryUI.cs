@@ -44,12 +44,13 @@ public class InventoryUI : MonoBehaviour
     public GameObject[] tabPanels;
 
     [Header("Grid Expansion")]
-    [Tooltip("Cost to expand the kitchen floor by expandWidth x expandHeight cells.")]
-    public int expandCost = 150;
     [Tooltip("Cells added along width (+X) per purchase.")]
     public int expandWidth = 1;
     [Tooltip("Cells added along depth (+Z) per purchase.")]
     public int expandHeight = 1;
+
+    const int InitialFloorExpansionCost = 500;
+    const int FloorExpansionCostIncrease = 100;
 
     GameObject expansionPreviewObject;
     Mesh expansionPreviewMesh;
@@ -57,7 +58,10 @@ public class InventoryUI : MonoBehaviour
     MeshRenderer expansionPreviewRenderer;
     Material expansionPreviewMaterial;
     Canvas expansionPreviewCanvas;
-    TextMeshProUGUI expansionPreviewLabel;
+    Canvas expansionPreviewWestCanvas;
+    Canvas expansionPreviewSouthCanvas;
+    TextMeshProUGUI expansionPreviewWestLabel;
+    TextMeshProUGUI expansionPreviewSouthLabel;
     GameObject expansionConfirmRoot;
     TextMeshProUGUI expansionConfirmDetails;
     Button expansionConfirmButton;
@@ -1399,7 +1403,7 @@ public class InventoryUI : MonoBehaviour
 
         if (expansionPreviewCanvas == null)
         {
-            GameObject canvasObject = new GameObject("FloorExpansionPreviewLabel",
+            GameObject canvasObject = new GameObject("FloorExpansionConfirmationCanvas",
                 typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             expansionPreviewCanvas = canvasObject.GetComponent<Canvas>();
             expansionPreviewCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -1410,59 +1414,14 @@ public class InventoryUI : MonoBehaviour
         if (expansionPreviewCanvas.GetComponent<GraphicRaycaster>() == null)
             expansionPreviewCanvas.gameObject.AddComponent<GraphicRaycaster>();
 
-        Transform labelBackgroundTransform = canvasRoot.Find("LabelBackground");
-        if (labelBackgroundTransform == null)
-        {
-            GameObject backgroundObject = new GameObject("LabelBackground",
-                typeof(RectTransform), typeof(Image));
-            backgroundObject.transform.SetParent(canvasRoot, false);
-            labelBackgroundTransform = backgroundObject.transform;
-        }
-        RectTransform backgroundRect = (RectTransform)labelBackgroundTransform;
-        backgroundRect.anchorMin = backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
-        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
-        backgroundRect.sizeDelta = new Vector2(310f, 68f);
-        Image labelBackground = labelBackgroundTransform.GetComponent<Image>();
-        if (labelBackground == null)
-            labelBackground = labelBackgroundTransform.gameObject.AddComponent<Image>();
-        labelBackground.color = new Color(0.08f, 0.11f, 0.13f, 0.88f);
-        labelBackground.raycastTarget = false;
-
-        // Keep text and its background on separate Graphic components. Unity
-        // disallows multiple Graphic components on one GameObject, so adding an
-        // Image beside TextMeshProUGUI returned null during startup.
-        Transform labelTransform = labelBackgroundTransform.Find("Label");
-        if (labelTransform == null)
-        {
-            // Repair the hierarchy created by older versions, where Label was a
-            // direct child of the Canvas before the background was separated.
-            labelTransform = canvasRoot.Find("Label");
-            if (labelTransform != null)
-                labelTransform.SetParent(labelBackgroundTransform, false);
-        }
-        if (labelTransform == null)
-        {
-            GameObject textObject = new GameObject("Label",
-                typeof(RectTransform), typeof(TextMeshProUGUI));
-            textObject.transform.SetParent(labelBackgroundTransform, false);
-            labelTransform = textObject.transform;
-        }
-
-        RectTransform labelRect = (RectTransform)labelTransform;
-        StretchFull(labelRect);
-        expansionPreviewLabel = labelTransform.GetComponent<TextMeshProUGUI>();
-        if (expansionPreviewLabel != null)
-        {
-            expansionPreviewLabel.fontSize = 17f;
-            expansionPreviewLabel.alignment = TextAlignmentOptions.Center;
-            expansionPreviewLabel.color = Color.white;
-            expansionPreviewLabel.fontStyle = FontStyles.Bold;
-            expansionPreviewLabel.raycastTarget = false;
-            expansionPreviewLabel.textWrappingMode = TextWrappingModes.Normal;
-            expansionPreviewLabel.margin = new Vector4(8f, 4f, 8f, 4f);
-            if (TMP_Settings.defaultFontAsset != null)
-                expansionPreviewLabel.font = TMP_Settings.defaultFontAsset;
-        }
+        EnsureExpansionPreviewWorldLabel(ref expansionPreviewWestCanvas,
+            ref expansionPreviewWestLabel, "FloorExpansionWestText", new Vector2(420f, 90f), 26f);
+        if (expansionPreviewWestLabel != null)
+            expansionPreviewWestLabel.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+        EnsureExpansionPreviewWorldLabel(ref expansionPreviewSouthCanvas,
+            ref expansionPreviewSouthLabel, "FloorExpansionSouthText", new Vector2(640f, 90f), 26f);
+        if (expansionPreviewSouthLabel != null)
+            expansionPreviewSouthLabel.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
 
         if (expansionConfirmRoot == null)
             BuildExpansionConfirmation(canvasRoot);
@@ -1581,7 +1540,8 @@ public class InventoryUI : MonoBehaviour
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
         bool canSize = grid != null && grid.CanExpand(expandWidth, expandHeight);
-        bool canPay = money != null && money.CanAfford(expandCost);
+        int currentExpandCost = GetCurrentFloorExpansionCost();
+        bool canPay = money != null && money.CanAfford(currentExpandCost);
         bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
         bool confirming = expansionConfirmRoot != null && expansionConfirmRoot.activeSelf;
         bool buildPanelOpen = panel != null && panel.activeSelf;
@@ -1594,6 +1554,8 @@ public class InventoryUI : MonoBehaviour
         bool showOverlayCanvas = buildPanelOpen && planPhase && (canSize || confirming);
         if (expansionPreviewObject != null && expansionPreviewObject.activeSelf != showPreview)
             expansionPreviewObject.SetActive(showPreview);
+        SetPreviewLabelVisible(expansionPreviewWestCanvas, showPreview && expandWidth > 0);
+        SetPreviewLabelVisible(expansionPreviewSouthCanvas, showPreview && expandHeight > 0);
         if (expansionPreviewCanvas != null && expansionPreviewCanvas.gameObject.activeSelf != showOverlayCanvas)
             expansionPreviewCanvas.gameObject.SetActive(showOverlayCanvas);
         if (!showPreview || grid == null) return;
@@ -1610,31 +1572,11 @@ public class InventoryUI : MonoBehaviour
                 ? new Color(0.20f, 0.85f, 0.54f, 0.42f)
                 : new Color(1f, 0.67f, 0.18f, 0.46f);
 
-        if (expansionPreviewLabel != null)
-        {
-            int targetWidth = grid.Width + Mathf.Max(0, expandWidth);
-            int targetHeight = grid.Height + Mathf.Max(0, expandHeight);
-            expansionPreviewLabel.text = canPay
-                ? $"FLOOR EXPANSION  {grid.Width} x {grid.Height}  →  {targetWidth} x {targetHeight}\n${expandCost}  |  Click highlighted floor to review"
-                : $"FLOOR EXPANSION  {grid.Width} x {grid.Height}  →  {targetWidth} x {targetHeight}\nNeed ${expandCost}  |  Click to review";
-            Camera cam = Camera.main;
-            Vector3 screen = cam != null ? cam.WorldToScreenPoint(GetExpansionPreviewCenter()) : Vector3.back;
-            bool onScreen = screen.z > 0f && screen.x >= 0f && screen.x <= Screen.width
-                && screen.y >= 0f && screen.y <= Screen.height;
-            Transform labelRoot = expansionPreviewLabel.transform.parent;
-            GameObject labelRootObject = labelRoot != null
-                ? labelRoot.gameObject : expansionPreviewLabel.gameObject;
-            if (labelRootObject.activeSelf != onScreen)
-                labelRootObject.SetActive(onScreen);
-            if (onScreen)
-            {
-                RectTransform labelRootRect = labelRoot as RectTransform;
-                if (labelRootRect != null)
-                    labelRootRect.position = screen + Vector3.up * 38f;
-                else
-                    expansionPreviewLabel.rectTransform.position = screen + Vector3.up * 38f;
-            }
-        }
+        if (expansionPreviewWestLabel != null)
+            expansionPreviewWestLabel.text = $"BUY FLOOR EXPANSION\n${currentExpandCost}";
+        if (expansionPreviewSouthLabel != null)
+            expansionPreviewSouthLabel.text = $"BUY FLOOR EXPANSION\n${currentExpandCost}";
+        PositionExpansionPreviewLabels();
 
         if (confirming)
             return;
@@ -1684,9 +1626,10 @@ public class InventoryUI : MonoBehaviour
         if (grid == null || expansionConfirmRoot == null) return;
         int targetWidth = grid.Width + Mathf.Max(0, expandWidth);
         int targetHeight = grid.Height + Mathf.Max(0, expandHeight);
-        bool canPay = money != null && money.CanAfford(expandCost);
+        int currentExpandCost = GetCurrentFloorExpansionCost();
+        bool canPay = money != null && money.CanAfford(currentExpandCost);
         expansionConfirmDetails.text =
-            $"Floor size:  {grid.Width} x {grid.Height}  →  {targetWidth} x {targetHeight}\n\nExpansion price:  ${expandCost}" +
+            $"Floor size:  {grid.Width} x {grid.Height}  →  {targetWidth} x {targetHeight}\n\nExpansion price:  ${currentExpandCost}" +
             (canPay ? string.Empty : "\n\nYou do not have enough money yet.");
         expansionConfirmButton.interactable = canPay;
         expansionConfirmRoot.SetActive(true);
@@ -1706,6 +1649,25 @@ public class InventoryUI : MonoBehaviour
         OnExpandClicked();
     }
 
+    int GetCurrentFloorExpansionCost()
+    {
+        int completedExpansions = 0;
+        if (grid != null && grid.HasBaseline)
+        {
+            int widthAdded = Mathf.Max(0, grid.Width - grid.BaselineWidth);
+            int heightAdded = Mathf.Max(0, grid.Height - grid.BaselineHeight);
+            int widthExpansionCount = expandWidth > 0 ? widthAdded / expandWidth : 0;
+            int heightExpansionCount = expandHeight > 0 ? heightAdded / expandHeight : 0;
+
+            if (expandWidth > 0 && expandHeight > 0)
+                completedExpansions = Mathf.Min(widthExpansionCount, heightExpansionCount);
+            else
+                completedExpansions = Mathf.Max(widthExpansionCount, heightExpansionCount);
+        }
+
+        return InitialFloorExpansionCost + completedExpansions * FloorExpansionCostIncrease;
+    }
+
     void RebuildWorldExpansionMesh()
     {
         if (grid == null || expansionPreviewMesh == null) return;
@@ -1717,26 +1679,19 @@ public class InventoryUI : MonoBehaviour
         float y = grid.Origin.y + 0.04f;
         float futureOriginX = grid.Origin.x - addW * tile;
         float futureOriginZ = grid.Origin.z - addH * tile;
-        float inset = tile * 0.035f;
         var vertices = new List<Vector3>();
         var triangles = new List<int>();
 
-        for (int x = 0; x < targetW; x++)
-        for (int z = 0; z < targetH; z++)
-        {
-            if (x >= addW && z >= addH) continue;
-            float x0 = futureOriginX + x * tile + inset;
-            float x1 = futureOriginX + (x + 1) * tile - inset;
-            float z0 = futureOriginZ + z * tile + inset;
-            float z1 = futureOriginZ + (z + 1) * tile - inset;
-            int i = vertices.Count;
-            vertices.Add(new Vector3(x0, y, z0));
-            vertices.Add(new Vector3(x0, y, z1));
-            vertices.Add(new Vector3(x1, y, z1));
-            vertices.Add(new Vector3(x1, y, z0));
-            triangles.Add(i); triangles.Add(i + 1); triangles.Add(i + 2);
-            triangles.Add(i); triangles.Add(i + 2); triangles.Add(i + 3);
-        }
+        float existingMinX = grid.Origin.x;
+        float existingMinZ = grid.Origin.z;
+        float expandedMaxX = futureOriginX + targetW * tile;
+        float expandedMaxZ = futureOriginZ + targetH * tile;
+        if (addW > 0)
+            AddExpansionPreviewQuad(vertices, triangles, futureOriginX, existingMinX,
+                futureOriginZ, expandedMaxZ, y);
+        if (addH > 0)
+            AddExpansionPreviewQuad(vertices, triangles, existingMinX, expandedMaxX,
+                futureOriginZ, existingMinZ, y);
 
         expansionPreviewMesh.Clear();
         expansionPreviewMesh.SetVertices(vertices);
@@ -1755,26 +1710,87 @@ public class InventoryUI : MonoBehaviour
         expansionStateKnown = true;
     }
 
-    Vector3 GetExpansionPreviewCenter()
+    static void AddExpansionPreviewQuad(List<Vector3> vertices, List<int> triangles,
+        float minX, float maxX, float minZ, float maxZ, float y)
     {
-        if (grid == null) return Vector3.zero;
+        int i = vertices.Count;
+        vertices.Add(new Vector3(minX, y, minZ));
+        vertices.Add(new Vector3(minX, y, maxZ));
+        vertices.Add(new Vector3(maxX, y, maxZ));
+        vertices.Add(new Vector3(maxX, y, minZ));
+        triangles.Add(i); triangles.Add(i + 1); triangles.Add(i + 2);
+        triangles.Add(i); triangles.Add(i + 2); triangles.Add(i + 3);
+    }
+
+    void EnsureExpansionPreviewWorldLabel(ref Canvas canvas, ref TextMeshProUGUI label,
+        string objectName, Vector2 canvasSize, float fontSize)
+    {
+        if (canvas != null && label != null) return;
+
+        GameObject labelCanvasObject = new GameObject(objectName,
+            typeof(RectTransform), typeof(Canvas));
+        canvas = labelCanvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 30;
+        RectTransform worldCanvasRect = (RectTransform)labelCanvasObject.transform;
+        worldCanvasRect.sizeDelta = canvasSize;
+        worldCanvasRect.localScale = Vector3.one * 0.01f;
+
+        GameObject textObject = new GameObject("Label",
+            typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(labelCanvasObject.transform, false);
+        RectTransform labelRect = (RectTransform)textObject.transform;
+        StretchFull(labelRect);
+        label = textObject.GetComponent<TextMeshProUGUI>();
+        label.fontSize = fontSize;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = Color.white;
+        label.fontStyle = FontStyles.Bold;
+        label.raycastTarget = false;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.margin = new Vector4(4f, 2f, 4f, 2f);
+        label.outlineColor = new Color32(8, 12, 18, 240);
+        label.outlineWidth = 0.2f;
+        if (TMP_Settings.defaultFontAsset != null)
+            label.font = TMP_Settings.defaultFontAsset;
+    }
+
+    static void SetPreviewLabelVisible(Canvas labelCanvas, bool visible)
+    {
+        if (labelCanvas != null && labelCanvas.gameObject.activeSelf != visible)
+            labelCanvas.gameObject.SetActive(visible);
+    }
+
+    void PositionExpansionPreviewLabels()
+    {
+        if (grid == null) return;
+
         int addW = Mathf.Max(0, expandWidth);
         int addH = Mathf.Max(0, expandHeight);
-        int targetW = grid.Width + addW;
-        int targetH = grid.Height + addH;
-        float futureOriginX = grid.Origin.x - addW * grid.cellSize;
-        float futureOriginZ = grid.Origin.z - addH * grid.cellSize;
-        Vector3 sum = Vector3.zero;
-        int count = 0;
-        for (int x = 0; x < targetW; x++)
-        for (int z = 0; z < targetH; z++)
+        float tile = grid.cellSize;
+        float labelCenterY = grid.Origin.y + 0.055f;
+
+        if (expansionPreviewWestCanvas != null && addW > 0)
         {
-            if (x >= addW && z >= addH) continue;
-            sum += new Vector3(futureOriginX + (x + 0.5f) * grid.cellSize,
-                grid.Origin.y + 0.04f, futureOriginZ + (z + 0.5f) * grid.cellSize);
-            count++;
+            // Put this label on the western preview strip, facing inward so it
+            // reads from outside the store's west wall.
+            Vector3 westSidePosition = new Vector3(
+                grid.Origin.x - addW * tile * 0.5f,
+                labelCenterY,
+                grid.Origin.z + grid.Height * tile * 0.5f);
+            expansionPreviewWestCanvas.transform.SetPositionAndRotation(
+                westSidePosition, Quaternion.LookRotation(Vector3.up, Vector3.right));
         }
-        return count > 0 ? sum / count : grid.Origin;
+
+        if (expansionPreviewSouthCanvas != null && addH > 0)
+        {
+            Vector3 southSidePosition = new Vector3(
+                grid.Origin.x + grid.Width * tile * 0.5f,
+                labelCenterY,
+                grid.Origin.z - addH * tile * 0.5f);
+            expansionPreviewSouthCanvas.transform.SetPositionAndRotation(
+                southSidePosition, Quaternion.LookRotation(Vector3.up, Vector3.forward));
+        }
     }
     void OnExpandClicked()
     {
@@ -1782,13 +1798,14 @@ public class InventoryUI : MonoBehaviour
         if (grid == null) grid = GridManager.Instance != null ? GridManager.Instance : FindObjectOfType<GridManager>();
         if (money == null) money = FindObjectOfType<MoneyManager>();
         if (grid == null || money == null) return;
+        int currentExpandCost = GetCurrentFloorExpansionCost();
 
         if (!grid.CanExpand(expandWidth, expandHeight))
         {
             RefreshExpandButton();
             return;
         }
-        if (!money.TrySpend(expandCost))
+        if (!money.TrySpend(currentExpandCost))
         {
             RefreshExpandButton();
             Sfx.Play(SfxId.UiError);
@@ -1798,7 +1815,7 @@ public class InventoryUI : MonoBehaviour
 
         if (!grid.TryExpand(expandWidth, expandHeight))
         {
-            money.AddMoney(expandCost);
+            money.AddMoney(currentExpandCost);
             Sfx.Play(SfxId.UiError);
         }
         else
@@ -1806,7 +1823,7 @@ public class InventoryUI : MonoBehaviour
             Sfx.Play(SfxId.GridExpand);
             var undo = PurchaseUndoManager.Ensure();
             if (undo != null)
-                undo.RecordFloorExpand(expandWidth, expandHeight, expandCost);
+                undo.RecordFloorExpand(expandWidth, expandHeight, currentExpandCost);
             TutorialVoiceEvents.Raise(TutorialVoiceEventId.FloorExpanded);
             TutorialVoiceEvents.Raise(TutorialVoiceEventId.CapacityInvested);
         }
@@ -1818,6 +1835,8 @@ public class InventoryUI : MonoBehaviour
     {
         if (expansionPreviewObject != null) DestroyObject(expansionPreviewObject);
         if (expansionPreviewCanvas != null) DestroyObject(expansionPreviewCanvas.gameObject);
+        if (expansionPreviewWestCanvas != null) DestroyObject(expansionPreviewWestCanvas.gameObject);
+        if (expansionPreviewSouthCanvas != null) DestroyObject(expansionPreviewSouthCanvas.gameObject);
         if (expansionPreviewMesh != null) DestroyObject(expansionPreviewMesh);
         if (expansionPreviewMaterial != null) DestroyObject(expansionPreviewMaterial);
     }
