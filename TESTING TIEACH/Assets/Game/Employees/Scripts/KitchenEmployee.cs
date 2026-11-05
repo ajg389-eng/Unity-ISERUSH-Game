@@ -107,6 +107,8 @@ public partial class KitchenEmployee : MonoBehaviour
     public bool HasJob => currentJob != null || (scheduledPresentation && scheduledBusy);
     public ProductionJob ActiveJob => currentJob;
     public bool HasPendingFlowReassignment => hasPendingFlowReassignment;
+    public ProductionFlowPlan PendingFlowReassignment => hasPendingFlowReassignment
+        ? pendingFlowReassignment : null;
     ProductionFlowPlan pendingFlowReassignment;
     bool hasPendingFlowReassignment;
 
@@ -239,8 +241,9 @@ public partial class KitchenEmployee : MonoBehaviour
         pathDestination = Vector3.zero;
         ShowTaskBar = false;
         TaskProgress = 0f;
-        cashierTray.Clear();
-        cashierTrayFreshness.Clear();
+        ClearCashierTray();
+        cashierDrinksOnly = false;
+        cashierFoodOnly = false;
         returningToFlowStart = false;
         returnFlowTarget = null;
         SetStationWorkAnimation(PartyCharacterAnimator.StationWorkKind.None);
@@ -1455,26 +1458,19 @@ public partial class KitchenEmployee : MonoBehaviour
         if (Time.time - lastProgressTime < movementStallTimeout)
             return;
 
-        // Rebuild the route first. If an empty-handed worker remains unable to
-        // move after several attempts, release the job claim. Never discard a
-        // worker's physical inventory just because navigation is temporarily bad.
+        // Rebuild the route first. If a worker remains unable to move, return
+        // any carried inventory to the job and release the claim so another
+        // runnable task can be attempted instead of leaving the worker frozen.
         ResetNavigationPath(true);
         lastProgressTime = Time.time;
         stallRecoveries++;
         if (stallRecoveries < 3 || currentJob == null)
             return;
 
-        if (!IsHoldingAnything && !awaitingOutputDelivery)
-        {
-            ReleaseBlockedAssemblyJobAndReturn();
-            ResetProgressTracking();
-        }
-        else
-        {
-            // Keep the owned item and reservation intact, but continue periodic
-            // route rebuilding until the layout becomes reachable.
-            stallRecoveries = 2;
-        }
+        ReleaseBlockedAssemblyJobAndReturn(
+            "Worker could not reach the task station",
+            Mathf.Max(2f, movementStallTimeout * 2f));
+        ResetProgressTracking();
     }
 
     void OnDestroy()
@@ -1979,7 +1975,9 @@ public partial class KitchenEmployee : MonoBehaviour
                 || station.BufferedThirdInputCount >= Mathf.Max(1, recipe.thirdInputAmount));
     }
 
-    void ReleaseBlockedAssemblyJobAndReturn()
+    void ReleaseBlockedAssemblyJobAndReturn(
+        string deferReason = "Required station input or capacity is unavailable",
+        float retryDelay = 0.35f)
     {
         if (currentJob == null) return;
         if (!IsHoldingAnything)
@@ -2000,12 +1998,13 @@ public partial class KitchenEmployee : MonoBehaviour
             currentJob.hasPatty = false;
             currentJob.ingredientsHeld.Clear();
         }
-        manager?.DeferTask(currentJob, "Required station input or capacity is unavailable",
-            GetCurrentTaskStation(), 0.35f);
+        manager?.DeferTask(currentJob, deferReason,
+            GetCurrentTaskStation(), retryDelay);
         manager?.ReleaseJob(currentJob);
         currentJob = null;
         ClearHeldInventory();
         deliverTarget = null;
+        awaitingOutputDelivery = false;
         step = Step.None;
         stateTimer = 0f;
         path.Clear();
@@ -2484,6 +2483,12 @@ public partial class KitchenEmployee : MonoBehaviour
     {
         if (manager == null)
             manager = ProductionManager.Instance;
+        if (ShiftPlanningUI.IsPlanning)
+        {
+            ShowTaskBar = false;
+            TaskProgress = 0f;
+            return;
+        }
         if (hasPendingFlowReassignment && currentJob == null && manager != null)
         {
             ProductionFlowPlan targetFlow = pendingFlowReassignment;

@@ -2655,6 +2655,14 @@ public class BuildPlacer : MonoBehaviour
                 footprint = placed.AddComponent<BuildFootprint>();
             }
             footprint.EnsureAtLeast(item);
+            FreezerStation freezer = placed.GetComponentInChildren<FreezerStation>(true);
+            if (freezer != null)
+                StationNode.EnsureOn(freezer.gameObject);
+
+            PantryStation pantry = placed.GetComponentInChildren<PantryStation>(true);
+            if (pantry != null)
+                StationNode.EnsureOn(pantry.gameObject);
+
             if (item.prefab != null && item.prefab.GetComponentInChildren<CuttingStation>(true) != null)
             {
                 if (placed.GetComponent<CuttingStation>() == null)

@@ -714,9 +714,22 @@ public static class WorkerFlowAssigner
 
         int activeWorkers = flow.workers.Count;
 
+        bool liveShift = GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress;
         foreach (KitchenEmployee worker in flow.workers)
-            if (worker != null)
-                worker.ClearAllOperatedStations();
+        {
+            if (worker == null) continue;
+            if (liveShift && worker.ActiveJob != null)
+            {
+                // Keep the worker's current delivery intact. The updated route
+                // is applied as soon as the worker finishes that job.
+                if (!worker.HasPendingFlowReassignment
+                    || worker.PendingFlowReassignment == flow)
+                    worker.QueueFlowReassignment(flow);
+                continue;
+            }
+            worker.ClearAllOperatedStations();
+        }
 
         ConfigureProducts(flow.kind, route);
         ConfigureAssemblyRecipesFromConnections(flow);
@@ -726,6 +739,8 @@ public static class WorkerFlowAssigner
         {
             KitchenEmployee worker = flow.workers[workerIndex];
             if (worker == null) continue;
+            if (liveShift && worker.ActiveJob != null)
+                continue;
             var stationNames = new List<string>();
             for (int j = 0; j < workStations.Count; j++)
             {

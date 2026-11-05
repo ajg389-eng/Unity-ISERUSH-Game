@@ -897,7 +897,6 @@ public partial class ProductionManager : MonoBehaviour
 
     public ProductionFlowPlan CreateProductionFlow()
     {
-        if (IsShiftInProgress) return null;
         EnsureProductionFlows();
         int number = productionFlows.Count + 1;
         var flow = new ProductionFlowPlan
@@ -934,15 +933,12 @@ public partial class ProductionManager : MonoBehaviour
 
     public KitchenEmployee AddAvailableWorkerToSelectedFlow()
     {
-        if (IsShiftInProgress) return null;
         ProductionFlowPlan flow = SelectedFlow;
         if (employees == null) return null;
         foreach (KitchenEmployee employee in employees)
         {
             if (employee == null || IsWorkerOnAnyFlow(employee)) continue;
-            flow.workers.Add(employee);
-            lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(flow);
-            NotifyProductionStateChanged(0f);
+            AddWorkerToFlow(flow, employee);
             return employee;
         }
         return null;
@@ -950,14 +946,10 @@ public partial class ProductionManager : MonoBehaviour
 
     public KitchenEmployee RemoveLastWorkerFromSelectedFlow()
     {
-        if (IsShiftInProgress) return null;
         ProductionFlowPlan flow = SelectedFlow;
         if (flow.workers.Count == 0) return null;
         KitchenEmployee employee = flow.workers[flow.workers.Count - 1];
-        flow.workers.RemoveAt(flow.workers.Count - 1);
-        if (employee != null) employee.ClearAllOperatedStations();
-        lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(flow);
-        NotifyProductionStateChanged(0f);
+        if (employee != null) RemoveWorkerFromFlow(flow, employee);
         return employee;
     }
 
@@ -966,7 +958,10 @@ public partial class ProductionManager : MonoBehaviour
         if (IsShiftInProgress)
         {
             if (flow != null && flow.workers != null && flow.workers.Contains(employee))
+            {
                 RequestWorkerFlowReassignment(employee, null);
+                KitchenEmployee.NotifyWorkerAssignmentsChanged();
+            }
             return;
         }
         if (flow == null || employee == null || flow.workers == null) return;
@@ -981,12 +976,17 @@ public partial class ProductionManager : MonoBehaviour
 
     public void RemoveProductionFlow(ProductionFlowPlan flow)
     {
-        if (IsShiftInProgress) return;
         if (flow == null || productionFlows == null || !productionFlows.Contains(flow)) return;
         ProductionFlowPlan previousSelection = SelectedFlow;
         int removedIndex = productionFlows.IndexOf(flow);
         foreach (KitchenEmployee worker in new List<KitchenEmployee>(flow.workers))
-            if (worker != null) worker.ClearAllOperatedStations();
+        {
+            if (worker == null) continue;
+            if (IsShiftInProgress)
+                RequestWorkerFlowReassignment(worker, null);
+            else
+                worker.ClearAllOperatedStations();
+        }
         flow.workers.Clear();
         productionFlows.Remove(flow);
         selectedFlowIndex = previousSelection != flow ? productionFlows.IndexOf(previousSelection)
@@ -1315,7 +1315,11 @@ public partial class ProductionManager : MonoBehaviour
         if (targetFlow == null || employee == null) return;
         if (IsShiftInProgress)
         {
-            RequestWorkerFlowReassignment(employee, targetFlow);
+            if (RequestWorkerFlowReassignment(employee, targetFlow))
+            {
+                WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
+                NotifyProductionStateChanged(0f);
+            }
             return;
         }
         EnsureProductionFlows();
@@ -1353,6 +1357,7 @@ public partial class ProductionManager : MonoBehaviour
         if (employee.ActiveJob != null)
         {
             employee.QueueFlowReassignment(targetFlow);
+            KitchenEmployee.NotifyWorkerAssignmentsChanged();
             return true;
         }
 
@@ -1396,6 +1401,7 @@ public partial class ProductionManager : MonoBehaviour
             employee.assignedFlow = targetFlow.kind;
             employee.assignedFlowName = targetFlow.flowName;
             employee.SyncFromOperatedStations();
+            lastFlowBalance = WorkerFlowAssigner.ApplyBalancedTeam(targetFlow);
         }
         else
         {
@@ -1409,6 +1415,7 @@ public partial class ProductionManager : MonoBehaviour
             message = targetFlow != null ? "Worker moved during shift." : "Worker removed from flow."
         };
         NotifyProductionStateChanged(0f);
+        KitchenEmployee.NotifyWorkerAssignmentsChanged();
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
     }
 

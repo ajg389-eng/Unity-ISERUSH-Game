@@ -174,6 +174,24 @@ public class CustomerSpawner : MonoBehaviour
         nextDispatchRetryTime = 0f;
     }
 
+    /// <summary>Starts the next shift's repeating order cycle from the finalized planning menu.</summary>
+    public void BeginPlannedShiftDemandCycle()
+    {
+        ResetArrivalScheduleForSaveRestore();
+
+        CustomerOrderConfig config = ResolveOrderConfig();
+        if (config == null) return;
+
+        int customersPerMinute = config.DemandCustomersPerMinute;
+        scheduledDemandRevision = config.DemandScheduleRevision;
+        if (customersPerMinute <= 0) return;
+
+        secondsBetweenArrivals = 60f / customersPerMinute;
+        waitRemaining = secondsBetweenArrivals;
+        activeDemandBatch = new PendingDemandBatch(config.GetScheduledOrderCycleSnapshot());
+        arrivalScheduled = activeDemandBatch.HasCycle;
+    }
+
     Register FindNearestEnabledRegister(Vector3 position)
     {
         Register best = null;

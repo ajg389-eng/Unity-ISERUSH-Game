@@ -254,6 +254,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         EnsureMainHudNavigation();
         if (livePanelRoot != null) livePanelRoot.SetActive(false);
         RefreshPlan();
+        ResetWorkersForPlanning();
         // Keep the planning phase active even if another UI panel temporarily
         // hides the card. Station movement remains available until Start Shift.
         preShiftPlanningActive = true;
@@ -526,7 +527,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (livePanelRoot != null || canvas == null) return;
 
         livePanelRoot = new GameObject("ShiftRunStatus", typeof(RectTransform), typeof(Image),
-            typeof(VerticalLayoutGroup));
+            typeof(Outline), typeof(VerticalLayoutGroup));
         livePanelRoot.transform.SetParent(canvas.transform, false);
         RectTransform rect = (RectTransform)livePanelRoot.transform;
         rect.anchorMin = new Vector2(1f, 0f);
@@ -536,37 +537,49 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         rect.sizeDelta = new Vector2(430f, 190f);
 
         Image background = livePanelRoot.GetComponent<Image>();
-        background.color = new Color(0.075f, 0.09f, 0.12f, 0.96f);
+        background.color = new Color(GameUITheme.PanelSlate.r, GameUITheme.PanelSlate.g,
+            GameUITheme.PanelSlate.b, 0.98f);
         background.raycastTarget = false;
 
+        Outline border = livePanelRoot.GetComponent<Outline>();
+        border.effectColor = Color.black;
+        border.effectDistance = new Vector2(2f, -2f);
+        border.useGraphicAlpha = false;
+
         VerticalLayoutGroup layout = livePanelRoot.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(16, 16, 12, 12);
-        layout.spacing = 5f;
+        layout.padding = new RectOffset(16, 16, 14, 14);
+        layout.spacing = 7f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        CreateText(livePanelRoot.transform, "RunHeading", "SHIFT IN PROGRESS", 14f,
-            FontStyles.Bold, 22f, GameUITheme.Accent);
+        CreateText(livePanelRoot.transform, "RunHeading", "SHIFT IN PROGRESS", 15f,
+            FontStyles.Bold, 24f, GameUITheme.Accent);
         liveStatsText = CreateText(livePanelRoot.transform, "KitchenProductionSummary",
             "Kitchen output: 0 items/min  |  Demand covered: 0%", 14f,
-            FontStyles.Bold, 42f, GameUITheme.TextPrimary);
+            FontStyles.Normal, 46f, GameUITheme.TextPrimary);
+        liveStatsText.alignment = TextAlignmentOptions.TopLeft;
         liveStatsText.textWrappingMode = TextWrappingModes.Normal;
         liveStatsText.enableAutoSizing = true;
-        liveStatsText.fontSizeMin = 11f;
+        liveStatsText.fontSizeMin = 12f;
         liveStatsText.fontSizeMax = 14f;
         liveItemRatesText = CreateText(livePanelRoot.transform, "ItemProductionRates",
             "Delivered to pickup: preparing...", 13f,
-            FontStyles.Normal, 40f, GameUITheme.TextSecondary);
+            FontStyles.Normal, 44f, GameUITheme.TextSecondary);
+        liveItemRatesText.alignment = TextAlignmentOptions.TopLeft;
         liveItemRatesText.textWrappingMode = TextWrappingModes.Normal;
         liveItemRatesText.enableAutoSizing = true;
-        liveItemRatesText.fontSizeMin = 11f;
+        liveItemRatesText.fontSizeMin = 11.5f;
         liveItemRatesText.fontSizeMax = 13f;
         liveDiagnosisText = CreateText(livePanelRoot.transform, "LiveDiagnosis", "Checking station activity...", 13f,
-            FontStyles.Normal, 42f, GameUITheme.TextPrimary);
+            FontStyles.Normal, 48f, GameUITheme.TextPrimary);
+        liveDiagnosisText.alignment = TextAlignmentOptions.TopLeft;
         liveDiagnosisText.textWrappingMode = TextWrappingModes.Normal;
+        liveDiagnosisText.enableAutoSizing = true;
+        liveDiagnosisText.fontSizeMin = 11.5f;
+        liveDiagnosisText.fontSizeMax = 13f;
         livePanelRoot.SetActive(false);
     }
 
@@ -1274,6 +1287,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         preShiftPlanningActive = false;
         if (OnboardingTutorial.IsActive && timeManager != null)
             timeManager.BeginTutorialPracticeShift();
+        CustomerSpawner.Instance?.BeginPlannedShiftDemandCycle();
         ProductionManager.Instance?.BeginShiftThroughputTracking();
         StoreStatisticsManager.Instance?.BeginShiftThroughputTracking();
         CaptureStationBaseline();
@@ -1286,6 +1300,15 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         EnsureMainHudNavigation();
         if (timeManager != null) timeManager.ReleaseExternalPause(PauseSource);
         Sfx.Play(SfxId.UiClick);
+    }
+
+    static void ResetWorkersForPlanning()
+    {
+        KitchenEmployee[] workers = FindObjectsByType<KitchenEmployee>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (KitchenEmployee worker in workers)
+            if (worker != null)
+                worker.AbortCurrentWork();
     }
 
     public static void SetStationPopupOpen(bool isOpen)
@@ -1362,7 +1385,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             });
 
         var itemLines = new StringBuilder();
-        itemLines.Append("Delivered to pickup (items/min)");
+        itemLines.Append("<b><color=#D8B365>DELIVERED TO PICKUP</color></b>  <color=#B7BEC5>ITEMS/MIN</color>");
         float totalDeliveredRate = 0f;
         float totalTargetRate = 0f;
         float coveredTargetRate = 0f;
@@ -1374,9 +1397,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             totalDeliveredRate += deliveredRate;
             totalTargetRate += targetRate;
             coveredTargetRate += Mathf.Min(deliveredRate, targetRate);
-            itemLines.Append('\n').Append(item.itemName).Append("  ")
-                .Append(deliveredRate.ToString("0.0")).Append(" / ")
-                .Append(targetRate.ToString("0.#"));
+            itemLines.Append('\n').Append(item.itemName).Append("  <b>")
+                .Append(deliveredRate.ToString("0.0")).Append("</b> <color=#B7BEC5>/ ")
+                .Append(targetRate.ToString("0.#")).Append("</color>");
         }
         if (items.Count == 0)
             itemLines.Append("\nNo enabled menu items.");
@@ -1385,10 +1408,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             ? coveredTargetRate / totalTargetRate * 100f : 0f;
         StoreStatisticsManager stats = StoreStatisticsManager.Instance;
         if (liveStatsText != null)
-            liveStatsText.text = "Kitchen output: " + totalDeliveredRate.ToString("0.0")
-                + " items/min  |  Demand covered: " + demandCoverage.ToString("0") + "%"
-                + "\nOrders: " + (stats != null ? stats.ThroughputOrdersPerMinute : 0f).ToString("0.0")
-                + "/min  |  Average wait: "
+            liveStatsText.text = "<b><color=#D8B365>OUTPUT</color></b>  "
+                + totalDeliveredRate.ToString("0.0") + " items/min   <color=#B7BEC5>|</color>   "
+                + "<b><color=#D8B365>DEMAND COVERED</color></b>  " + demandCoverage.ToString("0") + "%"
+                + "\n<b><color=#D8B365>ORDERS</color></b>  "
+                + (stats != null ? stats.ThroughputOrdersPerMinute : 0f).ToString("0.0")
+                + "/min   <color=#B7BEC5>|</color>   "
+                + "<b><color=#D8B365>AVERAGE WAIT</color></b>  "
                 + (stats != null ? stats.AverageWaitTimeTodaySeconds : 0f).ToString("0") + "s";
         if (liveItemRatesText != null)
         {
@@ -1396,19 +1422,20 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             LayoutElement itemListSize = liveItemRatesText.GetComponent<LayoutElement>();
             if (itemListSize != null)
             {
-                float itemListHeight = 20f + Mathf.Max(1, items.Count + 1) * 16f;
+                float itemListHeight = 24f + Mathf.Max(1, items.Count) * 18f;
                 itemListSize.minHeight = itemListHeight;
                 itemListSize.preferredHeight = itemListHeight;
             }
         }
         RectTransform panelRect = livePanelRoot.GetComponent<RectTransform>();
         if (panelRect != null)
-            panelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(190f + items.Count * 17f, 205f, 410f));
+            panelRect.sizeDelta = new Vector2(430f, Mathf.Clamp(212f + items.Count * 22f, 232f, 460f));
 
         string diagnosis = BuildShiftProductionDiagnosis();
         if (liveDiagnosisText != null)
             liveDiagnosisText.text = string.IsNullOrEmpty(diagnosis)
-                ? "No major station delay detected." : diagnosis;
+                ? "<b><color=#6F9D89>STATUS</color></b>  No major station delay detected."
+                : "<b><color=#D8B365>ATTENTION</color></b>  " + diagnosis;
 
     }
     void CaptureStationBaseline()

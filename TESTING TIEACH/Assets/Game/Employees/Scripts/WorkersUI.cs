@@ -1234,11 +1234,6 @@ public class WorkersUI : MonoBehaviour
     {
         if (!flowNameEditStarted) return;
         flowNameEditStarted = false;
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
-        {
-            UpdateFlowHeader();
-            return;
-        }
         if (production == null) return;
         production.SelectedFlow.SetName(value);
         string clean = production.SelectedFlow.flowName;
@@ -1320,7 +1315,6 @@ public class WorkersUI : MonoBehaviour
 
     void CreateFlow()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (production == null) return;
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller == null)
@@ -1341,8 +1335,6 @@ public class WorkersUI : MonoBehaviour
 
     void EditFlow()
     {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress
-            && !ShiftPlanningUI.IsPlanning) return;
         if (production == null) return;
         ManagementModeController controller = ManagementModeController.Instance;
         if (controller == null)
@@ -1442,8 +1434,8 @@ public class WorkersUI : MonoBehaviour
             LayoutRebuilder.MarkLayoutForRebuild(flowTabsScroll.transform as RectTransform);
 
         if (deleteFlowButton == null) return;
-        deleteFlowButton.interactable = (GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress)
-            && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
+        deleteFlowButton.interactable = ManagementModeController.Instance == null
+            || !ManagementModeController.Instance.IsCapturingFlow;
         if (wiredDeleteFlowButton != deleteFlowButton)
         {
             deleteFlowButton.onClick.RemoveAllListeners();
@@ -1455,7 +1447,6 @@ public class WorkersUI : MonoBehaviour
     void DeleteSelectedFlow()
     {
         if (production == null) return;
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
         if (ManagementModeController.Instance != null && ManagementModeController.Instance.IsCapturingFlow) return;
         production.RemoveProductionFlow(production.SelectedFlow);
         if (ManagementModeController.Instance != null)
@@ -1593,10 +1584,10 @@ public class WorkersUI : MonoBehaviour
             production.EnsureProductionFlows();
             RefreshSystemEfficiency();
             ProductionFlowPlan flow = production.productionFlows[production.selectedFlowIndex];
-            bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
-            bool canEditFlow = planPhase || ShiftPlanningUI.IsPlanning;
-            if (createFlowButton != null) createFlowButton.interactable = planPhase;
-            if (flowNameInput != null) flowNameInput.interactable = planPhase;
+            bool canEditFlow = ManagementModeController.Instance == null
+                || !ManagementModeController.Instance.IsCapturingFlow;
+            if (createFlowButton != null) createFlowButton.interactable = canEditFlow;
+            if (flowNameInput != null) flowNameInput.interactable = canEditFlow;
             Button editButton = flowPanel != null
                 ? flowPanel.Find("ProductionFlowsPanel/FlowActionRow/EditFlow")?.GetComponent<Button>()
                     ?? flowPanel.Find("FlowActionRow/EditFlow")?.GetComponent<Button>()
@@ -1604,8 +1595,7 @@ public class WorkersUI : MonoBehaviour
                     ?? flowPanel.Find("ActionsRow/EditFlow")?.GetComponent<Button>()
                     ?? flowPanel.Find("FlowListRow/EditFlow")?.GetComponent<Button>()
                 : null;
-            if (editButton != null) editButton.interactable = canEditFlow
-                && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow);
+            if (editButton != null) editButton.interactable = canEditFlow;
             UpdateFlowHeader();
             if (flow != null
                 && (ManagementModeController.Instance == null || !ManagementModeController.Instance.IsCapturingFlow))
@@ -1681,7 +1671,7 @@ public class WorkersUI : MonoBehaviour
         if (flowStatus == null || GameTimeManager.Instance == null
             || !GameTimeManager.Instance.IsShiftInProgress)
             return;
-        flowStatus.text += "\n<color=#77C7A5>During a shift, changes apply after a worker finishes their current delivery.</color>";
+        flowStatus.text += "\n<color=#77C7A5>Worker moves take effect after their current delivery.</color>";
     }
 
     string GetRawResourceName(ItemDefinition resource)
@@ -1998,6 +1988,19 @@ public class WorkersUI : MonoBehaviour
             bool assignedHere = currentFlow == selectedFlow;
             string label = assignedHere ? "Remove" : currentFlow == null
                 ? "Assign" : "Move here";
+            if (worker.HasPendingFlowReassignment)
+            {
+                ProductionFlowPlan pendingFlow = worker.PendingFlowReassignment;
+                if (pendingFlow == selectedFlow)
+                {
+                    label = "Queued here";
+                    assignedHere = true;
+                }
+                else if (pendingFlow == null && assignedHere)
+                    label = "Queued off";
+                else if (assignedHere)
+                    label = "Queued move";
+            }
 
             card.ConfigureFlowAssignment(label, assignedHere, () =>
             {

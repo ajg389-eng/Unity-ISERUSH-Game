@@ -287,8 +287,7 @@ public class ManagementModeController : MonoBehaviour
         // but players can still adjust stations and production flows then.
         if (shiftInProgress && !ShiftPlanningUI.IsPlanning)
         {
-            if (IsCapturingFlow) CancelFlowCapture();
-            if (outputDragActive) CancelOutputDrag();
+            if (outputDragActive && !IsCapturingFlow) CancelOutputDrag();
             if (selectedEmployee != null || selectedWorkerHighlight != null)
                 ClearEmployeeSelection();
         }
@@ -3514,7 +3513,6 @@ public class ManagementModeController : MonoBehaviour
 
     public void BeginFlowCapture(ProductionFlowPlan flow, bool isNew = true)
     {
-        if (IsShiftConfigurationLocked) return;
         if (flow == null) return;
         if (modeManager != null)
             modeManager.SetMode(GameModeManager.Mode.Manage);
