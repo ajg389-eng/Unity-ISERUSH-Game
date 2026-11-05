@@ -128,8 +128,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     {
         if (panelRoot == null || !IsPlanning) return;
         planHiddenForStationPopup = false;
-        panelRoot.SetActive(true);
-        panelRoot.transform.SetAsLastSibling();
+        ShowAndFitPlanningPanel();
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -203,8 +202,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 || OnboardingTutorial.ShouldShowPlanCardDuringTutorial;
             if (panelRoot.activeSelf != showPlan)
             {
-                panelRoot.SetActive(showPlan);
-                if (showPlan) panelRoot.transform.SetAsLastSibling();
+                if (showPlan)
+                    ShowAndFitPlanningPanel();
+                else
+                    panelRoot.SetActive(false);
             }
         }
 
@@ -256,14 +257,27 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // Keep the planning phase active even if another UI panel temporarily
         // hides the card. Station movement remains available until Start Shift.
         preShiftPlanningActive = true;
-        panelRoot.SetActive(true);
-        panelRoot.transform.SetAsLastSibling();
+        ShowAndFitPlanningPanel();
         ManagementModeController management = ManagementModeController.Instance;
         if (management != null && management.HasOpenStationPanel)
             SetStationPopupOpen(true);
         CaptureStationBaseline();
         timeManager.RequestExternalPause(PauseSource);
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    void ShowAndFitPlanningPanel()
+    {
+        if (panelRoot == null) return;
+        panelRoot.SetActive(true);
+        panelRoot.transform.SetAsLastSibling();
+
+        // RefreshPlan can run while the card is inactive during save restore.
+        // Unity skips layout for inactive hierarchies, so rebuild after activation
+        // before the first visible frame to keep the footer clear of menu rows.
+        Canvas.ForceUpdateCanvases();
+        FitPlanPanel();
+        Canvas.ForceUpdateCanvases();
     }
 
     public static void ReturnToPlanPhaseAfterTutorial()
@@ -335,7 +349,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         Canvas canvas = ResolvePlayerUICanvas();
         if (canvas == null) return;
 
-        panelRoot = new GameObject("ShiftPlanCard", typeof(RectTransform), typeof(Image),
+        panelRoot = new GameObject("ShiftPlanCard", typeof(RectTransform), typeof(Image), typeof(Outline),
             typeof(VerticalLayoutGroup));
         panelRoot.transform.SetParent(canvas.transform, false);
         RectTransform rootRect = (RectTransform)panelRoot.transform;
@@ -352,11 +366,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // its buttons catch clicks, so planning remains possible underneath it.
         background.raycastTarget = false;
 
+        // A muted gold edge separates the charcoal planning card from the scene
+        // without competing with the green primary action.
+        Outline border = panelRoot.GetComponent<Outline>();
+        border.effectColor = new Color(GameUITheme.Accent.r, GameUITheme.Accent.g,
+            GameUITheme.Accent.b, 0.72f);
+        border.effectDistance = new Vector2(2f, -2f);
+        border.useGraphicAlpha = false;
+
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
         // Keep the final action clear of the card edge even when the menu list
         // or wrapped summary changes height.
         layout.padding = new RectOffset(18, 18, 16, 18);
-        layout.spacing = 4f;
+        layout.spacing = 5f;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -389,9 +411,22 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         addMenuItemButton.onClick.AddListener(() => ShowItemPicker(null));
         CreateItemPicker(panelRoot.transform);
 
-        // Keep Start Shift as a direct child of the same vertical layout as
-        // the full-width Add Item button so both span the card content width.
+        // Reserve a footer in the vertical layout while positioning the action
+        // against the card bottom. The button therefore stays put as menu rows grow.
+        var startShiftFooter = new GameObject("StartShiftFooterSpace", typeof(RectTransform),
+            typeof(LayoutElement));
+        startShiftFooter.transform.SetParent(panelRoot.transform, false);
+        LayoutElement footerSize = startShiftFooter.GetComponent<LayoutElement>();
+        footerSize.minHeight = footerSize.preferredHeight = 54f;
         startShiftButton = CreateButton(panelRoot.transform, "StartShiftButton", "START SHIFT");
+        LayoutElement startShiftLayout = startShiftButton.GetComponent<LayoutElement>();
+        startShiftLayout.ignoreLayout = true;
+        RectTransform startShiftRect = (RectTransform)startShiftButton.transform;
+        startShiftRect.anchorMin = new Vector2(0f, 0f);
+        startShiftRect.anchorMax = new Vector2(1f, 0f);
+        startShiftRect.pivot = new Vector2(0.5f, 0f);
+        startShiftRect.offsetMin = new Vector2(18f, 18f);
+        startShiftRect.offsetMax = new Vector2(-18f, 66f);
         startShiftButton.onClick.AddListener(StartShift);
         panelRoot.SetActive(false);
         EnsureLivePanel(canvas);
@@ -542,8 +577,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             12f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextSecondary);
         CreateDemandCell(row.transform, "RateHeader", "ITEMS/MIN", 72f, false,
             11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
-        CreateDemandCell(row.transform, "TotalHeader", "SHIFT TOTAL", 74f, false,
-            11f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+        CreateDemandCell(row.transform, "TotalHeader", "SHIFT TOTAL", 86f, false,
+            10f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
         return row;
     }
 
@@ -570,14 +605,33 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     DemandRow CreateDemandRow(Transform parent, int index)
     {
         GameObject rowRoot = CreateDemandColumnRow(parent, "DemandRow_" + index, 52f);
-        var previewObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
-        previewObject.transform.SetParent(rowRoot.transform, false);
-        LayoutElement previewSize = previewObject.GetComponent<LayoutElement>();
+        var previewFrame = new GameObject("ItemPreviewFrame", typeof(RectTransform), typeof(Image),
+            typeof(Outline), typeof(LayoutElement));
+        previewFrame.transform.SetParent(rowRoot.transform, false);
+        LayoutElement previewSize = previewFrame.GetComponent<LayoutElement>();
         previewSize.minWidth = previewSize.preferredWidth = 44f;
         previewSize.minHeight = previewSize.preferredHeight = 44f;
+        Image frameImage = previewFrame.GetComponent<Image>();
+        frameImage.color = GameUITheme.Surface;
+        frameImage.raycastTarget = false;
+        ApplyWhiteButtonOutline(previewFrame.GetComponent<Outline>());
+
+        var previewObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage));
+        previewObject.transform.SetParent(previewFrame.transform, false);
+        RectTransform previewRect = (RectTransform)previewObject.transform;
+        previewRect.anchorMin = Vector2.zero;
+        previewRect.anchorMax = Vector2.one;
+        previewRect.offsetMin = new Vector2(2f, 2f);
+        previewRect.offsetMax = new Vector2(-2f, -2f);
         RawImage preview = previewObject.GetComponent<RawImage>();
         preview.color = Color.white;
         preview.raycastTarget = false;
+
+        var buttonGap = new GameObject("ChangeRemoveGap", typeof(RectTransform), typeof(LayoutElement));
+        buttonGap.transform.SetParent(rowRoot.transform, false);
+        LayoutElement buttonGapSize = buttonGap.GetComponent<LayoutElement>();
+        buttonGapSize.minWidth = buttonGapSize.preferredWidth = 12f;
+        buttonGapSize.flexibleWidth = 0f;
 
         DemandRow row = new DemandRow
         {
@@ -587,16 +641,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 15f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextPrimary),
             changeButton = CreateCompactButton(rowRoot.transform, "ChangeItem", "CHANGE", 36f, 11f,
                 GameUITheme.Surface),
-            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 36f, 10f,
+            removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 36f, 11f,
                 GameUITheme.Danger),
             rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 72f, false,
                 15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
-            shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 74f, false,
+            shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 86f, false,
                 15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
         };
         row.itemName.enableAutoSizing = true;
         row.itemName.fontSizeMin = 11f;
         row.itemName.fontSizeMax = 15f;
+        buttonGap.transform.SetSiblingIndex(row.changeButton.transform.GetSiblingIndex() + 1);
         row.changeButton.onClick.AddListener(() => ShowItemPicker(row));
         row.removeButton.onClick.AddListener(() => RemoveMenuItem(row));
         rowRoot.SetActive(false);
@@ -678,16 +733,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     static Button CreateCompactButton(Transform parent, string name, string label, float height,
         float fontSize, Color color)
     {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button),
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(Outline),
             typeof(LayoutElement));
         go.transform.SetParent(parent, false);
         LayoutElement size = go.GetComponent<LayoutElement>();
         size.minHeight = size.preferredHeight = height;
         size.minWidth = 0f;
-        size.preferredWidth = label == "REMOVE" ? 48f : label == "CHANGE" ? 58f : 92f;
+        size.preferredWidth = label == "REMOVE" || label == "CHANGE" ? 58f : 92f;
         size.flexibleWidth = 0f;
         Image image = go.GetComponent<Image>();
         image.color = color;
+        ApplyWhiteButtonOutline(go.GetComponent<Outline>());
         Button button = go.GetComponent<Button>();
         GameUITheme.ApplyButton(button);
 
@@ -715,6 +771,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     Texture GetMenuItemPreview(ItemDefinition item)
     {
         if (item == null) return null;
+
+        // Prefer an authored product icon when one is available. Generated prefab
+        // thumbnails can be blank for menu products whose order preview is supplied
+        // by the menu configuration instead of ItemDefinition.prefab.
+        if (item.previewIcon != null)
+            return item.previewIcon.texture;
+
         GameObject prefab = item.prefab;
         if (prefab == null)
         {
@@ -727,8 +790,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 else if (config.IsDrink(item)) prefab = menuUi.drinkPreviewPrefab;
             }
         }
-        if (prefab != null) return ItemPreviewThumbnails.GetPrefab(prefab, item.itemName);
-        return item.previewIcon != null ? item.previewIcon.texture : null;
+        if (prefab != null)
+        {
+            Texture thumbnail = ItemPreviewThumbnails.GetPrefab(prefab, item.itemName);
+            if (thumbnail != null) return thumbnail;
+        }
+
+        return ItemPreviewThumbnails.Get(item);
     }
 
     static GameObject CreateDemandColumnRow(Transform parent, string name, float height)
@@ -1017,6 +1085,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             RectTransform child = panelRoot.transform.GetChild(i) as RectTransform;
             if (child != null && child.gameObject.activeSelf)
             {
+                LayoutElement childLayout = child.GetComponent<LayoutElement>();
+                if (childLayout != null && childLayout.ignoreLayout)
+                    continue;
                 preferredHeight += LayoutUtility.GetPreferredHeight(child);
                 activeChildCount++;
             }
@@ -1241,8 +1312,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             || !planning.initialized)
             return;
 
-        planning.panelRoot.SetActive(true);
-        planning.panelRoot.transform.SetAsLastSibling();
+        planning.ShowAndFitPlanningPanel();
     }
 
     CustomerOrderConfig ResolveOrderConfig()
@@ -1590,13 +1660,15 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     static Button CreateButton(Transform parent, string name, string label)
     {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button),
+            typeof(Outline), typeof(LayoutElement));
         go.transform.SetParent(parent, false);
         LayoutElement size = go.GetComponent<LayoutElement>();
         size.minHeight = 48f;
         size.preferredHeight = 48f;
         Image image = go.GetComponent<Image>();
         image.color = GameUITheme.Positive;
+        ApplyWhiteButtonOutline(go.GetComponent<Outline>());
         Button button = go.GetComponent<Button>();
         GameUITheme.ApplyButton(button);
 
@@ -1616,5 +1688,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         text.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         return button;
+    }
+
+    static void ApplyWhiteButtonOutline(Outline outline)
+    {
+        if (outline == null) return;
+        outline.effectColor = new Color(1f, 1f, 1f, 0.9f);
+        outline.effectDistance = new Vector2(1.25f, -1.25f);
+        outline.useGraphicAlpha = false;
     }
 }
