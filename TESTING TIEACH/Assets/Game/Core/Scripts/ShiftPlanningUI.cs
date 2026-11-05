@@ -100,6 +100,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     TextMeshProUGUI liveStatsText;
     TextMeshProUGUI liveDiagnosisText;
     Button startShiftButton;
+    GameObject startShiftWarningOverlay;
+    TextMeshProUGUI startShiftWarningDetails;
+    RectTransform startShiftWarningCardRect;
     ItemDefinition selectedGoalItem;
     string selectedGoalItemName;
     StationNode diagnosedStation;
@@ -392,7 +395,95 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         startShiftButton.onClick.AddListener(StartShift);
         panelRoot.SetActive(false);
         EnsureLivePanel(canvas);
+        EnsureStartShiftWarningDialog(canvas);
         FitPlanPanel();
+    }
+
+    void EnsureStartShiftWarningDialog(Canvas canvas)
+    {
+        if (startShiftWarningOverlay != null || canvas == null) return;
+
+        startShiftWarningOverlay = new GameObject("StartShiftWarningOverlay",
+            typeof(RectTransform), typeof(Image));
+        startShiftWarningOverlay.transform.SetParent(canvas.transform, false);
+        RectTransform overlayRect = (RectTransform)startShiftWarningOverlay.transform;
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+
+        Image overlayImage = startShiftWarningOverlay.GetComponent<Image>();
+        overlayImage.color = new Color(0f, 0f, 0f, 0.72f);
+        overlayImage.raycastTarget = true;
+
+        GameObject card = new GameObject("WarningCard",
+            typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+        card.transform.SetParent(startShiftWarningOverlay.transform, false);
+        startShiftWarningCardRect = (RectTransform)card.transform;
+        startShiftWarningCardRect.anchorMin = new Vector2(0.5f, 0.5f);
+        startShiftWarningCardRect.anchorMax = new Vector2(0.5f, 0.5f);
+        startShiftWarningCardRect.pivot = new Vector2(0.5f, 0.5f);
+        startShiftWarningCardRect.sizeDelta = new Vector2(620f, 500f);
+        Image cardImage = card.GetComponent<Image>();
+        cardImage.color = GameUITheme.Panel;
+        cardImage.raycastTarget = true;
+
+        VerticalLayoutGroup cardLayout = card.GetComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(22, 22, 20, 20);
+        cardLayout.spacing = 10f;
+        cardLayout.childAlignment = TextAnchor.UpperCenter;
+        cardLayout.childControlWidth = true;
+        cardLayout.childControlHeight = true;
+        cardLayout.childForceExpandWidth = true;
+        cardLayout.childForceExpandHeight = false;
+
+        TextMeshProUGUI title = CreateText(card.transform, "WarningTitle",
+            "SHIFT READINESS WARNING", 23f, FontStyles.Bold, 32f, GameUITheme.Accent);
+        title.alignment = TextAlignmentOptions.Center;
+
+        TextMeshProUGUI message = CreateText(card.transform, "WarningMessage",
+            "The plan may not cover menu demand. Review output rates and ingredient stock. Customers may wait or leave, and missed orders can reduce item reputation. Start anyway?",
+            15f, FontStyles.Normal, 58f, GameUITheme.TextPrimary);
+        message.textWrappingMode = TextWrappingModes.Normal;
+
+        startShiftWarningDetails = CreateText(card.transform, "WarningItemRates",
+            string.Empty, 15f, FontStyles.Bold, 100f, GameUITheme.TextPrimary);
+        startShiftWarningDetails.textWrappingMode = TextWrappingModes.Normal;
+        startShiftWarningDetails.enableAutoSizing = true;
+        startShiftWarningDetails.fontSizeMin = 12f;
+        startShiftWarningDetails.fontSizeMax = 15f;
+        startShiftWarningDetails.alignment = TextAlignmentOptions.MidlineLeft;
+
+        GameObject actions = new GameObject("WarningActions", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        actions.transform.SetParent(card.transform, false);
+        LayoutElement actionsSize = actions.GetComponent<LayoutElement>();
+        actionsSize.minHeight = actionsSize.preferredHeight = 48f;
+        actionsSize.flexibleHeight = 0f;
+        HorizontalLayoutGroup actionsLayout = actions.GetComponent<HorizontalLayoutGroup>();
+        actionsLayout.spacing = 10f;
+        actionsLayout.childAlignment = TextAnchor.MiddleCenter;
+        actionsLayout.childControlWidth = true;
+        actionsLayout.childControlHeight = true;
+        actionsLayout.childForceExpandWidth = true;
+        actionsLayout.childForceExpandHeight = false;
+
+        Button reviewButton = CreateCompactButton(actions.transform, "ReviewPlanButton",
+            "REVIEW PLAN", 46f, 12f, GameUITheme.Charcoal);
+        Button continueButton = CreateCompactButton(actions.transform, "StartAnywayButton",
+            "START SHIFT ANYWAY", 46f, 12f, GameUITheme.Positive);
+        foreach (Button button in new[] { reviewButton, continueButton })
+        {
+            LayoutElement buttonSize = button.GetComponent<LayoutElement>();
+            buttonSize.minWidth = 0f;
+            buttonSize.preferredWidth = 0f;
+            buttonSize.flexibleWidth = 1f;
+            buttonSize.flexibleHeight = 0f;
+        }
+        reviewButton.onClick.AddListener(CloseStartShiftWarning);
+        continueButton.onClick.AddListener(ConfirmStartShiftAnyway);
+
+        startShiftWarningOverlay.SetActive(false);
     }
 
     void EnsureLivePanel(Canvas canvas)
@@ -950,6 +1041,163 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     }
 
     void StartShift()
+    {
+        if (!OnboardingTutorial.CanStartShiftFromPlan) return;
+        if (TryGetStartShiftWarnings(out List<string> warnings)
+            && ShowStartShiftWarning(warnings)) return;
+        BeginShift();
+    }
+
+    bool TryGetStartShiftWarnings(out List<string> warnings)
+    {
+        warnings = new List<string>();
+        CustomerOrderConfig config = ResolveOrderConfig();
+        ProductionManager production = ProductionManager.Instance;
+        if (config == null) return false;
+
+        float shiftMinutes = GetShiftDurationMinutes();
+        var requiredIngredients = new Dictionary<ItemDefinition, float>();
+        foreach (ItemDefinition item in config.GetEnabledMenuItems())
+        {
+            if (item == null) continue;
+            float demand = config.GetCustomerDemandPerMinute(item);
+            float predicted = production != null
+                ? production.GetPredictedOutputPerMinute(item) : 0f;
+            if (predicted + 0.01f < demand)
+            {
+                string predictedText = predicted <= 0.01f
+                    ? "no output predicted"
+                    : predicted.ToString("0.#") + "/min predicted";
+                warnings.Add("OUTPUT SHORTFALL: " + item.itemName + ": " + predictedText
+                    + "; " + demand.ToString("0.#") + "/min demand");
+            }
+
+            float shiftDemand = demand * shiftMinutes;
+            AccumulateVendorIngredientNeeds(config, item, shiftDemand,
+                requiredIngredients, new HashSet<ItemDefinition>());
+        }
+
+        KitchenInventory inventory = KitchenInventory.Instance;
+        if (inventory != null)
+        {
+            bool supplyRatesActive = MilestoneFeatures.IsResearchComplete("automatic_ordering");
+            foreach (KeyValuePair<ItemDefinition, float> requirement in requiredIngredients)
+            {
+                ItemDefinition ingredient = requirement.Key;
+                if (ingredient == null) continue;
+                int needed = Mathf.CeilToInt(requirement.Value);
+                int onHand = inventory.GetCount(ingredient);
+                int supplyRate = supplyRatesActive
+                    ? inventory.GetSupplyRatePerMinute(ingredient) : 0;
+                float expectedSupply = supplyRate * shiftMinutes;
+                // Cap cumulative receipts by free storage plus items consumed during the shift.
+                expectedSupply = Mathf.Min(expectedSupply,
+                    Mathf.Max(0, KitchenInventory.MaxIngredientStock - onHand + needed));
+
+                bool noStock = onHand <= 0;
+                bool lowForShift = onHand < needed;
+                if (!noStock && !lowForShift) continue;
+
+                string stockState = noStock ? "NO STOCK" : "LOW STOCK";
+                string line = stockState + ": " + ingredient.itemName + " "
+                    + onHand.ToString("N0") + "/" + needed.ToString("N0") + " needed for shift";
+                if (expectedSupply > 0.01f)
+                    line += "; +" + expectedSupply.ToString("0.#") + " scheduled supply";
+                warnings.Add(line);
+            }
+        }
+
+        return warnings.Count > 0;
+    }
+
+    static void AccumulateVendorIngredientNeeds(CustomerOrderConfig config, ItemDefinition output,
+        float outputUnits, Dictionary<ItemDefinition, float> requiredIngredients,
+        HashSet<ItemDefinition> path)
+    {
+        if (config == null || output == null || outputUnits <= 0f) return;
+        if (config.GetVendorSupplyStation(output).HasValue)
+        {
+            requiredIngredients[output] = requiredIngredients.TryGetValue(output, out float current)
+                ? current + outputUnits : outputUnits;
+            return;
+        }
+        if (!path.Add(output)) return;
+
+        IReadOnlyList<RecipeGraphNodeDefinition> recipes = config.GetProductionRecipes();
+        RecipeGraphNodeDefinition producer = null;
+        for (int i = 0; recipes != null && i < recipes.Count; i++)
+        {
+            RecipeGraphNodeDefinition candidate = recipes[i];
+            if (candidate != null && candidate.output == output)
+            {
+                producer = candidate;
+                break;
+            }
+        }
+        if (producer?.inputs != null)
+        {
+            foreach (RecipeGraphInputDefinition input in producer.inputs)
+                if (input != null && input.item != null)
+                    AccumulateVendorIngredientNeeds(config, input.item,
+                        outputUnits * Mathf.Max(1, input.amount), requiredIngredients, path);
+        }
+
+        path.Remove(output);
+    }
+
+    bool ShowStartShiftWarning(List<string> shortfalls)
+    {
+        if (startShiftWarningOverlay == null)
+            EnsureStartShiftWarningDialog(ResolvePlayerUICanvas());
+        if (startShiftWarningOverlay == null || startShiftWarningDetails == null) return false;
+
+        var details = new StringBuilder();
+        for (int i = 0; i < shortfalls.Count; i++)
+        {
+            if (i > 0) details.Append('\n');
+            details.Append("- ").Append(shortfalls[i]);
+        }
+        startShiftWarningDetails.text = details.ToString();
+        LayoutElement detailsSize = startShiftWarningDetails.GetComponent<LayoutElement>();
+        if (detailsSize != null)
+        {
+            float detailHeight = Mathf.Clamp(24f + shortfalls.Count * 16f, 46f, 320f);
+            detailsSize.minHeight = detailsSize.preferredHeight = detailHeight;
+        }
+
+        Canvas canvas = startShiftWarningOverlay.GetComponentInParent<Canvas>();
+        RectTransform canvasRect = canvas != null ? canvas.transform as RectTransform : null;
+        if (canvasRect != null && startShiftWarningCardRect != null)
+        {
+            float width = Mathf.Min(620f, Mathf.Max(320f, canvasRect.rect.width - 48f));
+            float desiredHeight = 208f + (detailsSize != null ? detailsSize.preferredHeight : 100f);
+            float availableHeight = Mathf.Max(280f, canvasRect.rect.height - 48f);
+            float height = Mathf.Min(desiredHeight, availableHeight);
+            startShiftWarningCardRect.sizeDelta = new Vector2(width, height);
+        }
+
+        startShiftWarningOverlay.SetActive(true);
+        startShiftWarningOverlay.transform.SetAsLastSibling();
+        Sfx.Play(SfxId.UiOpen);
+        return true;
+    }
+
+    void CloseStartShiftWarning()
+    {
+        if (startShiftWarningOverlay != null)
+            startShiftWarningOverlay.SetActive(false);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void ConfirmStartShiftAnyway()
+    {
+        if (!OnboardingTutorial.CanStartShiftFromPlan) return;
+        if (startShiftWarningOverlay != null)
+            startShiftWarningOverlay.SetActive(false);
+        BeginShift();
+    }
+
+    void BeginShift()
     {
         if (!OnboardingTutorial.CanStartShiftFromPlan) return;
         preShiftPlanningActive = false;
