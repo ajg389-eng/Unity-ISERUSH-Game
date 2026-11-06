@@ -22,7 +22,8 @@ public class IngredientsOrderUI : MonoBehaviour
     public GameObject drinkPreviewPrefab;
 
     public float refreshInterval = 0.35f;
-    const float SupplyCardHeight = 90f;
+    const float SupplyCardHeight = 124f;
+    const float SupplyPreviewSide = 72f;
     const float SupplyGridGap = 6f;
     static readonly int[] BasicSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40 };
     static readonly int[] AdvancedSupplyRateOptions = { 0, 5, 10, 15, 20, 30, 40, 60, 80 };
@@ -54,6 +55,7 @@ public class IngredientsOrderUI : MonoBehaviour
     TextMeshProUGUI cartSummaryText;
     Button clearCartButton;
     Button addAllButton;
+    TextMeshProUGUI addAllLabel;
     Button placeOrderButton;
     Button expressOrderButton;
     TextMeshProUGUI placeOrderLabel;
@@ -1983,7 +1985,7 @@ public class IngredientsOrderUI : MonoBehaviour
         var previewGo = new GameObject("IngredientIcon", typeof(RectTransform), typeof(RawImage), typeof(LayoutElement));
         previewGo.transform.SetParent(row.transform, false);
         var previewLayout = previewGo.GetComponent<LayoutElement>();
-        float previewSide = SupplyCardHeight - cardLayout.padding.vertical;
+        float previewSide = SupplyPreviewSide;
         previewLayout.minWidth = previewLayout.preferredWidth = previewSide;
         previewLayout.minHeight = previewLayout.preferredHeight = previewSide;
         var preview = previewGo.GetComponent<RawImage>();
@@ -2000,7 +2002,7 @@ public class IngredientsOrderUI : MonoBehaviour
         contentSize.minWidth = 120f;
         contentSize.flexibleWidth = 1f;
         VerticalLayoutGroup contentLayout = contentColumn.GetComponent<VerticalLayoutGroup>();
-        contentLayout.spacing = 3f;
+        contentLayout.spacing = 2f;
         contentLayout.childAlignment = TextAnchor.MiddleCenter;
         contentLayout.childControlWidth = true;
         contentLayout.childForceExpandWidth = true;
@@ -2010,19 +2012,38 @@ public class IngredientsOrderUI : MonoBehaviour
         var detailsRow = new GameObject("DetailsRow", typeof(RectTransform),
             typeof(LayoutElement), typeof(HorizontalLayoutGroup));
         detailsRow.transform.SetParent(contentColumn.transform, false);
-        detailsRow.GetComponent<LayoutElement>().preferredHeight = 40f;
+        detailsRow.GetComponent<LayoutElement>().minHeight = 30f;
+        detailsRow.GetComponent<LayoutElement>().preferredHeight = 30f;
         var detailsLayout = detailsRow.GetComponent<HorizontalLayoutGroup>();
-        detailsLayout.spacing = 4f;
         detailsLayout.childAlignment = TextAnchor.MiddleLeft;
         detailsLayout.childControlWidth = true;
         detailsLayout.childForceExpandWidth = false;
         detailsLayout.childControlHeight = true;
         detailsLayout.childForceExpandHeight = false;
 
+        var metricsGo = new GameObject("InventoryPlanMetrics", typeof(RectTransform),
+            typeof(LayoutElement), typeof(TextMeshProUGUI));
+        metricsGo.transform.SetParent(contentColumn.transform, false);
+        LayoutElement metricsLayout = metricsGo.GetComponent<LayoutElement>();
+        metricsLayout.minHeight = 44f;
+        metricsLayout.preferredHeight = 44f;
+        TextMeshProUGUI stockTmp = metricsGo.GetComponent<TextMeshProUGUI>();
+        stockTmp.fontSize = 11f;
+        stockTmp.enableAutoSizing = true;
+        stockTmp.fontSizeMin = 9f;
+        stockTmp.fontSizeMax = 11f;
+        stockTmp.color = GameUITheme.TextSecondary;
+        stockTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        stockTmp.textWrappingMode = TextWrappingModes.Normal;
+        stockTmp.overflowMode = TextOverflowModes.Ellipsis;
+        stockTmp.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
+
         var actionsRow = new GameObject("ActionsRow", typeof(RectTransform),
             typeof(LayoutElement), typeof(HorizontalLayoutGroup));
         actionsRow.transform.SetParent(contentColumn.transform, false);
-        actionsRow.GetComponent<LayoutElement>().preferredHeight = 34f;
+        actionsRow.GetComponent<LayoutElement>().minHeight = 28f;
+        actionsRow.GetComponent<LayoutElement>().preferredHeight = 28f;
         var actionsLayout = actionsRow.GetComponent<HorizontalLayoutGroup>();
         actionsLayout.spacing = 3f;
         actionsLayout.childAlignment = TextAnchor.MiddleCenter;
@@ -2047,26 +2068,12 @@ public class IngredientsOrderUI : MonoBehaviour
         infoTmp.overflowMode = TextOverflowModes.Ellipsis;
         if (TMP_Settings.defaultFontAsset != null) infoTmp.font = TMP_Settings.defaultFontAsset;
 
-        var stockGo = new GameObject("Stock", typeof(RectTransform));
-        stockGo.transform.SetParent(detailsRow.transform, false);
-        var stockLayout = stockGo.AddComponent<LayoutElement>();
-        stockLayout.minWidth = 54f;
-        stockLayout.preferredWidth = 54f;
-        var stockTmp = stockGo.AddComponent<TextMeshProUGUI>();
-        stockTmp.fontSize = 10f;
-        stockTmp.enableAutoSizing = true;
-        stockTmp.fontSizeMin = 8.5f;
-        stockTmp.fontSizeMax = 10f;
-        stockTmp.color = GameUITheme.TextSecondary;
-        stockTmp.alignment = TextAlignmentOptions.Center;
-        if (TMP_Settings.defaultFontAsset != null) stockTmp.font = TMP_Settings.defaultFontAsset;
-
         TextMeshProUGUI autoOrderLabel;
         Button autoOrderButton = CreateCartButton(actionsRow.transform, "AutoRestock", "Off", 44f,
             GameUITheme.SurfaceHover, out autoOrderLabel);
         DelayedTooltip.Attach(autoOrderButton,
-            "Automatic supplier rate. Click to cycle the items received per minute; set to Off to stop.");
-        SetCompactCartButton(autoOrderButton, 44f, 30f);
+            "Supplier replenishment rate. Click to cycle incoming items per minute. Receipts pause when storage is full or cash is short.");
+        SetCompactCartButton(autoOrderButton, 44f, 28f);
         autoOrderLabel.fontSize = 10.5f;
         autoOrderLabel.enableAutoSizing = true;
         autoOrderLabel.fontSizeMin = 9f;
@@ -2076,7 +2083,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
         TextMeshProUGUI removeLabel;
         Button removeButton = CreateCartButton(actionsRow.transform, "Remove", "-", 24f, GameUITheme.Danger, out removeLabel);
-        SetCompactCartButton(removeButton, 24f, 30f);
+        SetCompactCartButton(removeButton, 24f, 28f);
 
         var countGo = new GameObject("CartCount", typeof(RectTransform), typeof(LayoutElement), typeof(TextMeshProUGUI));
         countGo.transform.SetParent(actionsRow.transform, false);
@@ -2092,7 +2099,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
         TextMeshProUGUI addLabel;
         Button addButton = CreateCartButton(actionsRow.transform, "Add", "+", 24f, GameUITheme.Positive, out addLabel);
-        SetCompactCartButton(addButton, 24f, 30f);
+        SetCompactCartButton(addButton, 24f, 28f);
 
         var captured = item;
         autoOrderButton.onClick.AddListener(() =>
@@ -2277,7 +2284,12 @@ public class IngredientsOrderUI : MonoBehaviour
         statusTextRt.offsetMin = new Vector2(6f, 0f);
         statusTextRt.offsetMax = new Vector2(-6f, 0f);
         deliveryStatusText = statusTextGo.GetComponent<TextMeshProUGUI>();
-        deliveryStatusText.fontSize = 14f;
+        deliveryStatusText.fontSize = 12f;
+        deliveryStatusText.enableAutoSizing = true;
+        deliveryStatusText.fontSizeMin = 10f;
+        deliveryStatusText.fontSizeMax = 12f;
+        deliveryStatusText.textWrappingMode = TextWrappingModes.Normal;
+        deliveryStatusText.overflowMode = TextOverflowModes.Ellipsis;
         deliveryStatusText.alignment = TextAlignmentOptions.Center;
         deliveryStatusText.color = GameUITheme.TextSecondary;
         if (TMP_Settings.defaultFontAsset != null) deliveryStatusText.font = TMP_Settings.defaultFontAsset;
@@ -2309,13 +2321,21 @@ public class IngredientsOrderUI : MonoBehaviour
         cartSummaryText.color = GameUITheme.TextPrimary;
         if (TMP_Settings.defaultFontAsset != null) cartSummaryText.font = TMP_Settings.defaultFontAsset;
 
-        TextMeshProUGUI addAllLabel;
         addAllButton = CreateCartButton(footer.transform, "AddAll", "Add All", 92, GameUITheme.Positive, out addAllLabel);
         addAllButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
         ConfigureCartActionLabel(addAllLabel);
+        DelayedTooltip.Attach(addAllButton,
+            "Plan: add enough packs to cover today's remaining ingredient gap, accounting for your supply rate. Shift: add one pack of each ingredient.");
         addAllButton.onClick.AddListener(() =>
         {
-            if (inventory == null || (IngredientDeliveryService.Instance != null && IngredientDeliveryService.Instance.HasPending)) return;
+            if (inventory == null) return;
+            if (ShiftPlanningUI.IsPlanning)
+            {
+                FillCartToForecastNeed();
+                RefreshAll();
+                return;
+            }
+            if (IngredientDeliveryService.Instance != null && IngredientDeliveryService.Instance.HasPending) return;
             foreach (var item in inventory.GetOrderableItems())
                 if (item != null) SetCartPacks(item, GetCartPacks(item) + 1);
             SelectSection(false);
@@ -2333,11 +2353,15 @@ public class IngredientsOrderUI : MonoBehaviour
         placeOrderButton = CreateCartButton(footer.transform, "PlaceOrder", "Order", 102f, GameUITheme.Positive, out placeOrderLabel);
         placeOrderButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
         ConfigureCartActionLabel(placeOrderLabel);
+        DelayedTooltip.Attach(placeOrderButton,
+            "Place a supplier purchase order. Plan orders are added to starting stock; shift orders arrive by courier after the lead time.");
         placeOrderButton.onClick.AddListener(SubmitCart);
 
         expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 102f, GameUITheme.Accent, out expressOrderLabel);
         expressOrderButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
         ConfigureCartActionLabel(expressOrderLabel);
+        DelayedTooltip.Attach(expressOrderButton,
+            "Place an expedited supplier order for an additional fee. The courier arrives sooner.");
         expressOrderButton.onClick.AddListener(SubmitExpressCart);
         expressLockedOverlay = CreateLockedCardOverlay(expressOrderButton.transform);
         clearCartButton.transform.SetAsLastSibling();
@@ -2346,6 +2370,39 @@ public class IngredientsOrderUI : MonoBehaviour
     int GetCartPacks(ItemDefinition item)
     {
         return item != null && cartPacks.TryGetValue(item, out int count) ? count : 0;
+    }
+
+    void FillCartToForecastNeed()
+    {
+        if (inventory == null) return;
+
+        Dictionary<ItemDefinition, float> forecastNeeds = ShiftPlanningUI.GetForecastIngredientNeedsPerShift();
+        float shiftMinutes = ShiftPlanningUI.GetPlannedShiftDurationMinutes();
+        bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
+        IngredientDeliveryService delivery = IngredientDeliveryService.Instance;
+
+        foreach (ItemDefinition item in inventory.GetOrderableItems())
+        {
+            if (item == null) continue;
+            int packSize = inventory.GetPackSize(item);
+            if (packSize <= 0) continue;
+
+            float forecast = forecastNeeds.TryGetValue(item, out float required) ? required : 0f;
+            int needed = Mathf.CeilToInt(Mathf.Max(0f, forecast));
+            int onHand = inventory.GetCount(item);
+            int courierIncoming = delivery != null ? delivery.GetIncomingCount(item) : 0;
+            int cartPacks = GetCartPacks(item);
+            int cartUnits = cartPacks * packSize;
+            int rate = automaticOrderingUnlocked ? inventory.GetSupplyRatePerMinute(item) : 0;
+            int roomForRateSupply = Mathf.Max(0,
+                KitchenInventory.MaxIngredientStock - onHand - courierIncoming - cartUnits + needed);
+            int expectedRateSupply = Mathf.Min(
+                Mathf.FloorToInt(Mathf.Max(0, rate) * shiftMinutes), roomForRateSupply);
+
+            int shortage = Mathf.Max(0, needed - onHand - courierIncoming - cartUnits - expectedRateSupply);
+            int recommendedAdditionalPacks = Mathf.CeilToInt(shortage / (float)packSize);
+            SetCartPacks(item, cartPacks + recommendedAdditionalPacks);
+        }
     }
 
     void SetCartPacks(ItemDefinition item, int count)
@@ -2416,7 +2473,18 @@ public class IngredientsOrderUI : MonoBehaviour
         bool deliveryActive = !planning && delivery != null && delivery.HasPending;
         bool automaticOrderingUnlocked = MilestoneFeatures.IsResearchComplete("automatic_ordering");
         if (addAllButton != null) addAllButton.interactable = !deliveryActive;
+        if (addAllLabel != null) addAllLabel.text = planning ? "Fill Today" : "Add All";
+        List<Dictionary<ItemDefinition, float>> forecastHorizon = null;
+        if (planning)
+        {
+            forecastHorizon = new List<Dictionary<ItemDefinition, float>>(3);
+            for (int shiftOffset = 0; shiftOffset < 3; shiftOffset++)
+                forecastHorizon.Add(ShiftPlanningUI.GetForecastIngredientNeedsPerShift(shiftOffset));
+        }
+        float forecastShiftMinutes = planning
+            ? ShiftPlanningUI.GetPlannedShiftDurationMinutes() : 0f;
         RefreshSupplyRows(delivery, deliveryActive, automaticOrderingUnlocked,
+            planning, forecastHorizon, forecastShiftMinutes,
             out int cartTotal, out int cartPackCount);
         int cartLockMilestone = 0;
 
@@ -2431,10 +2499,11 @@ public class IngredientsOrderUI : MonoBehaviour
                 || (deliveryActive && countdown != displayedDeliveryCountdown))
             {
                 deliveryStatusText.text = planning
-                    ? "Plan orders are added to stock immediately."
+                    ? "Rows show today / next shift / later. Next includes pending reputation; later holds steady. Shortfall counts stock, cart and supply rate."
                     : deliveryActive
                         ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
-                        : "Build cart, then order.";
+                        : "Supplier order  |  Standard lead time "
+                            + IngredientDeliveryService.FormatCountdown(IngredientDeliveryService.DeliverySeconds);
                 deliveryStatusText.color = deliveryActive
                     ? GameUITheme.Accent : GameUITheme.TextSecondary;
                 deliveryDisplayValid = true;
@@ -2523,7 +2592,9 @@ public class IngredientsOrderUI : MonoBehaviour
     }
 
     void RefreshSupplyRows(IngredientDeliveryService delivery, bool deliveryActive,
-        bool automaticOrderingUnlocked, out int cartTotal, out int cartPackCount)
+        bool automaticOrderingUnlocked, bool planning,
+        List<Dictionary<ItemDefinition, float>> forecastHorizon, float forecastShiftMinutes,
+        out int cartTotal, out int cartPackCount)
     {
         cartTotal = 0;
         cartPackCount = 0;
@@ -2547,6 +2618,16 @@ public class IngredientsOrderUI : MonoBehaviour
             }
             cartTotal += selected * price;
             cartPackCount += selected;
+            bool currentShortfall = false;
+            bool futureShortfall = false;
+            string metrics = unlocked
+                ? planning
+                    ? BuildPlanningSupplyMetrics(row.item, stock, incoming, selected * pack,
+                        supplyRate, automaticOrderingUnlocked, forecastHorizon, forecastShiftMinutes,
+                        out currentShortfall, out futureShortfall)
+                    : BuildLiveSupplyMetrics(row.item, stock, incoming, supplyRate,
+                        automaticOrderingUnlocked, delivery)
+                : string.Empty;
             bool unlockChanged = !row.displayValid || row.displayedUnlocked != unlocked;
 
             if (unlockChanged || row.displayedName != name || row.displayedPack != pack || row.displayedPrice != price)
@@ -2562,22 +2643,17 @@ public class IngredientsOrderUI : MonoBehaviour
                 if (row.lockedOverlay != null && row.lockedOverlay.activeSelf == unlocked)
                     row.lockedOverlay.SetActive(!unlocked);
             }
-            if (unlockChanged || row.displayedStock != stock || row.displayedIncoming != incoming
+            if (unlockChanged || row.displayedMetrics != metrics
+                || row.displayedStock != stock || row.displayedIncoming != incoming
                 || row.displayedSupplyRatePerMinute != supplyRate
                 || row.displayedAutomaticOrderingUnlocked != automaticOrderingUnlocked)
             {
                 if (row.stockText != null)
                 {
-                    if (!unlocked) row.stockText.text = string.Empty;
-                    else
-                    {
-                        string stockValue = stock + "/" + KitchenInventory.MaxIngredientStock
-                            + (incoming > 0 ? "  (" + incoming + " incoming)" : string.Empty);
-                        string rateValue = !automaticOrderingUnlocked ? "Locked"
-                            : supplyRate > 0 ? "Rate " + supplyRate + "/min" : "Rate Off";
-                        row.stockText.text = "Stock\n" + stockValue + "\n" + rateValue;
-                    }
-                    row.stockText.color = GameUITheme.TextSecondary;
+                    row.stockText.text = metrics;
+                    row.stockText.color = currentShortfall || metrics.Contains("Stockout now")
+                        ? GameUITheme.Danger
+                        : futureShortfall ? GameUITheme.Accent : GameUITheme.TextSecondary;
                 }
                 SetButtonState(row.autoOrderButton, unlocked && automaticOrderingUnlocked,
                     supplyRate > 0 ? GameUITheme.Positive : GameUITheme.SurfaceHover);
@@ -2595,12 +2671,107 @@ public class IngredientsOrderUI : MonoBehaviour
             row.displayedPrice = price;
             row.displayedStock = stock;
             row.displayedIncoming = incoming;
+            row.displayedMetrics = metrics;
             row.displayedSupplyRatePerMinute = supplyRate;
             row.displayedAutomaticOrderingUnlocked = automaticOrderingUnlocked;
             row.displayedCartPacks = selected;
             row.displayedDeliveryActive = deliveryActive;
             row.displayValid = true;
         }
+    }
+
+    string BuildPlanningSupplyMetrics(ItemDefinition item, int stock, int courierIncoming,
+        int cartUnits, int supplyRate, bool automaticOrderingUnlocked,
+        List<Dictionary<ItemDefinition, float>> forecastHorizon, float shiftMinutes,
+        out bool currentShortfall, out bool futureShortfall)
+    {
+        currentShortfall = false;
+        futureShortfall = false;
+        var needs = new List<string>(3);
+        var gaps = new List<string>(3);
+        int projectedOpeningStock = Mathf.Clamp(stock + courierIncoming + cartUnits,
+            0, KitchenInventory.MaxIngredientStock);
+        int rateSupplyPerShift = automaticOrderingUnlocked
+            ? Mathf.FloorToInt(Mathf.Max(0, supplyRate) * shiftMinutes) : 0;
+
+        for (int shift = 0; shift < 3; shift++)
+        {
+            float forecast = forecastHorizon != null && shift < forecastHorizon.Count
+                && forecastHorizon[shift] != null
+                && forecastHorizon[shift].TryGetValue(item, out float value)
+                    ? value : 0f;
+            int need = Mathf.CeilToInt(Mathf.Max(0f, forecast));
+            needs.Add(need.ToString());
+
+            int receiptCapacity = Mathf.Max(0,
+                KitchenInventory.MaxIngredientStock - projectedOpeningStock + need);
+            int expectedRateSupply = Mathf.Min(rateSupplyPerShift, receiptCapacity);
+            int available = projectedOpeningStock + expectedRateSupply;
+            int shortage = Mathf.Max(0, need - available);
+            int projectedEnd = Mathf.Clamp(available - need, 0, KitchenInventory.MaxIngredientStock);
+            gaps.Add(shortage.ToString());
+            if (shortage > 0)
+            {
+                if (shift == 0) currentShortfall = true;
+                else futureShortfall = true;
+            }
+            projectedOpeningStock = projectedEnd;
+        }
+
+        string inventoryPosition = "Stock: " + stock + "/" + KitchenInventory.MaxIngredientStock;
+        if (cartUnits > 0) inventoryPosition += " | Cart +" + cartUnits;
+        if (courierIncoming > 0) inventoryPosition += " | Due +" + courierIncoming;
+        string result = inventoryPosition
+            + "\nNeed: " + string.Join(" / ", needs)
+            + "\nShortfall: " + string.Join(" / ", gaps);
+        return result;
+    }
+
+    string BuildLiveSupplyMetrics(ItemDefinition item, int stock, int courierIncoming,
+        int supplyRate, bool automaticOrderingUnlocked, IngredientDeliveryService delivery)
+    {
+        float usedPerMinute = inventory != null ? inventory.GetConsumedPerMinute(item) : 0f;
+        float minutesUntilStockout = GetEstimatedStockoutMinutes(stock, courierIncoming,
+            usedPerMinute, automaticOrderingUnlocked ? supplyRate : 0, delivery, item);
+        string stockoutText = usedPerMinute <= 0.01f
+            ? "No use yet"
+            : float.IsPositiveInfinity(minutesUntilStockout)
+            ? "No stockout expected"
+            : minutesUntilStockout <= 0.01f ? "Stockout now"
+            : "Out ~" + Mathf.CeilToInt(minutesUntilStockout) + "m";
+        string courierText = courierIncoming > 0
+            ? "\nCourier +" + courierIncoming + FormatCourierEta(delivery, item)
+            : string.Empty;
+        string incomingText = automaticOrderingUnlocked
+            ? "In " + Mathf.Max(0, supplyRate) + "/m" : "In locked";
+        return "On hand " + stock + "/" + KitchenInventory.MaxIngredientStock
+            + " | Use " + usedPerMinute.ToString("0.#") + "/m"
+            + "\n" + incomingText + " | " + stockoutText
+            + courierText;
+    }
+
+    static float GetEstimatedStockoutMinutes(int stock, int courierIncoming,
+        float usedPerMinute, int supplyRate, IngredientDeliveryService delivery,
+        ItemDefinition item)
+    {
+        float netUse = usedPerMinute - supplyRate;
+        if (netUse <= 0.01f) return float.PositiveInfinity;
+
+        float minutes = Mathf.Max(0, stock) / netUse;
+        if (courierIncoming <= 0 || delivery == null) return minutes;
+        float secondsToCourier = delivery.GetRemainingFor(item);
+        if (secondsToCourier < 0f) return minutes;
+        float courierEtaMinutes = secondsToCourier / 60f;
+        if (courierEtaMinutes < minutes)
+            minutes = courierEtaMinutes + (Mathf.Max(0, stock) + courierIncoming) / netUse;
+        return minutes;
+    }
+
+    static string FormatCourierEta(IngredientDeliveryService delivery, ItemDefinition item)
+    {
+        if (delivery == null) return string.Empty;
+        float seconds = delivery.GetRemainingFor(item);
+        return seconds >= 0f ? " in " + IngredientDeliveryService.FormatCountdown(seconds) : string.Empty;
     }
 
     public void FocusRecipeNode(RecipeGraphNodeView selected)
@@ -2776,6 +2947,7 @@ public class IngredientOrderRow : MonoBehaviour
     internal int displayedPrice;
     internal int displayedStock;
     internal int displayedIncoming;
+    internal string displayedMetrics;
     internal int displayedSupplyRatePerMinute;
     internal bool displayedAutomaticOrderingUnlocked;
     internal int displayedCartPacks;

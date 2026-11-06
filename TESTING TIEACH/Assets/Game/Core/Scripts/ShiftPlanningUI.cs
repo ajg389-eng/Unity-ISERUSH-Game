@@ -1040,6 +1040,39 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         return shiftHours * Mathf.Max(1f, timeManager.realSecondsPerGameHour) / 60f;
     }
 
+    public static float GetPlannedShiftDurationMinutes()
+    {
+        return Instance != null ? Instance.GetShiftDurationMinutes() : 12f;
+    }
+
+    public static Dictionary<ItemDefinition, float> GetForecastIngredientNeedsPerShift()
+    {
+        return GetForecastIngredientNeedsPerShift(0);
+    }
+
+    public static Dictionary<ItemDefinition, float> GetForecastIngredientNeedsPerShift(int futureShiftOffset)
+    {
+        var requirements = new Dictionary<ItemDefinition, float>();
+        if (Instance == null) return requirements;
+
+        CustomerOrderConfig config = Instance.ResolveOrderConfig();
+        if (config == null) return requirements;
+
+        futureShiftOffset = Mathf.Max(0, futureShiftOffset);
+        float shiftMinutes = Instance.GetShiftDurationMinutes();
+        foreach (ItemDefinition item in config.GetEnabledMenuItems())
+        {
+            if (item == null) continue;
+            float rate = config.GetCustomerDemandPerMinute(item);
+            if (futureShiftOffset > 0)
+                rate += config.GetPendingItemDemandChangePerMinute(item);
+            float shiftDemand = Mathf.Max(0f, rate) * shiftMinutes;
+            AccumulateVendorIngredientNeeds(config, item, shiftDemand,
+                requirements, new HashSet<ItemDefinition>());
+        }
+        return requirements;
+    }
+
     string GetShiftDurationSummary()
     {
         if (timeManager == null)

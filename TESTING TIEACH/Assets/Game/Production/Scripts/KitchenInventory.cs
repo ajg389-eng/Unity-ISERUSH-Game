@@ -24,6 +24,12 @@ public class KitchenInventory : MonoBehaviour
 
     public static KitchenInventory Instance { get; private set; }
 
+    struct IngredientUseSample
+    {
+        public float time;
+        public int amount;
+    }
+
     [Header("Catalog")]
     [Tooltip("Used to seed orderable menu items (burger, fries, drink).")]
     public CustomerOrderConfig orderConfig;
@@ -39,6 +45,12 @@ public class KitchenInventory : MonoBehaviour
     public List<IngredientStockEntry> stock = new List<IngredientStockEntry>();
 
     MoneyManager money;
+    GameTimeManager usageClock;
+    int usageTrackingDay = -1;
+    float usageTrackingStartedAt;
+    bool usageWasPlanning;
+    readonly Dictionary<ItemDefinition, Queue<IngredientUseSample>> ingredientUseHistory =
+        new Dictionary<ItemDefinition, Queue<IngredientUseSample>>();
 
     void Awake()
     {
@@ -52,22 +64,103 @@ public class KitchenInventory : MonoBehaviour
         EnsureCatalogStock();
         if (grantStartingStock)
             ApplyStartingStock();
+        EnsureUsageTrackingClock();
+        usageTrackingStartedAt = Time.time;
+        usageWasPlanning = ShiftPlanningUI.IsPlanning;
     }
 
     void OnDestroy()
     {
+        if (usageClock != null)
+            usageClock.OnDayStarted -= HandleUsageDayStarted;
         if (Instance == this) Instance = null;
     }
 
     void Update()
     {
-        if (Time.timeScale <= 0f || ShiftPlanningUI.IsPlanning
+        EnsureUsageTrackingClock();
+        bool planning = ShiftPlanningUI.IsPlanning;
+        if (usageWasPlanning && !planning)
+            ResetIngredientUseHistory();
+        usageWasPlanning = planning;
+        if (Time.timeScale <= 0f || planning
             || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftOver))
             return;
 
         // Rates are measured per one-minute simulation interval. Time.deltaTime
         // includes fast-forward, so the supplier scales with the rest of the shift.
         DeliverConfiguredSupplyRates(Time.deltaTime / 60f);
+    }
+
+    void EnsureUsageTrackingClock()
+    {
+        GameTimeManager current = GameTimeManager.Instance;
+        if (current == null) current = FindObjectOfType<GameTimeManager>();
+        if (usageClock != current)
+        {
+            if (usageClock != null) usageClock.OnDayStarted -= HandleUsageDayStarted;
+            usageClock = current;
+            if (usageClock != null)
+            {
+                usageClock.OnDayStarted += HandleUsageDayStarted;
+                usageTrackingDay = usageClock.CurrentDay;
+            }
+        }
+
+        if (usageClock != null && usageTrackingDay != usageClock.CurrentDay)
+        {
+            usageTrackingDay = usageClock.CurrentDay;
+            ResetIngredientUseHistory();
+        }
+    }
+
+    void HandleUsageDayStarted()
+    {
+        usageTrackingDay = usageClock != null ? usageClock.CurrentDay : -1;
+        ResetIngredientUseHistory();
+    }
+
+    void ResetIngredientUseHistory()
+    {
+        ingredientUseHistory.Clear();
+        usageTrackingStartedAt = Time.time;
+    }
+
+    void RecordIngredientUse(ItemDefinition item, int amount)
+    {
+        if (item == null || amount <= 0) return;
+        EnsureUsageTrackingClock();
+        if (!ingredientUseHistory.TryGetValue(item, out Queue<IngredientUseSample> samples))
+        {
+            samples = new Queue<IngredientUseSample>();
+            ingredientUseHistory.Add(item, samples);
+        }
+
+        float now = Time.time;
+        samples.Enqueue(new IngredientUseSample { time = now, amount = amount });
+        while (samples.Count > 0 && now - samples.Peek().time > 60f)
+            samples.Dequeue();
+    }
+
+    /// <summary>Ingredient withdrawals measured over the latest simulated minute.</summary>
+    public float GetConsumedPerMinute(ItemDefinition item)
+    {
+        if (item == null) return 0f;
+        EnsureUsageTrackingClock();
+        if (!ingredientUseHistory.TryGetValue(item, out Queue<IngredientUseSample> samples)
+            || samples == null || samples.Count == 0)
+            return 0f;
+
+        float now = Time.time;
+        while (samples.Count > 0 && now - samples.Peek().time > 60f)
+            samples.Dequeue();
+        if (samples.Count == 0) return 0f;
+
+        int used = 0;
+        foreach (IngredientUseSample sample in samples)
+            used += sample.amount;
+        float sampleWindowSeconds = Mathf.Clamp(now - usageTrackingStartedAt, 1f, 60f);
+        return used * 60f / sampleWindowSeconds;
     }
 
     public IReadOnlyList<ItemDefinition> GetOrderableItems()
@@ -304,6 +397,7 @@ public class KitchenInventory : MonoBehaviour
         var entry = EnsureEntry(item);
         if (entry.quantity < amount) return false;
         entry.quantity -= amount;
+        RecordIngredientUse(item, amount);
         ProductionManager.Instance?.NotifyProductionStateChanged();
         return true;
     }
