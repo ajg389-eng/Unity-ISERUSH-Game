@@ -13,13 +13,12 @@ MonoBehaviour:
   m_Name: Milestone_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_04
-  displayName: Inventory Control
-  description: 'Plan inventory and suppliers around demand, reliability, holding
-    cost, and waste.
+  displayName: Inventory Planning
+  description: 'Use demand forecasts, supplier lead times, and stock levels to plan
+    ingredient orders.
 
 
-    Topics: Forecasting, supplier reliability, and inventory
-    control'
+    Topics: Purchase lead time, safety stock, inventory holding cost, demand forecasting'
   completionDialogue:
   - Now you are planning stock around demand. Running out stops service; ordering
     too much ties up cash and creates waste.

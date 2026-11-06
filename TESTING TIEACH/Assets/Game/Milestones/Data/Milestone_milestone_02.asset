@@ -14,11 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_02
   displayName: Capacity Planning
-  description: 'Balance station and worker capacity as products and demand grow.
+  description: 'Plan product mix and expedited replenishment as production capacity
+    expands.
 
 
     Topics:
-    Capacity balancing, bottleneck shifts, and labor allocation'
+    Station utilization, workload balancing, labor allocation'
   completionDialogue:
   - You are matching station capacity to the flow. A fast station cannot help if
     the next step cannot take its output.

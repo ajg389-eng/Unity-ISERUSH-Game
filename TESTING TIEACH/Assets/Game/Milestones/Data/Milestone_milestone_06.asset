@@ -14,15 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_06
   displayName: Systems Integration
-  description: 'Treat people, processes, technology, and information as one system;
-    optimize overall service.
+  description: 'Use integrated supply planning and system-level measures to evaluate
+    how changes affect the whole operation.
 
 
-    Topics: Systems Engineering, Information Engineering,
-    Engineering Management'
+    Topics: Systems thinking, component interdependence, holistic performance evaluation'
   completionDialogue:
-  - You brought people, equipment, workflow, and information together. That is what
-    systems engineering looks at as a whole.
+  - Supply planning now connects ingredient rates with restaurant demand.
   - Keep checking the results, because a change in one part can shift the rest.
   isTutorial: 0
   missions:

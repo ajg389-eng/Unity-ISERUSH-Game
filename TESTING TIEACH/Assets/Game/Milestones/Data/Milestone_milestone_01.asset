@@ -14,11 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_01
   displayName: Process Analysis
-  description: 'Map the process, improve station layout, and use queues to find bottlenecks.
+  description: 'Study production flow as new menu items and a Shake Station expand
+    the operation.
 
 
     Topics:
-    Process mapping, facility layout, queues, and bottlenecks'
+    Bottleneck identification, facility layout, queue analysis'
   completionDialogue:
   - You mapped how work moves through the kitchen and found where it waits. That
     is process analysis.

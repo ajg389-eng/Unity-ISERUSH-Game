@@ -243,8 +243,8 @@ public static class MilestoneDatabaseSetup
             {
                 id = "milestone_01",
                 name = "Process Analysis",
-                description = "Map the process, improve station layout, and use queues to find bottlenecks.",
-                topics = "Process mapping, facility layout, queues, and bottlenecks",
+                description = "Study production flow as new menu items and a Shake Station expand the operation.",
+                topics = "Bottleneck identification, facility layout, queue analysis",
                 missions = new[]
                 {
                     M("observe_queue", "Serve 50 Fries",
@@ -289,8 +289,8 @@ public static class MilestoneDatabaseSetup
             {
                 id = "milestone_02",
                 name = "Capacity Planning",
-                description = "Balance station and worker capacity as products and demand grow.",
-                topics = "Capacity balancing, bottleneck shifts, and labor allocation",
+                description = "Plan product mix and expedited replenishment as production capacity expands.",
+                topics = "Station utilization, workload balancing, labor allocation",
                 missions = new[]
                 {
                     M("balance_output", "Serve 50 Cheeseburgers",
@@ -335,8 +335,8 @@ public static class MilestoneDatabaseSetup
             {
                 id = "milestone_03",
                 name = "Engineering Economy",
-                description = "Evaluate equipment and process changes by their impact on system output and profit.",
-                topics = "Capital planning, production scheduling, and payback",
+                description = "Evaluate advanced recipes and MK2 station upgrades as investments in production capability.",
+                topics = "Simple payback, batch processing, profit analysis, production scheduling",
                 missions = new[]
                 {
                     M("finish_shift", "Serve 50 Bacon Cheeseburgers",
@@ -377,9 +377,9 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_04",
-                name = "Inventory Control",
-                description = "Plan inventory and suppliers around demand, reliability, holding cost, and waste.",
-                topics = "Forecasting, supplier reliability, and inventory control",
+                name = "Inventory Planning",
+                description = "Use demand forecasts, supplier lead times, and stock levels to plan ingredient orders.",
+                topics = "Purchase lead time, safety stock, inventory holding cost, demand forecasting",
                 missions = new[]
                 {
                     M("configure_recipe", "Serve 50 Cheese Bacon Fries",
@@ -421,9 +421,9 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_05",
-                name = "Quality & Reliability",
-                description = "Balance service speed with quality, and use maintenance to prevent equipment failures.",
-                topics = "Quality Engineering, Reliability Engineering",
+                name = "Supply Automation",
+                description = "Set automatic ingredient replenishment rates and monitor stock to keep ingredients available as demand changes.",
+                topics = "Automatic replenishment, supply rate control, stockout risk",
                 missions = new[]
                 {
                     M("finish_shift", "Serve 50 Super Burgers",
@@ -435,8 +435,8 @@ public static class MilestoneDatabaseSetup
             {
                 id = "milestone_06",
                 name = "Systems Integration",
-                description = "Treat people, processes, technology, and information as one system; optimize overall service.",
-                topics = "Systems Engineering, Information Engineering, Engineering Management",
+                description = "Use integrated supply planning and system-level measures to evaluate how changes affect the whole operation.",
+                topics = "Systems thinking, component interdependence, holistic performance evaluation",
                 missions = new[]
                 {
                     M("system_output", "Serve 100 Super Burgers",
