@@ -14,12 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_03
   displayName: Engineering Economy
-  description: 'Evaluate equipment and process changes by their impact on system
-    output and profit.
+  description: 'Evaluate advanced recipes and MK2 station upgrades as investments in
+    production capability.
 
 
-    Topics: Capital planning, production scheduling, and
-    payback'
+    Topics: Simple payback, batch processing, profit analysis, production scheduling'
   completionDialogue:
   - You tested changes against output and profit instead of guessing. That is the
     point of using data.

@@ -30,15 +30,21 @@ public class GuidebookUI : MonoBehaviour
     readonly List<Button> categoryButtons = new List<Button>();
     readonly List<int> categoryPageIndexes = new List<int>();
     int spreadIndex;
+    int focusedTermPageIndex = -1;
+    string focusedTerm;
     bool visible;
 
     public bool IsOpen => visible;
 
     public static GuidebookUI Create(Transform parent)
     {
-        var go = new GameObject("GuidebookUI", typeof(RectTransform), typeof(GuidebookUI));
+        var go = new GameObject("GuidebookUI", typeof(RectTransform), typeof(Canvas),
+            typeof(GraphicRaycaster), typeof(GuidebookUI));
         go.transform.SetParent(parent, false);
         Stretch((RectTransform)go.transform);
+        Canvas canvas = go.GetComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 32010;
         var ui = go.GetComponent<GuidebookUI>();
         ui.Build();
         ui.Close();
@@ -48,6 +54,8 @@ public class GuidebookUI : MonoBehaviour
     public void Open()
     {
         if (root == null) Build();
+        focusedTermPageIndex = -1;
+        focusedTerm = null;
         visible = true;
         root.SetActive(true);
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
@@ -71,6 +79,15 @@ public class GuidebookUI : MonoBehaviour
             Refresh();
             return;
         }
+    }
+
+    public void OpenToTerm(string term)
+    {
+        Open();
+        if (string.IsNullOrWhiteSpace(term)) return;
+        focusedTerm = term.Trim();
+        focusedTermPageIndex = GuidebookPages.FindGlossaryPageIndex(focusedTerm);
+        JumpToPage(focusedTermPageIndex);
     }
 
     public void Close()
@@ -317,8 +334,10 @@ public class GuidebookUI : MonoBehaviour
         var pages = GuidebookPages.All;
         int leftIndex = spreadIndex * 2;
         int rightIndex = leftIndex + 1;
-        ApplyPage(leftIndex < pages.Length ? pages[leftIndex] : default, leftChapter, leftTitle, leftBody, leftIndex < pages.Length);
-        ApplyPage(rightIndex < pages.Length ? pages[rightIndex] : default, rightChapter, rightTitle, rightBody, rightIndex < pages.Length);
+        ApplyPage(leftIndex < pages.Length ? pages[leftIndex] : default, leftChapter, leftTitle, leftBody,
+            leftIndex < pages.Length, focusedTermPageIndex == leftIndex ? focusedTerm : null);
+        ApplyPage(rightIndex < pages.Length ? pages[rightIndex] : default, rightChapter, rightTitle, rightBody,
+            rightIndex < pages.Length, focusedTermPageIndex == rightIndex ? focusedTerm : null);
 
         int shownLeft = leftIndex + 1;
         int shownRight = Mathf.Min(rightIndex + 1, pages.Length);
@@ -354,7 +373,8 @@ public class GuidebookUI : MonoBehaviour
         }
     }
 
-    static void ApplyPage(GuidebookPages.Page page, TextMeshProUGUI chapter, TextMeshProUGUI title, TextMeshProUGUI body, bool hasPage)
+    static void ApplyPage(GuidebookPages.Page page, TextMeshProUGUI chapter, TextMeshProUGUI title,
+        TextMeshProUGUI body, bool hasPage, string focusedTerm = null)
     {
         if (!hasPage)
         {
@@ -366,7 +386,7 @@ public class GuidebookUI : MonoBehaviour
 
         chapter.text = page.chapter ?? "";
         title.text = page.title ?? "";
-        body.text = page.body ?? "";
+        body.text = GuidebookPages.HighlightGlossaryEntry(page.body ?? "", focusedTerm);
         var scroll = body.GetComponentInParent<ScrollRect>();
         if (scroll != null)
             scroll.verticalNormalizedPosition = 1f;

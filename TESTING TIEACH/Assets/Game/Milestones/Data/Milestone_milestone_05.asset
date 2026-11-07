@@ -13,16 +13,16 @@ MonoBehaviour:
   m_Name: Milestone_milestone_05
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_05
-  displayName: Quality & Reliability
-  description: 'Balance service speed with quality, and use maintenance to prevent
-    equipment failures.
+  displayName: Supply Automation
+  description: 'Set automatic ingredient replenishment rates and monitor stock to keep
+    ingredients available as demand changes.
 
 
-    Topics: Quality Engineering, Reliability Engineering'
+    Topics: Automatic replenishment, supply rate control, stockout risk'
   completionDialogue:
-  - Fast service only matters if the food is right and the equipment stays reliable.
-    Good maintenance keeps today's work from becoming tomorrow's breakdown.
-  - Quality and reliability are part of the system's performance too.
+  - The Super Burger expands the menu, and automatic supply rates keep ingredients
+    moving as demand grows.
+  - Use the higher supply capacity to keep the kitchen ready for service.
   isTutorial: 0
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}

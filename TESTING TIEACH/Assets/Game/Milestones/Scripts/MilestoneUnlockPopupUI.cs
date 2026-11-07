@@ -11,6 +11,16 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     GameObject popupRoot;
     bool isVisible;
+    System.Action tutorialContinueCallback;
+
+    public static RectTransform ActivePanelRect
+    {
+        get
+        {
+            if (instance == null || !instance.isVisible || instance.popupRoot == null) return null;
+            return instance.popupRoot.transform.Find("Panel") as RectTransform;
+        }
+    }
 
     public static void ShowAfterTransition(MilestoneDefinition milestone)
     {
@@ -26,11 +36,12 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         popup.ShowImmediately(milestone, false);
     }
 
-    public static void ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone)
+    public static bool ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone,
+        System.Action onContinue = null)
     {
         MilestoneUnlockPopupUI popup = GetOrCreateInstance(tutorialMilestone);
-        if (popup == null) return;
-        popup.ShowImmediately(tutorialMilestone, true);
+        if (popup == null) return false;
+        return popup.ShowImmediately(tutorialMilestone, true, onContinue);
     }
 
     static MilestoneUnlockPopupUI GetOrCreateInstance(MilestoneDefinition milestone)
@@ -63,13 +74,20 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         ShowImmediately(milestone, true);
     }
 
-    void ShowImmediately(MilestoneDefinition milestone, bool newlyUnlocked)
+    bool ShowImmediately(MilestoneDefinition milestone, bool newlyUnlocked,
+        System.Action onTutorialContinue = null)
     {
+        tutorialContinueCallback = onTutorialContinue;
         Canvas canvas = ResolvePlayerCanvas();
-        if (canvas == null) return;
+        if (canvas == null)
+        {
+            tutorialContinueCallback = null;
+            return false;
+        }
         Build(canvas.transform, milestone, newlyUnlocked);
         GameTimeManager.Instance?.RequestExternalPause(PauseSource);
         isVisible = true;
+        return true;
     }
 
     static Canvas ResolvePlayerCanvas()
@@ -142,7 +160,8 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         panelBorder.useGraphicAlpha = false;
 
         VerticalLayoutGroup panelLayout = panel.GetComponent<VerticalLayoutGroup>();
-        panelLayout.padding = new RectOffset(32, 32, 28, 28);
+        // Match the planning panel's 18 px inset below Start Shift.
+        panelLayout.padding = new RectOffset(32, 32, 28, 18);
         panelLayout.spacing = 10f;
         panelLayout.childAlignment = TextAnchor.UpperLeft;
         panelLayout.childControlWidth = true;
@@ -157,20 +176,20 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         string overline = newlyUnlocked
             ? milestone.isTutorial ? "TUTORIAL UNLOCK" : "NEW MILESTONE"
             : "MILESTONE DETAILS";
-        CreateLayoutText(panel.transform, "Overline", overline, 13f,
-            FontStyles.Bold, 24f, GameUITheme.Accent, TextAlignmentOptions.Left);
-        CreateLayoutText(panel.transform, "Title", milestoneLabel, 27f,
-            FontStyles.Bold, 42f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
+        CreateLayoutText(panel.transform, "Overline", overline, 14f,
+            FontStyles.Bold, 28f, GameUITheme.Accent, TextAlignmentOptions.Left);
+        CreateLayoutText(panel.transform, "Title", milestoneLabel, 30f,
+            FontStyles.Bold, 48f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
         SplitDescriptionAndTopics(milestone.description, out string description, out string topics);
-        TextMeshProUGUI descriptionText = CreateLayoutText(panel.transform, "Description", description, 16f,
-            FontStyles.Normal, 44f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
+        TextMeshProUGUI descriptionText = CreateLayoutText(panel.transform, "Description", description, 18f,
+            FontStyles.Normal, 50f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
         descriptionText.enableAutoSizing = true;
-        descriptionText.fontSizeMin = 14f;
-        descriptionText.fontSizeMax = 16f;
+        descriptionText.fontSizeMin = 16f;
+        descriptionText.fontSizeMax = 18f;
         if (!string.IsNullOrWhiteSpace(topics))
         {
-            CreateLayoutText(panel.transform, "FocusHeader", "FOCUS AREAS", 12f,
-                FontStyles.Bold, 18f, GameUITheme.Accent, TextAlignmentOptions.Left);
+            CreateLayoutText(panel.transform, "FocusHeader", "FOCUS AREAS", 16f,
+                FontStyles.Bold, 26f, GameUITheme.Accent, TextAlignmentOptions.Left);
             string[] topicParts = topics.Split(',');
             var topicMarkup = new StringBuilder();
             for (int i = 0; i < topicParts.Length; i++)
@@ -180,17 +199,17 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
                     topic = topic.Substring(4).Trim();
                 if (topic.Length == 0) continue;
                 if (topicMarkup.Length > 0) topicMarkup.Append("   <color=#D8B365>•</color>   ");
-                topicMarkup.Append("<color=#F2EEE7>").Append(topic).Append("</color>");
+                topicMarkup.Append("<color=#F2EEE7>").Append(ToTitleCaseTopic(topic)).Append("</color>");
             }
             TextMeshProUGUI topicText = CreateLayoutText(panel.transform, "FocusTopics",
-                topicMarkup.ToString(), 14f, FontStyles.Normal, 30f,
+                topicMarkup.ToString(), 17f, FontStyles.Normal, 36f,
                 GameUITheme.TextSecondary, TextAlignmentOptions.Left);
             topicText.enableAutoSizing = true;
-            topicText.fontSizeMin = 12f;
-            topicText.fontSizeMax = 14f;
+            topicText.fontSizeMin = 15f;
+            topicText.fontSizeMax = 17f;
         }
-        CreateLayoutText(panel.transform, "UnlockHeader", newlyUnlocked ? "UNLOCKED" : "UNLOCKS", 15f,
-            FontStyles.Bold, 24f, GameUITheme.Accent, TextAlignmentOptions.Left);
+        CreateLayoutText(panel.transform, "UnlockHeader", newlyUnlocked ? "UNLOCKED" : "UNLOCKS", 16f,
+            FontStyles.Bold, 26f, GameUITheme.Accent, TextAlignmentOptions.Left);
 
         System.Collections.Generic.IReadOnlyList<string> unlocks =
             MilestoneFeatures.GetUnlocksForMilestone(milestone);
@@ -205,9 +224,10 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         rewardLayout.childForceExpandWidth = true;
         rewardLayout.childForceExpandHeight = false;
         LayoutElement rewardListSize = rewardList.GetComponent<LayoutElement>();
-        rewardListSize.minHeight = 70f;
-        rewardListSize.preferredHeight = 90f;
-        rewardListSize.flexibleHeight = 1f;
+        float rewardListHeight = Mathf.Max(70f, unlocks.Count * 33f);
+        rewardListSize.minHeight = rewardListHeight;
+        rewardListSize.preferredHeight = rewardListHeight;
+        rewardListSize.flexibleHeight = 0f;
 
         for (int i = 0; i < unlocks.Count; i++)
         {
@@ -217,49 +237,66 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
                 continue;
             }
             TextMeshProUGUI rewardLine = CreateLayoutText(rewardList.transform,
-                "Unlock_" + i, "<color=#D8B365>•</color>  " + unlocks[i], 17f,
-                FontStyles.Normal, 23f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
+                "Unlock_" + i, "<color=#D8B365>•</color>  " + unlocks[i], 19f,
+                FontStyles.Normal, 30f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
             rewardLine.enableAutoSizing = true;
-            rewardLine.fontSizeMin = 14f;
-            rewardLine.fontSizeMax = 17f;
+            rewardLine.fontSizeMin = 16f;
+            rewardLine.fontSizeMax = 19f;
         }
         if (unlocks.Count == 0)
             CreateLayoutText(rewardList.transform, "NoUnlocks",
                 "No additional content unlocks at this milestone.", 16f,
                 FontStyles.Normal, 32f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
 
-        GameObject footer = new GameObject("Footer", typeof(RectTransform),
-            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        footer.transform.SetParent(panel.transform, false);
-        HorizontalLayoutGroup footerLayout = footer.GetComponent<HorizontalLayoutGroup>();
-        footerLayout.childAlignment = TextAnchor.MiddleCenter;
-        footerLayout.childControlWidth = false;
-        footerLayout.childControlHeight = false;
-        footerLayout.childForceExpandWidth = false;
-        footerLayout.childForceExpandHeight = false;
-        LayoutElement footerSize = footer.GetComponent<LayoutElement>();
-        footerSize.minHeight = footerSize.preferredHeight = 58f;
+        // Keep the action near the panel bottom while allowing the rewards to
+        // claim their full height first. This flexible gap never overlaps text.
+        GameObject footerSpace = new GameObject("FooterSpace", typeof(RectTransform), typeof(LayoutElement));
+        footerSpace.transform.SetParent(panel.transform, false);
+        footerSpace.GetComponent<LayoutElement>().minHeight = 54f;
+        footerSpace.GetComponent<LayoutElement>().preferredHeight = 54f;
 
         GameObject buttonObject = new GameObject("ContinueButton", typeof(RectTransform),
             typeof(Image), typeof(Button), typeof(LayoutElement));
-        buttonObject.transform.SetParent(footer.transform, false);
+        buttonObject.transform.SetParent(panel.transform, false);
         LayoutElement buttonSize = buttonObject.GetComponent<LayoutElement>();
-        buttonSize.minWidth = buttonSize.preferredWidth = 360f;
-        buttonSize.minHeight = buttonSize.preferredHeight = 50f;
+        buttonSize.ignoreLayout = true;
+        RectTransform buttonRect = buttonObject.transform as RectTransform;
+        buttonRect.anchorMin = new Vector2(0f, 0f);
+        buttonRect.anchorMax = new Vector2(1f, 0f);
+        buttonRect.pivot = new Vector2(0.5f, 0f);
+        buttonRect.offsetMin = new Vector2(32f, 18f);
+        buttonRect.offsetMax = new Vector2(-32f, 66f);
         buttonObject.GetComponent<Image>().color = GameUITheme.Positive;
         Outline buttonBorder = buttonObject.AddComponent<Outline>();
         buttonBorder.effectColor = Color.white;
         buttonBorder.effectDistance = new Vector2(1.5f, -1.5f);
         buttonBorder.useGraphicAlpha = false;
-        buttonObject.GetComponent<Button>().onClick.AddListener(Close);
-        TextMeshProUGUI buttonLabel = CreateLayoutText(buttonObject.transform, "Label", "CONTINUE", 17f,
-            FontStyles.Bold, 50f, GameUITheme.TextPrimary, TextAlignmentOptions.Center);
+        buttonObject.GetComponent<Button>().onClick.AddListener(ContinueFromPopup);
+        TextMeshProUGUI buttonLabel = CreateLayoutText(buttonObject.transform, "Label", "CONTINUE", 19f,
+            FontStyles.Bold, 48f, GameUITheme.TextPrimary, TextAlignmentOptions.Center);
         buttonLabel.rectTransform.anchorMin = Vector2.zero;
         buttonLabel.rectTransform.anchorMax = Vector2.one;
         buttonLabel.rectTransform.offsetMin = Vector2.zero;
         buttonLabel.rectTransform.offsetMax = Vector2.zero;
         Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
+        float desiredHeight = LayoutUtility.GetPreferredHeight(panelRect);
+        float maxHeight = Mathf.Min(560f, canvasSize.y * 0.86f);
+        panelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical,
+            Mathf.Min(maxHeight, desiredHeight + panelLayout.padding.top + panelLayout.padding.bottom));
+        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
+    }
+
+    static string ToTitleCaseTopic(string topic)
+    {
+        if (string.IsNullOrWhiteSpace(topic)) return topic;
+        string[] words = topic.Trim().ToLowerInvariant().Split(' ');
+        for (int i = 0; i < words.Length; i++)
+        {
+            if (words[i].Length == 0 || words[i] == "and") continue;
+            words[i] = char.ToUpperInvariant(words[i][0]) + words[i].Substring(1);
+        }
+        return string.Join(" ", words);
     }
 
     static void SplitDescriptionAndTopics(string source, out string description, out string topics)
@@ -426,12 +463,25 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     void Update()
     {
-        if (isVisible && Input.GetKeyDown(KeyCode.Escape)) Close();
+        if (isVisible && tutorialContinueCallback == null && Input.GetKeyDown(KeyCode.Escape)) Close();
+    }
+
+    void ContinueFromPopup()
+    {
+        System.Action onContinue = tutorialContinueCallback;
+        tutorialContinueCallback = null;
+        Close();
+        onContinue?.Invoke();
     }
 
     void Close()
     {
-        if (popupRoot != null) Destroy(popupRoot);
+        tutorialContinueCallback = null;
+        if (popupRoot != null)
+        {
+            popupRoot.SetActive(false);
+            Destroy(popupRoot);
+        }
         popupRoot = null;
         isVisible = false;
         GameTimeManager.Instance?.ReleaseExternalPause(PauseSource);
