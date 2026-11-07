@@ -102,6 +102,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
+        ISEGlossaryLinkHandler.Attach(bodyText);
         BuildFooter(panel.transform);
         BuildVoice();
 

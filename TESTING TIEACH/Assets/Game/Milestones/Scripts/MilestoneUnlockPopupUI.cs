@@ -11,6 +11,16 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     GameObject popupRoot;
     bool isVisible;
+    System.Action tutorialContinueCallback;
+
+    public static RectTransform ActivePanelRect
+    {
+        get
+        {
+            if (instance == null || !instance.isVisible || instance.popupRoot == null) return null;
+            return instance.popupRoot.transform.Find("Panel") as RectTransform;
+        }
+    }
 
     public static void ShowAfterTransition(MilestoneDefinition milestone)
     {
@@ -26,11 +36,12 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         popup.ShowImmediately(milestone, false);
     }
 
-    public static void ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone)
+    public static bool ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone,
+        System.Action onContinue = null)
     {
         MilestoneUnlockPopupUI popup = GetOrCreateInstance(tutorialMilestone);
-        if (popup == null) return;
-        popup.ShowImmediately(tutorialMilestone, true);
+        if (popup == null) return false;
+        return popup.ShowImmediately(tutorialMilestone, true, onContinue);
     }
 
     static MilestoneUnlockPopupUI GetOrCreateInstance(MilestoneDefinition milestone)
@@ -63,13 +74,20 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         ShowImmediately(milestone, true);
     }
 
-    void ShowImmediately(MilestoneDefinition milestone, bool newlyUnlocked)
+    bool ShowImmediately(MilestoneDefinition milestone, bool newlyUnlocked,
+        System.Action onTutorialContinue = null)
     {
+        tutorialContinueCallback = onTutorialContinue;
         Canvas canvas = ResolvePlayerCanvas();
-        if (canvas == null) return;
+        if (canvas == null)
+        {
+            tutorialContinueCallback = null;
+            return false;
+        }
         Build(canvas.transform, milestone, newlyUnlocked);
         GameTimeManager.Instance?.RequestExternalPause(PauseSource);
         isVisible = true;
+        return true;
     }
 
     static Canvas ResolvePlayerCanvas()
@@ -253,7 +271,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         buttonBorder.effectColor = Color.white;
         buttonBorder.effectDistance = new Vector2(1.5f, -1.5f);
         buttonBorder.useGraphicAlpha = false;
-        buttonObject.GetComponent<Button>().onClick.AddListener(Close);
+        buttonObject.GetComponent<Button>().onClick.AddListener(ContinueFromPopup);
         TextMeshProUGUI buttonLabel = CreateLayoutText(buttonObject.transform, "Label", "CONTINUE", 19f,
             FontStyles.Bold, 48f, GameUITheme.TextPrimary, TextAlignmentOptions.Center);
         buttonLabel.rectTransform.anchorMin = Vector2.zero;
@@ -445,12 +463,25 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     void Update()
     {
-        if (isVisible && Input.GetKeyDown(KeyCode.Escape)) Close();
+        if (isVisible && tutorialContinueCallback == null && Input.GetKeyDown(KeyCode.Escape)) Close();
+    }
+
+    void ContinueFromPopup()
+    {
+        System.Action onContinue = tutorialContinueCallback;
+        tutorialContinueCallback = null;
+        Close();
+        onContinue?.Invoke();
     }
 
     void Close()
     {
-        if (popupRoot != null) Destroy(popupRoot);
+        tutorialContinueCallback = null;
+        if (popupRoot != null)
+        {
+            popupRoot.SetActive(false);
+            Destroy(popupRoot);
+        }
         popupRoot = null;
         isVisible = false;
         GameTimeManager.Instance?.ReleaseExternalPause(PauseSource);

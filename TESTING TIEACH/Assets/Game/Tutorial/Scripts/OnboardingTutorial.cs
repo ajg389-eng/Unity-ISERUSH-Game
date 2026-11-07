@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.Video;
 
 /// <summary>
 /// Guided first-run tour: plan and build the kitchen, then run one practice customer.
@@ -119,6 +120,7 @@ public class OnboardingTutorial : MonoBehaviour
     bool liveCustomerSpawned;
     bool planScreenIntroduced;
     bool tutorialBurgerUnlockShown;
+    bool tutorialUnlockContinuePending;
     bool starterKitchenHidden;
     int stepIndex;
     public int SaveStepIndex => stepIndex;
@@ -133,7 +135,7 @@ public class OnboardingTutorial : MonoBehaviour
         stationChecklistInitialized = false;
         nextStationChecklistRefresh = 0f;
         furthestStepIndex = stepIndex;
-        if (stepIndex == 0)
+        if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireCameraControls)
             ResetCameraTutorialInputs();
         orderServed = savedOrderServed;
         if (complete)
@@ -199,17 +201,25 @@ public class OnboardingTutorial : MonoBehaviour
     Button nextButton;
     TextMeshProUGUI nextLabel;
     GameObject cameraPromptPanel;
+    GameObject flowLinkingVideoFrame;
+    RawImage flowLinkingVideoImage;
+    VideoPlayer flowLinkingVideoPlayer;
+    RenderTexture flowLinkingVideoTexture;
     TextMeshProUGUI cameraMovePromptStatus;
     TextMeshProUGUI cameraRotatePromptStatus;
     TextMeshProUGUI cameraZoomPromptStatus;
     RectTransform calloutTarget;
     RectTransform calloutArrow;
+    Vector2 calloutPanelPositionVelocity;
+    bool calloutPanelPositionInitialized;
+    int lastCalloutPanelMotionFrame = -1;
     GameObject highlight;
     Transform highlightTarget;
     Transform secondaryHighlightTarget;
     GameObject secondaryHighlight;
     Highlight currentHighlight;
     const string HighlightMaterialResourcePath = "Materials/OnboardingHighlight";
+    const string FlowLinkingVideoResourcePath = "Tutorial/LinkStationsVidTutorial";
 
     enum Highlight
     {
@@ -329,21 +339,24 @@ public class OnboardingTutorial : MonoBehaviour
     static readonly Step[] Steps =
     {
         new Step(
-            "Move around the kitchen",
-            "The <b>Plan phase</b> is for designing the operation: stations, recipes, menu, supplies, and staffing. The demand forecast updates as you add menu items. <b>Start Shift</b> begins service.\n\n" +
-            "Camera controls: <b>WASD</b> move, hold <b>right mouse</b> and drag to rotate, scroll to zoom. Try each one.",
-            "Next", Highlight.None, requireCameraControls: true),
-        new Step(
             "Empty kitchen",
-            "You are the <b>industrial and systems engineer</b>. Balance people, equipment, materials, and demand. We will design, run, measure, and improve the operation. Use <b>Back</b> and <b>Next</b> to navigate.",
+            "You are the <b>industrial and systems engineer</b>. Balance people, equipment, materials, and demand. We will design, run, measure, and improve this operation.",
             "Next", Highlight.None),
         new Step(
-            "Build the production line",
-            "Plan the facility layout: buy and place all seven stations using the checklist. Register and Pickup can only go on counter tiles. Keep connected stations close to reduce material travel.",
+            "Move around the kitchen",
+            "Alright now get used to movin around this joint.\n\n" +
+            "Move with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
+            "Next", Highlight.None, requireCameraControls: true),
+        new Step(
+            "Facility Layout and Design",
+            "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
+            "<b>Layout rules</b>\n" +
+            "• Register and Pickup Station can only be placed on a counter.\n" +
+            "• Distance between stations affects output time.",
             "Next", Highlight.None, openInventory: true, requireStationChecklist: true),
         new Step(
             "Milestone unlocks",
-            "Milestones unlock recipes, stations, and upgrades. Restaurant Basics includes burgers; Process Analysis adds fries and shakes.",
+            "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
             "Next", Highlight.None),
         new Step(
             "Open the recipe book",
@@ -351,7 +364,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None, requireRecipeScreen: true),
         new Step(
             "Configure ingredients and recipes",
-            "Open <b>Business > Workers</b>, then select each highlighted station to open its settings. Choose the required input or recipe. <b>Target / Min</b> sets planned output rate.",
+            "Let me walk you through how to make a simple burger production line.",
             "Next", Highlight.Management, requireRecipes: true, requireStationSequence: true),
         new Step(
             "Plan the shift",
@@ -414,16 +427,18 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] GusDialogue =
     {
-        "We start in the <b>Plan phase</b>. The shift is paused while you design the kitchen, set recipes and rates, order supplies, choose the menu, and assign workers. Start Shift opens the restaurant when the plan is ready.\n\n" +
-        "Get comfortable looking around. Use WASD to move the camera, hold the right mouse button and drag to turn the view, then use the scroll wheel to zoom. Try each control and I will wait here until you have.",
-
         "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
         "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
 
-        "Plan the facility layout: buy and place all seven stations using the checklist. Register and Pickup can only go on counter tiles. Keep connected stations close to reduce material travel.",
+        "Alright now get used to movin around this joint.\n\n" +
+        "Move with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
 
-        "Every order begins at the <b>register</b>. Open <b>Build</b>, take the free register, then click an open <b>counter</b> tile on the lobby side.\n\n" +
-        "Keep floor space clear for the customer line. The register accepts orders as soon as it is placed.",
+        "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
+        "<b>Layout rules</b>\n" +
+        "• Register and Pickup Station can only be placed on a counter.\n" +
+        "• Distance between stations affects output time.",
+
+        "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
 
         "Let's start the burger process. Buy and place a <b>freezer</b>. Each freezer stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>.\n\n" +
         "If it is unconfigured or empty, burger production cannot begin.",
@@ -480,12 +495,15 @@ public class OnboardingTutorial : MonoBehaviour
 
     static readonly string[] CompactTutorialText =
     {
-        "In <b>Plan</b>, design the kitchen and set menu, recipes, rates, supplies, and staffing. The demand forecast updates as you add items. <b>Start Shift</b> opens the restaurant. Move with <b>WASD</b>; right-drag to rotate; scroll to zoom.",
         "You are the <b>industrial and systems engineer</b>. Balance people, equipment, materials, and customer demand. Design, run, measure, improve.",
-        "Plan the facility layout: buy and place all seven stations using the checklist. Register and Pickup can only go on counter tiles. Keep connected stations close to reduce material travel.",
-        "Milestones unlock recipes, stations, and upgrades. Restaurant Basics adds burgers; Process Analysis adds fries and shakes.",
+        "Alright now get used to movin around this joint.\n\nMove with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
+        "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
+        "<b>Layout rules</b>\n" +
+        "• Register and Pickup Station can only be placed on a counter.\n" +
+        "• Distance between stations affects output time.",
+        "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
         "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
-        "Open <b>Business > Workers</b>, then select each highlighted station to open its settings. Choose the required input or recipe. <b>Target / Min</b> sets planned output rate.",
+        "Let me walk you through how to make a simple burger production line.",
         "The <b>Plan</b> card shows forecast demand/min and <b>Shift Total</b> (rate × shift length). Use it to estimate ingredient needs. Review the card, then click <b>Next</b>.",
         "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. Its demand forecast and shift total appear.",
         "Plan inputs from <b>Shift Total</b>: 5 burgers/min × 12 minutes = 60 patties and buns. Stock caps at 100 per ingredient, so replenish during the shift. Open <b>Business > Supply</b> and order packs.",
@@ -520,6 +538,7 @@ public class OnboardingTutorial : MonoBehaviour
     void OnDestroy()
     {
         ClearControlHighlights();
+        ReleaseFlowLinkingVideo();
         if (Instance == this)
             Instance = null;
         TutorialVoiceEvents.OnEvent -= OnGameEvent;
@@ -682,6 +701,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        tutorialUnlockContinuePending = false;
         if (stepIndex == 3 && !tutorialBurgerUnlockShown)
         {
             MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
@@ -691,7 +711,10 @@ public class OnboardingTutorial : MonoBehaviour
             if (tutorialMilestone != null)
             {
                 tutorialBurgerUnlockShown = true;
-                MilestoneUnlockPopupUI.ShowTutorialUnlocks(tutorialMilestone);
+                tutorialUnlockContinuePending = true;
+                if (!MilestoneUnlockPopupUI.ShowTutorialUnlocks(tutorialMilestone,
+                        AdvanceFromTutorialUnlock))
+                    tutorialUnlockContinuePending = false;
             }
         }
         if (step.requirePlanIntroduction)
@@ -711,8 +734,12 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
+        Canvas tutorialCanvas = canvasRoot != null ? canvasRoot.GetComponent<Canvas>() : null;
+        if (tutorialCanvas != null)
+            tutorialCanvas.sortingOrder = tutorialUnlockContinuePending ? 7100 : 4200;
         if (panel != null)
             panel.SetActive(true);
+        SetFlowLinkingVideoVisible(stepIndex == 10);
         if (cameraPromptPanel != null)
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
@@ -730,7 +757,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
         if (nextButton != null)
-            nextButton.gameObject.SetActive(!AutomaticallyAdvances(step));
+            nextButton.gameObject.SetActive(!AutomaticallyAdvances(step)
+                && !tutorialUnlockContinuePending);
         autoAdvanceStep = -1;
 
         ApplyPause(step.pauseSim);
@@ -838,6 +866,15 @@ public class OnboardingTutorial : MonoBehaviour
         UpdateContextualCallout();
     }
 
+    void AdvanceFromTutorialUnlock()
+    {
+        if (!running || stepIndex != 3 || !tutorialUnlockContinuePending) return;
+        tutorialUnlockContinuePending = false;
+        Sfx.Play(SfxId.UiClick);
+        stepIndex++;
+        ShowStep();
+    }
+
     void ResetTutorialTextReveal()
     {
         if (bodyText == null) return;
@@ -918,7 +955,8 @@ public class OnboardingTutorial : MonoBehaviour
         RectTransform rootRect = (RectTransform)canvasRoot.transform;
         RectTransform panelRect = (RectTransform)panel.transform;
         Vector2 targetPosition;
-        bool hasTarget = TryGetCalloutTarget(rootRect, out targetPosition);
+        Rect targetBounds;
+        bool hasTarget = TryGetCalloutTarget(rootRect, out targetPosition, out targetBounds);
 
         panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
         ManagementModeController stationTutorialManager = running
@@ -951,16 +989,18 @@ public class OnboardingTutorial : MonoBehaviour
             float leftSpace = pickerMin.x - (-rootWidth * 0.5f);
             float rightSpace = rootWidth * 0.5f - pickerMax.x;
             bool placeLeft = leftSpace >= rightSpace;
+            float pickerCalloutGap = running && Steps[stepIndex].requireRecipes ? 36f : 12f;
             float sideX = placeLeft
-                ? pickerMin.x - panelWidth * 0.5f - 12f
-                : pickerMax.x + panelWidth * 0.5f + 12f;
+                ? pickerMin.x - panelWidth * 0.5f - pickerCalloutGap
+                : pickerMax.x + panelWidth * 0.5f + pickerCalloutGap;
             panelPosition = new Vector2(sideX, hasTarget ? targetPosition.y : 0f);
         }
         else if (hasTarget)
         {
             bool targetOnLeft = targetPosition.x < 0f;
+            float targetCalloutGap = running && Steps[stepIndex].requireRecipes ? 160f : 92f;
             panelPosition = new Vector2(
-                targetPosition.x + (targetOnLeft ? 1f : -1f) * (panelWidth * 0.5f + 92f),
+                targetPosition.x + (targetOnLeft ? 1f : -1f) * (panelWidth * 0.5f + targetCalloutGap),
                 targetPosition.y);
             panelPosition.x = Mathf.Clamp(panelPosition.x,
                 -rootWidth * 0.5f + panelWidth * 0.5f + 18f,
@@ -1026,67 +1066,135 @@ public class OnboardingTutorial : MonoBehaviour
             panelPosition = new Vector2(0f,
                 -rootHeight * 0.5f + panelHeight * 0.5f + 82f);
         }
-        // The station checklist is used while the player is placing equipment.
-        // Keep its long instructions out of the center placement area and away
-        // from the placement hint at the bottom of the screen.
-        if (running && Steps[stepIndex].requireStationChecklist)
+        // Keep the station checklist and flow-linking tutorial card in the
+        // same upper-right position while the player works in the kitchen.
+        if (running && (Steps[stepIndex].requireStationChecklist || stepIndex == 10))
         {
             panelPosition = new Vector2(
                 rootWidth * 0.5f - panelWidth * 0.5f - 24f,
                 rootHeight * 0.5f - panelHeight * 0.5f - 170f);
         }
+        if (running && stepIndex == 3 && tutorialUnlockContinuePending)
+        {
+            RectTransform unlockPanel = MilestoneUnlockPopupUI.ActivePanelRect;
+            if (unlockPanel != null)
+            {
+                Vector3[] unlockCorners = new Vector3[4];
+                unlockPanel.GetWorldCorners(unlockCorners);
+                Canvas unlockCanvas = unlockPanel.GetComponentInParent<Canvas>();
+                Camera unlockCamera = unlockCanvas != null
+                    && unlockCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                    ? unlockCanvas.worldCamera : null;
+                Vector2 unlockMin = new Vector2(float.MaxValue, float.MaxValue);
+                Vector2 unlockMax = new Vector2(float.MinValue, float.MinValue);
+                for (int i = 0; i < unlockCorners.Length; i++)
+                {
+                    Vector2 screenCorner = RectTransformUtility.WorldToScreenPoint(unlockCamera, unlockCorners[i]);
+                    if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                            screenCorner, null, out Vector2 localCorner))
+                        continue;
+                    unlockMin = Vector2.Min(unlockMin, localCorner);
+                    unlockMax = Vector2.Max(unlockMax, localCorner);
+                }
+
+                if (unlockMin.x != float.MaxValue)
+                    panelPosition = new Vector2(
+                        unlockMax.x + panelWidth * 0.5f + 10f,
+                        unlockMax.y + panelHeight * 0.5f + 10f);
+            }
+            else
+            {
+                panelPosition = new Vector2(
+                    rootWidth * 0.5f - panelWidth * 0.5f - 18f,
+                    rootHeight * 0.5f - panelHeight * 0.5f - 18f);
+            }
+        }
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
+        float calloutScreenMargin = running && stepIndex == 3 && tutorialUnlockContinuePending ? 10f : 18f;
         panelPosition.x = Mathf.Clamp(panelPosition.x,
-            -rootWidth * 0.5f + panelWidth * 0.5f + 18f,
-            rootWidth * 0.5f - panelWidth * 0.5f - 18f);
+            -rootWidth * 0.5f + panelWidth * 0.5f + calloutScreenMargin,
+            rootWidth * 0.5f - panelWidth * 0.5f - calloutScreenMargin);
         panelPosition.y = Mathf.Clamp(panelPosition.y,
-            -rootHeight * 0.5f + panelHeight * 0.5f + 18f,
-            rootHeight * 0.5f - panelHeight * 0.5f - 18f);
-        panelRect.anchoredPosition = panelPosition;
-        // A highlighted UI control already has a gold outline. A long arrow to
-        // it can cross labels or instructions in the same panel, so reserve the
-        // arrow for world targets where it helps locate an object.
-        bool arrowTargetIsUI = calloutTarget != null
-            && calloutTarget.GetComponentInParent<Canvas>() != null
-            && !(running && Steps[stepIndex].requireWorkerDragToFlow);
-        PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight),
-            targetPosition, hasTarget && !arrowTargetIsUI);
+            -rootHeight * 0.5f + panelHeight * 0.5f + calloutScreenMargin,
+            rootHeight * 0.5f - panelHeight * 0.5f - calloutScreenMargin);
+        if (!calloutPanelPositionInitialized)
+        {
+            panelRect.anchoredPosition = panelPosition;
+            calloutPanelPositionVelocity = Vector2.zero;
+            calloutPanelPositionInitialized = true;
+            lastCalloutPanelMotionFrame = Time.frameCount;
+        }
+        else if (lastCalloutPanelMotionFrame != Time.frameCount)
+        {
+            lastCalloutPanelMotionFrame = Time.frameCount;
+            panelRect.anchoredPosition = Vector2.SmoothDamp(
+                panelRect.anchoredPosition,
+                panelPosition,
+                ref calloutPanelPositionVelocity,
+                0.22f,
+                Mathf.Infinity,
+                Time.unscaledDeltaTime);
+
+            if ((panelRect.anchoredPosition - panelPosition).sqrMagnitude < 0.25f)
+            {
+                panelRect.anchoredPosition = panelPosition;
+                calloutPanelPositionVelocity = Vector2.zero;
+            }
+        }
+
+        // Keep the pointer attached to the target while the card moves. UI
+        // controls and world objects both use the same callout behavior.
+        PositionCalloutArrow(panelRect.anchoredPosition, new Vector2(panelWidth, panelHeight),
+            targetPosition, targetBounds, hasTarget);
     }
 
-    bool TryGetCalloutTarget(RectTransform rootRect, out Vector2 localPoint)
+    bool TryGetCalloutTarget(RectTransform rootRect, out Vector2 localPoint, out Rect localBounds)
     {
         localPoint = Vector2.zero;
-        Vector2 screenPoint;
+        localBounds = new Rect(localPoint, Vector2.zero);
         if (calloutTarget != null && calloutTarget.gameObject.activeInHierarchy)
         {
             Vector3[] corners = new Vector3[4];
             calloutTarget.GetWorldCorners(corners);
-            Vector3 center = (corners[0] + corners[2]) * 0.5f;
             Canvas targetCanvas = calloutTarget.GetComponentInParent<Canvas>();
             Camera eventCamera = targetCanvas != null && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
                 ? targetCanvas.worldCamera : null;
-            screenPoint = RectTransformUtility.WorldToScreenPoint(eventCamera, center);
+            Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
+            Vector2 max = new Vector2(float.MinValue, float.MinValue);
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector2 screenCorner = RectTransformUtility.WorldToScreenPoint(eventCamera, corners[i]);
+                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect,
+                        screenCorner, null, out Vector2 localCorner))
+                    continue;
+                min = Vector2.Min(min, localCorner);
+                max = Vector2.Max(max, localCorner);
+            }
+            if (min.x == float.MaxValue) return false;
+            localBounds = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+            localPoint = localBounds.center;
+            return true;
         }
         else if (highlightTarget != null && Camera.main != null)
         {
             Vector3 worldPoint = GetTutorialWorldAimPoint(highlightTarget);
             Vector3 projected = Camera.main.WorldToScreenPoint(worldPoint);
             if (projected.z <= 0f) return false;
-            screenPoint = projected;
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rootRect, projected, null, out localPoint);
         }
         else
         {
             return false;
         }
-
-        return RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screenPoint, null, out localPoint);
     }
 
-    void PositionCalloutArrow(Vector2 panelPosition, Vector2 panelSize, Vector2 targetPosition, bool visible)
+    void PositionCalloutArrow(Vector2 panelPosition, Vector2 panelSize, Vector2 targetPosition,
+        Rect targetBounds, bool visible)
     {
         if (calloutArrow == null) return;
         Vector2 delta = targetPosition - panelPosition;
-        if (!visible || delta.sqrMagnitude < 6400f)
+        if (!visible || delta.sqrMagnitude < 1f)
         {
             calloutArrow.gameObject.SetActive(false);
             return;
@@ -1096,9 +1204,23 @@ public class OnboardingTutorial : MonoBehaviour
         float tx = Mathf.Abs(direction.x) > 0.001f ? panelSize.x * 0.5f / Mathf.Abs(direction.x) : float.MaxValue;
         float ty = Mathf.Abs(direction.y) > 0.001f ? panelSize.y * 0.5f / Mathf.Abs(direction.y) : float.MaxValue;
         Vector2 start = panelPosition + direction * Mathf.Min(tx, ty);
-        Vector2 end = targetPosition - direction * 16f;
+        Vector2 end;
+        if (targetBounds.width > 1f && targetBounds.height > 1f)
+        {
+            Vector2 targetHalfSize = targetBounds.size * 0.5f;
+            float edgeX = Mathf.Abs(direction.x) > 0.001f
+                ? targetHalfSize.x / Mathf.Abs(direction.x) : float.MaxValue;
+            float edgeY = Mathf.Abs(direction.y) > 0.001f
+                ? targetHalfSize.y / Mathf.Abs(direction.y) : float.MaxValue;
+            float edgeDistance = Mathf.Min(edgeX, edgeY);
+            end = targetPosition - direction * (edgeDistance + 7f);
+        }
+        else
+        {
+            end = targetPosition - direction * 16f;
+        }
         float length = Vector2.Distance(start, end);
-        if (length < 24f)
+        if (length < 1f)
         {
             calloutArrow.gameObject.SetActive(false);
             return;
@@ -1107,10 +1229,9 @@ public class OnboardingTutorial : MonoBehaviour
         calloutArrow.gameObject.SetActive(true);
         calloutArrow.anchorMin = calloutArrow.anchorMax = calloutArrow.pivot = new Vector2(0.5f, 0.5f);
         calloutArrow.anchoredPosition = (start + end) * 0.5f;
-        calloutArrow.sizeDelta = new Vector2(length, 24f);
+        calloutArrow.sizeDelta = new Vector2(length, 34f);
         calloutArrow.localRotation = Quaternion.Euler(0f, 0f,
             Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
-        calloutArrow.SetAsLastSibling();
     }
 
     void RefreshAdvanceGate()
@@ -2083,14 +2204,20 @@ public class OnboardingTutorial : MonoBehaviour
             if (secondaryHighlight != null) secondaryHighlight.SetActive(false);
             return;
         }
+        bool recipeConfigurationStep = Steps[stepIndex].requireRecipes;
         if (highlight != null)
         {
-            highlight.SetActive(true);
-            float markerPulse = 0.48f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.22f);
-            highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
-            highlight.transform.localScale = Vector3.one * markerPulse;
+            if (recipeConfigurationStep)
+                highlight.SetActive(false);
+            else
+            {
+                highlight.SetActive(true);
+                float markerPulse = 0.48f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.22f);
+                highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
+                highlight.transform.localScale = Vector3.one * markerPulse;
+            }
         }
-        if (secondaryHighlightTarget != null)
+        if (!recipeConfigurationStep && secondaryHighlightTarget != null)
         {
             EnsureSecondaryHighlight();
             secondaryHighlight.SetActive(true);
@@ -2109,8 +2236,6 @@ public class OnboardingTutorial : MonoBehaviour
             var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
             if (management == null || !management.IsOpen)
             {
-                tutorialFocusText = "Click <b>Business</b> at the top to start configuring ingredients and recipes.";
-                SetTutorialBodyText(tutorialFocusText);
                 UpdateHighlight(Highlight.Management);
                 return;
             }
@@ -2129,9 +2254,6 @@ public class OnboardingTutorial : MonoBehaviour
                 highlightTarget = station.transform;
                 secondaryHighlightTarget = null;
                 calloutTarget = null;
-                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim()
-                    + "</b> in the kitchen to open its settings.";
-                SetTutorialBodyText(tutorialFocusText);
                 return;
             }
 
@@ -2140,15 +2262,11 @@ public class OnboardingTutorial : MonoBehaviour
                 recipeTutorialStationIndex++;
                 if (recipeTutorialStationIndex >= 4)
                 {
-                    tutorialFocusText = "All four recipe settings are ready. Freezer = Raw Patty, Grill = Cooked Patty, Pantry = Bun, Assembly = Hamburger. <b>Target / Min</b> sets a station's planned output rate from 1 to 5 items/min. At <b>5/min</b>, one item completes every 12 seconds. Lower targets slow production and reduce required input rates proportionally. Match upstream output to each downstream recipe's inputs. Actual output can still fall below target if stock, space, or worker transport is limited.";
-                    SetTutorialBodyText(tutorialFocusText);
                     secondaryHighlightTarget = null;
                     return;
                 }
                 station = GetRecipeTutorialStation(recipeTutorialStationIndex);
                 if (station == null) return;
-                tutorialFocusText = "Good. Now click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim() + "</b> and choose its burger-line item or recipe.";
-                SetTutorialBodyText(tutorialFocusText);
             }
 
             ManagementModeController manager = ManagementModeController.Instance;
@@ -2157,29 +2275,23 @@ public class OnboardingTutorial : MonoBehaviour
                 highlightTarget = station.transform;
                 secondaryHighlightTarget = null;
                 calloutTarget = null;
-                tutorialFocusText = "Click the highlighted <b>" + station.name.Replace("(Clone)", "").Trim()
-                    + "</b> in the kitchen to open its settings.";
-                SetTutorialBodyText(tutorialFocusText);
                 return;
             }
-            string choice = GetRecipeTutorialChoiceName(recipeTutorialStationIndex);
             highlightTarget = null;
             secondaryHighlightTarget = null;
             if (manager != null && manager.TutorialRecipePickerOpen)
             {
-                tutorialFocusText = "Choose <b>" + choice + "</b> from the highlighted option.";
-                Button recipeChoice = manager.TutorialRecipeChoice(choice);
+                Button recipeChoice = manager.TutorialRecipeChoice(
+                    GetRecipeTutorialChoiceName(recipeTutorialStationIndex));
                 if (recipeChoice != null) FocusTutorialControl(recipeChoice);
                 else calloutTarget = null;
             }
             else
             {
-                tutorialFocusText = "Open the highlighted station setting, then choose <b>" + choice + "</b>.";
                 if (manager != null && manager.TutorialOutputSelectButton != null)
                     FocusTutorialControl(manager.TutorialOutputSelectButton);
                 else calloutTarget = null;
             }
-            SetTutorialBodyText(tutorialFocusText);
             highlightTarget = station.transform;
             if (manager != null && (manager.TutorialRecipePickerOpen
                 || manager.TutorialOutputSelectButton != null))
@@ -2616,6 +2728,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (tutorialTypewriterVoiceSource != null)
             tutorialTypewriterVoiceSource.Stop();
+        SetFlowLinkingVideoVisible(false);
         if (canvasRoot != null)
             canvasRoot.SetActive(false);
         else if (panel != null)
@@ -2628,16 +2741,25 @@ public class OnboardingTutorial : MonoBehaviour
         if (canvasRoot != null && panel != null && nextButton != null && cameraPromptPanel != null
             && nextButton.transform.IsChildOf(panel.transform))
         {
+            EnsureFlowLinkingVideoUi();
+            ISEGlossaryLinkHandler.Attach(titleText);
+            ISEGlossaryLinkHandler.Attach(bodyText);
             canvasRoot.SetActive(true);
             if (panel != null) panel.SetActive(true);
             return;
         }
 
         if (canvasRoot != null)
+        {
+            ReleaseFlowLinkingVideo();
             Destroy(canvasRoot);
+        }
 
         canvasRoot = new GameObject("OnboardingTutorialCanvas", typeof(RectTransform));
         canvasRoot.transform.SetParent(transform, false);
+        calloutPanelPositionVelocity = Vector2.zero;
+        calloutPanelPositionInitialized = false;
+        lastCalloutPanelMotionFrame = -1;
         var canvas = canvasRoot.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 4200;
@@ -2733,16 +2855,20 @@ public class OnboardingTutorial : MonoBehaviour
         textLayout.childForceExpandHeight = false;
         headerText.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
-        stepLabel = CreateLabel(headerText.transform, "", 12, FontStyles.Bold, GameUITheme.Accent);
+        stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
-        titleText = CreateLabel(headerText.transform, "", 20, FontStyles.Bold, Color.white);
+        titleText = CreateLabel(headerText.transform, "", 22, FontStyles.Bold, Color.white);
         titleText.alignment = TextAlignmentOptions.Left;
-        bodyText = CreateLabel(panel.transform, "", 15, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
+        ISEGlossaryLinkHandler.Attach(titleText);
+        bodyText = CreateLabel(panel.transform, "", 17, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
         bodyText.overflowMode = TextOverflowModes.Overflow;
+        ISEGlossaryLinkHandler.Attach(bodyText);
 
-        coreStationChecklistText = CreateLabel(panel.transform, "", 15, FontStyles.Bold, GameUITheme.TextPrimary);
+        EnsureFlowLinkingVideoUi();
+
+        coreStationChecklistText = CreateLabel(panel.transform, "", 17, FontStyles.Bold, GameUITheme.TextPrimary);
         coreStationChecklistText.alignment = TextAlignmentOptions.TopLeft;
         coreStationChecklistText.textWrappingMode = TextWrappingModes.Normal;
         coreStationChecklistText.gameObject.SetActive(false);
@@ -2786,6 +2912,101 @@ public class OnboardingTutorial : MonoBehaviour
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
         GameUITheme.ApplyToCanvas(canvas);
+    }
+
+    void EnsureFlowLinkingVideoUi()
+    {
+        if (flowLinkingVideoFrame != null || panel == null || canvasRoot == null)
+            return;
+
+        VideoClip clip = Resources.Load<VideoClip>(FlowLinkingVideoResourcePath);
+        if (clip == null)
+        {
+            Debug.LogWarning($"Tutorial video not found at Resources/{FlowLinkingVideoResourcePath}.");
+            return;
+        }
+
+        flowLinkingVideoFrame = new GameObject("FlowLinkingDemo", typeof(RectTransform),
+            typeof(Image), typeof(LayoutElement));
+        flowLinkingVideoFrame.transform.SetParent(panel.transform, false);
+        Image frameImage = flowLinkingVideoFrame.GetComponent<Image>();
+        frameImage.color = new Color(0.025f, 0.03f, 0.04f, 1f);
+        frameImage.raycastTarget = false;
+        var frameLayout = flowLinkingVideoFrame.GetComponent<LayoutElement>();
+        frameLayout.minHeight = 220f;
+        frameLayout.preferredHeight = 270f;
+        frameLayout.flexibleHeight = 0f;
+
+        GameObject videoImageObject = new GameObject("Video", typeof(RectTransform),
+            typeof(RawImage), typeof(AspectRatioFitter));
+        videoImageObject.transform.SetParent(flowLinkingVideoFrame.transform, false);
+        RectTransform videoImageRect = (RectTransform)videoImageObject.transform;
+        videoImageRect.anchorMin = Vector2.zero;
+        videoImageRect.anchorMax = Vector2.one;
+        videoImageRect.offsetMin = Vector2.zero;
+        videoImageRect.offsetMax = Vector2.zero;
+        flowLinkingVideoImage = videoImageObject.GetComponent<RawImage>();
+        flowLinkingVideoImage.raycastTarget = false;
+        var aspect = videoImageObject.GetComponent<AspectRatioFitter>();
+        aspect.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        aspect.aspectRatio = 16f / 9f;
+
+        flowLinkingVideoTexture = new RenderTexture(960, 540, 0, RenderTextureFormat.ARGB32)
+        {
+            name = "TutorialFlowLinkingVideoTexture"
+        };
+        flowLinkingVideoTexture.Create();
+        flowLinkingVideoImage.texture = flowLinkingVideoTexture;
+
+        GameObject playerObject = new GameObject("FlowLinkingDemoPlayer", typeof(VideoPlayer));
+        playerObject.transform.SetParent(canvasRoot.transform, false);
+        flowLinkingVideoPlayer = playerObject.GetComponent<VideoPlayer>();
+        flowLinkingVideoPlayer.playOnAwake = false;
+        flowLinkingVideoPlayer.isLooping = true;
+        flowLinkingVideoPlayer.skipOnDrop = true;
+        flowLinkingVideoPlayer.audioOutputMode = VideoAudioOutputMode.None;
+        flowLinkingVideoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        flowLinkingVideoPlayer.targetTexture = flowLinkingVideoTexture;
+        flowLinkingVideoPlayer.source = VideoSource.VideoClip;
+        flowLinkingVideoPlayer.clip = clip;
+
+        if (bodyText != null)
+            flowLinkingVideoFrame.transform.SetSiblingIndex(bodyText.transform.GetSiblingIndex() + 1);
+        flowLinkingVideoFrame.SetActive(false);
+    }
+
+    void SetFlowLinkingVideoVisible(bool visible)
+    {
+        if (flowLinkingVideoFrame != null)
+            flowLinkingVideoFrame.SetActive(visible);
+
+        if (flowLinkingVideoPlayer == null)
+            return;
+
+        if (visible)
+            flowLinkingVideoPlayer.Play();
+        else if (flowLinkingVideoPlayer.isPlaying)
+            flowLinkingVideoPlayer.Stop();
+    }
+
+    void ReleaseFlowLinkingVideo()
+    {
+        if (flowLinkingVideoPlayer != null)
+        {
+            flowLinkingVideoPlayer.Stop();
+            flowLinkingVideoPlayer.targetTexture = null;
+        }
+
+        if (flowLinkingVideoTexture != null)
+        {
+            flowLinkingVideoTexture.Release();
+            Destroy(flowLinkingVideoTexture);
+            flowLinkingVideoTexture = null;
+        }
+
+        flowLinkingVideoFrame = null;
+        flowLinkingVideoImage = null;
+        flowLinkingVideoPlayer = null;
     }
 
     static TextMeshProUGUI CreateCameraPromptRow(Transform parent, string action,
@@ -2838,7 +3059,7 @@ public class OnboardingTutorial : MonoBehaviour
         iconGroup.GetComponent<LayoutElement>().preferredWidth = iconCount * 21f
             + Mathf.Max(0, iconCount - 1) * iconLayout.spacing;
 
-        TextMeshProUGUI actionLabel = CreateLabel(row.transform, action, 13f,
+        TextMeshProUGUI actionLabel = CreateLabel(row.transform, action, 14f,
             FontStyles.Bold, new Color(0.92f, 0.94f, 0.98f));
         actionLabel.alignment = TextAlignmentOptions.Left;
         actionLabel.textWrappingMode = TextWrappingModes.NoWrap;
@@ -2846,7 +3067,7 @@ public class OnboardingTutorial : MonoBehaviour
         actionSize.minWidth = 0f;
         actionSize.flexibleWidth = 1f;
 
-        TextMeshProUGUI status = CreateLabel(row.transform, "TRY IT", 10f,
+        TextMeshProUGUI status = CreateLabel(row.transform, "TRY IT", 11f,
             FontStyles.Bold, new Color(0.72f, 0.76f, 0.82f, 1f));
         status.alignment = TextAlignmentOptions.Right;
         status.textWrappingMode = TextWrappingModes.NoWrap;
@@ -2872,29 +3093,39 @@ public class OnboardingTutorial : MonoBehaviour
         var root = new GameObject("TutorialArrow", typeof(RectTransform), typeof(CanvasGroup));
         root.transform.SetParent(parent, false);
         var rootRect = (RectTransform)root.transform;
-        rootRect.sizeDelta = new Vector2(80f, 24f);
+        rootRect.sizeDelta = new Vector2(80f, 34f);
         var group = root.GetComponent<CanvasGroup>();
         group.interactable = false;
         group.blocksRaycasts = false;
 
-        var shaft = new GameObject("Shaft", typeof(RectTransform), typeof(UnityEngine.UI.Image));
-        shaft.transform.SetParent(root.transform, false);
-        var shaftRect = (RectTransform)shaft.transform;
-        shaftRect.anchorMin = new Vector2(0f, 0.5f);
-        shaftRect.anchorMax = new Vector2(1f, 0.5f);
-        shaftRect.offsetMin = new Vector2(0f, -3f);
-        shaftRect.offsetMax = new Vector2(-12f, 3f);
-        var shaftImage = shaft.GetComponent<UnityEngine.UI.Image>();
-        shaftImage.color = GameUITheme.Accent;
-        shaftImage.raycastTarget = false;
-
-        CreateArrowHead(root.transform, "HeadUpper", 38f);
-        CreateArrowHead(root.transform, "HeadLower", -38f);
+        Color outlineColor = new Color32(25, 30, 39, 255);
+        CreateArrowShaft(root.transform, "ShaftOutline", 12f, 21f, outlineColor);
+        CreateArrowShaft(root.transform, "Shaft", 6f, 19f, GameUITheme.Accent);
+        CreateArrowHead(root.transform, "HeadUpperOutline", 42f, 29f, 12f, outlineColor);
+        CreateArrowHead(root.transform, "HeadLowerOutline", -42f, 29f, 12f, outlineColor);
+        CreateArrowHead(root.transform, "HeadUpper", 42f, 23f, 6f, GameUITheme.Accent);
+        CreateArrowHead(root.transform, "HeadLower", -42f, 23f, 6f, GameUITheme.Accent);
+        root.transform.SetAsFirstSibling();
         root.SetActive(false);
         return rootRect;
     }
 
-    static void CreateArrowHead(Transform parent, string name, float rotation)
+    static void CreateArrowShaft(Transform parent, string name, float thickness, float tipInset, Color color)
+    {
+        var shaft = new GameObject(name, typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        shaft.transform.SetParent(parent, false);
+        var shaftRect = (RectTransform)shaft.transform;
+        shaftRect.anchorMin = new Vector2(0f, 0.5f);
+        shaftRect.anchorMax = new Vector2(1f, 0.5f);
+        shaftRect.offsetMin = new Vector2(0f, -thickness * 0.5f);
+        shaftRect.offsetMax = new Vector2(-tipInset, thickness * 0.5f);
+        UnityEngine.UI.Image shaftImage = shaft.GetComponent<UnityEngine.UI.Image>();
+        shaftImage.color = color;
+        shaftImage.raycastTarget = false;
+    }
+
+    static void CreateArrowHead(Transform parent, string name, float rotation,
+        float width, float thickness, Color color)
     {
         var head = new GameObject(name, typeof(RectTransform), typeof(UnityEngine.UI.Image));
         head.transform.SetParent(parent, false);
@@ -2902,10 +3133,10 @@ public class OnboardingTutorial : MonoBehaviour
         rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
         rect.pivot = new Vector2(1f, 0.5f);
         rect.anchoredPosition = Vector2.zero;
-        rect.sizeDelta = new Vector2(20f, 6f);
+        rect.sizeDelta = new Vector2(width, thickness);
         rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
         var image = head.GetComponent<UnityEngine.UI.Image>();
-        image.color = GameUITheme.Accent;
+        image.color = color;
         image.raycastTarget = false;
     }
 
@@ -2957,7 +3188,7 @@ public class OnboardingTutorial : MonoBehaviour
         tr.offsetMax = Vector2.zero;
         var tmp = textGo.AddComponent<TextMeshProUGUI>();
         tmp.text = label;
-        tmp.fontSize = 20;
+        tmp.fontSize = 22;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;

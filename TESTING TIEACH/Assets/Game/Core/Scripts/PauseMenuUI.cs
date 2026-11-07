@@ -266,7 +266,7 @@ public class PauseMenuUI : MonoBehaviour
         ShowGuidebook(false, null);
     }
 
-    void ShowGuidebook(bool returnToGameWhenClosed, string chapter)
+    void ShowGuidebook(bool returnToGameWhenClosed, string chapter, string term = null)
     {
         guidebookReturnsToGame = returnToGameWhenClosed;
         showingGuidebook = true;
@@ -275,7 +275,8 @@ public class PauseMenuUI : MonoBehaviour
         if (optionsPage != null) optionsPage.SetActive(false);
         if (guidebook != null)
         {
-            if (string.IsNullOrWhiteSpace(chapter)) guidebook.Open();
+            if (!string.IsNullOrWhiteSpace(term)) guidebook.OpenToTerm(term);
+            else if (string.IsNullOrWhiteSpace(chapter)) guidebook.Open();
             else guidebook.OpenToChapter(chapter);
         }
     }
@@ -286,6 +287,14 @@ public class PauseMenuUI : MonoBehaviour
         if (!visible)
             Show();
         ShowGuidebook(true, chapter);
+    }
+
+    public void OpenGuidebookTermFromHud(string term)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return;
+        if (!visible)
+            Show();
+        ShowGuidebook(true, null, term);
     }
 
     void ShowOptions()

@@ -3,9 +3,10 @@ using System.Text.RegularExpressions;
 /// <summary>Formats common Industrial and Systems Engineering terms in learning text.</summary>
 public static class ISEVocabularyHighlighter
 {
-    const string HighlightColor = "#D8B365";
+    const string HighlightFillColor = "#214B56";
+    const string HighlightTextColor = "#FFF0C4";
     static readonly Regex Vocabulary = new Regex(
-        @"\b(?:ISE|industrial\s+(?:(?:&|and)\s+)?systems?\s+engineer(?:ing)?|"
+        @"\b(?:ISE|facility\s+layout\s+and\s+design|industrial\s+(?:(?:&|and)\s+)?systems?\s+engineer(?:ing)?|"
         + @"industrial\s+engineer(?:ing)?|systems?\s+engineer(?:ing)?|"
         + @"operations\s+research|systems?\s+(?:thinking|analysis|design)|human\s+factors|work\s+design|"
         + @"ergonomics|engineering|"
@@ -23,6 +24,8 @@ public static class ISEVocabularyHighlighter
     {
         if (string.IsNullOrEmpty(text)) return text;
         return Vocabulary.Replace(text, match =>
-            "<b><color=" + HighlightColor + ">" + match.Value + "</color></b>");
+            "<link=\"ise:" + match.Value + "\"><mark=" + HighlightFillColor
+            + " padding=\"20,0,20,0\"><b><color=" + HighlightTextColor + ">"
+            + match.Value + "</color></b></mark></link>");
     }
 }

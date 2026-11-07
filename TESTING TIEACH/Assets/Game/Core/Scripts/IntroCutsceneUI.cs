@@ -164,6 +164,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         var chapter = CreateText(contentRoot, "Chapter",
             ISEVocabularyHighlighter.Highlight(chapterTitle), 18f,
             TextAlignmentOptions.TopRight, FontStyles.Bold, GameUITheme.Accent);
+        ISEGlossaryLinkHandler.Attach(chapter);
         var chapterRect = chapter.rectTransform;
         chapterRect.anchorMin = new Vector2(0.68f, 0.91f);
         chapterRect.anchorMax = new Vector2(0.94f, 0.97f);
@@ -271,6 +272,7 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         dialogue.rectTransform.offsetMax = new Vector2(-260f, -38f);
         dialogue.textWrappingMode = TextWrappingModes.Normal;
         dialogue.lineSpacing = 8f;
+        ISEGlossaryLinkHandler.Attach(dialogue);
 
         progress = CreateText(panel.transform, "Progress", string.Empty, 14f,
             TextAlignmentOptions.BottomLeft, FontStyles.Bold, GameUITheme.TextSecondary);
