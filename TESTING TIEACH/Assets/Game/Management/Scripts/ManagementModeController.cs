@@ -160,7 +160,8 @@ public class ManagementModeController : MonoBehaviour
     public bool IsCapturingFlow => capturedFlow != null;
     public ProductionFlowPlan CapturedFlow => capturedFlow;
     public KitchenEmployee SelectedEmployee => selectedEmployee;
-    public GameObject TutorialSelectedStation => selectedStation != null ? selectedStation.gameObject : null;
+    public GameObject SelectedStationObject => selectedStation != null ? selectedStation.gameObject : null;
+    public GameObject TutorialSelectedStation => SelectedStationObject;
     bool IsShiftConfigurationLocked => GameTimeManager.Instance != null
         && GameTimeManager.Instance.IsShiftInProgress && !ShiftPlanningUI.IsPlanning;
     public bool TutorialRecipePickerOpen => recipePickerOpen

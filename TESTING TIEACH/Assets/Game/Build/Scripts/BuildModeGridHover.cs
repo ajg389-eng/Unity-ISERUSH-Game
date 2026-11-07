@@ -38,8 +38,19 @@ public class BuildModeGridHover : MonoBehaviour
 
         bool build = modeManager.CurrentMode == GameModeManager.Mode.Build;
 
+        // Keep the selected station's underlying grid cell visible in
+        // management/play modes, using the same blue tile as pointer hover.
+        if (!build)
+        {
+            GameObject selectedStation = ManagementModeController.Instance != null
+                ? ManagementModeController.Instance.SelectedStationObject : null;
+            if (selectedStation != null && TryShowStationSelection(selectedStation)) return;
+            if (highlightInstance) highlightInstance.SetActive(false);
+            return;
+        }
+
         // Only show highlight in Build Mode
-        if (!build || Input.GetMouseButton(1))
+        if (Input.GetMouseButton(1))
         {
             if (highlightInstance) highlightInstance.SetActive(false);
             return;
@@ -77,6 +88,19 @@ public class BuildModeGridHover : MonoBehaviour
         {
             if (highlightInstance) highlightInstance.SetActive(false);
         }
+    }
+
+    bool TryShowStationSelection(GameObject station)
+    {
+        if (highlightInstance == null || station == null
+            || !grid.WorldToCell(station.transform.position, out int x, out int y))
+            return false;
+
+        highlightInstance.transform.rotation = highlightBaseRotation;
+        highlightInstance.transform.localScale = highlightBaseScale;
+        highlightInstance.transform.position = grid.CellToWorld(x, y) + Vector3.up * 0.03f;
+        highlightInstance.SetActive(true);
+        return true;
     }
 
     bool TryShowCustomerDoorHighlight()

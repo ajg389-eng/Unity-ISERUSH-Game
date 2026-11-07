@@ -294,7 +294,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
         if (!HasConfiguration())
         {
-            details = "NOT CONFIGURED\nSelect a recipe or ingredient.";
+            details = "NOT CONFIGURED\nPlease left click on station.";
             return true;
         }
         if (TryGetLowStockItem(out ItemDefinition lowItem, out int stock))
@@ -488,10 +488,14 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         RectTransform explanationPanel = explanation.transform.parent as RectTransform;
         if (explanationPanel != null)
         {
+            bool notConfigured = currentDetails.StartsWith("NOT CONFIGURED", System.StringComparison.Ordinal);
+            explanationPanel.sizeDelta = notConfigured
+                ? new Vector2(420f, 88f)
+                : new Vector2(360f, 78f);
             float textWidth = Mathf.Max(1f, explanationPanel.rect.width - 24f);
             float textHeight = explanation.GetPreferredValues(currentDetails, textWidth, 0f).y;
             explanationPanel.sizeDelta = new Vector2(explanationPanel.sizeDelta.x,
-                Mathf.Max(78f, textHeight + 16f));
+                Mathf.Max(notConfigured ? 88f : 78f, textHeight + 16f));
         }
         explanationGroup.gameObject.SetActive(true);
         explanationGroup.alpha = 1f;

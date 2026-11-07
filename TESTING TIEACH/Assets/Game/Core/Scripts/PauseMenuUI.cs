@@ -1326,6 +1326,7 @@ public class PauseMenuUI : MonoBehaviour
 
         // Reloading the gameplay scene rebuilds its original title-screen state and
         // clears all runtime-only objects without closing the application.
+        RuntimeSceneBootstrapper.RebuildAfterNextSingleSceneLoad();
         Time.timeScale = 1f;
         Scene activeScene = SceneManager.GetActiveScene();
         if (activeScene.buildIndex >= 0)

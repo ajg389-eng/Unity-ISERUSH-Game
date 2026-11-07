@@ -191,6 +191,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     GameObject canvasRoot;
     GameObject panel;
+    TutorialPanelDragHandle panelDragHandle;
     TextMeshProUGUI titleText;
     TextMeshProUGUI bodyText;
     TextMeshProUGUI coreStationChecklistText;
@@ -592,6 +593,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     public void Restart()
     {
+        panelDragHandle?.ResetUserPosition();
         PlayerPrefs.DeleteKey(PrefsCompleteKey);
         PlayerPrefs.Save();
         pendingStart = true;
@@ -653,6 +655,26 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (!StepRequirementMet())
         {
+            if (stepIndex >= 0 && stepIndex < Steps.Length
+                && Steps[stepIndex].requireRecipeScreen)
+            {
+                Sfx.Play(SfxId.UiClick);
+                IngredientsOrderUI recipes = FindFirstObjectByType<IngredientsOrderUI>(
+                    FindObjectsInactive.Include);
+                if (recipes != null)
+                    recipes.OpenRecipesFromHud();
+                return;
+            }
+            if (stepIndex >= 0 && stepIndex < Steps.Length
+                && Steps[stepIndex].requireAnalyticsScreen)
+            {
+                Sfx.Play(SfxId.UiClick);
+                Transform canvas = FindHudCanvas();
+                if (canvas != null)
+                    AnalyticsPopupUI.Open(canvas);
+                return;
+            }
+
             Sfx.Play(SfxId.UiError);
             RefreshAdvanceGate();
             return;
@@ -1042,14 +1064,17 @@ public class OnboardingTutorial : MonoBehaviour
         panelPosition.y = Mathf.Clamp(panelPosition.y,
             -rootHeight * 0.5f + panelHeight * 0.5f + 18f,
             rootHeight * 0.5f - panelHeight * 0.5f - 18f);
-        panelRect.anchoredPosition = panelPosition;
+        if (panelDragHandle != null)
+            panelDragHandle.SetAutomaticPosition(panelPosition);
+        else
+            panelRect.anchoredPosition = panelPosition;
         // A highlighted UI control already has a gold outline. A long arrow to
         // it can cross labels or instructions in the same panel, so reserve the
         // arrow for world targets where it helps locate an object.
         bool arrowTargetIsUI = calloutTarget != null
             && calloutTarget.GetComponentInParent<Canvas>() != null
             && !(running && Steps[stepIndex].requireWorkerDragToFlow);
-        PositionCalloutArrow(panelPosition, new Vector2(panelWidth, panelHeight),
+        PositionCalloutArrow(panelRect.anchoredPosition, new Vector2(panelWidth, panelHeight),
             targetPosition, hasTarget && !arrowTargetIsUI);
     }
 
@@ -1117,10 +1142,17 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (nextButton == null) return;
         bool ready = StepRequirementMet();
-        nextButton.interactable = ready;
+        bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireRecipeScreen;
+        bool canOpenAnalytics = !ready && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireAnalyticsScreen;
+        bool canOpenRequiredScreen = canOpenRecipes || canOpenAnalytics;
+        nextButton.interactable = ready || canOpenRequiredScreen;
         var img = nextButton.GetComponent<Image>();
         if (img != null)
-            img.color = ready ? new Color(0.22f, 0.55f, 0.38f, 1f) : new Color(0.22f, 0.24f, 0.28f, 1f);
+            img.color = ready || canOpenRequiredScreen
+                ? new Color(0.22f, 0.55f, 0.38f, 1f)
+                : new Color(0.22f, 0.24f, 0.28f, 1f);
 
         if (nextLabel != null && stepIndex >= 0 && stepIndex < Steps.Length)
         {
@@ -1795,7 +1827,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (graphic == null) return;
         if (!tutorialBorders.TryGetValue(graphic, out var border) || border == null)
         {
-            border = new GameObject("Tutorial Steady Border", typeof(RectTransform), typeof(LayoutElement));
+            border = new GameObject("Tutorial Steady Border", typeof(RectTransform),
+                typeof(LayoutElement), typeof(CanvasGroup));
             border.transform.SetParent(control.transform, false);
             border.GetComponent<LayoutElement>().ignoreLayout = true;
             var rect = (RectTransform)border.transform;
@@ -1821,6 +1854,22 @@ public class OnboardingTutorial : MonoBehaviour
         }
         border.SetActive(true);
         border.transform.SetAsLastSibling();
+    }
+
+    void UpdateControlHighlightPulse()
+    {
+        bool pulse = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireIngredients;
+        float alpha = pulse
+            ? Mathf.Lerp(0.08f, 1f, (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f)
+            : 1f;
+
+        foreach (GameObject border in tutorialBorders.Values)
+        {
+            if (border == null) continue;
+            CanvasGroup group = border.GetComponent<CanvasGroup>();
+            if (group != null) group.alpha = alpha;
+        }
     }
 
     void HighlightHudButton(string buttonName)
@@ -2003,6 +2052,7 @@ public class OnboardingTutorial : MonoBehaviour
         RefreshCameraPromptStatus();
         RefreshAdvanceGate();
         RefreshControlHighlights();
+        UpdateControlHighlightPulse();
         if (Steps[stepIndex].requireStationChecklist)
             RefreshStationChecklist();
         UpdateContextualCallout();
@@ -2732,6 +2782,34 @@ public class OnboardingTutorial : MonoBehaviour
         textLayout.childForceExpandWidth = true;
         textLayout.childForceExpandHeight = false;
         headerText.GetComponent<LayoutElement>().flexibleWidth = 1f;
+
+        var dragHandle = new GameObject("DragHandle", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement), typeof(TutorialPanelDragHandle));
+        dragHandle.transform.SetParent(header.transform, false);
+        panelDragHandle = dragHandle.GetComponent<TutorialPanelDragHandle>();
+        panelDragHandle.Initialize((RectTransform)panel.transform, (RectTransform)canvasRoot.transform);
+        var dragHandleImage = dragHandle.GetComponent<Image>();
+        dragHandleImage.color = new Color(0.2f, 0.23f, 0.29f, 1f);
+        dragHandleImage.raycastTarget = true;
+        var dragHandleLayout = dragHandle.GetComponent<LayoutElement>();
+        dragHandleLayout.minWidth = dragHandleLayout.preferredWidth = 52f;
+        dragHandleLayout.minHeight = dragHandleLayout.preferredHeight = 52f;
+        for (int row = 0; row < 3; row++)
+        {
+            for (int column = 0; column < 2; column++)
+            {
+                var gripDot = new GameObject("GripDot", typeof(RectTransform), typeof(Image));
+                gripDot.transform.SetParent(dragHandle.transform, false);
+                var dotRect = (RectTransform)gripDot.transform;
+                dotRect.anchorMin = dotRect.anchorMax = new Vector2(0.5f, 0.5f);
+                dotRect.pivot = new Vector2(0.5f, 0.5f);
+                dotRect.sizeDelta = new Vector2(5f, 5f);
+                dotRect.anchoredPosition = new Vector2((column - 0.5f) * 11f, (1 - row) * 11f);
+                var dotImage = gripDot.GetComponent<Image>();
+                dotImage.color = new Color(0.78f, 0.82f, 0.9f, 0.9f);
+                dotImage.raycastTarget = false;
+            }
+        }
 
         stepLabel = CreateLabel(headerText.transform, "", 12, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
