@@ -26,6 +26,8 @@ MonoBehaviour:
   - Systems engineering means balancing the whole line, people and equipment together.
     Keep the work moving at the rate customers need.
   isTutorial: 0
+  minimumSystemEfficiencyPercent: 30
+  minimumCustomersServedPercent: 55
   missions:
   - {fileID: 11400000, guid: d1be50ffdb1743fd9372bd1d477f336f, type: 2}
   - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}

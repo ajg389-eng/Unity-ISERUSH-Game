@@ -10,14 +10,8 @@ public class TopHudUtilityControls : MonoBehaviour
     public const string NotificationSectionName = "NotificationSection";
     public const string GusHelpSectionName = "GusHelpSection";
     public const string GuidebookSectionName = "GuidebookSection";
-    public const string InvestorLetterId = "investor-welcome-letter";
     const string PanelName = "NotificationHistoryPanel";
     const string MusicPanelName = "MusicTrackPicker";
-    static readonly string InvestorLetterMessage =
-        "Dear Player,\n" +
-        "We understand that Gus is difficult. His methods have kept the place open for 25 years, but our internal metrics suggest closure is certain in the next year unless you can implement effective changes. Keep in mind workflows and station arrangements to reduce bottlenecks, and be sure to make data-driven decisions. We will be reviewing your quarterly results closely.\n" +
-        "Kindest Regards,\n" +
-        "QuickBurger Investment Group";
 
     static readonly Color Panel = new Color(0.075f, 0.08f, 0.12f, 0.98f);
     static readonly Color Control = new Color(0.18f, 0.20f, 0.28f, 1f);
@@ -30,7 +24,6 @@ public class TopHudUtilityControls : MonoBehaviour
     Button notificationButton;
     GameObject historyPanel;
     RectTransform historyContent;
-    GameTimeManager boundTime;
     GameObject musicPanel;
     RectTransform musicList;
     readonly HashSet<GameNotification> expandedNotifications = new HashSet<GameNotification>();
@@ -41,7 +34,6 @@ public class TopHudUtilityControls : MonoBehaviour
     {
         NotificationCenter.Changed += RefreshNotifications;
         BindMusic();
-        BindTime();
         RefreshMusic();
         RefreshNotifications();
     }
@@ -51,18 +43,11 @@ public class TopHudUtilityControls : MonoBehaviour
         NotificationCenter.Changed -= RefreshNotifications;
         if (music != null) music.OnPlaybackChanged -= RefreshMusic;
         music = null;
-        if (boundTime != null)
-        {
-            boundTime.OnDayStarted -= OnDayStarted;
-            boundTime.OnDayEnded -= OnDayEnded;
-        }
-        boundTime = null;
     }
 
     void Update()
     {
         if (music == null) BindMusic();
-        if (boundTime == null) BindTime();
         RefreshMusic();
         FlashUnreadNotice();
     }
@@ -107,47 +92,6 @@ public class TopHudUtilityControls : MonoBehaviour
         if (music != null) music.OnPlaybackChanged -= RefreshMusic;
         music = found;
         if (music != null) music.OnPlaybackChanged += RefreshMusic;
-    }
-
-    void BindTime()
-    {
-        var found = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
-        if (found == boundTime) return;
-        if (boundTime != null)
-        {
-            boundTime.OnDayStarted -= OnDayStarted;
-            boundTime.OnDayEnded -= OnDayEnded;
-        }
-        boundTime = found;
-        if (boundTime != null)
-        {
-            boundTime.OnDayStarted += OnDayStarted;
-            boundTime.OnDayEnded += OnDayEnded;
-            NotificationCenter.Post("Day " + boundTime.CurrentDay + " shift active.",
-                GameNotificationKind.Message, "day-active-" + boundTime.CurrentDay);
-            EnsureInvestorLetter();
-        }
-    }
-
-    void EnsureInvestorLetter()
-    {
-        bool alreadySent = GameSaveSlots.ActiveSlotInvestorLetterSent();
-        NotificationCenter.Post(InvestorLetterMessage, GameNotificationKind.Message,
-            InvestorLetterId, 0f, alreadySent, true);
-        if (!alreadySent)
-            GameSaveSlots.MarkActiveSlotInvestorLetterSent();
-    }
-
-    void OnDayStarted()
-    {
-        NotificationCenter.Post("Day " + boundTime.CurrentDay + " shift started.", GameNotificationKind.Message,
-            "day-start-" + boundTime.CurrentDay);
-    }
-
-    void OnDayEnded()
-    {
-        NotificationCenter.Post("Day " + boundTime.CurrentDay + " shift complete. Review the daily summary.",
-            GameNotificationKind.Message, "day-end-" + boundTime.CurrentDay);
     }
 
     void EnsureMusicSection()
@@ -362,12 +306,12 @@ public class TopHudUtilityControls : MonoBehaviour
 
     void BuildHistoryPanel(Transform root)
     {
-        var title = CreateLabel(root, "Title", "Notifications", 20);
+        var title = CreateLabel(root, "Title", "Operations Alerts", 20);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(16f, -48f), new Vector2(-90f, -8f));
         title.fontStyle = FontStyles.Bold;
         title.alignment = TextAlignmentOptions.MidlineLeft;
 
-        var hint = CreateLabel(root, "Hint", "Click a notice to expand · scroll for older", 10);
+        var hint = CreateLabel(root, "Hint", "Stock, queues, lost orders, and waste", 10);
         hint.color = new Color(0.68f, 0.72f, 0.8f, 1f);
         hint.alignment = TextAlignmentOptions.MidlineLeft;
         SetRect(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f),
@@ -592,7 +536,7 @@ public class TopHudUtilityControls : MonoBehaviour
 
         if (NotificationCenter.Entries.Count == 0)
         {
-            var empty = CreateLabel(historyContent, "Empty", "No notifications yet.", 14);
+            var empty = CreateLabel(historyContent, "Empty", "No operational alerts yet.", 14);
             empty.color = new Color(0.65f, 0.68f, 0.75f, 1f);
             empty.alignment = TextAlignmentOptions.Center;
             empty.gameObject.AddComponent<LayoutElement>().preferredHeight = 50f;

@@ -74,6 +74,7 @@ public class BuildPlacer : MonoBehaviour
     }
 
     public bool IsPlacing => placingItem != null;
+    public ItemDefinition CurrentPlacementItem => placingItem;
     public bool IsDragging => draggingObject != null || groupMoveMembers.Count > 0;
     public int SelectedStationCount
     {
@@ -986,6 +987,10 @@ public class BuildPlacer : MonoBehaviour
     GameObject GetStationUnderPointer()
     {
         if (Camera.main == null) return null;
+        // Build mode can move objects while the simulation is paused, so Unity may
+        // still have their colliders at the previous pose until another physics
+        // step runs. Refresh before querying them so selection follows the prefab.
+        Physics.SyncTransforms();
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         // Selection also needs the counter's trigger collider so a pickup station
         // can be targeted through the counter tile directly above its floor slot.
@@ -1395,6 +1400,7 @@ public class BuildPlacer : MonoBehaviour
             grid.ReserveInteractionHighlightForPlacement(
                 member.root.GetComponent<StationInteractionTiles>());
         }
+        Physics.SyncTransforms();
         groupMoveMembers.Clear();
         SetHint(IsPlacing);
         actionBar?.Refresh();
@@ -1433,6 +1439,7 @@ public class BuildPlacer : MonoBehaviour
             grid.ReserveInteractionHighlightForPlacement(
                 member.root.GetComponent<StationInteractionTiles>());
         }
+        Physics.SyncTransforms();
         groupMoveMembers.Clear();
         SetHint(IsPlacing);
         actionBar?.Refresh();
@@ -1700,6 +1707,10 @@ public class BuildPlacer : MonoBehaviour
         if (grid != null && movedObject != null)
             grid.ReserveInteractionHighlightForPlacement(
                 movedObject.GetComponent<StationInteractionTiles>());
+
+        // Flush moved station colliders immediately. Shifts can be paused in
+        // Plan/Build mode, where waiting for the next physics tick is unreliable.
+        Physics.SyncTransforms();
 
         if (draggingWallDoor != null)
             draggingWallDoor.GetComponent<CameraOcclusionWall>()?.SetPlacementLock(false);
@@ -2771,6 +2782,9 @@ public sealed class BuildStationActionBar : MonoBehaviour
                 && RectTransformUtility.RectangleContainsScreenPoint(rect, Input.mousePosition, null);
         }
     }
+
+    public RectTransform PlacementInstructionTarget => placementInstructionActive && instructionPanel != null
+        ? instructionPanel.transform as RectTransform : null;
 
     public static BuildStationActionBar EnsureFor(BuildPlacer owner)
     {

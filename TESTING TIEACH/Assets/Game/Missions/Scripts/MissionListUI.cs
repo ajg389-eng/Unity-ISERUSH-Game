@@ -85,6 +85,7 @@ public class MissionListUI : MonoBehaviour
     float lastDailyWait;
     float lastCanvasHeight;
     float nextMissingSourceSearchTime;
+    float nextMilestoneObjectiveRefreshTime;
     bool topTabVisualInitialized;
     bool lastTopTabOpen;
 
@@ -136,6 +137,14 @@ public class MissionListUI : MonoBehaviour
     {
         if (ResolveDataSources())
             RefreshAll();
+
+        if (IsOpen && GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress
+            && Time.unscaledTime >= nextMilestoneObjectiveRefreshTime)
+        {
+            nextMilestoneObjectiveRefreshTime = Time.unscaledTime + 2f;
+            tasksDirty = true;
+        }
 
         RefreshTopTabs();
 
@@ -346,6 +355,7 @@ public class MissionListUI : MonoBehaviour
 
     void OnStatisticsChanged()
     {
+        tasksDirty = true;
         int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
         int revenue = statistics != null ? statistics.RevenueToday : 0;
         float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
@@ -415,6 +425,7 @@ public class MissionListUI : MonoBehaviour
 
         if (missions.Count == 0)
         {
+            CreateCurrentMilestoneShiftRequirements();
             string empty = milestones != null && milestones.CompletedMilestoneCount > 0
                 && milestones.GetActiveMilestone() == null
                 ? "All milestones complete."
@@ -438,7 +449,51 @@ public class MissionListUI : MonoBehaviour
             CreateTaskRow(title, mission.description, color, isCurrent, done, true,
                 milestoneTasksListContent, milestoneTaskRowPool);
         }
+        CreateCurrentMilestoneShiftRequirements();
         UpdatePanelHeight();
+    }
+
+    void CreateCurrentMilestoneShiftRequirements()
+    {
+        MilestoneDefinition milestone = milestones != null ? milestones.GetActiveMilestone() : null;
+        if (milestone == null || milestone.isTutorial) return;
+
+        GameTimeManager time = GameTimeManager.Instance;
+        bool shiftStarted = time != null && time.IsShiftInProgress;
+        bool shiftEnded = time != null && time.IsShiftOver;
+        CreateTaskRow("Single-shift targets",
+            "Meet every item and operating target in the same shift. Progress resets when the next shift starts.",
+            generalTaskColor, false, false, false,
+            milestoneTasksListContent, milestoneTaskRowPool);
+
+        int requiredEfficiency = Mathf.Clamp(milestone.minimumSystemEfficiencyPercent, 0, 100);
+        bool hasEfficiencyData = ShiftPlanningUI.HasShiftSystemEfficiencySample;
+        int efficiency = hasEfficiencyData
+            ? Mathf.FloorToInt(ShiftPlanningUI.GetShiftSystemEfficiencyPercent()) : 0;
+        string efficiencyStatus = shiftEnded
+            ? "Last shift average: " + efficiency + "%"
+            : shiftStarted
+                ? "This shift so far: " + efficiency + "%"
+                : "Measured during service; starts when the shift opens.";
+        CreateTaskRow("Maintain " + requiredEfficiency + "% system efficiency",
+            efficiencyStatus + ". Required at shift end.", workflowTaskColor, false,
+            shiftEnded && hasEfficiencyData && efficiency >= requiredEfficiency,
+            true, milestoneTasksListContent, milestoneTaskRowPool);
+
+        int requiredService = Mathf.Clamp(milestone.minimumCustomersServedPercent, 0, 100);
+        float servedPercent = statistics != null ? statistics.CustomersServedPercent : 0f;
+        int served = Mathf.FloorToInt(servedPercent);
+        int visits = statistics != null ? statistics.CustomersVisitedToday : 0;
+        int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
+        string serviceStatus = shiftEnded
+            ? "Last shift: " + served + "% served (" + orders + "/" + visits + ")"
+            : shiftStarted
+                ? "This shift so far: " + served + "% served (" + orders + "/" + visits + ")"
+                : "Measured during service; starts when the shift opens.";
+        CreateTaskRow("Serve at least " + requiredService + "% of customers",
+            serviceStatus + ". Required at shift end.", serviceTaskColor, false,
+            shiftEnded && visits > 0 && served >= requiredService,
+            true, milestoneTasksListContent, milestoneTaskRowPool);
     }
 
     void CreateDailyGoalRows()
@@ -612,7 +667,8 @@ public class MissionListUI : MonoBehaviour
         if (identity.Contains("flow") || identity.Contains("output_link")) return TaskType.Workflow;
         if (identity.Contains("revenue") || identity.Contains("earn") || identity.Contains("money")) return TaskType.Finance;
         if (identity.Contains("reposition") || identity.Contains("station") || identity.Contains("layout")) return TaskType.Layout;
-        if (identity.Contains("serve") || identity.Contains("customer") || identity.Contains("queue") || identity.Contains("wait"))
+        if (identity.Contains("serve") || identity.Contains("deliver") || identity.Contains("pickup")
+            || identity.Contains("customer") || identity.Contains("queue") || identity.Contains("wait"))
             return TaskType.Service;
         return TaskType.General;
     }

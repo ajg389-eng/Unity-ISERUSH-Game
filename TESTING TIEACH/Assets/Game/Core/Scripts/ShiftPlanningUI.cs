@@ -40,6 +40,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         public float working;
         public float starved;
         public float blocked;
+        public float idle;
     }
 
     struct StationSnapshot
@@ -47,6 +48,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         public float working;
         public float starved;
         public float blocked;
+        public float idle;
     }
 
     sealed class StationIssue
@@ -75,6 +77,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         && (Instance.timeManager == null || !Instance.timeManager.IsShiftOver);
     static SavedState pendingRestoreState;
     static bool hasPendingRestoreState;
+    static bool pendingRestoreHasIdleBaseline = true;
 
     readonly Dictionary<string, StationSnapshot> stationBaseline =
         new Dictionary<string, StationSnapshot>(System.StringComparer.Ordinal);
@@ -147,7 +150,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
         Instance = this;
         if (hasPendingRestoreState)
-            ApplySaveState(pendingRestoreState);
+            ApplySaveState(pendingRestoreState, pendingRestoreHasIdleBaseline);
     }
 
     void Start()
@@ -1324,6 +1327,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         ProductionManager.Instance?.BeginShiftThroughputTracking();
         StoreStatisticsManager.Instance?.BeginShiftThroughputTracking();
         CaptureStationBaseline();
+        MilestoneProgressManager.Instance?.BeginActiveShiftObjectives();
         planHiddenForStationPopup = false;
         if (panelRoot != null) panelRoot.SetActive(false);
         ShowLivePanel();
@@ -1488,7 +1492,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             {
                 working = metrics.WorkingSeconds,
                 starved = metrics.StarvedSeconds,
-                blocked = metrics.BlockedSeconds
+                blocked = metrics.BlockedSeconds,
+                idle = metrics.IdleSeconds
             };
         }
         hasSavedStationBaseline = stationBaseline.Count > 0;
@@ -1497,6 +1502,88 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     public static string GetShiftProductionDiagnosis()
     {
         return Instance != null ? Instance.BuildShiftProductionDiagnosis() : string.Empty;
+    }
+
+    /// <summary>Shift-average productive uptime across process stations, excluding storage and service stations.</summary>
+    public static float GetShiftSystemEfficiencyPercent()
+    {
+        return Instance != null ? Instance.CalculateShiftSystemEfficiencyPercent() : 0f;
+    }
+
+    public static bool HasShiftSystemEfficiencySample => Instance != null
+        && Instance.HasShiftSystemEfficiencyBaseline();
+
+    float CalculateShiftSystemEfficiencyPercent()
+    {
+        if (!hasSavedStationBaseline) return 0f;
+        float working = 0f;
+        float blocked = 0f;
+        float starved = 0f;
+        float idle = 0f;
+        HashSet<string> countedStationIds = new HashSet<string>(System.StringComparer.Ordinal);
+        ProductionManager production = ProductionManager.Instance;
+        List<ProductionFlowPlan> flows = production != null ? production.productionFlows : null;
+        if (flows == null) return 0f;
+
+        foreach (ProductionFlowPlan flow in flows)
+        {
+            if (flow?.stations == null) continue;
+            foreach (GameObject station in flow.stations)
+            {
+                if (station == null) continue;
+                StationNode node = station.GetComponent<StationNode>();
+                if (node == null || IsExcludedFromSystemEfficiency(node)) continue;
+
+                string stationGuid = node.StableStationId;
+                if (string.IsNullOrEmpty(stationGuid) || !countedStationIds.Add(stationGuid)) continue;
+                StationRuntimeMetrics metrics = node.GetComponent<StationRuntimeMetrics>();
+                if (metrics == null) continue;
+
+                stationBaseline.TryGetValue(stationGuid, out StationSnapshot start);
+                working += Mathf.Max(0f, metrics.WorkingSeconds - start.working);
+                blocked += Mathf.Max(0f, metrics.BlockedSeconds - start.blocked);
+                starved += Mathf.Max(0f, metrics.StarvedSeconds - start.starved);
+                idle += Mathf.Max(0f, metrics.IdleSeconds - start.idle);
+            }
+        }
+
+        float observed = working + blocked + starved + idle;
+        return observed > 0.01f ? working * 100f / observed : 0f;
+    }
+
+    bool HasShiftSystemEfficiencyBaseline()
+    {
+        if (!hasSavedStationBaseline) return false;
+        ProductionManager production = ProductionManager.Instance;
+        List<ProductionFlowPlan> flows = production != null ? production.productionFlows : null;
+        if (flows == null) return false;
+
+        HashSet<string> countedStationIds = new HashSet<string>(System.StringComparer.Ordinal);
+        foreach (ProductionFlowPlan flow in flows)
+        {
+            if (flow?.stations == null) continue;
+            foreach (GameObject station in flow.stations)
+            {
+                if (station == null) continue;
+                StationNode node = station.GetComponent<StationNode>();
+                if (node == null || IsExcludedFromSystemEfficiency(node)) continue;
+                string stationGuid = node.StableStationId;
+                if (!string.IsNullOrEmpty(stationGuid)
+                    && stationBaseline.ContainsKey(stationGuid)
+                    && countedStationIds.Add(stationGuid))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    static bool IsExcludedFromSystemEfficiency(StationNode node)
+    {
+        GameObject station = node.gameObject;
+        return station.GetComponent<FreezerStation>() != null
+            || station.GetComponent<PantryStation>() != null
+            || station.GetComponent<Register>() != null
+            || station.GetComponent<HeatLampStation>() != null;
     }
 
     public static string GetShiftComparisonSummary()
@@ -1509,12 +1596,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         return Instance != null ? Instance.MakeSavedState() : new SavedState();
     }
 
-    public static void RestoreSaveState(SavedState state)
+    public static void RestoreSaveState(SavedState state, bool hasIdleStationBaselines = true)
     {
         pendingRestoreState = CloneSavedState(state);
+        pendingRestoreHasIdleBaseline = hasIdleStationBaselines;
         hasPendingRestoreState = true;
         if (Instance != null)
-            Instance.ApplySaveState(pendingRestoreState);
+            Instance.ApplySaveState(pendingRestoreState, pendingRestoreHasIdleBaseline);
     }
 
     SavedState MakeSavedState()
@@ -1531,12 +1619,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 stationGuid = entry.Key,
                 working = entry.Value.working,
                 starved = entry.Value.starved,
-                blocked = entry.Value.blocked
+                blocked = entry.Value.blocked,
+                idle = entry.Value.idle
             });
         return state;
     }
 
-    void ApplySaveState(SavedState state)
+    void ApplySaveState(SavedState state, bool hasIdleStationBaselines)
     {
         selectedGoalItemName = state != null ? state.selectedGoalItemName : string.Empty;
         latestShift = state != null ? CloneResult(state.latestShift) : null;
@@ -1551,13 +1640,29 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 {
                     working = Mathf.Max(0f, saved.working),
                     starved = Mathf.Max(0f, saved.starved),
-                    blocked = Mathf.Max(0f, saved.blocked)
+                    blocked = Mathf.Max(0f, saved.blocked),
+                    idle = hasIdleStationBaselines
+                        ? Mathf.Max(0f, saved.idle)
+                        : FindCurrentStationIdleBaseline(saved.stationGuid)
                 };
             }
         }
         hasSavedStationBaseline = stationBaseline.Count > 0;
         selectedGoalItem = null;
         hasPendingRestoreState = false;
+    }
+
+    static float FindCurrentStationIdleBaseline(string stationGuid)
+    {
+        StationNode[] nodes = FindObjectsByType<StationNode>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (StationNode node in nodes)
+        {
+            if (node == null || node.StableStationId != stationGuid) continue;
+            StationRuntimeMetrics metrics = node.GetComponent<StationRuntimeMetrics>();
+            return metrics != null ? metrics.IdleSeconds : 0f;
+        }
+        return 0f;
     }
 
     static SavedState CloneSavedState(SavedState state)
@@ -1580,7 +1685,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                         stationGuid = baseline.stationGuid,
                         working = baseline.working,
                         starved = baseline.starved,
-                        blocked = baseline.blocked
+                        blocked = baseline.blocked,
+                        idle = baseline.idle
                     });
         return clone;
     }

@@ -577,6 +577,7 @@ public partial class ProductionManager : MonoBehaviour
     public void RecordPickupDelivery(CustomerOrder order)
     {
         RecordHistory(pickupDeliveryHistory, order);
+        MissionProgressManager.Instance?.RecordPickupDelivery(order);
     }
 
     /// <summary>Delivered item rate over the current observed shift window.</summary>
@@ -880,6 +881,7 @@ public partial class ProductionManager : MonoBehaviour
             productionFlows.Add(new ProductionFlowPlan
             {
                 flowName = "Flow 1",
+                autoName = true,
                 kind = KitchenFlowKind.Custom,
                 stepIds = new List<string>(),
                 stations = new List<GameObject>()
@@ -902,6 +904,7 @@ public partial class ProductionManager : MonoBehaviour
         var flow = new ProductionFlowPlan
         {
             flowName = "Flow " + number,
+            autoName = true,
             kind = KitchenFlowKind.Custom,
             stepIds = new List<string>(),
             stations = new List<GameObject>()
@@ -912,6 +915,55 @@ public partial class ProductionManager : MonoBehaviour
         SyncLegacyFlowSelection();
         NotifyProductionStateChanged(0f);
         return flow;
+    }
+
+    public void RefreshAutomaticProductionFlowNames()
+    {
+        if (productionFlows == null || productionFlows.Count == 0) return;
+
+        var itemCounts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
+        for (int flowIndex = 0; flowIndex < productionFlows.Count; flowIndex++)
+        {
+            ProductionFlowPlan flow = productionFlows[flowIndex];
+            if (flow == null) continue;
+            List<ItemDefinition> products = WorkerFlowAssigner.GetTerminalMenuProducts(flow);
+            if (products.Count == 0)
+            {
+                if (!flow.autoName) continue;
+                string fallbackName = "Flow " + (flowIndex + 1);
+                if (flow.flowName != fallbackName)
+                    flow.SetAutomaticName(fallbackName);
+                if (flow.workers != null)
+                    foreach (KitchenEmployee worker in flow.workers)
+                        if (worker != null)
+                            worker.assignedFlowName = flow.flowName;
+                continue;
+            }
+
+            var labels = new List<string>(products.Count);
+            foreach (ItemDefinition product in products)
+            {
+                if (product == null) continue;
+                string itemName = KitchenInventory.Instance != null
+                    ? KitchenInventory.Instance.GetDisplayName(product)
+                    : (!string.IsNullOrWhiteSpace(product.itemName) ? product.itemName : product.name);
+                if (string.IsNullOrWhiteSpace(itemName)) continue;
+                itemName = itemName.Trim();
+                itemCounts.TryGetValue(itemName, out int itemNumber);
+                itemNumber++;
+                itemCounts[itemName] = itemNumber;
+                labels.Add(itemName + " #" + itemNumber);
+            }
+
+            if (!flow.autoName || labels.Count == 0) continue;
+            string generatedName = string.Join(" + ", labels);
+            if (flow.flowName != generatedName)
+                flow.SetAutomaticName(generatedName);
+            if (flow.workers == null) continue;
+            foreach (KitchenEmployee worker in flow.workers)
+                if (worker != null)
+                    worker.assignedFlowName = flow.flowName;
+        }
     }
 
     public void SelectProductionFlow(int index)
@@ -994,6 +1046,7 @@ public partial class ProductionManager : MonoBehaviour
         lastFlowBalance = null;
         // Keep an empty flow available when the player deletes their last route.
         EnsureProductionFlows();
+        RefreshAutomaticProductionFlowNames();
         NotifyProductionStateChanged(0f);
     }
 

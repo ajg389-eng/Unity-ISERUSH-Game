@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_02_balance_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_serve_cheeseburgers
-  title: Serve 50 Cheeseburgers
-  description: Serve 50 Cheeseburgers to customers.
-  completionEventId: menu_item_served_cheeseburger
-  requiredCount: 50
+  title: Deliver 30 Cheeseburgers
+  description: Deliver at least 30 Cheeseburgers to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 30
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

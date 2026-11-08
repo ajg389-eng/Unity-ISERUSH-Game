@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_03_produce_classic_burger
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_03_serve_classic_burgers
-  title: Serve 50 Classic Burgers
-  description: Serve 50 Classic Burgers to customers.
-  completionEventId: menu_item_served_classic_burger
-  requiredCount: 50
+  title: Deliver 35 Classic Burgers
+  description: Deliver at least 35 Classic Burgers to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 35
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: c1110000000000000000000000000003, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

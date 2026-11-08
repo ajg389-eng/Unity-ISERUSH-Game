@@ -23,6 +23,12 @@ public class MilestoneDefinition : ScriptableObject
     [Tooltip("True for the onboarding tutorial section (index 0).")]
     public bool isTutorial;
 
+    [Header("Single-shift operating targets")]
+    [Range(0, 100), Tooltip("Minimum shift-average productive station time. Storage, register, and pickup stations are excluded.")]
+    public int minimumSystemEfficiencyPercent;
+    [Range(0, 100), Tooltip("Minimum customers served as a share of all visitors during the shift.")]
+    public int minimumCustomersServedPercent;
+
     [Tooltip("Missions that must all be completed before this milestone advances.")]
     public List<MissionDefinition> missions = new List<MissionDefinition>();
 

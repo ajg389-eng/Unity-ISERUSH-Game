@@ -35,6 +35,7 @@ public class WorkersUI : MonoBehaviour
     Transform workerRow;
     TMP_InputField flowNameInput;
     bool flowNameEditStarted;
+    string flowNameAtEditStart;
     Button createFlowButton;
     TextMeshProUGUI flowStatus;
     TextMeshProUGUI workerAssignmentSummary;
@@ -1228,6 +1229,8 @@ public class WorkersUI : MonoBehaviour
     void OnFlowNameSelected(string value)
     {
         flowNameEditStarted = true;
+        flowNameAtEditStart = production != null && production.SelectedFlow != null
+            ? production.SelectedFlow.flowName : value;
     }
 
     void OnFlowNameEdited(string value)
@@ -1235,7 +1238,10 @@ public class WorkersUI : MonoBehaviour
         if (!flowNameEditStarted) return;
         flowNameEditStarted = false;
         if (production == null) return;
-        production.SelectedFlow.SetName(value);
+        ProductionFlowPlan selectedFlow = production.SelectedFlow;
+        if (selectedFlow == null) return;
+        if (!string.Equals(value, flowNameAtEditStart, System.StringComparison.Ordinal))
+            selectedFlow.SetName(value);
         string clean = production.SelectedFlow.flowName;
         if (production.SelectedFlow.workers != null)
         {
@@ -1404,7 +1410,7 @@ public class WorkersUI : MonoBehaviour
             if (rebuild)
             {
                 string label = string.IsNullOrEmpty(flow.flowName) ? ("Flow " + (i + 1)) : flow.flowName;
-                chip = MakeChip(flowTabsContent, label, Mathf.Clamp(18f + label.Length * 7f, 82f, 150f));
+                chip = MakeChip(flowTabsContent, label, Mathf.Clamp(18f + label.Length * 7f, 82f, 260f));
                 chip.gameObject.name = "FlowTab_" + (i + 1);
                 displayedTabButtons[i] = chip;
                 chip.onClick.AddListener(() =>
@@ -1582,6 +1588,7 @@ public class WorkersUI : MonoBehaviour
             if (production == null) return;
 
             production.EnsureProductionFlows();
+            production.RefreshAutomaticProductionFlowNames();
             RefreshSystemEfficiency();
             ProductionFlowPlan flow = production.productionFlows[production.selectedFlowIndex];
             bool canEditFlow = ManagementModeController.Instance == null

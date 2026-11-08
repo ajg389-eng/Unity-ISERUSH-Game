@@ -33,6 +33,8 @@ public class InventoryItemCardUI : MonoBehaviour
     ItemDefinition boundItem;
     InventoryManager boundInventory;
 
+    public ItemDefinition BoundItem => boundItem;
+
     public void SetInventory(InventoryManager source) => boundInventory = source;
 
     InventoryManager GetInventory()

@@ -99,7 +99,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     float cautionMessageShownAt = float.NegativeInfinity;
     float nextCautionRefresh;
     Camera mainCamera;
-    bool productionShortfallWasActive;
     Transform foodDisplayRoot;
     readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
     readonly List<Transform> foodDisplaySlots = new List<Transform>();
@@ -867,13 +866,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void RefreshCautionIndicator()
     {
-        bool show = TryGetProductionShortfallDetails(out string details);
-        if (show && !productionShortfallWasActive)
-        {
-            NotificationCenter.Post(details.Replace("\n", ". "), GameNotificationKind.Warning,
-                "pickup-shortfall-" + GetInstanceID(), 30f);
-        }
-        productionShortfallWasActive = show;
+        bool show = TryGetProductionShortfallDetails(out _);
         if (show && cautionIndicator == null)
             cautionIndicator = CreateCautionIndicator();
         if (cautionIndicator != null)
@@ -1112,7 +1105,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         totalWasted = 0;
         totalDelivered = 0;
         totalSold = 0;
-        productionShortfallWasActive = false;
         cautionMessageShownAt = float.NegativeInfinity;
         if (cautionIndicator != null) cautionIndicator.SetActive(false);
         if (cautionMessageGroup != null) cautionMessageGroup.alpha = 0f;

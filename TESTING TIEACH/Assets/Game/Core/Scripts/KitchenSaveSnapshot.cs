@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 33;
+    public const int CurrentVersion = 36;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -25,6 +25,10 @@ public class KitchenSaveSnapshot
     public float careerWaitTotalSeconds;
     public bool tutorialComplete;
     public bool tutorialOrderServed;
+    public bool tutorialPauseControlUsed;
+    public bool tutorialPlayControlUsed;
+    public bool tutorialFastForwardControlUsed;
+    public bool activeMilestoneShiftObjectives;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
@@ -52,7 +56,7 @@ public class KitchenSaveSnapshot
     [Serializable] public class Equipment { public string item, product, pantrySecondProduct, stationGuid; public Vector3 position, scale; public Quaternion rotation; public int output = -1, slot = -1, processedInputs, pantryInputs, thirdInputs, bufferedOutputs, processingUnits, secondaryInputs, assemblyProcessingUnits, stationCurrentState; public float processProgress, assemblyProcessProgress, productionRatePercent = 100f, stationWorkingSeconds, stationStarvedSeconds, stationBlockedSeconds, stationIdleSeconds, stationCurrentStateSeconds; public Vector3 counterPosition; public bool registerEnabled = true, hasStationMetrics; public ProductionStationCheckpoint productionState; }
     [Serializable] public class Worker { public string name; public Vector3 position; public int level, priority, bodyIndex, faceIndex, hatIndex = -1; public List<int> stations = new List<int>(); public List<string> stationGuids = new List<string>(); public ProductionWorkerCheckpoint productionState; }
     [Serializable] public class FlowEdge { public int from = -1, to = -1; public string fromGuid, toGuid; }
-    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized; public List<int> stations = new List<int>(), workers = new List<int>(); public List<string> stationGuids = new List<string>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
+    [Serializable] public class Flow { public string name; public KitchenFlowKind kind; public List<string> steps; public bool graphInitialized, autoName; public List<int> stations = new List<int>(), workers = new List<int>(); public List<string> stationGuids = new List<string>(); public List<FlowEdge> edges = new List<FlowEdge>(); }
 
     public static KitchenSaveSnapshot Capture()
     {
@@ -69,10 +73,14 @@ public class KitchenSaveSnapshot
         s.tutorialComplete = OnboardingTutorial.IsComplete;
         s.tutorialStep = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.SaveStepIndex : 0;
         s.tutorialOrderServed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.OrderServedForSave;
+        s.tutorialPauseControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialPauseUsedForSave;
+        s.tutorialPlayControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialPlayUsedForSave;
+        s.tutorialFastForwardControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialFastForwardUsedForSave;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
         if (MilestoneProgressManager.Instance != null)
         {
             s.activeMilestoneId = MilestoneProgressManager.Instance.ActiveMilestoneId;
+            s.activeMilestoneShiftObjectives = MilestoneProgressManager.Instance.ActiveShiftObjectives;
             s.completedMilestoneIds.AddRange(MilestoneProgressManager.Instance.GetCompletedMilestoneIds());
         }
         if (MissionProgressManager.Instance != null)
@@ -233,7 +241,7 @@ public class KitchenSaveSnapshot
             }
             foreach(var flow in pm.productionFlows) if(flow!=null) {
                 flow.EnsureLegacyConnections();
-                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized};
+                var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized,autoName=flow.autoName};
                 foreach(var station in flow.stations)
                 {
                     f.stations.Add(objects.IndexOf(station));
@@ -505,7 +513,7 @@ public class KitchenSaveSnapshot
         if (flows == null) flows = new List<Flow>();
         foreach(var f in flows) {
             if (f == null) continue;
-            var flow=new ProductionFlowPlan {flowName=f.name,kind=f.kind,stepIds=f.steps,graphInitialized=version>=6 && f.graphInitialized};
+            var flow=new ProductionFlowPlan {flowName=f.name,autoName=version>=34 ? f.autoName : ProductionFlowPlan.IsDefaultGeneratedName(f.name),kind=f.kind,stepIds=f.steps,graphInitialized=version>=6 && f.graphInitialized};
             int stationCount = Mathf.Max(f.stations != null ? f.stations.Count : 0,
                 f.stationGuids != null ? f.stationGuids.Count : 0);
             for (int i = 0; i < stationCount; i++)
@@ -543,6 +551,7 @@ public class KitchenSaveSnapshot
                         flow.workers.Add(staff[i]);
             pm.productionFlows.Add(flow);
         }
+        pm.RefreshAutomaticProductionFlowNames();
         if (customers != null && customerSpawner != null)
             customerSpawner.RestoreSavedCustomers(customers, definitions, stationObjectsByGuid);
         // Version 1 checkpoints included the removed door lesson at index 2.
@@ -575,11 +584,17 @@ public class KitchenSaveSnapshot
             else if (restoredTutorialStep >= 10)
                 restoredTutorialStep++;
         }
-        // Version 11 replaces the active milestone task definitions. Preserve the
-        // saved milestone checkpoint from v10, but don't carry old task progress
-        // into tasks whose objectives have changed.
-        if (version >= 11 && MissionProgressManager.Instance != null)
-            MissionProgressManager.Instance.RestoreProgress(missionProgress);
+        // Version 35 makes milestone objectives shift-scoped and changes recipe
+        // counts from orders served to items delivered at Pickup. Old campaign
+        // progress cannot be converted reliably, so keep tutorial tasks but reset
+        // old numbered-milestone progress.
+        if (MissionProgressManager.Instance != null)
+        {
+            if (version >= 35 || !tutorialComplete)
+                MissionProgressManager.Instance.RestoreProgress(missionProgress);
+            else
+                MissionProgressManager.Instance.ResetProgress();
+        }
         ResearchProgressManager research = ResearchProgressManager.Ensure();
         if (research != null)
             research.Restore(
@@ -606,7 +621,8 @@ public class KitchenSaveSnapshot
         else
             appearance.RestoreState(0, 0, 0, Color.white, Color.white, Color.white);
         var money=UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); if(money!=null) money.SetMoney(cash);
-        ShiftPlanningUI.RestoreSaveState(version >= 23 ? shiftPlanningState : null);
+        ShiftPlanningUI.RestoreSaveState(version >= 23 ? shiftPlanningState : null,
+            hasIdleStationBaselines: version >= 35);
         StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
         if (statistics != null)
         {
@@ -632,6 +648,7 @@ public class KitchenSaveSnapshot
             else
                 statistics.ResetCareerStatistics();
         }
+        milestoneProgress?.RestoreActiveShiftObjectives(version >= 35 && activeMilestoneShiftObjectives);
         // Restoring a checkpoint at the shift end raises OnDayEnded immediately.
         // Apply all saved report values first so the EOD panel reads the checkpoint,
         // not whatever statistics happened to be in memory before this load.
@@ -658,7 +675,10 @@ public class KitchenSaveSnapshot
         // setup must not run while stations, research, missions, or customers are
         // still being rebuilt from this save.
         if (OnboardingTutorial.Instance != null)
-            OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed);
+            OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed,
+                version >= 36 && tutorialPauseControlUsed,
+                version >= 36 && tutorialPlayControlUsed,
+                version >= 36 && tutorialFastForwardControlUsed);
         return true;
     }
 

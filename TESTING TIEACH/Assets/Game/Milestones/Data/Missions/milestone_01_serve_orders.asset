@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_01_serve_orders
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_serve_hamburgers
-  title: Serve 50 Hamburgers
-  description: Serve 50 Hamburgers to customers.
-  completionEventId: menu_item_served_hamburger
-  requiredCount: 50
+  title: Deliver 25 Hamburgers
+  description: Deliver at least 25 Hamburgers to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 25
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: 95dd3d3c261bc4942910e0bdb4e9d03e, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

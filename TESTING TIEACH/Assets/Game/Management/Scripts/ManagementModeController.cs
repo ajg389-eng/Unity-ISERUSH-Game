@@ -3191,6 +3191,7 @@ public class ManagementModeController : MonoBehaviour
                 TutorialVoiceEvents.Raise(TutorialVoiceEventId.RecipeConfigured(recipe.output));
             RevalidateSelectedStationOutput();
             WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+            RefreshAutomaticFlowNamesAfterRecipeChange();
             RefreshPopup();
             SetStatus("Assembly set to produce " + (item.itemName ?? item.name));
         }
@@ -3206,8 +3207,17 @@ public class ManagementModeController : MonoBehaviour
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.RecipeConfigured(recipe.output));
         RevalidateSelectedStationOutput();
         WorkerAssignmentLinkVisuals.NotifyLinksChanged();
+        RefreshAutomaticFlowNamesAfterRecipeChange();
         RefreshPopup();
         SetStatus("Assembly recipe set to " + recipe.DisplayName);
+    }
+
+    void RefreshAutomaticFlowNamesAfterRecipeChange()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        if (production != null)
+            production.RefreshAutomaticProductionFlowNames();
+        RefreshWorkersUi();
     }
 
     void EnsureProductUI()
@@ -3641,6 +3651,7 @@ public class ManagementModeController : MonoBehaviour
         ProductionManager production = ProductionManager.Instance;
         if (production != null)
         {
+            production.RefreshAutomaticProductionFlowNames();
             production.SyncLegacyFlowSelection();
             production.lastFlowBalance = finished.workers.Count > 0
                 ? WorkerFlowAssigner.ApplyBalancedTeam(finished)
@@ -3962,7 +3973,7 @@ public class ManagementModeController : MonoBehaviour
         rect.anchorMax = new Vector2(0.5f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
         rect.anchoredPosition = new Vector2(0f, -70f);
-        rect.sizeDelta = new Vector2(760f, 140f);
+        rect.sizeDelta = new Vector2(760f, 220f);
         var bg = flowCaptureHud.GetComponent<Image>();
         bg.color = new Color(0.1f, 0.12f, 0.18f, 0.94f);
 
@@ -4015,11 +4026,11 @@ public class ManagementModeController : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 1f);
         rect.anchoredPosition = new Vector2(0f, -70f);
         float canvasWidth = ((RectTransform)playerUICanvas.transform).rect.width;
-        rect.sizeDelta = new Vector2(Mathf.Min(500f, Mathf.Max(0f, canvasWidth - 32f)), 156f);
+        rect.sizeDelta = new Vector2(Mathf.Min(760f, Mathf.Max(0f, canvasWidth - 40f)), 220f);
         flowCaptureHud.GetComponent<Image>().color = new Color(0.075f, 0.09f, 0.12f, 0.98f);
         var layout = flowCaptureHud.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(16, 16, 12, 12);
-        layout.spacing = 6f;
+        layout.padding = new RectOffset(20, 20, 16, 16);
+        layout.spacing = 8f;
         layout.childForceExpandHeight = false;
         var instructions = flowCaptureHud.transform.Find("Instructions")?.GetComponent<TextMeshProUGUI>();
         if (instructions == null)
@@ -4037,10 +4048,12 @@ public class ManagementModeController : MonoBehaviour
         foreach (TextMeshProUGUI label in new[] { flowCaptureTitle, flowCapturePath })
         {
             if (label == null) continue;
-            label.overflowMode = TextOverflowModes.Truncate;
-            label.textWrappingMode = TextWrappingModes.NoWrap;
-            label.GetComponent<LayoutElement>().minHeight = 22f;
-            label.GetComponent<LayoutElement>().preferredHeight = 22f;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.textWrappingMode = TextWrappingModes.Normal;
+            LayoutElement labelSize = label.GetComponent<LayoutElement>();
+            labelSize.minHeight = label == flowCaptureTitle ? 28f : 30f;
+            labelSize.preferredHeight = label == flowCaptureTitle ? 28f : 34f;
+            label.fontSize = label == flowCaptureTitle ? 20f : 16f;
         }
         if (flowCapturePath != null) flowCapturePath.color = new Color(0.78f, 0.83f, 0.89f, 1f);
         Transform buttons = flowCaptureHud.transform.Find("Buttons");
@@ -4051,26 +4064,31 @@ public class ManagementModeController : MonoBehaviour
             {
                 back = MakeCaptureButton(buttons, "Back Step", new Color(0.20f, 0.23f, 0.29f, 1f));
                 back.onClick.AddListener(UndoCapturedFlowStep);
-                var backSize = back.GetComponent<LayoutElement>();
-                backSize.minWidth = 88f;
-                backSize.preferredWidth = 88f;
-                backSize.preferredHeight = 30f;
-                back.GetComponentInChildren<TextMeshProUGUI>().fontSize = 12f;
             }
             back.interactable = capturedFlow != null && capturedFlow.stations.Count > 0;
             GameIconLibrary.ApplyToButton(back, GameIconId.Previous, 18f, 8f);
+            var instructionRow = flowCaptureHud.transform.Find("InlineInputInstruction");
+            LayoutElement instructionRowSize = instructionRow != null
+                ? instructionRow.GetComponent<LayoutElement>() : null;
+            if (instructionRowSize != null)
+            {
+                instructionRowSize.minHeight = 38f;
+                instructionRowSize.preferredHeight = 38f;
+            }
             foreach (Button control in buttons.GetComponentsInChildren<Button>(true))
             {
                 var label = control.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (label == null) continue;
                 label.enableAutoSizing = false;
-                label.fontSize = 12f;
+                label.fontSize = 15f;
                 label.textWrappingMode = TextWrappingModes.NoWrap;
                 var controlSize = control.GetComponent<LayoutElement>();
                 if (controlSize != null)
                 {
-                    controlSize.minWidth = 132f;
-                    controlSize.preferredWidth = 132f;
+                    controlSize.minWidth = 144f;
+                    controlSize.preferredWidth = 144f;
+                    controlSize.minHeight = 42f;
+                    controlSize.preferredHeight = 42f;
                 }
             }
             Button clear = buttons.Find("Clear Flow")?.GetComponent<Button>();
@@ -4083,8 +4101,8 @@ public class ManagementModeController : MonoBehaviour
             back.transform.SetSiblingIndex(1);
             if (flowCaptureFinishButton != null) flowCaptureFinishButton.transform.SetAsLastSibling();
             var size = buttons.GetComponent<LayoutElement>();
-            size.minHeight = 32f;
-            size.preferredHeight = 32f;
+            size.minHeight = 42f;
+            size.preferredHeight = 42f;
             size.flexibleHeight = 0f;
             buttons.GetComponent<HorizontalLayoutGroup>().childForceExpandHeight = false;
         }
@@ -4092,14 +4110,14 @@ public class ManagementModeController : MonoBehaviour
         {
             if (button == null) continue;
             var size = button.GetComponent<LayoutElement>();
-            size.minWidth = 110f;
-            size.preferredWidth = 110f;
-            size.minHeight = 30f;
-            size.preferredHeight = 30f;
+            size.minWidth = 144f;
+            size.preferredWidth = 144f;
+            size.minHeight = 42f;
+            size.preferredHeight = 42f;
             size.flexibleHeight = 0f;
             button.GetComponent<Image>().color = button == flowCaptureFinishButton
                 ? new Color(0.22f, 0.38f, 0.48f, 1f) : new Color(0.20f, 0.23f, 0.29f, 1f);
-            button.GetComponentInChildren<TextMeshProUGUI>().fontSize = 12f;
+            button.GetComponentInChildren<TextMeshProUGUI>().fontSize = 15f;
         }
     }
 

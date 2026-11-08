@@ -74,7 +74,8 @@ public class MissionProgressManager : MonoBehaviour
         {
             if (mission == null || string.IsNullOrEmpty(mission.missionId)) continue;
             if (completedMissionIds.Contains(mission.missionId)) continue;
-            if (mission.producedItem != null || mission.countAnyUnlockedMenuProduct) continue;
+            if (mission.producedItem != null || mission.deliveredItem != null
+                || mission.countAnyUnlockedMenuProduct) continue;
             if (mission.completionEventId != eventId) continue;
 
             int needed = Mathf.Max(1, mission.requiredCount);
@@ -103,6 +104,7 @@ public class MissionProgressManager : MonoBehaviour
         foreach (MissionDefinition mission in database.missions)
         {
             if (mission == null || string.IsNullOrEmpty(mission.missionId)
+                || mission.deliveredItem != null
                 || completedMissionIds.Contains(mission.missionId)) continue;
 
             bool matchesSpecificProduct = mission.producedItem == item;
@@ -134,6 +136,45 @@ public class MissionProgressManager : MonoBehaviour
 
         if (anyChange)
             OnMissionsChanged?.Invoke();
+    }
+
+    /// <summary>Counts menu item units only when a Pickup Station accepts the order.</summary>
+    public void RecordPickupDelivery(CustomerOrder order)
+    {
+        if (order?.lines == null || database?.missions == null) return;
+
+        bool anyChange = false;
+        foreach (CustomerOrder.OrderLine line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            foreach (MissionDefinition mission in database.missions)
+            {
+                if (mission == null || mission.deliveredItem == null
+                    || string.IsNullOrEmpty(mission.missionId)
+                    || completedMissionIds.Contains(mission.missionId)
+                    || !ItemsMatch(mission.deliveredItem, line.item))
+                    continue;
+
+                int needed = Mathf.Max(1, mission.requiredCount);
+                int current = Mathf.Min(needed, GetProgress(mission.missionId) + line.quantity);
+                progressByMissionId[mission.missionId] = current;
+                anyChange = true;
+                if (current >= needed)
+                {
+                    completedMissionIds.Add(mission.missionId);
+                    Sfx.Play(SfxId.MissionComplete);
+                }
+            }
+        }
+
+        if (anyChange)
+            OnMissionsChanged?.Invoke();
+    }
+
+    static bool ItemsMatch(ItemDefinition a, ItemDefinition b)
+    {
+        return a == b || (a != null && b != null
+            && string.Equals(a.itemName, b.itemName, System.StringComparison.OrdinalIgnoreCase));
     }
 
     public bool IsComplete(MissionDefinition mission)

@@ -223,7 +223,7 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 {
     const float RefreshInterval = 0.15f;
     const float IconWorldSize = 0.78f;
-    const float HeightPadding = 0.45f;
+    const float HeightPadding = 1.15f;
 
     GameObject indicator;
     RectTransform indicatorRect;

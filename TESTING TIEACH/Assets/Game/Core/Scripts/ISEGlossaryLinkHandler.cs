@@ -49,7 +49,11 @@ public sealed class ISEGlossaryLinkHandler : MonoBehaviour, IPointerClickHandler
         PauseMenuUI pauseMenu = PauseMenuUI.Instance;
         if (pauseMenu == null)
             pauseMenu = FindFirstObjectByType<PauseMenuUI>(FindObjectsInactive.Include);
-        pauseMenu?.OpenGuidebookTermFromHud(term);
+        if (pauseMenu != null)
+        {
+            pauseMenu.OpenGuidebookTermFromHud(term);
+            OnboardingTutorial.NotifyGlossaryTermClicked(term);
+        }
     }
 
     bool TryGetVisibleLink(Vector2 screenPoint, Camera eventCamera, out int linkIndex)

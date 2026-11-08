@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_01_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_serve_shakes
-  title: Serve 50 Shakes
-  description: Serve 50 Shakes to customers.
-  completionEventId: menu_item_served_shake
-  requiredCount: 50
+  title: Deliver 25 Shakes
+  description: Deliver at least 25 Shakes to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 25
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: e7f106b7404e15f42a448332e4133c15, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

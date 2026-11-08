@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_01_observe_queue
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_01_serve_fries
-  title: Serve 50 Fries
-  description: Serve 50 Fries to customers.
-  completionEventId: menu_item_served_fries
-  requiredCount: 50
+  title: Deliver 25 Fries
+  description: Deliver at least 25 Fries to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 25
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: b93463b3dc0bcff4c8340e339119b007, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

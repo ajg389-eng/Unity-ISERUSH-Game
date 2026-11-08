@@ -19,8 +19,6 @@ public class DeliveryArrivedNotice : MonoBehaviour
     public static void Show(IngredientDeliveryService.Shipment shipment)
     {
         string body = FormatBody(shipment);
-        NotificationCenter.Post("Ingredient delivery arrived: " + FormatDeliveryDetails(shipment),
-            GameNotificationKind.Message, "ingredient-delivery", 2f);
         DeliveryArrivedNotice live = instance;
         if (live == null)
             live = FindFirstObjectByType<DeliveryArrivedNotice>();
@@ -142,35 +140,6 @@ public class DeliveryArrivedNotice : MonoBehaviour
 
         return itemTypes.Count + (itemTypes.Count == 1 ? " ingredient type restocked" : " ingredient types restocked")
             + "  ·  " + totalUnits + (totalUnits == 1 ? " unit now in stock" : " units now in stock");
-    }
-
-    static string FormatDeliveryDetails(IngredientDeliveryService.Shipment shipment)
-    {
-        if (shipment == null || shipment.packs.Count == 0)
-            return "Ingredients are now in stock.";
-
-        var amounts = new Dictionary<string, int>();
-        var order = new List<string>();
-        for (int i = 0; i < shipment.packs.Count; i++)
-        {
-            IngredientDeliveryService.Pack pack = shipment.packs[i];
-            if (pack == null || pack.item == null) continue;
-            string name = string.IsNullOrEmpty(pack.item.itemName) ? pack.item.name : pack.item.itemName;
-            if (!amounts.ContainsKey(name))
-            {
-                amounts[name] = 0;
-                order.Add(name);
-            }
-            amounts[name] += pack.amount;
-        }
-
-        if (order.Count == 0)
-            return "Ingredients are now in stock.";
-
-        var parts = new List<string>();
-        for (int i = 0; i < order.Count; i++)
-            parts.Add(order[i] + "  ×" + amounts[order[i]]);
-        return string.Join("   ·   ", parts);
     }
 
     void SetBody(string body)

@@ -17,9 +17,10 @@ public class ProductionFlowConnection
 [System.Serializable]
 public class ProductionFlowPlan
 {
-    public const int MaxNameLength = 15;
+    public const int MaxNameLength = 64;
 
     public string flowName = "Flow";
+    public bool autoName = true;
     public KitchenFlowKind kind = KitchenFlowKind.Custom;
     // Type codes are intentionally allowed to repeat. The station GameObject
     // list and graph connections hold the unique identity of each machine.
@@ -110,6 +111,22 @@ public class ProductionFlowPlan
     public void SetName(string value)
     {
         flowName = NormalizeName(value, "Unnamed Flow");
+        autoName = false;
+    }
+
+    public void SetAutomaticName(string value)
+    {
+        flowName = NormalizeName(value, flowName);
+        autoName = true;
+    }
+
+    public static bool IsDefaultGeneratedName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        string clean = value.Trim();
+        if (clean == "Flow" || clean == "New Flow") return true;
+        return clean.StartsWith("Flow ", System.StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(clean.Substring(5), out _);
     }
 
     public static string NormalizeName(string value, string fallback)
@@ -237,6 +254,62 @@ public static class WorkerFlowAssigner
             return string.Join(" → ", labels);
         }
         return FormatSteps(flow.stepIds);
+    }
+
+    /// <summary>Returns final menu items produced by terminal assembly or drink stations in a flow.</summary>
+    public static List<ItemDefinition> GetTerminalMenuProducts(ProductionFlowPlan flow)
+    {
+        var products = new List<ItemDefinition>();
+        if (flow == null || flow.stations == null) return products;
+        flow.EnsureLegacyConnections();
+
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        foreach (GameObject station in flow.stations)
+        {
+            if (station == null) continue;
+
+            ItemDefinition output = null;
+            AssemblyStation assembly = station.GetComponent<AssemblyStation>();
+            if (assembly != null)
+            {
+                AssemblyRecipeDefinition recipe = assembly.GetSelectedRecipe();
+                output = recipe != null ? recipe.output : null;
+            }
+            else if (station.GetComponent<DrinkStation>() != null && config != null)
+                output = config.drinkItem;
+            if (output == null) continue;
+
+            bool hasDownstreamWork = false;
+            bool connectsToService = false;
+            foreach (ProductionFlowConnection connection in flow.connections)
+            {
+                if (connection == null || connection.from != station || connection.to == null)
+                    continue;
+                if (connection.to.GetComponent<HeatLampStation>() != null
+                    || connection.to.GetComponent<Register>() != null)
+                {
+                    connectsToService = true;
+                    continue;
+                }
+
+                StationNode downstream = connection.to.GetComponent<StationNode>();
+                if (downstream != null && downstream.IsWorkStation)
+                {
+                    hasDownstreamWork = true;
+                    break;
+                }
+            }
+
+            if ((!hasDownstreamWork || connectsToService) && !products.Contains(output))
+                products.Add(output);
+        }
+
+        products.Sort((a, b) => string.Compare(
+            !string.IsNullOrWhiteSpace(a.itemName) ? a.itemName : a.name,
+            !string.IsNullOrWhiteSpace(b.itemName) ? b.itemName : b.name,
+            System.StringComparison.OrdinalIgnoreCase));
+        return products;
     }
 
     public static FlowStationDef FindDef(string id)

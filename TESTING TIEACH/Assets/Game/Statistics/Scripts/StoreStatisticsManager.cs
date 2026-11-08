@@ -264,6 +264,8 @@ public class StoreStatisticsManager : MonoBehaviour
     public int CustomersLostToday => dayCustomersLost;
     public int CustomersVisitedToday => dayCustomersVisited;
     public int UnservedCustomersToday => Mathf.Max(0, dayCustomersVisited - dayOrdersCompleted - dayCustomersLost);
+    public float CustomersServedPercent => dayCustomersVisited > 0
+        ? dayOrdersCompleted / (float)dayCustomersVisited * 100f : 0f;
     public int MoneyAtDayStart => dayMoneyStart;
     public bool DayTrackingStarted => dayTrackingStarted;
     public float WaitTotalTodaySeconds => dayWaitSum;

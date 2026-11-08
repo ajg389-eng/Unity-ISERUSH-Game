@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_06_system_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_serve_super_burgers
-  title: Serve 100 Super Burgers
-  description: Serve 100 Super Burgers to customers.
-  completionEventId: menu_item_served_super_burger
-  requiredCount: 100
+  title: Deliver 35 Super Burgers
+  description: Deliver at least 35 Super Burgers to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 35
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

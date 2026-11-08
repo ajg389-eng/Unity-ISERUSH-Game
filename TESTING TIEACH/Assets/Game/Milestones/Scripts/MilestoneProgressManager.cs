@@ -25,11 +25,15 @@ public class MilestoneProgressManager : MonoBehaviour
     readonly HashSet<string> completedMilestoneIds = new HashSet<string>();
 
     string activeMilestoneId;
+    GameTimeManager boundTimeManager;
+    bool activeShiftObjectives;
+    bool allowEndOfShiftCompletion;
 
     public event Action OnMilestonesChanged;
     public event Action<MilestoneDefinition> OnMilestoneCompleted;
 
     public string ActiveMilestoneId => activeMilestoneId;
+    public bool ActiveShiftObjectives => activeShiftObjectives;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
     public int CompletedNumberedMilestoneCount
     {
@@ -125,6 +129,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
     void Start()
     {
+        BindShiftEvents();
         if (MissionProgressManager.Instance != null)
             MissionProgressManager.Instance.OnMissionsChanged += EvaluateActiveMilestone;
 
@@ -139,6 +144,69 @@ public class MilestoneProgressManager : MonoBehaviour
         if (Instance == this) Instance = null;
         if (MissionProgressManager.Instance != null)
             MissionProgressManager.Instance.OnMissionsChanged -= EvaluateActiveMilestone;
+        if (boundTimeManager != null)
+            boundTimeManager.OnShiftEnding -= HandleShiftEnding;
+    }
+
+    void BindShiftEvents()
+    {
+        GameTimeManager timeManager = GameTimeManager.Instance;
+        if (timeManager == boundTimeManager) return;
+        if (boundTimeManager != null)
+            boundTimeManager.OnShiftEnding -= HandleShiftEnding;
+        boundTimeManager = timeManager;
+        if (boundTimeManager != null)
+            boundTimeManager.OnShiftEnding += HandleShiftEnding;
+    }
+
+    /// <summary>Begins a fresh, shift-scoped objective attempt for the active numbered milestone.</summary>
+    public void BeginActiveShiftObjectives()
+    {
+        BindShiftEvents();
+        MilestoneDefinition milestone = GetActiveMilestone();
+        if (milestone == null || milestone.isTutorial) return;
+
+        activeShiftObjectives = true;
+        MissionProgressManager.Instance?.ResetProgress();
+        OnMilestonesChanged?.Invoke();
+    }
+
+    /// <summary>Restores whether a save was captured during the active milestone shift.</summary>
+    public void RestoreActiveShiftObjectives(bool active)
+    {
+        MilestoneDefinition milestone = GetActiveMilestone();
+        activeShiftObjectives = active && milestone != null && !milestone.isTutorial;
+    }
+
+    void HandleShiftEnding()
+    {
+        if (!activeShiftObjectives) return;
+        activeShiftObjectives = false;
+
+        MilestoneDefinition milestone = GetActiveMilestone();
+        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+        bool efficiencyMet = milestone != null
+            && ShiftPlanningUI.GetShiftSystemEfficiencyPercent() + 0.001f
+                >= Mathf.Max(0, milestone.minimumSystemEfficiencyPercent);
+        bool serviceMet = milestone != null && statistics != null
+            && statistics.CustomersServedPercent + 0.001f
+                >= Mathf.Max(0, milestone.minimumCustomersServedPercent);
+        bool itemTargetsMet = milestone != null && AreActiveMissionsComplete();
+
+        if (itemTargetsMet && efficiencyMet && serviceMet)
+        {
+            allowEndOfShiftCompletion = true;
+            try
+            {
+                EvaluateActiveMilestone();
+            }
+            finally
+            {
+                allowEndOfShiftCompletion = false;
+            }
+        }
+
+        OnMilestonesChanged?.Invoke();
     }
 
     public MilestoneDefinition GetActiveMilestone()
@@ -197,10 +265,6 @@ public class MilestoneProgressManager : MonoBehaviour
 
         OnMilestoneCompleted?.Invoke(current);
 
-        NotificationCenter.Post(GetMilestoneDisplayLabel(current) + " completed.",
-            GameNotificationKind.Message,
-            "milestone-" + current.milestoneId);
-
         int index = database != null ? database.IndexOf(current.milestoneId) : -1;
         MilestoneDefinition next = null;
         if (database != null && index >= 0 && index + 1 < database.milestones.Count)
@@ -210,16 +274,12 @@ public class MilestoneProgressManager : MonoBehaviour
         {
             activeMilestoneId = next.milestoneId;
             ApplyActiveMissions(reset: true);
-            NotificationCenter.Post("Next: " + GetMilestoneDisplayLabel(next) + ". " + next.description,
-                GameNotificationKind.Message, "milestone-next-" + next.milestoneId, 12f);
             MilestoneUnlockPopupUI.ShowAfterTransition(next);
         }
         else
         {
             activeMilestoneId = null;
             ApplyActiveMissions(reset: true);
-            NotificationCenter.Post("All milestones complete. Review Analytics and Supply to keep improving the restaurant.",
-                GameNotificationKind.Message, "milestones-complete", 12f);
         }
 
         OnMilestonesChanged?.Invoke();
@@ -231,6 +291,7 @@ public class MilestoneProgressManager : MonoBehaviour
     public bool DebugJumpToNumberedMilestone(int number, out string label)
     {
         label = null;
+        activeShiftObjectives = false;
         if (database == null || database.milestones == null || database.milestones.Count == 0)
             return false;
 
@@ -269,6 +330,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
     public void ResetAllProgress()
     {
+        activeShiftObjectives = false;
         completedMilestoneIds.Clear();
         activeMilestoneId = null;
         EnsureActiveMilestone();
@@ -300,6 +362,7 @@ public class MilestoneProgressManager : MonoBehaviour
 
     public void RestoreCheckpoint(string savedActiveMilestoneId, IReadOnlyList<string> savedCompletedMilestoneIds)
     {
+        activeShiftObjectives = false;
         completedMilestoneIds.Clear();
 
         if (database?.milestones != null && savedCompletedMilestoneIds != null)
@@ -357,6 +420,8 @@ public class MilestoneProgressManager : MonoBehaviour
 
         if (string.IsNullOrEmpty(activeMilestoneId)) return;
         if (completedMilestoneIds.Contains(activeMilestoneId)) return;
+        MilestoneDefinition active = GetActiveMilestone();
+        if (active != null && !active.isTutorial && !allowEndOfShiftCompletion) return;
         if (AreActiveMissionsComplete())
             CompleteActiveMilestone();
     }

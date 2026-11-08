@@ -127,11 +127,9 @@ public sealed class ResearchProgressManager : MonoBehaviour
         lastAbsoluteMinute = now;
         if (remainingMinutes > 0f) return;
         completed.Add(activeId);
-        string finished = Get(activeId)?.title ?? "Research";
         activeId = null;
         remainingMinutes = 0f;
         activeResearchUsesTutorialTimer = false;
-        NotificationCenter.Post(finished + " completed.", GameNotificationKind.Message, "research-complete-" + finished);
         Changed?.Invoke();
     }
 

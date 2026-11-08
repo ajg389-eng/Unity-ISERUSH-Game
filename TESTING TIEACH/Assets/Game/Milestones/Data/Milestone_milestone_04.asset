@@ -24,6 +24,8 @@ MonoBehaviour:
     too much ties up cash and creates waste.
   - 
   isTutorial: 0
+  minimumSystemEfficiencyPercent: 40
+  minimumCustomersServedPercent: 65
   missions:
   - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
   - {fileID: 11400000, guid: f2193414de654acebe722bc290248751, type: 2}

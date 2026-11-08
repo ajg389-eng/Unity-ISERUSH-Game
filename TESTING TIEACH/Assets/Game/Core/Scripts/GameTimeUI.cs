@@ -381,7 +381,11 @@ public class GameTimeUI : MonoBehaviour
             pauseButton.onClick.AddListener(() =>
             {
                 Sfx.Play(SfxId.UiClick);
-                timeManager?.SetSpeed(GameTimeManager.SpeedMode.Paused);
+                if (timeManager != null)
+                {
+                    timeManager.SetSpeed(GameTimeManager.SpeedMode.Paused);
+                    OnboardingTutorial.NotifyTutorialPauseButtonClicked();
+                }
             });
         }
 
@@ -404,7 +408,13 @@ public class GameTimeUI : MonoBehaviour
                         timeManager.StartNextDay();
                 }
                 else
-                    timeManager?.SetSpeed(GameTimeManager.SpeedMode.Play);
+                {
+                    if (timeManager != null)
+                    {
+                        timeManager.SetSpeed(GameTimeManager.SpeedMode.Play);
+                        OnboardingTutorial.NotifyTutorialPlayButtonClicked();
+                    }
+                }
             });
         }
 
@@ -414,7 +424,11 @@ public class GameTimeUI : MonoBehaviour
             fastForwardButton.onClick.AddListener(() =>
             {
                 Sfx.Play(SfxId.UiClick);
-                timeManager?.SetSpeed(GameTimeManager.SpeedMode.FastForward);
+                if (timeManager != null)
+                {
+                    timeManager.SetSpeed(GameTimeManager.SpeedMode.FastForward);
+                    OnboardingTutorial.NotifyTutorialFastForwardButtonClicked();
+                }
             });
         }
 

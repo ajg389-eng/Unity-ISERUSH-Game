@@ -24,6 +24,8 @@ MonoBehaviour:
     moving as demand grows.
   - Use the higher supply capacity to keep the kitchen ready for service.
   isTutorial: 0
+  minimumSystemEfficiencyPercent: 45
+  minimumCustomersServedPercent: 70
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   missionDatabase: {fileID: 0}

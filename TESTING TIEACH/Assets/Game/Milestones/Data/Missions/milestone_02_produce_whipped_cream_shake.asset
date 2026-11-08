@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: milestone_02_produce_whipped_cream_shake
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_serve_whipped_cream_shakes
-  title: Serve 50 Whipped Cream Shakes
-  description: Serve 50 Whipped Cream Shakes to customers.
-  completionEventId: menu_item_served_whipped_cream_shake
-  requiredCount: 50
+  title: Deliver 30 Whipped Cream Shakes
+  description: Deliver at least 30 Whipped Cream Shakes to a Pickup Station this shift.
+  completionEventId:
+  requiredCount: 30
   producedItem: {fileID: 0}
+  deliveredItem: {fileID: 11400000, guid: ea4e76eb6cdedc24ba3552ca78e42de6, type: 2}
   countAnyUnlockedMenuProduct: 0
   showBeforeComplete: 1
   showAfterComplete: 1

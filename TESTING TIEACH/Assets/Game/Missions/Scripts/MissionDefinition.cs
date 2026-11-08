@@ -25,6 +25,9 @@ public class MissionDefinition : ScriptableObject
     [Tooltip("When set, this mission tracks units produced by a station instead of a game event.")]
     public ItemDefinition producedItem;
 
+    [Tooltip("When set, this mission tracks item units accepted by a Pickup Station this shift.")]
+    public ItemDefinition deliveredItem;
+
     [Tooltip("Counts production of any currently unlocked, finished customer menu recipe. Intermediate ingredients do not count.")]
     public bool countAnyUnlockedMenuProduct;
 

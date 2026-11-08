@@ -27,6 +27,7 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
     public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen);
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
+    public static bool IsTimeControlTutorialActive => IsCurrentStep(step => step.requireTimeControlInteractions);
     public static bool ShouldShowPlanCardDuringTutorial => IsActive
         && (Instance.planScreenIntroduced
             || IsCurrentStep(step => step.requireHamburger || step.liveCustomer));
@@ -95,6 +96,41 @@ public class OnboardingTutorial : MonoBehaviour
         if (IsMenuTutorialActive) Instance.menuScreenOpened = true;
     }
 
+    public static void NotifyGlossaryTermClicked(string term)
+    {
+        if (!IsCurrentStep(step => step.requireGlossaryTermClick)
+            || string.IsNullOrWhiteSpace(term))
+            return;
+
+        Instance.glossaryTermClicked = true;
+        Instance.RefreshAdvanceGate();
+    }
+
+    public static void NotifyTutorialPauseButtonClicked()
+    {
+        if (!IsTimeControlTutorialActive) return;
+        Instance.tutorialPauseControlUsed = true;
+        Instance.RefreshAdvanceGate();
+    }
+
+    public static void NotifyTutorialPlayButtonClicked()
+    {
+        if (!IsTimeControlTutorialActive || !Instance.tutorialPauseControlUsed) return;
+        Instance.tutorialPlayControlUsed = true;
+        Instance.RefreshAdvanceGate();
+    }
+
+    public static void NotifyTutorialFastForwardButtonClicked()
+    {
+        if (!IsTimeControlTutorialActive || !Instance.tutorialPauseControlUsed
+            || !Instance.tutorialPlayControlUsed
+            || GameTimeManager.Instance == null
+            || GameTimeManager.Instance.CurrentSpeed != GameTimeManager.SpeedMode.FastForward)
+            return;
+        Instance.tutorialFastForwardControlUsed = true;
+        Instance.RefreshAdvanceGate();
+    }
+
     static Transform FindHudCanvas()
     {
         Canvas canvas = null;
@@ -125,16 +161,24 @@ public class OnboardingTutorial : MonoBehaviour
     int stepIndex;
     public int SaveStepIndex => stepIndex;
     public bool OrderServedForSave => orderServed;
+    public bool TutorialPauseUsedForSave => tutorialPauseControlUsed;
+    public bool TutorialPlayUsedForSave => tutorialPlayControlUsed;
+    public bool TutorialFastForwardUsedForSave => tutorialFastForwardControlUsed;
 
-    public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false)
+    public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false,
+        bool savedPauseUsed = false, bool savedPlayUsed = false, bool savedFastForwardUsed = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
+        glossaryTermClicked = false;
         planScreenIntroduced = !complete && stepIndex >= 6;
         tutorialBurgerUnlockShown = stepIndex > 3;
         stationChecklistInitialized = false;
         nextStationChecklistRefresh = 0f;
         furthestStepIndex = stepIndex;
+        tutorialPauseControlUsed = savedPauseUsed;
+        tutorialPlayControlUsed = savedPlayUsed;
+        tutorialFastForwardControlUsed = savedFastForwardUsed;
         if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireCameraControls)
             ResetCameraTutorialInputs();
         orderServed = savedOrderServed;
@@ -167,11 +211,14 @@ public class OnboardingTutorial : MonoBehaviour
     bool analyticsScreenOpened;
     bool menuScreenOpened;
     bool orderServed;
-    bool tutorialReviewShown;
+    bool glossaryTermClicked;
     bool cleanedOldWorldCallout;
     bool tutorialCameraMoved;
     bool tutorialCameraRotated;
     bool tutorialCameraZoomed;
+    bool tutorialPauseControlUsed;
+    bool tutorialPlayControlUsed;
+    bool tutorialFastForwardControlUsed;
     int recipeTutorialStationIndex;
     int ingredientTutorialStep;
     float ingredientExplanationUntil;
@@ -179,6 +226,8 @@ public class OnboardingTutorial : MonoBehaviour
     bool stationChecklistInitialized;
     bool stationChecklistComplete;
     float nextStationChecklistRefresh;
+    float nextFreezerWalkthroughRefresh;
+    FreezerWalkthroughPhase freezerWalkthroughPhase = FreezerWalkthroughPhase.Inactive;
     string tutorialFocusText;
     string tutorialTextBeingRevealed;
     string lastTutorialHighlightedText;
@@ -237,6 +286,17 @@ public class OnboardingTutorial : MonoBehaviour
         Pantry
     }
 
+    enum FreezerWalkthroughPhase
+    {
+        Inactive,
+        StationName,
+        ModelPreview,
+        OwnedCount,
+        PurchaseButton,
+        Placement,
+        RemainingStations
+    }
+
     struct Step
     {
         public string title;
@@ -270,6 +330,8 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireHamburger;
         public bool requireOrderServed;
         public bool requireCameraControls;
+        public bool requireGlossaryTermClick;
+        public bool requireTimeControlInteractions;
 
         public Step(
             string title,
@@ -301,7 +363,9 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireOrderServed = false,
             bool requireCameraControls = false,
             bool requireStationChecklist = false,
-            bool requireWorkerDragToFlow = false)
+            bool requireWorkerDragToFlow = false,
+            bool requireGlossaryTermClick = false,
+            bool requireTimeControlInteractions = false)
         {
             this.title = title;
             this.body = body;
@@ -334,6 +398,8 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireHamburger = requireHamburger;
             this.requireOrderServed = requireOrderServed;
             this.requireCameraControls = requireCameraControls;
+            this.requireGlossaryTermClick = requireGlossaryTermClick;
+            this.requireTimeControlInteractions = requireTimeControlInteractions;
         }
     }
 
@@ -341,8 +407,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         new Step(
             "Empty kitchen",
-            "You are the <b>industrial and systems engineer</b>. Balance people, equipment, materials, and demand. We will design, run, measure, and improve this operation.",
-            "Next", Highlight.None),
+            "You are the <b>industrial and systems engineer</b>. We'll improve how people, equipment, materials, and work fit together. Click the highlighted phrase for its Guidebook entry, then close the book.",
+            "Next", Highlight.None, requireGlossaryTermClick: true),
         new Step(
             "Move around the kitchen",
             "Alright now get used to movin around this joint.\n\n" +
@@ -370,7 +436,8 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Plan the shift",
             "This is the <b>Plan</b> screen. It shows each selected menu item's forecast demand per minute and its total demand for the full shift. The shift total is demand per minute multiplied by the shift length.\n\n" +
-            "Choose what to sell next, then use those totals to estimate how many ingredients to order. Take a look at the Plan card, then click <b>Next</b> when you're ready.",
+            "The <b>Objectives</b> button at the top right tracks daily tasks and milestone goals. Use it to see what to work toward.\n\n" +
+            "Use shift totals to estimate ingredients. Review the Plan card, then click <b>Next</b>.",
             "Next", Highlight.None, requirePlanIntroduction: true),
         new Step(
             "Choose what to sell",
@@ -415,10 +482,9 @@ public class OnboardingTutorial : MonoBehaviour
             "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
         new Step(
             "Serve one order",
-            "Click <b>Start Shift</b> on the Plan screen to open the restaurant. Only <b>one practice customer</b> will arrive and order <b>one burger</b>, so you can watch the loop without a crowd hiding problems.\n\n" +
-            "If production stops, check the worker assignment, station connections, ingredient stock, station buffers, and worker travel.\n\n" +
-            "Serve that order, then continue to Analytics. Extra customers stay away until the tutorial ends.",
-            "Next", Highlight.None, liveCustomer: true, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true, requireOrderServed: true),
+            "Click <b>Start Shift</b>. One customer will order a burger. To continue, click <b>Pause</b>, then <b>Play</b>, then <b>Fast Forward</b>, and serve the order. I strongly recommend using Fast Forward for most of each shift. Pause only to inspect a bottleneck.",
+            "Next", Highlight.None, liveCustomer: true, requireAllStations: true, requireFlow: true,
+            requireWorkerOnFlow: true, requireOrderServed: true, requireTimeControlInteractions: true),
         new Step(
             "Review analytics",
             "Before you open Analytics: <b>In System</b> counts customers waiting or being served. <b>Avg Order Wait</b> is order placement to full pickup. <b>Orders Served / Min</b> counts customer orders completed per minute. <b>Service Rate</b> is served ÷ (served + lost). In the item table, <b>Produced / Min</b> counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then click Finish.",
@@ -489,14 +555,14 @@ public class OnboardingTutorial : MonoBehaviour
         "Waiting, walking, and blocked stations are all clues.",
 
         "Click <b>Start Shift</b> on the Plan screen. I am opening the doors for one test customer, who will order <b>one burger</b>, so we can watch the full flow without a crowd hiding the problems.\n\n" +
-        "If production stops, check the worker assignment, station connections, ingredient stock, station buffers, and worker travel. Serve the order, then continue to Analytics.",
+        "Click <b>Pause</b>, then <b>Play</b>, then <b>Fast Forward</b>. I strongly recommend using Fast Forward for most of each shift. Pause only to inspect a bottleneck. Serve the order to continue.",
 
         "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Produced / Min in the item table counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then Finish."
     };
 
     static readonly string[] CompactTutorialText =
     {
-        "You are the <b>industrial and systems engineer</b>. Balance people, equipment, materials, and customer demand. Design, run, measure, improve.",
+        "You are the <b>industrial and systems engineer</b>. We'll improve how people, equipment, materials, and work fit together. Click the highlighted phrase for its Guidebook entry, then close the book.",
         "Alright now get used to movin around this joint.\n\nMove with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
         "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
         "<b>Layout rules</b>\n" +
@@ -505,7 +571,7 @@ public class OnboardingTutorial : MonoBehaviour
         "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
         "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
         "Let me walk you through how to make a simple burger production line.",
-        "The <b>Plan</b> card shows forecast demand/min and <b>Shift Total</b> (rate × shift length). Use it to estimate ingredient needs. Review the card, then click <b>Next</b>.",
+        "The Plan screen shows demand/min and full-shift totals. The <b>Objectives</b> button at top right tracks daily tasks and milestone goals. Use shift totals to estimate ingredient needs, then click <b>Next</b>.",
         "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. Its demand forecast and shift total appear.",
         "Plan inputs from <b>Shift Total</b>: 5 burgers/min × 12 minutes = 60 patties and buns. Stock caps at 100 per ingredient, so replenish during the shift. Open <b>Business > Supply</b> and order packs.",
         "Open <b>Business > Workers</b> and hire one worker. The first is free; later hires cost more. Assign staff by flow and balance transport capacity with workload. Short routes reduce travel.",
@@ -513,7 +579,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Select a flow and click <b>Edit Flow</b>. Drag to connect stations; click to select; Ctrl-click to remove. Press Esc to cancel or <b>Finish</b> to save.",
         "Drag a worker card onto <b>Drop Worker Here</b> in the burger flow. Assign enough labor capacity for the workload.",
         "Before opening, set stations, recipes, menu, and flows. During a shift, adjust rates, supplies, and worker assignments. Customers order at Register; workers replenish Pickup through the process flow. Queues and starved or blocked stations reveal constraints.",
-        "Click <b>Start Shift</b>. One customer will order one burger. Observe the process and serve it. If output stops, check flow links, stock, buffers, and worker travel.",
+        "Click <b>Start Shift</b>. One customer will order a burger. To continue, click <b>Pause</b>, then <b>Play</b>, then <b>Fast Forward</b>, and serve the order. I strongly recommend using Fast Forward for most of each shift. Pause only to inspect a bottleneck.",
         "In <b>Analytics</b>, compare demand, orders, and items delivered to Pickup. <b>Service Rate</b> = served ÷ (served + lost). Find the constraint, change one thing, and measure the result. Review Analytics, close it, then Finish."
     };
 
@@ -618,6 +684,7 @@ public class OnboardingTutorial : MonoBehaviour
         pendingStart = true;
         running = false;
         stepIndex = 0;
+        glossaryTermClicked = false;
         stationChecklistInitialized = false;
         nextStationChecklistRefresh = 0f;
         furthestStepIndex = -1;
@@ -630,7 +697,7 @@ public class OnboardingTutorial : MonoBehaviour
         analyticsScreenOpened = false;
         menuScreenOpened = false;
         orderServed = false;
-        tutorialReviewShown = false;
+        ResetTutorialTimeControlProgress();
         cleanedOldWorldCallout = false;
         planScreenIntroduced = false;
         tutorialBurgerUnlockShown = false;
@@ -672,6 +739,22 @@ public class OnboardingTutorial : MonoBehaviour
 
     void OnNext()
     {
+        if (stepIndex == 2 && IsFreezerExplanationPhase(freezerWalkthroughPhase))
+        {
+            if (tutorialVisibleCharacters < tutorialTotalCharacters)
+            {
+                tutorialVisibleCharacters = tutorialTotalCharacters;
+                tutorialCharacterProgress = tutorialTotalCharacters;
+                if (bodyText != null)
+                    bodyText.maxVisibleCharacters = tutorialVisibleCharacters;
+                return;
+            }
+
+            Sfx.Play(SfxId.UiClick);
+            SetFreezerWalkthroughPhase((FreezerWalkthroughPhase)((int)freezerWalkthroughPhase + 1));
+            return;
+        }
+
         if (!StepRequirementMet())
         {
             if (stepIndex >= 0 && stepIndex < Steps.Length
@@ -723,6 +806,10 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        // A manual drag only overrides placement for the current step. Let the
+        // next step return to its contextual position, animating from here.
+        panelDragHandle?.ResetUserPosition();
+        calloutPanelPositionVelocity = Vector2.zero;
         tutorialUnlockContinuePending = false;
         if (stepIndex == 3 && !tutorialBurgerUnlockShown)
         {
@@ -750,6 +837,11 @@ public class OnboardingTutorial : MonoBehaviour
         ingredientTutorialStep = 0;
         ingredientExplanationUntil = 0f;
         tutorialFocusText = null;
+        freezerWalkthroughPhase = stepIndex == 2
+            ? HasPlacedStation(Highlight.Freezer)
+                ? FreezerWalkthroughPhase.RemainingStations
+                : FreezerWalkthroughPhase.StationName
+            : FreezerWalkthroughPhase.Inactive;
         if (!step.requireMenuScreen)
             menuScreenOpened = false;
         furthestStepIndex = Mathf.Max(furthestStepIndex, stepIndex);
@@ -766,8 +858,11 @@ public class OnboardingTutorial : MonoBehaviour
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
             titleText.text = ISEVocabularyHighlighter.Highlight(step.title);
-        SetTutorialBodyText(!string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
-            : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body);
+        string initialBody = !string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
+            : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
+        if (stepIndex == 2)
+            initialBody = GetFreezerWalkthroughText(freezerWalkthroughPhase);
+        SetTutorialBodyText(initialBody);
         if (coreStationChecklistText != null)
         {
             coreStationChecklistText.gameObject.SetActive(step.requireStationChecklist);
@@ -779,14 +874,20 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
         if (nextButton != null)
-            nextButton.gameObject.SetActive(!AutomaticallyAdvances(step)
-                && !tutorialUnlockContinuePending);
+        {
+            bool freezerGuideNext = stepIndex == 2
+                && IsFreezerExplanationPhase(freezerWalkthroughPhase);
+            nextButton.gameObject.SetActive(freezerGuideNext || (!AutomaticallyAdvances(step)
+                && !tutorialUnlockContinuePending));
+        }
         autoAdvanceStep = -1;
 
         ApplyPause(step.pauseSim);
-        currentHighlight = step.highlight;
+        currentHighlight = stepIndex == 2
+            && freezerWalkthroughPhase != FreezerWalkthroughPhase.RemainingStations
+                ? Highlight.Freezer : step.highlight;
         calloutTarget = null;
-        UpdateHighlight(step.highlight);
+        UpdateHighlight(currentHighlight);
 
         if (!step.openResearch)
             ResearchTreeUI.CloseIfOpen();
@@ -894,6 +995,9 @@ public class OnboardingTutorial : MonoBehaviour
         tutorialUnlockContinuePending = false;
         Sfx.Play(SfxId.UiClick);
         stepIndex++;
+        if (stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireTimeControlInteractions)
+            ResetTutorialTimeControlProgress();
         ShowStep();
     }
 
@@ -955,7 +1059,13 @@ public class OnboardingTutorial : MonoBehaviour
         string highlightedText = ISEVocabularyHighlighter.Highlight(sourceText);
         lastTutorialHighlightedText = highlightedText;
         if (bodyText.text != highlightedText)
+        {
+            // A changed instruction can have a different focus target. Resume
+            // contextual placement so the dragged card cannot hide that target.
+            panelDragHandle?.ResetUserPosition();
+            calloutPanelPositionVelocity = Vector2.zero;
             bodyText.text = highlightedText;
+        }
     }
 
     void ApplyISEVocabularyHighlighting()
@@ -1273,7 +1383,9 @@ public class OnboardingTutorial : MonoBehaviour
     void RefreshAdvanceGate()
     {
         if (nextButton == null) return;
-        bool ready = StepRequirementMet();
+        bool freezerGuideNext = stepIndex == 2
+            && IsFreezerExplanationPhase(freezerWalkthroughPhase);
+        bool ready = freezerGuideNext || StepRequirementMet();
         bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireRecipeScreen;
         bool canOpenAnalytics = !ready && stepIndex >= 0 && stepIndex < Steps.Length
@@ -1289,7 +1401,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null && stepIndex >= 0 && stepIndex < Steps.Length)
         {
             var step = Steps[stepIndex];
-            nextLabel.text = ready ? step.nextLabel : LockedLabel(step);
+            nextLabel.text = ready ? freezerGuideNext ? "Next" : step.nextLabel : LockedLabel(step);
             if (ready && step.requirePlaced)
                 UpdateHighlight(step.highlight);
         }
@@ -1298,6 +1410,8 @@ public class OnboardingTutorial : MonoBehaviour
     string LockedLabel(Step step)
     {
         if (step.highlight == Highlight.Inventory) return "Open Build";
+        if (step.requireGlossaryTermClick && !glossaryTermClicked)
+            return "Click the highlighted ISE term";
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced())
             return "Place the seven stations";
         if (step.requireResearch) return "Research all three foundations";
@@ -1363,6 +1477,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (step.requireGlossaryTermClick && !glossaryTermClicked) return false;
         if (step.requireCameraControls
             && (!tutorialCameraMoved || !tutorialCameraRotated || !tutorialCameraZoomed))
             return false;
@@ -1379,6 +1494,12 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced()) return false;
         if (step.requireOrderServed && !orderServed) return false;
+        if (step.requireTimeControlInteractions
+            && (!tutorialPauseControlUsed || !tutorialPlayControlUsed || !tutorialFastForwardControlUsed))
+            return false;
+        if (step.requireTimeControlInteractions
+            && tutorialVisibleCharacters < tutorialTotalCharacters)
+            return false;
         if (step.requireRecipes && (!recipeBusinessOpened || !BurgerRecipesReady())) return false;
         if (step.requireEditedFlow && !flowEditCompleted) return false;
         if ((step.requireFlow || step.requireWorkerOnFlow || step.requireEditedFlow)
@@ -1705,11 +1826,6 @@ public class OnboardingTutorial : MonoBehaviour
 
     void Complete(bool skipped)
     {
-        if (!skipped && !tutorialReviewShown)
-        {
-            tutorialReviewShown = true;
-            ShowTutorialReview();
-        }
         running = false;
         pendingStart = false;
         currentHighlight = Highlight.None;
@@ -1753,7 +1869,10 @@ public class OnboardingTutorial : MonoBehaviour
         ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
 
         if (GameTimeManager.Instance != null)
+        {
+            GameTimeManager.Instance.SetSpeed(GameTimeManager.SpeedMode.Play);
             GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+        }
 
         // Reset the deterministic arrival schedule. The Plan phase pause holds
         // the clock until the player explicitly starts the first shift.
@@ -1762,24 +1881,6 @@ public class OnboardingTutorial : MonoBehaviour
         for (int i = 0; i < spawners.Length; i++)
             if (spawners[i] != null)
                 spawners[i].ResumeAfterTutorial();
-    }
-
-    void ShowTutorialReview()
-    {
-        StoreStatisticsManager stats = StoreStatisticsManager.Instance;
-        int served = stats != null ? stats.OrdersCompletedToday : 0;
-        float wait = stats != null ? stats.AverageWaitTimeTodaySeconds : 0f;
-        int waste = stats != null ? stats.MealsWastedToday : 0;
-        string next = served == 0
-            ? "Next: check that your flow has a worker and that ingredients are in stock."
-            : wait > 35f
-                ? "Next: shorten the route or add capacity at the busiest station."
-                : waste > 0
-                    ? "Next: connect the final station to Pickup and watch delivery follow waiting orders."
-                    : "Next: add capacity and watch your kitchen keep pace as more customers arrive.";
-        NotificationCenter.Post("Tutorial complete. You served " + served + " order" + (served == 1 ? "" : "s") +
-            "; average wait " + wait.ToString("F0") + "s; wasted food " + waste + ". " + next,
-            GameNotificationKind.Message, "tutorial-review", 14f);
     }
 
     void PrepareEmptyKitchen()
@@ -2017,6 +2118,143 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
+    string GetFreezerWalkthroughText(FreezerWalkthroughPhase phase)
+    {
+        switch (phase)
+        {
+            case FreezerWalkthroughPhase.StationName:
+                return "Start with the <b>Freezer</b>. The card title names the facility. Click Next.";
+            case FreezerWalkthroughPhase.ModelPreview:
+                return "The picture previews the station model you will place. Click Next.";
+            case FreezerWalkthroughPhase.OwnedCount:
+                return "The number shows how many freezers you own. Click Next.";
+            case FreezerWalkthroughPhase.PurchaseButton:
+                return "The green button shows the cost, or <b>PLACE</b> if you already own one. Click it to buy or select the freezer and start placement.";
+            case FreezerWalkthroughPhase.Placement:
+                return "Move the freezer preview onto a clear floor tile, then left-click to place it. Press <b>R</b> to rotate.";
+            case FreezerWalkthroughPhase.RemainingStations:
+                return "Freezer placed. Use the checklist for the other stations. Register and Pickup go on counters. Shorter distances reduce worker travel.";
+            default:
+                return CompactTutorialText.Length > 2 ? CompactTutorialText[2] : Steps[2].body;
+        }
+    }
+
+    static bool IsFreezerExplanationPhase(FreezerWalkthroughPhase phase)
+    {
+        return phase == FreezerWalkthroughPhase.StationName
+            || phase == FreezerWalkthroughPhase.ModelPreview
+            || phase == FreezerWalkthroughPhase.OwnedCount;
+    }
+
+    void SetFreezerWalkthroughPhase(FreezerWalkthroughPhase phase)
+    {
+        if (freezerWalkthroughPhase == phase) return;
+        FreezerWalkthroughPhase previousPhase = freezerWalkthroughPhase;
+        freezerWalkthroughPhase = phase;
+        calloutTarget = null;
+
+        bool showingCardDetail = phase == FreezerWalkthroughPhase.StationName
+            || phase == FreezerWalkthroughPhase.ModelPreview
+            || phase == FreezerWalkthroughPhase.OwnedCount
+            || phase == FreezerWalkthroughPhase.PurchaseButton;
+        currentHighlight = showingCardDetail ? Highlight.Freezer : Highlight.None;
+        UpdateHighlight(currentHighlight);
+
+        if (stepIndex == 2 && nextButton != null)
+            nextButton.gameObject.SetActive(phase == FreezerWalkthroughPhase.StationName
+                || phase == FreezerWalkthroughPhase.ModelPreview
+                || phase == FreezerWalkthroughPhase.OwnedCount);
+
+        SetTutorialBodyText(GetFreezerWalkthroughText(phase));
+        ResetTutorialTextReveal();
+        RebuildTutorialLayout();
+
+        if (phase == FreezerWalkthroughPhase.Placement
+            || phase == FreezerWalkthroughPhase.RemainingStations
+            || (phase == FreezerWalkthroughPhase.PurchaseButton
+                && previousPhase == FreezerWalkthroughPhase.Placement))
+        {
+            InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            inventory?.RefreshAll();
+        }
+        RefreshAdvanceGate();
+    }
+
+    void RefreshFreezerWalkthroughProgress()
+    {
+        if (!running || stepIndex != 2
+            || freezerWalkthroughPhase == FreezerWalkthroughPhase.Inactive
+            || freezerWalkthroughPhase == FreezerWalkthroughPhase.RemainingStations
+            || Time.unscaledTime < nextFreezerWalkthroughRefresh)
+            return;
+        nextFreezerWalkthroughRefresh = Time.unscaledTime + 0.1f;
+
+        if (HasPlacedStation(Highlight.Freezer))
+        {
+            SetFreezerWalkthroughPhase(FreezerWalkthroughPhase.RemainingStations);
+            return;
+        }
+
+        BuildPlacer placer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+        ItemDefinition placementItem = placer != null ? placer.CurrentPlacementItem : null;
+        bool placingFreezer = placer != null && placer.IsPlacing && IsFreezerDefinition(placementItem);
+        if (placingFreezer)
+        {
+            if (freezerWalkthroughPhase != FreezerWalkthroughPhase.Placement)
+                SetFreezerWalkthroughPhase(FreezerWalkthroughPhase.Placement);
+        }
+        else if (freezerWalkthroughPhase == FreezerWalkthroughPhase.Placement)
+        {
+            // Esc cancels placement but keeps the purchased station in inventory.
+            SetFreezerWalkthroughPhase(FreezerWalkthroughPhase.PurchaseButton);
+        }
+    }
+
+    static bool IsFreezerDefinition(ItemDefinition item)
+    {
+        return item != null && ((item.prefab != null
+                && item.prefab.GetComponentInChildren<FreezerStation>(true) != null)
+            || ItemMatchesHighlight(item, Highlight.Freezer));
+    }
+
+    void RefreshFreezerWalkthroughHighlight()
+    {
+        if (freezerWalkthroughPhase == FreezerWalkthroughPhase.Inactive
+            || freezerWalkthroughPhase == FreezerWalkthroughPhase.RemainingStations)
+            return;
+
+        if (freezerWalkthroughPhase == FreezerWalkthroughPhase.Placement)
+        {
+            BuildStationActionBar actionBar = FindFirstObjectByType<BuildStationActionBar>(
+                FindObjectsInactive.Include);
+            if (actionBar != null && actionBar.PlacementInstructionTarget != null)
+                FocusTutorialControl(actionBar.PlacementInstructionTarget);
+            return;
+        }
+
+        InventoryItemCardUI[] cards = FindObjectsByType<InventoryItemCardUI>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (InventoryItemCardUI card in cards)
+        {
+            if (card == null || !card.gameObject.activeInHierarchy
+                || !IsFreezerDefinition(card.BoundItem))
+                continue;
+
+            Component target = freezerWalkthroughPhase switch
+            {
+                FreezerWalkthroughPhase.StationName => card.nameText,
+                FreezerWalkthroughPhase.ModelPreview => card.previewRawImage != null
+                    ? (Component)card.previewRawImage : card.previewImage,
+                FreezerWalkthroughPhase.OwnedCount => card.qtyText,
+                FreezerWalkthroughPhase.PurchaseButton => card.buyButton,
+                _ => null
+            };
+            if (target != null)
+                FocusTutorialControl(target);
+            return;
+        }
+    }
+
     void RefreshControlHighlights()
     {
         if (Time.unscaledTime < nextControlHighlightRefresh) return;
@@ -2041,6 +2279,12 @@ public class OnboardingTutorial : MonoBehaviour
         if (calloutTarget == null && highlightTarget is RectTransform targetRect
             && targetRect.gameObject.activeInHierarchy)
             calloutTarget = targetRect;
+
+        if (step.requireStationChecklist)
+        {
+            RefreshFreezerWalkthroughHighlight();
+            return;
+        }
 
         if (step.requireIngredients)
         {
@@ -2091,6 +2335,17 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireAnalyticsScreen && !analyticsScreenOpened)
         {
             HighlightHudButton("AnalyticsButton");
+            return;
+        }
+        if (step.requireTimeControlInteractions)
+        {
+            GameTimeUI timeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Exclude);
+            Button target = timeControls == null ? null
+                : !tutorialPauseControlUsed ? timeControls.pauseButton
+                : !tutorialPlayControlUsed ? timeControls.playButton
+                : !tutorialFastForwardControlUsed ? timeControls.fastForwardButton
+                : null;
+            if (target != null) HighlightControl(target);
             return;
         }
         if (step.requireResearch)
@@ -2183,6 +2438,7 @@ public class OnboardingTutorial : MonoBehaviour
         TrackCameraTutorialInputs();
         RefreshCameraPromptStatus();
         RefreshAdvanceGate();
+        RefreshFreezerWalkthroughProgress();
         RefreshControlHighlights();
         UpdateControlHighlightPulse();
         if (Steps[stepIndex].requireStationChecklist)
@@ -2256,6 +2512,13 @@ public class OnboardingTutorial : MonoBehaviour
         tutorialCameraRotated = false;
         tutorialCameraZoomed = false;
         RefreshCameraPromptStatus();
+    }
+
+    void ResetTutorialTimeControlProgress()
+    {
+        tutorialPauseControlUsed = false;
+        tutorialPlayControlUsed = false;
+        tutorialFastForwardControlUsed = false;
     }
 
     void UpdateTutorialWorldHighlights()

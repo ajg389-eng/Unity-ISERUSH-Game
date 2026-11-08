@@ -23,6 +23,8 @@ MonoBehaviour:
   - Supply planning now connects ingredient rates with restaurant demand.
   - Keep checking the results, because a change in one part can shift the rest.
   isTutorial: 0
+  minimumSystemEfficiencyPercent: 50
+  minimumCustomersServedPercent: 75
   missions:
   - {fileID: 11400000, guid: f4dd5e7666294f548dd18355eb390375, type: 2}
   - {fileID: 11400000, guid: 2d6eff8a216647678689348797f51cf0, type: 2}
