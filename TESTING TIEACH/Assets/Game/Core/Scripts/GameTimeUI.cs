@@ -439,6 +439,7 @@ public class GameTimeUI : MonoBehaviour
             {
                 Sfx.Play(SfxId.UiClick);
                 timeManager?.CycleFastForwardRate();
+                OnboardingTutorial.NotifyTutorialFastForwardRateSelected();
                 Refresh();
             });
         }

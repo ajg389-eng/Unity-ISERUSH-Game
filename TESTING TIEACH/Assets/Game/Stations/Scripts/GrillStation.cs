@@ -58,10 +58,11 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
     public float ProcessRemainingSeconds => IsCookingPatty
         ? Mathf.Max(0f, EffectiveProcessTimeSeconds - cookTimer) : 0f;
     public int StationMark => Mathf.Clamp(stationMark, 1, 2);
-    // Grill input and finished food share the authored physical slots. Keep the
-    // simulation capacity aligned with what players can actually see on the grill.
-    public int InputSlotCapacity { get { EnsureBufferMarkers(); return slotMarkers.Count > 0 ? slotMarkers.Count : StationBufferLimits.PerItem; } }
-    public int OutputSlotCapacity => InputSlotCapacity;
+    // Authored markers are the visible sample of the buffer. Production uses the
+    // same generous per-item capacity as other stations so workers can refill it
+    // in full carry batches without waiting for a visible slot to empty.
+    public int InputSlotCapacity => StationBufferLimits.PerItem;
+    public int OutputSlotCapacity => StationBufferLimits.PerItem;
     public int VisibleSlotCount { get { EnsureBufferMarkers(); return slotMarkers.Count; } }
 
     void OnEnable()
@@ -84,12 +85,9 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
         + (item != null && item == GetSelectedInput() ? pattyUnits : 0);
     public int GetOutputCount(ItemDefinition item) =>
         IsSelectedOutput(item) ? cookedOutputUnits : 0;
-    public bool CanAcceptInput(ItemDefinition item, int amount) =>
-        amount > 0 && (IsSelectedInput(item) || IsSelectedSecondaryInput(item))
-            // Inputs, food cooking, and finished output all use the same visible
-            // grill slots. This prevents deliveries from stacking invisibly past
-            // a grill that already looks full.
-            && BufferedPattyCount + amount <= InputSlotCapacity;
+    public bool CanAcceptInput(ItemDefinition item, int amount) => amount > 0
+        && (IsSelectedInput(item) || IsSelectedSecondaryInput(item))
+        && GetHeldInputCount(item) + amount <= StationBufferLimits.PerItem;
     public int StoreInput(ItemDefinition item, int amount, CustomerOrder sourceOrder = null)
     {
         if (!CanAcceptInput(item, amount)) return 0;

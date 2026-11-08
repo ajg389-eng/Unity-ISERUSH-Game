@@ -24,6 +24,7 @@ public static class TutorialVoiceEventId
     public const string FirstWorkerHired = "first_worker_hired";
     public const string OutputAssigned = "output_assigned";
     public const string FirstOrderServed = "first_order_served";
+    public const string TutorialCompleted = "tutorial_completed";
 
     // Repeatable gameplay events (milestone tasks)
     public const string OrderServed = "order_served";

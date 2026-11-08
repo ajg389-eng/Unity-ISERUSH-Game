@@ -15,22 +15,50 @@ public class CustomersUI : MonoBehaviour
 
     TextMeshProUGUI arrivalsSummary;
     TextMeshProUGUI demandTitle;
-    TextMeshProUGUI demandHelp;
     TextMeshProUGUI[] demandHeader;
     readonly List<TextMeshProUGUI> metricValues = new List<TextMeshProUGUI>();
+    readonly List<Image> metricCardTargets = new List<Image>();
+    Button[] demandHeaderInfoButtons;
     Transform demandListRoot;
     RectTransform demandViewport;
     ScrollRect demandScroll;
     readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
     readonly List<Image[]> demandReputationStars = new List<Image[]>();
+    GameObject columnHelpPopup;
+    TextMeshProUGUI columnHelpText;
+    int openHelpColumn = -1;
     static readonly float[] demandColumnMinimumWidths = { 190f, 85f, 95f, 90f, 95f, 95f, 160f };
     readonly float[] demandColumnWidths = (float[])demandColumnMinimumWidths.Clone();
+    static readonly string[] demandColumnHelp =
+    {
+        "The menu item tracked by this row.",
+        "Orders accepted at the register that have not been completed at pickup.",
+        "The recent rate of customer orders accepted at the register for this item.",
+        "Forecast customer demand for this item, in items per minute.",
+        "Item units delivered to a Pickup Station during the last 60 seconds.",
+        "Estimated steady output from active flows, considering supply, station and worker timing, and pickup space.",
+        "Current item reputation and the demand change that takes effect next shift."
+    };
+
+    public Component TutorialMetricTarget(int index) =>
+        index >= 0 && index < metricCardTargets.Count ? metricCardTargets[index] : null;
+    public Component TutorialArrivalsTarget => arrivalsSummary;
+    public Component TutorialDemandHeaderTarget(int index) =>
+        demandHeaderInfoButtons != null && index >= 0 && index < demandHeaderInfoButtons.Length
+            ? demandHeaderInfoButtons[index] : null;
 
     void OnEnable()
     {
         EnsureBuilt();
         RefreshAll();
+    }
+
+    void OnDisable()
+    {
+        if (columnHelpPopup != null)
+            columnHelpPopup.SetActive(false);
+        openHelpColumn = -1;
     }
 
     void Update()
@@ -87,25 +115,13 @@ public class CustomersUI : MonoBehaviour
         demandTitle.fontSizeMax = 18f;
         demandTitle.overflowMode = TextOverflowModes.Overflow;
 
-        demandHelp = CreateLabel(transform, "DemandHelp",
-            new Vector2(0, 1), new Vector2(1, 1),
-            new Vector2(0, -176), new Vector2(-28, 34),
-            12, TextAlignmentOptions.TopLeft);
-        demandHelp.text = "Demand/min is scheduled customer demand. Ordered/min is actual orders accepted at the register. Produced/min is output delivered to pickup over the last minute. Predicted/min estimates steady output from active flows with enough supply and pickup space.\nEach fulfilled item adds 1 reputation point; each missed item removes 10. Stars unlock at 50, 150, 300, 500, and 750 points. Each star changes that item's demand by 5/min at the start of the next shift. Demand stays fixed during a shift.";
-        demandHelp.enableAutoSizing = true;
-        demandHelp.fontSizeMin = 11f;
-        demandHelp.fontSizeMax = 12f;
-        demandHelp.textWrappingMode = TextWrappingModes.Normal;
-        demandHelp.overflowMode = TextOverflowModes.Truncate;
-        demandHelp.color = new Color(0.72f, 0.77f, 0.86f, 1f);
-
         var scrollGo = new GameObject("DemandScroll", typeof(RectTransform));
         scrollGo.transform.SetParent(transform, false);
         var scrollRt = (RectTransform)scrollGo.transform;
         scrollRt.anchorMin = new Vector2(0, 0);
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(12, 12);
-        scrollRt.offsetMax = new Vector2(-12, -216);
+        scrollRt.offsetMax = new Vector2(-12, -184);
 
         var scroll = scrollGo.AddComponent<ScrollRect>();
         demandScroll = scroll;
@@ -231,6 +247,7 @@ public class CustomersUI : MonoBehaviour
             demandHeader[i].overflowMode = TextOverflowModes.Overflow;
             demandHeader[i].color = new Color(0.72f, 0.77f, 0.86f, 1f);
         }
+        BuildColumnHelpButtons();
         var demandHeaderImage = demandHeader[0].transform.parent.parent.GetComponent<Image>();
         if (demandHeaderImage != null)
         {
@@ -246,6 +263,142 @@ public class CustomersUI : MonoBehaviour
         var demandMask = viewport.GetComponent<Mask>();
         if (demandMask == null) demandMask = viewport.gameObject.AddComponent<Mask>();
         demandMask.showMaskGraphic = false;
+    }
+
+    void BuildColumnHelpButtons()
+    {
+        demandHeaderInfoButtons = new Button[demandHeader.Length];
+        for (int i = 0; i < demandHeader.Length; i++)
+        {
+            RectTransform cell = demandHeader[i].transform.parent as RectTransform;
+            if (cell == null) continue;
+
+            RectTransform label = demandHeader[i].rectTransform;
+            label.offsetMax = new Vector2(-25f, -4f);
+
+            GameObject infoObject = new GameObject("ColumnInfo" + i,
+                typeof(RectTransform), typeof(Image), typeof(Button));
+            infoObject.transform.SetParent(cell, false);
+            RectTransform infoRect = (RectTransform)infoObject.transform;
+            infoRect.anchorMin = infoRect.anchorMax = new Vector2(1f, 1f);
+            infoRect.pivot = new Vector2(1f, 1f);
+            infoRect.anchoredPosition = new Vector2(-3f, -3f);
+            infoRect.sizeDelta = new Vector2(19f, 19f);
+            Image infoImage = infoObject.GetComponent<Image>();
+            infoImage.color = new Color(0.18f, 0.22f, 0.28f, 1f);
+            Button infoButton = infoObject.GetComponent<Button>();
+            infoButton.targetGraphic = infoImage;
+            GameUITheme.ApplyCompactControlEffects(infoButton);
+
+            TextMeshProUGUI infoLabel = CreateLabel(infoObject.transform, "Label",
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+                12f, TextAlignmentOptions.Center);
+            infoLabel.text = "i";
+            infoLabel.fontStyle = FontStyles.Bold;
+            infoLabel.raycastTarget = false;
+            int columnIndex = i;
+            Button capturedButton = infoButton;
+            infoButton.onClick.AddListener(() => ToggleColumnHelp(columnIndex, capturedButton));
+            demandHeaderInfoButtons[i] = infoButton;
+        }
+    }
+
+    void ToggleColumnHelp(int columnIndex, Button source)
+    {
+        if (columnHelpPopup == null)
+            BuildColumnHelpPopup();
+
+        if (columnHelpPopup.activeSelf && openHelpColumn == columnIndex)
+        {
+            columnHelpPopup.SetActive(false);
+            openHelpColumn = -1;
+            return;
+        }
+
+        openHelpColumn = columnIndex;
+        columnHelpText.text = demandColumnHelp[Mathf.Clamp(columnIndex, 0, demandColumnHelp.Length - 1)];
+        PositionColumnHelpPopup(source);
+        columnHelpPopup.SetActive(true);
+        columnHelpPopup.transform.SetAsLastSibling();
+    }
+
+    void BuildColumnHelpPopup()
+    {
+        columnHelpPopup = new GameObject("ColumnHelpPopup",
+            typeof(RectTransform), typeof(Image), typeof(Outline));
+        columnHelpPopup.transform.SetParent(transform, false);
+        RectTransform popupRect = (RectTransform)columnHelpPopup.transform;
+        popupRect.anchorMin = popupRect.anchorMax = new Vector2(0.5f, 0.5f);
+        popupRect.pivot = new Vector2(0.5f, 0.5f);
+        popupRect.sizeDelta = new Vector2(310f, 94f);
+        Image popupImage = columnHelpPopup.GetComponent<Image>();
+        popupImage.color = GameUITheme.Surface;
+        popupImage.raycastTarget = true;
+        Outline outline = columnHelpPopup.GetComponent<Outline>();
+        outline.effectColor = GameUITheme.Accent;
+        outline.effectDistance = new Vector2(2f, -2f);
+
+        columnHelpText = CreateLabel(columnHelpPopup.transform, "Explanation",
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+            14f, TextAlignmentOptions.TopLeft);
+        columnHelpText.rectTransform.offsetMin = new Vector2(12f, 12f);
+        columnHelpText.rectTransform.offsetMax = new Vector2(-34f, -12f);
+        columnHelpText.textWrappingMode = TextWrappingModes.Normal;
+        columnHelpText.overflowMode = TextOverflowModes.Truncate;
+
+        GameObject closeObject = new GameObject("Close",
+            typeof(RectTransform), typeof(Image), typeof(Button));
+        closeObject.transform.SetParent(columnHelpPopup.transform, false);
+        RectTransform closeRect = (RectTransform)closeObject.transform;
+        closeRect.anchorMin = closeRect.anchorMax = new Vector2(1f, 1f);
+        closeRect.pivot = new Vector2(1f, 1f);
+        closeRect.anchoredPosition = new Vector2(-5f, -5f);
+        closeRect.sizeDelta = new Vector2(24f, 24f);
+        Image closeImage = closeObject.GetComponent<Image>();
+        closeImage.color = GameUITheme.Danger;
+        Button closeButton = closeObject.GetComponent<Button>();
+        closeButton.targetGraphic = closeImage;
+        closeButton.onClick.AddListener(() =>
+        {
+            columnHelpPopup.SetActive(false);
+            openHelpColumn = -1;
+        });
+        TextMeshProUGUI closeLabel = CreateLabel(closeObject.transform, "Label",
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+            14f, TextAlignmentOptions.Center);
+        closeLabel.text = "x";
+        closeLabel.fontStyle = FontStyles.Bold;
+        closeLabel.raycastTarget = false;
+        columnHelpPopup.SetActive(false);
+    }
+
+    void PositionColumnHelpPopup(Button source)
+    {
+        if (source == null || columnHelpPopup == null) return;
+        RectTransform rootRect = transform as RectTransform;
+        RectTransform sourceRect = source.transform as RectTransform;
+        if (rootRect == null || sourceRect == null) return;
+
+        Vector3[] corners = new Vector3[4];
+        sourceRect.GetWorldCorners(corners);
+        Vector3 worldCenter = (corners[0] + corners[2]) * 0.5f;
+        Canvas canvas = GetComponentInParent<Canvas>();
+        Canvas rootCanvas = canvas != null && canvas.rootCanvas != null ? canvas.rootCanvas : canvas;
+        Camera eventCamera = rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? rootCanvas.worldCamera : null;
+        Vector2 screen = RectTransformUtility.WorldToScreenPoint(eventCamera, worldCenter);
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screen,
+                eventCamera, out Vector2 local))
+            return;
+
+        RectTransform popupRect = (RectTransform)columnHelpPopup.transform;
+        float halfWidth = popupRect.sizeDelta.x * 0.5f;
+        float halfHeight = popupRect.sizeDelta.y * 0.5f;
+        Rect bounds = rootRect.rect;
+        local.x = Mathf.Clamp(local.x, bounds.xMin + halfWidth + 8f, bounds.xMax - halfWidth - 8f);
+        local.y = Mathf.Clamp(local.y - halfHeight - 12f,
+            bounds.yMin + halfHeight + 8f, bounds.yMax - halfHeight - 8f);
+        popupRect.anchoredPosition = local;
     }
 
     void HidePlaceholderCopy()
@@ -285,7 +438,9 @@ public class CustomersUI : MonoBehaviour
         card.transform.SetParent(parent, false);
         var cardImage = card.GetComponent<Image>();
         cardImage.color = Color.clear;
+        cardImage.raycastTarget = false;
         cardImage.gameObject.AddComponent<GameUIThemeStyled>();
+        metricCardTargets.Add(cardImage);
         card.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
         var stripe = new GameObject("Accent", typeof(RectTransform), typeof(Image));

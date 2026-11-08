@@ -558,22 +558,15 @@ public class ManagementModeController : MonoBehaviour
             {
                 from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(outputDragSource.gameObject));
                 to = grid.GetCellCenter(to);
-                float y = grid.Origin.y + 0.08f;
+                // Keep the in-progress connection easy to see above station
+                // previews and floor markings. The committed flow route still
+                // snaps to the tile grid after the player releases the drag.
+                float y = grid.Origin.y + 1.25f;
                 from.y = y;
                 to.y = y;
-                List<Vector3> previewPath = grid.GetPath(from, to);
-                if (previewPath == null) previewPath = new List<Vector3>();
-                if (previewPath.Count == 0) previewPath.Add(from);
-                if (Vector3.SqrMagnitude(previewPath[0] - from) > 0.001f) previewPath.Insert(0, from);
-                if (Vector3.SqrMagnitude(previewPath[previewPath.Count - 1] - to) > 0.001f) previewPath.Add(to);
-                for (int i = 0; i < previewPath.Count; i++)
-                {
-                    Vector3 point = previewPath[i];
-                    point.y = y;
-                    previewPath[i] = point;
-                }
-                outputDragPreview.positionCount = previewPath.Count;
-                outputDragPreview.SetPositions(previewPath.ToArray());
+                outputDragPreview.positionCount = 2;
+                outputDragPreview.SetPosition(0, from);
+                outputDragPreview.SetPosition(1, to);
             }
         }
         else

@@ -68,6 +68,8 @@ public class GameTimeManager : MonoBehaviour
     float GameMinutesPerRealSecond => 60f / Mathf.Max(1f, realSecondsPerGameHour);
     public float CurrentFastForwardRate => GetFastForwardRate(activeFastForwardRateIndex);
     public float SelectedFastForwardRate => GetFastForwardRate(selectedFastForwardRateIndex);
+    public int SelectedFastForwardRateIndex => selectedFastForwardRateIndex;
+    public int FastForwardRateCount => GetFastForwardRateCount();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()

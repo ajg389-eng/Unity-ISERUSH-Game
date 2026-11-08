@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 36;
+    public const int CurrentVersion = 40;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -28,6 +28,9 @@ public class KitchenSaveSnapshot
     public bool tutorialPauseControlUsed;
     public bool tutorialPlayControlUsed;
     public bool tutorialFastForwardControlUsed;
+    public bool tutorialShiftStarted;
+    public int tutorialFastForwardRateMask;
+    public int tutorialAnalyticsStage = -1;
     public bool activeMilestoneShiftObjectives;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
@@ -76,6 +79,9 @@ public class KitchenSaveSnapshot
         s.tutorialPauseControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialPauseUsedForSave;
         s.tutorialPlayControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialPlayUsedForSave;
         s.tutorialFastForwardControlUsed = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialFastForwardUsedForSave;
+        s.tutorialShiftStarted = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialShiftStartedForSave;
+        s.tutorialFastForwardRateMask = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialFastForwardRateMaskForSave : 0;
+        s.tutorialAnalyticsStage = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialAnalyticsStageForSave : -1;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
         if (MilestoneProgressManager.Instance != null)
         {
@@ -584,6 +590,23 @@ public class KitchenSaveSnapshot
             else if (restoredTutorialStep >= 10)
                 restoredTutorialStep++;
         }
+        // Version 37 adds an Objectives walkthrough after the Plan lesson.
+        // Keep incomplete tutorials past Plan aligned with their previous step.
+        if (version < 37 && !tutorialComplete && restoredTutorialStep >= 7)
+            restoredTutorialStep++;
+        // Version 38 separates the shift-start lesson from the time-controls
+        // checklist, moving the old Analytics lesson from step 16 to 17.
+        if (version < 38 && !tutorialComplete && restoredTutorialStep >= 16)
+            restoredTutorialStep++;
+        // Version 39 moves the Objectives walkthrough to just before shift start.
+        // Convert checkpoints from the previous ordering after earlier migrations.
+        if (version < 39 && !tutorialComplete)
+        {
+            if (restoredTutorialStep == 7)
+                restoredTutorialStep = 14;
+            else if (restoredTutorialStep >= 8 && restoredTutorialStep <= 14)
+                restoredTutorialStep--;
+        }
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
@@ -595,6 +618,11 @@ public class KitchenSaveSnapshot
             else
                 MissionProgressManager.Instance.ResetProgress();
         }
+        // Older saves may already have finished onboarding before the tutorial
+        // milestone had its dedicated completion task.
+        if (tutorialComplete && milestoneProgress != null
+            && milestoneProgress.ActiveMilestoneId == "tutorial")
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.TutorialCompleted);
         ResearchProgressManager research = ResearchProgressManager.Ensure();
         if (research != null)
             research.Restore(
@@ -678,7 +706,10 @@ public class KitchenSaveSnapshot
             OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed,
                 version >= 36 && tutorialPauseControlUsed,
                 version >= 36 && tutorialPlayControlUsed,
-                version >= 36 && tutorialFastForwardControlUsed);
+                version >= 36 && tutorialFastForwardControlUsed,
+                version >= 38 && tutorialShiftStarted,
+                version >= 40 ? tutorialFastForwardRateMask : 0,
+                version >= 40 ? tutorialAnalyticsStage : -1);
         return true;
     }
 

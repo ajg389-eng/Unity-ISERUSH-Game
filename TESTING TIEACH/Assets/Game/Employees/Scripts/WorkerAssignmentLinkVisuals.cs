@@ -282,11 +282,19 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                     continue;
 
                 if (markedStations.Add(connection.from))
+                {
                     CreateStationConnectionMarker(connection.from, grid, incoming, outgoing,
                         incomingCount, outgoingCount);
+                    CreateStationNodeConnector(connection.from, grid,
+                        GetFlowNodeColor(connection.from, incoming, outgoing), "Selected_" + flowIndex);
+                }
                 if (markedStations.Add(connection.to))
+                {
                     CreateStationConnectionMarker(connection.to, grid, incoming, outgoing,
                         incomingCount, outgoingCount);
+                    CreateStationNodeConnector(connection.to, grid,
+                        GetFlowNodeColor(connection.to, incoming, outgoing), "Selected_" + flowIndex);
+                }
 
                 Vector3 from = grid.GetCellCenter(
                     KitchenEmployee.GetInteractionPosition(connection.from));
@@ -385,6 +393,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             bool merge = incomingCount.TryGetValue(station, out int sources) && sources > 1;
             string role = root ? "START" : end ? "END" : split ? "SPLIT" : merge ? "MERGE" : "STOP";
             CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
+            CreateStationNodeConnector(station, grid, color, "Draft_" + flow.GetHashCode());
         }
 
         int edgeIndex = 0;
@@ -437,6 +446,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 Color markerColor = isStart ? startColor : isEnd ? endColor : stopColor;
                 string owner = showOwner ? worker.employeeName + "\n" : "";
                 CreateMarker(stopPosition, role, owner + GetDisplayName(chain[i]), markerColor, grid.cellSize);
+                CreateStationNodeConnector(chain[i], grid, markerColor,
+                    "Worker_" + worker.GetInstanceID() + "_" + chainIndex + "_" + i);
 
                 if (i == 0) continue;
                 Vector3 previous = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(chain[i - 1]));
@@ -689,6 +700,65 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             centerRenderer.sortingOrder = 21;
         }
 
+    }
+
+    void CreateStationNodeConnector(GameObject station, GridManager grid, Color color,
+        string context)
+    {
+        if (station == null || grid == null) return;
+
+        Vector3 flowNode = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
+        Vector3 placedTile = GetNearestPlacedTileCenter(station, grid, flowNode);
+        placedTile.y = flowNode.y = grid.Origin.y + floorOffset;
+        if ((flowNode - placedTile).sqrMagnitude < 0.001f) return;
+
+        var points = new List<Vector3>(3) { placedTile };
+        if (!Mathf.Approximately(placedTile.x, flowNode.x)
+            && !Mathf.Approximately(placedTile.z, flowNode.z))
+            points.Add(new Vector3(flowNode.x, placedTile.y, placedTile.z));
+        points.Add(flowNode);
+
+        CreateGridLine(points, "Station_Node_Connector_" + context + "_"
+            + station.GetInstanceID(), color, showDirection: false);
+    }
+
+    static Vector3 GetNearestPlacedTileCenter(GameObject station, GridManager grid,
+        Vector3 flowNode)
+    {
+        BuildFootprint footprint = station.GetComponent<BuildFootprint>();
+        PlacedBuildItem placedItem = station.GetComponent<PlacedBuildItem>();
+        int sizeX = footprint != null ? Mathf.Max(1, footprint.sizeX)
+            : placedItem != null && placedItem.itemDefinition != null
+                ? Mathf.Max(1, placedItem.itemDefinition.footprintX) : 1;
+        int sizeY = footprint != null ? Mathf.Max(1, footprint.sizeY)
+            : placedItem != null && placedItem.itemDefinition != null
+                ? Mathf.Max(1, placedItem.itemDefinition.footprintY) : 1;
+        int yaw = Mathf.RoundToInt(station.transform.eulerAngles.y / 90f) & 3;
+        if (yaw == 1 || yaw == 3)
+        {
+            int swap = sizeX;
+            sizeX = sizeY;
+            sizeY = swap;
+        }
+
+        if (grid.TryGetFootprintOriginFromCenter(station.transform.position,
+                sizeX, sizeY, out int originX, out int originY))
+        {
+            Vector3 nearest = grid.CellToWorld(originX, originY);
+            float nearestDistance = float.MaxValue;
+            for (int x = originX; x < originX + sizeX; x++)
+            for (int y = originY; y < originY + sizeY; y++)
+            {
+                Vector3 candidate = grid.CellToWorld(x, y);
+                float distance = (candidate - flowNode).sqrMagnitude;
+                if (distance >= nearestDistance) continue;
+                nearest = candidate;
+                nearestDistance = distance;
+            }
+            return nearest;
+        }
+
+        return grid.GetCellCenter(station.transform.position);
     }
 
     Material GetMarkerMaterial(Color color)

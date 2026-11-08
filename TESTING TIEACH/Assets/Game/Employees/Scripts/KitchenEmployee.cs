@@ -613,17 +613,12 @@ public partial class KitchenEmployee : MonoBehaviour
                 ItemDefinition freezerItem = production?.GetBranchTransferItem(job);
                 if (freezer == null || freezerItem == null || !freezer.CanSupply(freezerItem)) continue;
                 if (requireReady && freezer.GetOutputCount(freezerItem) <= 0) continue;
-                // Clear finished grill output before sending another raw input
-                // to that grill. This avoids workers arriving with a new batch
-                // while cooked patties are still waiting for the Assembly handoff.
                 if (requireReady)
                 {
                     GameObject destination = production != null
                         ? production.GetFlowOutput(this, candidate, job) : null;
                     GrillStation destinationGrill = destination != null
                         ? destination.GetComponent<GrillStation>() : null;
-                    if (destinationGrill != null && destinationGrill.IsCooked())
-                        continue;
                     ItemDefinition secondary = destinationGrill != null
                         ? destinationGrill.GetSelectedSecondaryInput() : null;
                     if (!job.isAssemblySupply && secondary != null
@@ -1549,19 +1544,10 @@ public partial class KitchenEmployee : MonoBehaviour
 
     int ProductionBatchCapacity
     {
-        get
-        {
-            if (currentJob?.pipeline != null)
-            {
-                for (int i = 0; i < currentJob.pipeline.Length; i++)
-                    if (currentJob.pipeline[i] == StationType.Assembly)
-                    {
-                        AssemblyStation assembly = GetAssemblyStation(currentJob.CurrentWorkProduct);
-                        return Mathf.Min(CarryCapacity, assembly != null ? assembly.MaxProcessBatch : 1);
-                    }
-            }
-            return CarryCapacity;
-        }
+        // This limits the worker's physical load, not how many units a later
+        // station can process in one cycle. Processing stations have their own
+        // batch limits and buffered input, so they must not reduce a freezer trip.
+        get => CarryCapacity;
     }
 
     void SyncHasPattyFlag()
@@ -3494,21 +3480,23 @@ public partial class KitchenEmployee : MonoBehaviour
                         ? freezerStation.GetOutputCount(freezerItem) : 0;
                     if (currentJob != null && currentJob.isAssemblySupply)
                     {
-                        int ready = freezerStation != null
-                            ? freezerStation.GetReadyOutputCount(freezerItem) : 0;
-                        int available = Mathf.Min(requestedFreezerUnits, freezerStock, ready);
-                        if (available <= 0)
+                        int stockAvailable = Mathf.Min(requestedFreezerUnits, freezerStock);
+                        if (stockAvailable <= 0)
                         {
                             YieldBlockedTaskForOtherWork("Freezer has no ready stock",
                                 freezerStation != null ? freezerStation.gameObject : null, 1.5f);
                             break;
                         }
-                        if (available < requestedFreezerUnits)
+                        // Keep the planned batch intact while the station rate
+                        // refills. Only shrink it when physical stock itself is
+                        // below the reserved batch, otherwise repeated partial
+                        // pickups turn a four-item trip into one-item errands.
+                        if (stockAvailable < requestedFreezerUnits)
                         {
                             GameObject destination = manager.GetFlowOutput(this,
                                 freezerStation.gameObject, currentJob);
                             if (!manager.TryReserveDestination(currentJob, destination,
-                                    freezerItem, available, this))
+                                    freezerItem, stockAvailable, this))
                             {
                                 YieldBlockedTaskForOtherWork(
                                     "Freezer output has no reserved destination space",
@@ -3572,18 +3560,20 @@ public partial class KitchenEmployee : MonoBehaviour
                             break;
                         }
 
-                        // Use the same batch collector as normal grill output. The old
-                        // salvage path picked only the currently cooked units, which
-                        // could send a one-item trip while more items were queued.
-                        if (grill != null && grill.IsCooked())
+                        // A worker carrying fresh inputs should load them even if
+                        // an earlier cooked batch is waiting. Only divert to output
+                        // collection when the worker is not carrying an input batch.
+                        if (grill != null && grill.IsCooked() && heldUnits <= 0)
                         {
                             step = Step.AtGrill;
                             stateTimer = grill.EffectiveProcessTimeSeconds;
                             break;
                         }
 
-                        int grillFreeSlots = grill != null
-                            ? Mathf.Max(0, grill.InputSlotCapacity - grill.BufferedPattyCount) : heldUnits;
+                        ItemDefinition grillInput = grill != null ? grill.GetSelectedInput() : null;
+                        int grillFreeSlots = grill != null && grillInput != null
+                            ? Mathf.Max(0, grill.InputSlotCapacity
+                                - grill.GetHeldInputCount(grillInput)) : heldUnits;
                         int reservedGrillSlots = manager.GetReservedInputUnits(currentJob);
                         int grillLoad = grill != null
                             ? Mathf.Min(heldUnits, Mathf.Min(grillFreeSlots, reservedGrillSlots)) : heldUnits;

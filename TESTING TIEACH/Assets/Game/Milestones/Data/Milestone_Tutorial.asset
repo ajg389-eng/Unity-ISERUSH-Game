@@ -26,7 +26,8 @@ MonoBehaviour:
     and information work together. Keep looking for delays and waste across the whole
     restaurant.
   isTutorial: 1
-  missions: []
-  missionDatabase: {fileID: 11400000, guid: 52859d47b8862bc4ca163b279226ec17, type: 2}
+  missions:
+  - {fileID: 11400000, guid: 9f5b4b9d0e0c4f1b8a75d8e3a1c2b6d4, type: 2}
+  missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

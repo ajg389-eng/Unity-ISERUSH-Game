@@ -1713,14 +1713,11 @@ public partial class ProductionManager : MonoBehaviour
     {
         if (grill == null || inputItem == null) return;
         int target = grill.InputSlotCapacity;
-        // Recipes with two inputs need room for both ingredients. Plan a balanced
-        // target per input while still accounting for every job against the grill's
-        // shared visible slots.
-        bool hasSecondaryInput = grill.GetSelectedSecondaryInput() != null;
-        int perItemTarget = hasSecondaryInput ? Mathf.Max(1, target / 2) : target;
+        // Each ingredient has its own buffer. Visible grill markers are only a
+        // sample of what is held, so output and other ingredients do not consume
+        // this item's refill capacity.
         int reservedForItem = grill.GetHeldInputCount(inputItem)
             + GetReservedInputCount(grill.gameObject, inputItem);
-        int sharedReserved = grill.BufferedPattyCount + GetReservedInputCount(grill.gameObject);
         foreach (ProductionJob queued in pendingJobs)
         {
             if (queued == null || !queued.isAssemblySupply || queued.grillSupplyTarget != grill)
@@ -1728,11 +1725,10 @@ public partial class ProductionManager : MonoBehaviour
             // Active jobs already contribute through their destination reservation.
             if (queued.reservedDestinationStation == grill.gameObject) continue;
             int plannedUnits = Mathf.Max(1, queued.requestedSupplyUnits);
-            sharedReserved += plannedUnits;
             if (queued.assemblySupplyOutputItem == inputItem)
                 reservedForItem += plannedUnits;
         }
-        int requestable = Mathf.Min(perItemTarget - reservedForItem, target - sharedReserved);
+        int requestable = target - reservedForItem;
         if (requestable <= 0) return;
 
         CuttingRecipeDefinition cuttingRecipe = orderConfig.GetCuttingRecipe(inputItem);
@@ -3043,17 +3039,6 @@ public partial class ProductionManager : MonoBehaviour
                 limit = Mathf.Min(limit, Mathf.Min(cutting.InputSlotCapacity, cutting.OutputSlotCapacity));
                 continue;
             }
-            AssemblyStation assemblyStation = stationObject.GetComponent<AssemblyStation>();
-            if (assemblyStation != null && job.assemblyStageProducts != null)
-            {
-                for (int stage = 0; stage < job.assemblyStageProducts.Length; stage++)
-                {
-                    if (!assemblyStation.CanProcess(job.assemblyStageProducts[stage])) continue;
-                    int assemblyLimit = assemblyStation.MaxProcessBatch;
-                    if (assemblyLimit > 0) limit = Mathf.Min(limit, assemblyLimit);
-                    break;
-                }
-            }
         }
 
         return Mathf.Clamp(limit, 1, 4);
@@ -3137,7 +3122,8 @@ public partial class ProductionManager : MonoBehaviour
                 : grillReceiver != null ? grillReceiver.InputSlotCapacity
                 : receiver.InputSlotCapacity;
             int occupiedSlots = grillReceiver != null
-                ? grillReceiver.BufferedPattyCount + GetReservedInputCount(destination)
+                ? grillReceiver.GetHeldInputCount(item)
+                    + GetReservedInputCount(destination, item)
                 : receiver.GetInputCount(item) + GetReservedInputCount(destination, item);
 
             if (freeSlots > 0)
@@ -3924,11 +3910,12 @@ public partial class ProductionManager : MonoBehaviour
                 - ReservedInputCount(station, null, except));
         else if (station.GetComponent<GrillStation>() is GrillStation grillStation)
         {
-            // A grill has one shared physical buffer for raw, cooking, secondary
-            // ingredients, and cooked output. Reservations for every item must
-            // consume that same capacity.
-            return Mathf.Max(0, grillStation.InputSlotCapacity - grillStation.BufferedPattyCount
-                - ReservedInputCount(station, null, except));
+            // Grill buffers have a per-item limit, just like the other production
+            // stations. Visible slot markers show sample contents, not the full
+            // capacity, and one item type must not consume another's buffer.
+            return Mathf.Max(0, StationBufferLimits.PerItem
+                - grillStation.GetHeldInputCount(item)
+                - ReservedInputCount(station, item, except));
         }
         else if (station.GetComponent<FryerStation>() is FryerStation fryerStation)
         {

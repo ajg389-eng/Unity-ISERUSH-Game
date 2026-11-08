@@ -106,6 +106,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     GameObject startShiftWarningOverlay;
     TextMeshProUGUI startShiftWarningDetails;
     RectTransform startShiftWarningCardRect;
+    Button startShiftAnywayButton;
     ItemDefinition selectedGoalItem;
     string selectedGoalItemName;
     StationNode diagnosedStation;
@@ -119,6 +120,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     int lastPlanDemandRevision = int.MinValue;
 
     public Button TutorialAddMenuItemButton => addMenuItemButton;
+    public Button TutorialStartShiftButton => startShiftWarningOverlay != null
+        && startShiftWarningOverlay.activeInHierarchy && startShiftAnywayButton != null
+            ? startShiftAnywayButton : startShiftButton;
     public bool IsMenuItemPickerOpen => itemPickerRoot != null && itemPickerRoot.activeSelf;
     public RectTransform TutorialPlanningCard => panelRoot != null ? panelRoot.transform as RectTransform : null;
 
@@ -132,6 +136,16 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (panelRoot == null || !IsPlanning) return;
         planHiddenForStationPopup = false;
         ShowAndFitPlanningPanel();
+    }
+
+    public void ResumeTutorialPracticeShift()
+    {
+        preShiftPlanningActive = false;
+        planHiddenForStationPopup = false;
+        if (panelRoot != null) panelRoot.SetActive(false);
+        ShowLivePanel();
+        EnsureMainHudNavigation();
+        timeManager?.ReleaseExternalPause(PauseSource);
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -481,8 +495,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         title.alignment = TextAlignmentOptions.Center;
 
         TextMeshProUGUI message = CreateText(card.transform, "WarningMessage",
-            "The plan may not cover menu demand. Review output rates and ingredient stock. Customers may wait or leave, and missed orders can reduce item reputation. Start anyway?",
-            15f, FontStyles.Normal, 58f, GameUITheme.TextPrimary);
+            "This appears when forecast demand exceeds predicted production or ingredient stock. Add or configure stations, recipes, workers, and flow links, raise output targets, or order the listed ingredients. Review the shortfalls before starting.",
+            15f, FontStyles.Normal, 78f, GameUITheme.TextPrimary);
         message.textWrappingMode = TextWrappingModes.Normal;
 
         startShiftWarningDetails = CreateText(card.transform, "WarningItemRates",
@@ -511,6 +525,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             "REVIEW PLAN", 46f, 12f, GameUITheme.Charcoal);
         Button continueButton = CreateCompactButton(actions.transform, "StartAnywayButton",
             "START SHIFT ANYWAY", 46f, 12f, GameUITheme.Positive);
+        startShiftAnywayButton = continueButton;
         foreach (Button button in new[] { reviewButton, continueButton })
         {
             LayoutElement buttonSize = button.GetComponent<LayoutElement>();
@@ -1290,7 +1305,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (canvasRect != null && startShiftWarningCardRect != null)
         {
             float width = Mathf.Min(620f, Mathf.Max(320f, canvasRect.rect.width - 48f));
-            float desiredHeight = 208f + (detailsSize != null ? detailsSize.preferredHeight : 100f);
+            float desiredHeight = 228f + (detailsSize != null ? detailsSize.preferredHeight : 100f);
             float availableHeight = Mathf.Max(280f, canvasRect.rect.height - 48f);
             float height = Mathf.Min(desiredHeight, availableHeight);
             startShiftWarningCardRect.sizeDelta = new Vector2(width, height);
@@ -1336,6 +1351,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // Build and Business remain available/visible during the shift.
         EnsureMainHudNavigation();
         if (timeManager != null) timeManager.ReleaseExternalPause(PauseSource);
+        OnboardingTutorial.NotifyTutorialShiftStarted();
         Sfx.Play(SfxId.UiClick);
     }
 

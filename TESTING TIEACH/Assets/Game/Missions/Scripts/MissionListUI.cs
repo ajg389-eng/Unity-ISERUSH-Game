@@ -32,6 +32,7 @@ public class MissionListUI : MonoBehaviour
     public Transform tasksListContent;
     public Transform milestoneTasksListContent;
     public Transform progressionListContent;
+    TextMeshProUGUI milestoneTaskSubtitle;
     public TextMeshProUGUI progressionDetailText;
     public Button researchButton;
     [HideInInspector]
@@ -94,6 +95,15 @@ public class MissionListUI : MonoBehaviour
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
 
     public static MissionListUI Instance { get; private set; }
+    public Button TutorialObjectivesButton
+    {
+        get
+        {
+            EnsureUI();
+            EnsureTopTabs();
+            return topObjectivesButton;
+        }
+    }
 
     void Awake()
     {
@@ -282,6 +292,7 @@ public class MissionListUI : MonoBehaviour
 
         SetVisible(true);
         SelectTab(activeTab);
+        OnboardingTutorial.NotifyObjectivesScreenOpened();
     }
 
     public void SetVisible(bool visible)
@@ -411,6 +422,7 @@ public class MissionListUI : MonoBehaviour
         if (tasksListContent == null || milestoneTasksListContent == null) return;
 
         ClearPool(milestoneTaskRowPool);
+        UpdateMilestoneTaskSubtitle();
 
         if (progress == null)
         {
@@ -446,7 +458,8 @@ public class MissionListUI : MonoBehaviour
             string title = mission.title;
             if (!done && needed > 1)
                 title += $" ({progress.GetProgress(mission)}/{needed})";
-            CreateTaskRow(title, mission.description, color, isCurrent, done, true,
+            string description = mission.deliveredItem != null ? null : mission.description;
+            CreateTaskRow(title, description, color, isCurrent, done, true,
                 milestoneTasksListContent, milestoneTaskRowPool);
         }
         CreateCurrentMilestoneShiftRequirements();
@@ -461,11 +474,6 @@ public class MissionListUI : MonoBehaviour
         GameTimeManager time = GameTimeManager.Instance;
         bool shiftStarted = time != null && time.IsShiftInProgress;
         bool shiftEnded = time != null && time.IsShiftOver;
-        CreateTaskRow("Single-shift targets",
-            "Meet every item and operating target in the same shift. Progress resets when the next shift starts.",
-            generalTaskColor, false, false, false,
-            milestoneTasksListContent, milestoneTaskRowPool);
-
         int requiredEfficiency = Mathf.Clamp(milestone.minimumSystemEfficiencyPercent, 0, 100);
         bool hasEfficiencyData = ShiftPlanningUI.HasShiftSystemEfficiencySample;
         int efficiency = hasEfficiencyData
@@ -556,7 +564,7 @@ public class MissionListUI : MonoBehaviour
         (rowPool ?? taskRowPool).Add(rowGo);
 
         var rowLe = rowGo.GetComponent<LayoutElement>();
-        rowLe.minHeight = 44f;
+        rowLe.minHeight = string.IsNullOrEmpty(description) ? 28f : 44f;
 
         var rowLayout = rowGo.GetComponent<VerticalLayoutGroup>();
         rowLayout.spacing = 2f;
@@ -812,6 +820,7 @@ public class MissionListUI : MonoBehaviour
         }
 
         EnsureCombinedLayout();
+        EnsureMilestoneTaskSubtitle();
         built = true;
         ApplyLayout();
         WireTabs();
@@ -1010,6 +1019,35 @@ public class MissionListUI : MonoBehaviour
         var header = CreateLabel(page.transform, "SectionHeader", title, 15, FontStyles.Bold);
         header.alignment = TextAlignmentOptions.Left;
         header.GetComponent<LayoutElement>().preferredHeight = 24f;
+    }
+
+    void EnsureMilestoneTaskSubtitle()
+    {
+        if (milestoneTasksPage == null) return;
+        Transform existing = milestoneTasksPage.transform.Find("MilestoneTaskSubtitle");
+        if (existing != null)
+            milestoneTaskSubtitle = existing.GetComponent<TextMeshProUGUI>();
+
+        if (milestoneTaskSubtitle == null)
+        {
+            milestoneTaskSubtitle = CreateLabel(milestoneTasksPage.transform,
+                "MilestoneTaskSubtitle", "Complete in a single shift", 12f, FontStyles.Bold);
+            milestoneTaskSubtitle.color = GameUITheme.Accent;
+            milestoneTaskSubtitle.textWrappingMode = TextWrappingModes.NoWrap;
+            milestoneTaskSubtitle.overflowMode = TextOverflowModes.Truncate;
+        }
+
+        Transform sectionHeader = milestoneTasksPage.transform.Find("SectionHeader");
+        if (sectionHeader != null)
+            milestoneTaskSubtitle.transform.SetSiblingIndex(sectionHeader.GetSiblingIndex() + 1);
+        UpdateMilestoneTaskSubtitle();
+    }
+
+    void UpdateMilestoneTaskSubtitle()
+    {
+        if (milestoneTaskSubtitle == null) return;
+        MilestoneDefinition active = milestones != null ? milestones.GetActiveMilestone() : null;
+        milestoneTaskSubtitle.gameObject.SetActive(active != null && !active.isTutorial);
     }
 
     void BindExisting()

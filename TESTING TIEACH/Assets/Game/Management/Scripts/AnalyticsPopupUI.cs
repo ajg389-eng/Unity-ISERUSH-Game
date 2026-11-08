@@ -16,7 +16,9 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
     GameObject playerStatisticsContent;
     Button liveAnalyticsTab;
     Button playerStatisticsTab;
+    Button closeButton;
     public static bool IsOpen => instance != null && instance.gameObject.activeInHierarchy;
+    public static Button TutorialCloseButton => instance != null ? instance.closeButton : null;
 
     public static void Open(Transform canvas)
     {
@@ -98,8 +100,8 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
         hint.alignment = TextAlignmentOptions.Left;
         hint.color = GameUITheme.TextSecondary;
 
-        var close = CreateButton(panel.transform, "Close", "X", new Vector2(-68f, -58f), new Vector2(-18f, -14f), GameUITheme.Danger);
-        close.onClick.AddListener(Close);
+        closeButton = CreateButton(panel.transform, "Close", "X", new Vector2(-68f, -58f), new Vector2(-18f, -14f), GameUITheme.Danger);
+        closeButton.onClick.AddListener(Close);
 
         BuildPageTabs();
 
@@ -232,6 +234,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
     void Close()
     {
         gameObject.SetActive(false);
+        OnboardingTutorial.NotifyAnalyticsScreenClosed();
         Sfx.Play(SfxId.UiClose);
     }
 }
