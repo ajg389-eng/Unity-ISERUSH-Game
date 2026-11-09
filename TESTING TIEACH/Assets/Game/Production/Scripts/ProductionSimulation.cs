@@ -93,6 +93,7 @@ namespace KitchenProduction
         public readonly int[] Stock, ReservedStock;
         public readonly long[] Delivered;
         public readonly long[,] DeliveredByItem;
+        readonly long[] lastDestinationDispatch;
         public readonly List<SimulationEvent> Events = new List<SimulationEvent>();
         public long Now { get; private set; }
         public bool UnlimitedStock, DrainPickup;
@@ -116,6 +117,9 @@ namespace KitchenProduction
             ReservedStock = new int[plan.ItemCount];
             Delivered = new long[plan.FlowCount];
             DeliveredByItem = new long[plan.FlowCount, plan.ItemCount];
+            lastDestinationDispatch = new long[plan.Nodes.Length];
+            for (int i = 0; i < lastDestinationDispatch.Length; i++)
+                lastDestinationDispatch[i] = -1;
         }
 
         ProductionSimulation(ProductionSimulation other)
@@ -132,6 +136,7 @@ namespace KitchenProduction
             ReservedStock = (int[])other.ReservedStock.Clone();
             Delivered = (long[])other.Delivered.Clone();
             DeliveredByItem = (long[,])other.DeliveredByItem.Clone();
+            lastDestinationDispatch = (long[])other.lastDestinationDispatch.Clone();
         }
 
         public ProductionSimulation Copy() => new ProductionSimulation(this);
@@ -319,7 +324,8 @@ namespace KitchenProduction
                 long loaded = worker.TravelTicks[edge.From, edge.To];
                 if (approach < 0 || (!cargo && loaded < 0)) continue;
                 int units = Math.Min(cargo ? trip.CargoUnits : worker.Capacity,
-                    Math.Min(cargo ? trip.CargoUnits : AvailableOutput(edge.From, edge.Item), FreeInput(edge.To, edge.Item)));
+                    Math.Min(cargo ? trip.CargoUnits : AvailableOutput(edge.From, edge.Item),
+                        FreeInput(edge.To, edge.Item)));
                 if (units <= 0) continue;
                 Node destination = Plan.Nodes[edge.To];
                 Buffer receiver = Buffers[edge.To];
@@ -332,7 +338,18 @@ namespace KitchenProduction
                 double bufferedSeconds = (receiver.Inputs[edge.Item] + receiver.ReservedInputs[edge.Item])
                     * (double)destination.CycleTicks / perCycle / TicksPerSecond;
                 score -= bufferedSeconds * 100000;
-                score += units * 100;
+                // Equal empty branches otherwise always choose the first edge.
+                // Prefer the station that has waited longest for a delivery.
+                // Keep this below the buffered-work penalty so a genuinely
+                // starved input still takes precedence over round robin order.
+                if (destination.Kind == NodeKind.Processor)
+                    score += lastDestinationDispatch[edge.To] < 0 ? 6000
+                        : Math.Min(60.0, (Now - lastDestinationDispatch[edge.To])
+                            / (double)TicksPerSecond) * 100;
+                // Prefer a useful full load over a one-item trip when both
+                // destinations can use the work. A heavily buffered receiver
+                // still loses to a genuinely starved one.
+                score += units * 1000000;
                 score -= (approach + (cargo ? 0 : loaded)) / (double)TicksPerSecond;
                 if (score <= bestScore) continue;
                 bestScore = score;
@@ -340,6 +357,7 @@ namespace KitchenProduction
                 bestUnits = units;
             }
             if (best == null) return;
+            lastDestinationDispatch[best.To] = Now;
             trip.Source = best.From;
             trip.Destination = best.To;
             trip.Item = best.Item;
@@ -368,6 +386,24 @@ namespace KitchenProduction
             trip.DueAt = Now + Math.Max(1, ticks);
         }
 
+        void FillTripAtSource(Trip trip, Worker worker)
+        {
+            int extra = Math.Min(worker.Capacity - trip.Units,
+                Math.Min(AvailableOutput(trip.Source, trip.Item),
+                    FreeInput(trip.Destination, trip.Item)));
+            if (extra <= 0) return;
+            trip.Units += extra;
+            trip.ReadyAt += extra * worker.TransportTicksPerItem;
+            Buffers[trip.Destination].ReservedInputs[trip.Item] += extra;
+            Buffer source = Buffers[trip.Source];
+            if (Plan.Nodes[trip.Source].Kind == NodeKind.Source)
+            {
+                source.ReservedCredits += extra;
+                ReservedStock[trip.Item] += extra;
+            }
+            else source.ReservedOutput += extra;
+        }
+
         void CompletePhase(int index)
         {
             Trip t = Trips[index];
@@ -377,9 +413,14 @@ namespace KitchenProduction
                 case TripPhase.Approach:
                     t.Location = t.Source;
                     if (t.Units == 0) { t.Phase = TripPhase.Idle; t.DueAt = Never; }
-                    else BeginPhase(t, TripPhase.Pickup, w.PickupTicks);
+                    else
+                    {
+                        FillTripAtSource(t, w);
+                        BeginPhase(t, TripPhase.Pickup, w.PickupTicks);
+                    }
                     break;
                 case TripPhase.Pickup:
+                    FillTripAtSource(t, w);
                     Buffer source = Buffers[t.Source];
                     if (Plan.Nodes[t.Source].Kind == NodeKind.Source)
                     {
