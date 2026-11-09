@@ -260,30 +260,39 @@ public static class GameSaveSlots
         PlayerPrefs.Save();
     }
 
-    public static void SaveActiveSlot()
+    public static bool SaveActiveSlot()
     {
-        if (!slotSelectedThisSession) return;
+        if (!slotSelectedThisSession) return false;
         int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
-        if (slotIndex < 1 || slotIndex > SlotCount) return;
+        if (slotIndex < 1 || slotIndex > SlotCount) return false;
 
-        var time = GameTimeManager.Instance ?? UnityEngine.Object.FindFirstObjectByType<GameTimeManager>();
-        var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>();
-        int day = time != null ? time.CurrentDay : 1;
-        int cash = money != null ? money.CurrentMoney : 1000;
-        KitchenSaveSnapshot snapshot = KitchenSaveSnapshot.Capture();
-        string checkpoint = JsonUtility.ToJson(snapshot);
-        PlayerPrefs.SetString(Key(slotIndex, "Kitchen"), checkpoint);
-        PlayerPrefs.SetString(Key(slotIndex, "MenuItems"), JoinNames(snapshot.enabledMenuItemNames));
+        try
+        {
+            var time = GameTimeManager.Instance ?? UnityEngine.Object.FindFirstObjectByType<GameTimeManager>();
+            var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>();
+            int day = time != null ? time.CurrentDay : 1;
+            int cash = money != null ? money.CurrentMoney : 1000;
+            KitchenSaveSnapshot snapshot = KitchenSaveSnapshot.Capture();
+            string checkpoint = JsonUtility.ToJson(snapshot);
+            PlayerPrefs.SetString(Key(slotIndex, "Kitchen"), checkpoint);
+            PlayerPrefs.SetString(Key(slotIndex, "MenuItems"), JoinNames(snapshot.enabledMenuItemNames));
 
-        PlayerPrefs.SetInt(Key(slotIndex, "Exists"), 1);
-        PlayerPrefs.SetInt(Key(slotIndex, "Day"), Mathf.Max(1, day));
-        PlayerPrefs.SetInt(Key(slotIndex, "Cash"), Mathf.Max(0, cash));
-        PlayerPrefs.SetString(Key(slotIndex, "LastPlayedUtc"), DateTime.UtcNow.Ticks.ToString());
-        PlayerPrefs.Save();
+            PlayerPrefs.SetInt(Key(slotIndex, "Exists"), 1);
+            PlayerPrefs.SetInt(Key(slotIndex, "Day"), Mathf.Max(1, day));
+            PlayerPrefs.SetInt(Key(slotIndex, "Cash"), Mathf.Max(0, cash));
+            PlayerPrefs.SetString(Key(slotIndex, "LastPlayedUtc"), DateTime.UtcNow.Ticks.ToString());
+            PlayerPrefs.Save();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not save the active game slot: " + exception);
+            return false;
+        }
     }
 }
 
-/// <summary>Records the selected slot at day boundaries and when the application is suspended.</summary>
+/// <summary>Periodically saves the selected slot and saves when the app loses focus or exits.</summary>
 public sealed class GameSaveSlotAutosave : MonoBehaviour
 {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -298,13 +307,23 @@ public sealed class GameSaveSlotAutosave : MonoBehaviour
 
     void Update()
     {
+        // The title scene is also used as a return-to-menu hub. Its tutorial setup
+        // can hide or reset scene stations and its money is not the loaded slot's
+        // gameplay state, so never let a timed save replace the checkpoint there.
+        if (TitleScreenController.IsTitleScreenActive)
+        {
+            nextSave = Time.unscaledTime + 15f;
+            return;
+        }
+
         if (Time.unscaledTime < nextSave) return;
-        nextSave = Time.unscaledTime + 30f;
+        nextSave = Time.unscaledTime + 15f;
         Save();
     }
 
     void Start()
     {
+        nextSave = Time.unscaledTime + 15f;
         clock = GameTimeManager.Instance ?? FindFirstObjectByType<GameTimeManager>();
         if (clock != null)
         {
@@ -327,6 +346,15 @@ public sealed class GameSaveSlotAutosave : MonoBehaviour
         if (paused) Save();
     }
 
+    void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus) Save();
+    }
+
     void OnApplicationQuit() => Save();
-    void Save() => GameSaveSlots.SaveActiveSlot();
+    void Save()
+    {
+        if (TitleScreenController.IsTitleScreenActive) return;
+        GameSaveSlots.SaveActiveSlot();
+    }
 }

@@ -1031,6 +1031,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (itemPickerTargetRow != null && itemPickerTargetRow.item != null)
             config.SetItemEnabled(itemPickerTargetRow.item, false);
         config.SetItemEnabled(item, true);
+        OnboardingTutorial.NotifyHamburgerAddedToPlan(item);
         selectedGoalItem = item;
         selectedGoalItemName = item.itemName;
         GameSaveSlots.SaveEnabledMenuSelection(config);

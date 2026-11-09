@@ -65,6 +65,8 @@ public sealed class TutorialPanelDragHandle : MonoBehaviour, IBeginDragHandler, 
     {
         if (!dragging) return;
         dragging = false;
+        if (handleImage != null)
+            handleImage.color = idleColor;
         eventData.Use();
     }
 

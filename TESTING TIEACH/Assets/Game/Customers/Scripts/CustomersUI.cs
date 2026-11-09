@@ -419,7 +419,7 @@ public class CustomersUI : MonoBehaviour
         rowRect.anchoredPosition = new Vector2(0f, -46f);
         rowRect.sizeDelta = new Vector2(-28f, 66f);
         var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
-        rowLayout.spacing = 8f;
+        rowLayout.spacing = 12f;
         rowLayout.childAlignment = TextAnchor.MiddleCenter;
         rowLayout.childControlWidth = true;
         rowLayout.childControlHeight = true;
@@ -437,25 +437,20 @@ public class CustomersUI : MonoBehaviour
         var card = new GameObject(label.Replace(' ', '_'), typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         card.transform.SetParent(parent, false);
         var cardImage = card.GetComponent<Image>();
-        cardImage.color = Color.clear;
+        cardImage.color = Color.Lerp(GameUITheme.Surface, accent, 0.24f);
         cardImage.raycastTarget = false;
         cardImage.gameObject.AddComponent<GameUIThemeStyled>();
+        var outline = cardImage.gameObject.AddComponent<Outline>();
+        outline.effectColor = accent;
+        outline.effectDistance = new Vector2(1f, -1f);
         metricCardTargets.Add(cardImage);
         card.GetComponent<LayoutElement>().flexibleWidth = 1f;
-
-        var stripe = new GameObject("Accent", typeof(RectTransform), typeof(Image));
-        stripe.transform.SetParent(card.transform, false);
-        var stripeRect = (RectTransform)stripe.transform;
-        stripeRect.anchorMin = Vector2.zero;
-        stripeRect.anchorMax = new Vector2(0f, 1f);
-        stripeRect.sizeDelta = new Vector2(4f, 0f);
-        stripe.GetComponent<Image>().color = accent;
 
         var caption = CreateLabel(card.transform, "Label",
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
             12, TextAlignmentOptions.MidlineLeft);
         caption.text = label;
-        SetRect(caption.rectTransform, new Vector2(0f, 0.52f), Vector2.one, new Vector2(12f, 0f), new Vector2(-5f, -5f));
+        SetRect(caption.rectTransform, new Vector2(0f, 0.52f), Vector2.one, new Vector2(10f, 0f), new Vector2(-8f, -5f));
         caption.fontStyle = FontStyles.Bold;
         caption.color = new Color(0.72f, 0.77f, 0.86f, 1f);
         caption.textWrappingMode = TextWrappingModes.NoWrap;
@@ -468,7 +463,7 @@ public class CustomersUI : MonoBehaviour
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
             21, TextAlignmentOptions.MidlineLeft);
         value.text = "—";
-        SetRect(value.rectTransform, Vector2.zero, new Vector2(1f, 0.58f), new Vector2(12f, 3f), new Vector2(-5f, 0f));
+        SetRect(value.rectTransform, Vector2.zero, new Vector2(1f, 0.58f), new Vector2(10f, 3f), new Vector2(-8f, 0f));
         value.fontStyle = FontStyles.Bold;
         metricValues.Add(value);
     }
@@ -758,6 +753,26 @@ public class CustomersUI : MonoBehaviour
             preview = imageGo.GetComponent<RawImage>();
             preview.raycastTarget = false;
         }
+
+        if (name != "Header")
+        {
+            var separator = new GameObject("RowSeparator",
+                typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            separator.transform.SetParent(go.transform, false);
+            LayoutElement separatorLayout = separator.GetComponent<LayoutElement>();
+            separatorLayout.ignoreLayout = true;
+            RectTransform separatorRect = (RectTransform)separator.transform;
+            separatorRect.anchorMin = new Vector2(0f, 0f);
+            separatorRect.anchorMax = new Vector2(1f, 0f);
+            separatorRect.pivot = new Vector2(0.5f, 0f);
+            separatorRect.offsetMin = new Vector2(8f, 0f);
+            separatorRect.offsetMax = new Vector2(-8f, 0f);
+            separatorRect.sizeDelta = new Vector2(0f, 1f);
+            Image separatorImage = separator.GetComponent<Image>();
+            separatorImage.color = new Color(1f, 1f, 1f, 0.42f);
+            separatorImage.raycastTarget = false;
+        }
+
         return cells;
     }
 

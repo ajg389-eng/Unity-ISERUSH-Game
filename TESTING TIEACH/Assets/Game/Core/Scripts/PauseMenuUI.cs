@@ -48,10 +48,16 @@ public class PauseMenuUI : MonoBehaviour
     public static PauseMenuUI Instance { get; private set; }
     public static bool IsOpen => Instance != null && Instance.visible;
     public static bool EscapeHandledThisFrame { get; private set; }
+    static float pauseInputBlockedUntil;
 
     public static void MarkEscapeHandled()
     {
         EscapeHandledThisFrame = true;
+    }
+
+    public static void SuppressPauseInputFor(float seconds)
+    {
+        pauseInputBlockedUntil = Mathf.Max(pauseInputBlockedUntil, Time.unscaledTime + Mathf.Max(0f, seconds));
     }
 
     GameObject overlay;
@@ -92,6 +98,8 @@ public class PauseMenuUI : MonoBehaviour
     TextMeshProUGUI antiAliasingValue;
     TextMeshProUGUI textureQualityValue;
     TextMeshProUGUI graphicsPresetValue;
+    TextMeshProUGUI saveButtonLabel;
+    float saveButtonLabelResetAt;
     int shadowQualityIndex;
     int antiAliasingIndex;
     int textureQualityIndex;
@@ -147,6 +155,19 @@ public class PauseMenuUI : MonoBehaviour
 
     void LateUpdate()
     {
+        if (saveButtonLabel != null && saveButtonLabelResetAt > 0f
+            && Time.unscaledTime >= saveButtonLabelResetAt)
+        {
+            saveButtonLabel.text = "Save Game";
+            saveButtonLabelResetAt = 0f;
+        }
+
+        if (Time.unscaledTime < pauseInputBlockedUntil)
+        {
+            EscapeHandledThisFrame = false;
+            return;
+        }
+
         // Let active interactions consume Escape before the pause menu handles it.
         bool escape = Input.GetKeyDown(KeyCode.Escape);
         if (escape && EscapeHandledThisFrame)
@@ -513,6 +534,11 @@ public class PauseMenuUI : MonoBehaviour
             Hide(playSound: false);
         });
 
+        var save = CreateMenuButton(page.transform, "SaveGameButton", "Save Game",
+            54f, 360f, 22f, GameUITheme.Positive);
+        save.onClick.AddListener(OnSaveGame);
+        saveButtonLabel = save.GetComponentInChildren<TextMeshProUGUI>(true);
+
         var options = CreateMenuButton(page.transform, "OptionsButton", "Options", 54f, 360f, 22f, MainButtonColor);
         options.onClick.AddListener(() =>
         {
@@ -540,6 +566,17 @@ public class PauseMenuUI : MonoBehaviour
         var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
         quit.onClick.AddListener(OnQuitToMenu);
         return page;
+    }
+
+    void OnSaveGame()
+    {
+        bool saved = GameSaveSlots.SaveActiveSlot();
+        if (saveButtonLabel != null)
+        {
+            saveButtonLabel.text = saved ? "Saved!" : "Save Failed";
+            saveButtonLabelResetAt = Time.unscaledTime + 1.5f;
+        }
+        Sfx.Play(saved ? SfxId.BuildPlace : SfxId.UiError);
     }
 
     void ShowCredits()
@@ -1392,6 +1429,10 @@ public class PauseMenuUI : MonoBehaviour
 
     public void ConfirmApplicationQuit()
     {
+        // Save before stopping Play Mode or closing the player. Shutdown callbacks
+        // are not guaranteed to run in every Editor/player exit path.
+        if (!TitleScreenController.IsTitleScreenActive)
+            GameSaveSlots.SaveActiveSlot();
         allowApplicationQuit = true;
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;

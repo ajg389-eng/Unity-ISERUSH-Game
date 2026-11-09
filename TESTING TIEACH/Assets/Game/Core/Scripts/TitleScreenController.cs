@@ -22,7 +22,8 @@ public class TitleScreenController : MonoBehaviour
 
     public static TitleScreenController Instance { get; private set; }
     public static bool IsTitleScreenActive => Instance != null
-        && (Instance.IsShowingTitle || Instance.firstRunIntroActive);
+        && (Instance.IsShowingTitle || Instance.firstRunIntroActive
+            || Instance.startTransitionInProgress);
 
     [Header("UI")]
     [Tooltip("Full-screen panel with title and buttons (shown at start)")]
@@ -30,6 +31,9 @@ public class TitleScreenController : MonoBehaviour
     public Button playButton;
     public Button settingsButton;
     public Button exitButton;
+
+    [Header("Title Button Icons")]
+    public bool showTitleButtonIcons = true;
 
     [Header("Presentation")]
     [Tooltip("Logo RectTransform. If unset, a child named Title is found automatically.")]
@@ -218,6 +222,47 @@ public class TitleScreenController : MonoBehaviour
             GameUITheme.Danger,
             GameUITheme.DangerHover,
             GameUITheme.DangerAccent);
+
+        if (showTitleButtonIcons)
+        {
+            AddTitleButtonIcon(playButton, "PlayWhite");
+            AddTitleButtonIcon(settingsButton, "SettingsWhite");
+            AddTitleButtonIcon(exitButton, "ExitWhite");
+        }
+    }
+
+    static void AddTitleButtonIcon(Button button, string iconName)
+    {
+        if (button == null) return;
+        var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+        var buttonRect = button.transform as RectTransform;
+        if (label == null || buttonRect == null) return;
+
+        var iconTransform = button.transform.Find("TitleButtonIcon");
+        if (iconTransform == null)
+        {
+            var iconObject = new GameObject("TitleButtonIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.transform.SetParent(button.transform, false);
+            iconTransform = iconObject.transform;
+        }
+
+        var iconRect = iconTransform as RectTransform;
+        iconRect.anchorMin = iconRect.anchorMax = new Vector2(1f, 0.5f);
+        iconRect.pivot = new Vector2(1f, 0.5f);
+        iconRect.anchoredPosition = new Vector2(-24f, 0f);
+        iconRect.sizeDelta = new Vector2(48f, 48f);
+        var icon = iconTransform.GetComponent<Image>();
+        icon.sprite = Resources.Load<Sprite>("TitleIcons/" + iconName);
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+        icon.color = Color.white;
+
+        var labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(38f, 0f);
+        labelRect.offsetMax = new Vector2(-104f, 0f);
+        label.alignment = TextAlignmentOptions.MidlineLeft;
     }
 
     static void AddTitleShadow(GameObject title)
@@ -345,6 +390,21 @@ public class TitleScreenController : MonoBehaviour
         GameObject rowObject = Instantiate(template.gameObject, saveSlotsRoot.transform);
         rowObject.name = "SaveSlot" + slotIndex;
         rowObject.SetActive(true);
+
+        // Save rows reuse title buttons as templates, but the main menu icons and
+        // their label inset belong only to the title menu.
+        Transform titleIcon = rowObject.transform.Find("TitleButtonIcon");
+        if (titleIcon != null)
+            Destroy(titleIcon.gameObject);
+        var rowLabel = rowObject.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (rowLabel != null)
+        {
+            var labelRect = rowLabel.rectTransform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+        }
 
         var sourceRect = template.transform as RectTransform;
         var rowRect = rowObject.transform as RectTransform;
@@ -534,6 +594,8 @@ public class TitleScreenController : MonoBehaviour
         if (titlePanel != null)
             titlePanel.SetActive(false);
 
+        yield return EnsureCustomerEntranceBeforeIntro();
+
         if (showIntro)
         {
             firstRunIntroActive = true;
@@ -548,6 +610,60 @@ public class TitleScreenController : MonoBehaviour
         if (!isNewSave)
             yield return FadeScreenTo(0f);
         startTransitionInProgress = false;
+    }
+
+    IEnumerator EnsureCustomerEntranceBeforeIntro()
+    {
+        const int attempts = 30;
+        const float retryDelay = 0.1f;
+        for (int i = 0; i < attempts; i++)
+        {
+            BuildPlacer placer = FindFirstObjectByType<BuildPlacer>();
+            if (placer != null)
+                placer.EnsureCustomerEntrance();
+
+            CustomerWallDoor entrance = null;
+            CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int d = 0; d < doors.Length; d++)
+            {
+                CustomerWallDoor door = doors[d];
+                if (door != null && door.role == CustomerWallDoor.DoorRole.Entrance
+                    && door.gameObject.activeInHierarchy
+                    && door.name.IndexOf("Ghost", System.StringComparison.OrdinalIgnoreCase) < 0
+                    && door.GetComponentInParent<Canvas>() == null)
+                {
+                    entrance = door;
+                    break;
+                }
+            }
+
+            if (entrance != null)
+            {
+                KitchenPerimeterWalls walls = FindFirstObjectByType<KitchenPerimeterWalls>();
+                if (walls == null)
+                    yield break;
+
+                GridManager grid = GridManager.Instance != null
+                    ? GridManager.Instance
+                    : FindFirstObjectByType<GridManager>();
+                if (grid != null && grid.HasBaseline)
+                {
+                    // EnsureCustomerEntrance also schedules a delayed refresh.
+                    // That Invoke uses scaled time and will stall on the paused
+                    // title screen, so build the entrance opening synchronously.
+                    walls.FitToGrid();
+                    yield return null;
+                    walls.FitToGrid();
+                    yield return new WaitForEndOfFrame();
+                    yield break;
+                }
+            }
+
+            yield return new WaitForSecondsRealtime(retryDelay);
+        }
+
+        Debug.LogWarning("Customer entrance was not ready before the Gus intro; continuing startup.");
     }
 
     void EnsureScreenFade()

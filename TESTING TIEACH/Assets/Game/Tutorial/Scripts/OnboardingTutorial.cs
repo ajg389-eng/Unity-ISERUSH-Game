@@ -121,6 +121,21 @@ public class OnboardingTutorial : MonoBehaviour
         if (IsMenuTutorialActive) Instance.menuScreenOpened = true;
     }
 
+    public static void NotifyHamburgerAddedToPlan(ItemDefinition item)
+    {
+        if (!IsCurrentStep(step => step.requireHamburger) || item == null) return;
+        CustomerOrderConfig config = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (config == null || item != config.burgerBase) return;
+
+        Instance.tutorialVisibleCharacters = Instance.tutorialTotalCharacters;
+        if (Instance.bodyText != null)
+            Instance.bodyText.maxVisibleCharacters = Instance.tutorialVisibleCharacters;
+        Instance.autoAdvanceStep = -1;
+        Instance.stepIndex++;
+        Instance.ShowStep();
+    }
+
     public static void NotifyObjectivesScreenOpened()
     {
         if (!IsObjectivesTutorialActive) return;
@@ -540,8 +555,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None, requireHamburger: true),
         new Step(
             "Buy ingredients",
-            "Use the Plan card's <b>Shift Total</b> to estimate the ingredients needed for the day. For example, 10 hamburgers per minute over a 12-minute shift means 120 hamburgers, so plan for at least 120 patties and 120 buns.\n\n" +
-            "Open <b>Business</b> (top-left, or press 2), then choose <b>Supply</b>. Order Raw Patties and Buns in packs. Deliveries arrive through the front door after a short wait. Potatoes are used later for fries.",
+            "A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty</b>, then the green <b>+</b> beside <b>Bun</b>. Each <b>+</b> adds one pack; the gray <b>−</b> removes one.\n\n" +
+            "Use the Plan card's <b>Shift Total</b> to estimate how many packs you need. Deliveries arrive through the front door after a short wait. Potatoes are used later for fries.",
             "Next", Highlight.Management, openIngredients: true, requireIngredients: true, requireStationSequence: true),
         new Step(
             "Hire workers",
@@ -762,6 +777,7 @@ public class OnboardingTutorial : MonoBehaviour
         }
         running = true;
         pendingStart = false;
+        PauseMenuUI.SuppressPauseInputFor(0.35f);
         flowEditCompleted = false;
         flowCreateCompleted = false;
         liveCustomerSpawned = false;
@@ -912,6 +928,16 @@ public class OnboardingTutorial : MonoBehaviour
                     recipes.OpenRecipesFromHud();
                 return;
             }
+            if (stepIndex >= 0 && stepIndex < Steps.Length
+                && Steps[stepIndex].requireObjectivesScreen && !objectivesScreenOpened)
+            {
+                Sfx.Play(SfxId.UiClick);
+                MissionListUI objectives = MissionListUI.Instance;
+                Button objectivesButton = objectives != null ? objectives.TutorialObjectivesButton : null;
+                if (objectivesButton != null)
+                    objectivesButton.onClick.Invoke();
+                return;
+            }
             Sfx.Play(SfxId.UiError);
             RefreshAdvanceGate();
             return;
@@ -998,6 +1024,10 @@ public class OnboardingTutorial : MonoBehaviour
             menuScreenOpened = false;
         furthestStepIndex = Mathf.Max(furthestStepIndex, stepIndex);
 
+        // Hide the previous step's demo before reactivating the panel to avoid
+        // a one-frame video flash during step transitions.
+        SetFlowLinkingVideoVisible(stepIndex == 10);
+
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
         Canvas tutorialCanvas = canvasRoot != null ? canvasRoot.GetComponent<Canvas>() : null;
@@ -1005,8 +1035,6 @@ public class OnboardingTutorial : MonoBehaviour
             tutorialCanvas.sortingOrder = tutorialUnlockContinuePending ? 7100 : 4200;
         if (panel != null)
             panel.SetActive(true);
-        SetFlowLinkingVideoVisible(stepIndex >= 0 && stepIndex < Steps.Length
-            && Steps[stepIndex].requireFlow && !Steps[stepIndex].requireEditedFlow);
         if (cameraPromptPanel != null)
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
@@ -1224,8 +1252,13 @@ public class OnboardingTutorial : MonoBehaviour
         {
             // A changed instruction can have a different focus target. Resume
             // contextual placement so the dragged card cannot hide that target.
-            panelDragHandle?.ResetUserPosition();
-            calloutPanelPositionVelocity = Vector2.zero;
+            bool keepPanelPlacement = running && stepIndex >= 0 && stepIndex < Steps.Length
+                && (Steps[stepIndex].requireAnalyticsScreen || stepIndex == 5);
+            if (!keepPanelPlacement)
+            {
+                panelDragHandle?.ResetUserPosition();
+                calloutPanelPositionVelocity = Vector2.zero;
+            }
             bodyText.text = highlightedText;
         }
     }
@@ -1264,6 +1297,8 @@ public class OnboardingTutorial : MonoBehaviour
             && objectivesTutorial.panelRoot != null
                 ? objectivesTutorial.panelRoot.transform as RectTransform : null;
         bool analyticsTutorial = running && Steps[stepIndex].requireAnalyticsScreen;
+        bool stationaryRecipeTutorial = running && stepIndex == 5;
+        bool timeControlTutorial = running && Steps[stepIndex].requireTimeControlInteractions;
         float desiredPanelWidth = recipePickerPanel != null ? 420f
             : objectivesPanelRect != null ? 460f
             : analyticsTutorial ? 440f : 560f;
@@ -1278,15 +1313,14 @@ public class OnboardingTutorial : MonoBehaviour
         float rootHeight = rootRect.rect.height > 1f ? rootRect.rect.height : 1080f;
 
         Vector2 panelPosition;
-        if (analyticsTutorial)
+        if (analyticsTutorial || stationaryRecipeTutorial)
         {
-            float sideX = hasTarget && targetPosition.x >= 0f
-                ? -rootWidth * 0.5f + panelWidth * 0.5f + 20f
-                : rootWidth * 0.5f - panelWidth * 0.5f - 20f;
-            float availableBottom = -rootHeight * 0.5f + panelHeight * 0.5f + 18f;
-            float availableTop = rootHeight * 0.5f - panelHeight * 0.5f - 18f;
-            float sideY = hasTarget && targetPosition.y >= 0f ? availableBottom : availableTop;
-            panelPosition = new Vector2(sideX, sideY);
+            panelPosition = new Vector2(0f, -rootHeight * 0.12f);
+        }
+        else if (timeControlTutorial)
+        {
+            float bottomY = -rootHeight * 0.5f + panelHeight * 0.5f + 18f;
+            panelPosition = new Vector2(0f, bottomY);
         }
         else if (recipePickerPanel != null)
         {
@@ -1677,7 +1711,9 @@ public class OnboardingTutorial : MonoBehaviour
         bool ready = freezerGuideNext || StepRequirementMet();
         bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireRecipeScreen;
-        bool canOpenRequiredScreen = canOpenRecipes;
+        bool canOpenObjectives = !ready && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireObjectivesScreen && !objectivesScreenOpened;
+        bool canOpenRequiredScreen = canOpenRecipes || canOpenObjectives;
         nextButton.interactable = ready || canOpenRequiredScreen;
         var img = nextButton.GetComponent<Image>();
         if (img != null)
@@ -1688,7 +1724,17 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null && stepIndex >= 0 && stepIndex < Steps.Length)
         {
             var step = Steps[stepIndex];
-            nextLabel.text = ready ? freezerGuideNext ? "Next" : step.nextLabel : LockedLabel(step);
+            string labelText = ready ? freezerGuideNext ? "Next" : step.nextLabel : LockedLabel(step);
+            nextLabel.text = labelText;
+            bool cameraMovePrompt = labelText == "Move camera with WASD";
+            nextLabel.enableAutoSizing = !cameraMovePrompt;
+            if (cameraMovePrompt)
+                nextLabel.fontSize = 13f;
+            else
+            {
+                nextLabel.fontSizeMin = 16f;
+                nextLabel.fontSizeMax = 22f;
+            }
             if (ready && step.requirePlaced)
                 UpdateHighlight(step.highlight);
         }
@@ -1894,8 +1940,8 @@ public class OnboardingTutorial : MonoBehaviour
         int rateCount = clock != null ? Mathf.Min(clock.FastForwardRateCount, 10) : 0;
         for (int i = 0; i < rateCount; i++)
         {
-            float rate = clock.fastForwardRates != null && i < clock.fastForwardRates.Length
-                ? clock.fastForwardRates[i] : clock.SelectedFastForwardRate;
+            float rate = GetTutorialFastForwardRate(clock, i);
+            if (rate > 3f) continue;
             bool visited = (tutorialFastForwardRateMask & (1 << i)) != 0;
             text += "\n" + TimeControlChecklistLine(rate.ToString("0.##") + "x", "fast-forward rate", visited);
         }
@@ -1912,7 +1958,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (!tutorialFastForwardControlUsed)
             return "<b>Fast Forward</b> speeds through the shift so you can observe the process sooner. Click Fast Forward.";
         if (!AllTutorialFastForwardRatesVisited())
-            return "Fast-forward is running. Click the multiplier box to apply each speed, one at a time.";
+            return "Fast-forward is running. Try each multiplier up to 3x; you do not need to test the higher speeds.";
         if (!orderServed)
             return "Controls checked. Let Fast Forward run until the customer collects the burger.";
         return "Controls checked and the customer collected the burger. Moving on to Analytics.";
@@ -1921,16 +1967,27 @@ public class OnboardingTutorial : MonoBehaviour
     void RecordTutorialFastForwardRate(int index)
     {
         if (index < 0 || index >= 30) return;
+        GameTimeManager clock = GameTimeManager.Instance;
+        if (clock == null || GetTutorialFastForwardRate(clock, index) > 3f) return;
         tutorialFastForwardRateMask |= 1 << index;
         RefreshTimeControlChecklist();
+    }
+
+    static float GetTutorialFastForwardRate(GameTimeManager clock, int index)
+    {
+        if (clock == null) return 1f;
+        return clock.fastForwardRates != null && index >= 0 && index < clock.fastForwardRates.Length
+            ? clock.fastForwardRates[index] : clock.SelectedFastForwardRate;
     }
 
     bool AllTutorialFastForwardRatesVisited()
     {
         GameTimeManager clock = GameTimeManager.Instance;
         int rateCount = clock != null ? Mathf.Min(clock.FastForwardRateCount, 30) : 0;
-        if (rateCount <= 0) return true;
-        int requiredMask = (1 << rateCount) - 1;
+        int requiredMask = 0;
+        for (int i = 0; i < rateCount; i++)
+            if (GetTutorialFastForwardRate(clock, i) <= 3f)
+                requiredMask |= 1 << i;
         return (tutorialFastForwardRateMask & requiredMask) == requiredMask;
     }
 
@@ -2451,6 +2508,9 @@ public class OnboardingTutorial : MonoBehaviour
     void HighlightControl(Component control)
     {
         if (control == null || !control.gameObject.activeInHierarchy) return;
+        bool ingredientPurchaseStep = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireIngredients;
+        float borderThickness = ingredientPurchaseStep ? 6f : 3f;
         if (calloutTarget == null)
             calloutTarget = control.transform as RectTransform;
         var graphic = control.GetComponent<Graphic>();
@@ -2477,10 +2537,18 @@ public class OnboardingTutorial : MonoBehaviour
                 r.anchorMax = side == 0 ? Vector2.right : side == 2 ? Vector2.up : Vector2.one;
                 r.offsetMin = Vector2.zero;
                 r.offsetMax = Vector2.zero;
-                if (side < 2) { r.sizeDelta = new Vector2(0, 3); r.pivot = new Vector2(0.5f, side); }
-                else { r.sizeDelta = new Vector2(3, 0); r.pivot = new Vector2(side - 2, 0.5f); }
+                if (side < 2) { r.sizeDelta = new Vector2(0, borderThickness); r.pivot = new Vector2(0.5f, side); }
+                else { r.sizeDelta = new Vector2(borderThickness, 0); r.pivot = new Vector2(side - 2, 0.5f); }
             }
             tutorialBorders[graphic] = border;
+        }
+        for (int side = 0; side < 4; side++)
+        {
+            var edgeRect = border.transform.GetChild(side) as RectTransform;
+            if (edgeRect == null) continue;
+            edgeRect.sizeDelta = side < 2
+                ? new Vector2(0f, borderThickness)
+                : new Vector2(borderThickness, 0f);
         }
         border.SetActive(true);
         border.transform.SetAsLastSibling();
@@ -2491,7 +2559,7 @@ public class OnboardingTutorial : MonoBehaviour
         bool pulse = running && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireIngredients;
         float alpha = pulse
-            ? Mathf.Lerp(0.08f, 1f, (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f)
+            ? Mathf.Lerp(0.08f, 1f, (Mathf.Sin(Time.unscaledTime * 6f) + 1f) * 0.5f)
             : 1f;
 
         foreach (GameObject border in tutorialBorders.Values)
@@ -3815,29 +3883,24 @@ public class OnboardingTutorial : MonoBehaviour
             typeof(LayoutElement), typeof(TutorialPanelDragHandle));
         dragHandle.transform.SetParent(header.transform, false);
         panelDragHandle = dragHandle.GetComponent<TutorialPanelDragHandle>();
-        panelDragHandle.Initialize((RectTransform)panel.transform, (RectTransform)canvasRoot.transform);
         var dragHandleImage = dragHandle.GetComponent<Image>();
         dragHandleImage.color = new Color(0.2f, 0.23f, 0.29f, 1f);
         dragHandleImage.raycastTarget = true;
+        panelDragHandle.Initialize((RectTransform)panel.transform, (RectTransform)canvasRoot.transform);
         var dragHandleLayout = dragHandle.GetComponent<LayoutElement>();
         dragHandleLayout.minWidth = dragHandleLayout.preferredWidth = 52f;
         dragHandleLayout.minHeight = dragHandleLayout.preferredHeight = 52f;
-        for (int row = 0; row < 3; row++)
-        {
-            for (int column = 0; column < 2; column++)
-            {
-                var gripDot = new GameObject("GripDot", typeof(RectTransform), typeof(Image));
-                gripDot.transform.SetParent(dragHandle.transform, false);
-                var dotRect = (RectTransform)gripDot.transform;
-                dotRect.anchorMin = dotRect.anchorMax = new Vector2(0.5f, 0.5f);
-                dotRect.pivot = new Vector2(0.5f, 0.5f);
-                dotRect.sizeDelta = new Vector2(5f, 5f);
-                dotRect.anchoredPosition = new Vector2((column - 0.5f) * 11f, (1 - row) * 11f);
-                var dotImage = gripDot.GetComponent<Image>();
-                dotImage.color = new Color(0.78f, 0.82f, 0.9f, 0.9f);
-                dotImage.raycastTarget = false;
-            }
-        }
+        var moveHandleGlyph = new GameObject("MoveHandleGlyph", typeof(RectTransform), typeof(Image));
+        moveHandleGlyph.transform.SetParent(dragHandle.transform, false);
+        var glyphRect = (RectTransform)moveHandleGlyph.transform;
+        glyphRect.anchorMin = Vector2.zero;
+        glyphRect.anchorMax = Vector2.one;
+        glyphRect.offsetMin = new Vector2(8f, 8f);
+        glyphRect.offsetMax = new Vector2(-8f, -8f);
+        var glyphImage = moveHandleGlyph.GetComponent<Image>();
+        glyphImage.sprite = Resources.Load<Sprite>("Tutorial/MoveHandleWhite");
+        glyphImage.preserveAspect = true;
+        glyphImage.raycastTarget = false;
 
         stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
@@ -3894,6 +3957,9 @@ public class OnboardingTutorial : MonoBehaviour
         nextLayout.preferredWidth = 188f;
         nextLayout.preferredHeight = 46f;
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
+        nextLabel.enableAutoSizing = true;
+        nextLabel.fontSizeMin = 16f;
+        nextLabel.fontSizeMax = 22f;
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
         GameUITheme.ApplyToCanvas(canvas);
     }

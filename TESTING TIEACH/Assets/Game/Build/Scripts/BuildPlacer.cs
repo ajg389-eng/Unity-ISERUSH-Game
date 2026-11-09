@@ -50,6 +50,7 @@ public class BuildPlacer : MonoBehaviour
     readonly List<GameObject> selectedObjects = new List<GameObject>();
     readonly List<GroupMoveMember> groupMoveMembers = new List<GroupMoveMember>();
     BuildStationActionBar actionBar;
+    PostTutorialStationActionMenu postTutorialActionMenu;
     // Retained only for the legacy private drag helper. Selection no longer calls it.
     const float EditDoubleClickSeconds = 0.75f;
     float lastEditClickTime = -999f;
@@ -76,6 +77,7 @@ public class BuildPlacer : MonoBehaviour
     public bool IsPlacing => placingItem != null;
     public ItemDefinition CurrentPlacementItem => placingItem;
     public bool IsDragging => draggingObject != null || groupMoveMembers.Count > 0;
+    public IReadOnlyList<GameObject> SelectedObjects => selectedObjects;
     public int SelectedStationCount
     {
         get
@@ -125,10 +127,19 @@ public class BuildPlacer : MonoBehaviour
         EnsureRequiredCustomerDoors();
         SetHint(false);
         actionBar = BuildStationActionBar.EnsureFor(this);
+        postTutorialActionMenu = PostTutorialStationActionMenu.EnsureFor(this);
     }
 
     void Update()
     {
+        // The action bar is independent of placement/input processing. Keep it
+        // available even while another component claims this frame's pointer or
+        // scene references are still resolving during the tutorial handoff.
+        if (actionBar == null || !actionBar.isActiveAndEnabled)
+            actionBar = BuildStationActionBar.EnsureFor(this);
+        if (postTutorialActionMenu == null || !postTutorialActionMenu.isActiveAndEnabled)
+            postTutorialActionMenu = PostTutorialStationActionMenu.EnsureFor(this);
+
         if (WallPhotoDrag.InputClaimed) return;
         if (!modeManager || !grid || !inventory) return;
 
@@ -145,13 +156,14 @@ public class BuildPlacer : MonoBehaviour
         {
             CancelPlacement();
             CancelDrag();
-            ClearStationSelection();
             actionBar?.Refresh();
+            if (!UIInputFocusGuard.IsPointerOverBlockingPanel
+                && !(actionBar != null && actionBar.IsPointerOver)
+                && !(postTutorialActionMenu != null && postTutorialActionMenu.IsPointerOver)
+                && Input.GetMouseButtonDown(0))
+                TrySelectStation();
             return;
         }
-
-        if (actionBar == null)
-            actionBar = BuildStationActionBar.EnsureFor(this);
 
         // Inventory can change through undo/debug actions while a placement ghost is
         // active. Never leave a zero-stock placement mode running.
@@ -183,7 +195,8 @@ public class BuildPlacer : MonoBehaviour
         // Block only the visible Inventory / Management rectangles. Transparent
         // full-screen canvas roots must not prevent interaction with the world.
         if (UIInputFocusGuard.IsPointerOverBlockingPanel
-            || (actionBar != null && actionBar.IsPointerOver)) return;
+            || (actionBar != null && actionBar.IsPointerOver)
+            || (postTutorialActionMenu != null && postTutorialActionMenu.IsPointerOver)) return;
 
         // Clicking an already placed station while an inventory ghost is active
         // means the player is targeting that station for repositioning.
@@ -490,6 +503,7 @@ public class BuildPlacer : MonoBehaviour
                 legacyRoot.SetActive(false);
             }
             actionBar.SetPlacementInstruction(show ? instruction : null);
+            postTutorialActionMenu?.SetPlacementInstruction(show ? instruction : null);
             return;
         }
 
@@ -1119,7 +1133,7 @@ public class BuildPlacer : MonoBehaviour
         if (HasFixedDoorSelected)
         {
             Sfx.Play(SfxId.UiError);
-            actionBar?.ShowMessage("The entrance door cannot be moved");
+            ShowStationActionMessage("The entrance door cannot be moved");
             return;
         }
         if (selectedObjects.Count == 1) BeginSingleDrag(selectedObjects[0]);
@@ -1289,7 +1303,7 @@ public class BuildPlacer : MonoBehaviour
             {
                 groupMoveMembers.Clear();
                 Sfx.Play(SfxId.UiError);
-                actionBar?.ShowMessage("Group Move supports available floor stations");
+                ShowStationActionMessage("Group Move supports available floor stations");
                 return;
             }
 
@@ -1450,6 +1464,46 @@ public class BuildPlacer : MonoBehaviour
         foreach (GameObject root in selectedObjects)
             if (root != null) root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
         selectedObjects.Clear();
+        actionBar?.Refresh();
+    }
+
+    void ShowStationActionMessage(string message)
+    {
+        actionBar?.ShowMessage(message);
+        postTutorialActionMenu?.ShowMessage(message);
+    }
+
+    public void DeleteSelectedStationsAndRefund()
+    {
+        if (IsStationEditingLocked || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
+        if (HasFixedDoorSelected)
+        {
+            ShowStationActionMessage("The entrance door cannot be deleted");
+            return;
+        }
+
+        PurchaseUndoManager undo = PurchaseUndoManager.Ensure();
+        if (undo == null)
+        {
+            ShowStationActionMessage("Unable to refund this station");
+            return;
+        }
+
+        int deleted = 0;
+        for (int i = selectedObjects.Count - 1; i >= 0; i--)
+        {
+            GameObject root = selectedObjects[i];
+            if (root == null) { selectedObjects.RemoveAt(i); continue; }
+            if (!undo.DeletePlacedStationAndRefund(root)) continue;
+            root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
+            selectedObjects.RemoveAt(i);
+            deleted++;
+        }
+
+        if (deleted == 0)
+            ShowStationActionMessage("This station has no refundable purchase record");
+        else
+            Sfx.Play(SfxId.BuildPlace);
         actionBar?.Refresh();
     }
 
@@ -2761,13 +2815,11 @@ public sealed class BuildStationActionBar : MonoBehaviour
     TextMeshProUGUI messageLabel;
     GameObject instructionPanel;
     Button moveButton;
-    Button clearButton;
+    Button deleteButton;
     float messageUntil;
     bool placementInstructionActive;
     float lastCanvasWidth = -1f;
     CanvasGroup canvasGroup;
-    bool buildVisibilityKnown;
-    bool displayedBuildMode;
     int displayedSelectionCount = -1;
     bool displayedDragging;
     bool displayedFixedDoorSelected;
@@ -2789,16 +2841,23 @@ public sealed class BuildStationActionBar : MonoBehaviour
     public static BuildStationActionBar EnsureFor(BuildPlacer owner)
     {
         if (owner == null) return null;
+        Canvas canvas = ResolvePlayerUICanvas();
         BuildStationActionBar existing = FindFirstObjectByType<BuildStationActionBar>(FindObjectsInactive.Include);
         if (existing != null)
         {
+            // A bar can be created before PlayerUI finishes initializing or be
+            // recovered from a previous UI branch. Keep it attached to the live
+            // screen canvas so its own Canvas/CanvasGroup cannot strand it hidden.
+            if (canvas != null && existing.transform.parent != canvas.transform)
+                existing.transform.SetParent(canvas.transform, false);
+            if (!existing.gameObject.activeSelf) existing.gameObject.SetActive(true);
+            if (!existing.enabled) existing.enabled = true;
             existing.placer = owner;
             existing.EnsureBuilt();
             existing.Refresh();
             return existing;
         }
 
-        Canvas canvas = GameObject.Find("PlayerUI")?.GetComponent<Canvas>();
         if (canvas == null) return null;
         GameObject root = new GameObject(ObjectName, typeof(RectTransform), typeof(Image),
             typeof(CanvasGroup), typeof(HorizontalLayoutGroup), typeof(BuildStationActionBar));
@@ -2810,42 +2869,86 @@ public sealed class BuildStationActionBar : MonoBehaviour
         return bar;
     }
 
+    static Canvas ResolvePlayerUICanvas()
+    {
+        GameObject playerUI = GameObject.Find("PlayerUI");
+        if (playerUI != null)
+        {
+            Canvas canvas = playerUI.GetComponent<Canvas>();
+            if (canvas != null) return canvas;
+        }
+
+        TitleScreenController title = FindFirstObjectByType<TitleScreenController>();
+        if (title != null && title.inGameUIRoot != null)
+        {
+            Canvas canvas = title.inGameUIRoot.GetComponent<Canvas>();
+            if (canvas != null) return canvas;
+        }
+
+        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < canvases.Length; i++)
+            if (canvases[i] != null && canvases[i].isRootCanvas
+                && canvases[i].renderMode != RenderMode.WorldSpace)
+                return canvases[i];
+        for (int i = 0; i < canvases.Length; i++)
+            if (canvases[i] != null && canvases[i].renderMode != RenderMode.WorldSpace)
+                return canvases[i];
+        return null;
+    }
+
     void Update()
     {
         FitToCanvasWidth();
-        bool buildMode = placer != null && placer.modeManager != null
+        bool buildMode = !OnboardingTutorial.IsComplete && placer != null && placer.modeManager != null
             && placer.modeManager.CurrentMode == GameModeManager.Mode.Build;
         if (canvasGroup == null)
         {
             canvasGroup = GetComponent<CanvasGroup>();
             if (canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
         }
-        if (!buildVisibilityKnown || displayedBuildMode != buildMode)
+        if (!buildMode)
         {
-            buildVisibilityKnown = true;
-            displayedBuildMode = buildMode;
-            canvasGroup.alpha = buildMode ? 1f : 0f;
-            canvasGroup.interactable = buildMode;
-            canvasGroup.blocksRaycasts = buildMode;
+            SetVisible(false);
+            return;
         }
-        if (!buildMode) return;
         if (messageLabel != null && messageLabel.gameObject.activeSelf && Time.unscaledTime >= messageUntil)
         {
             messageLabel.gameObject.SetActive(false);
             if (selectionLabel != null) selectionLabel.gameObject.SetActive(true);
         }
         Refresh();
+        SetVisible(ShouldBeVisible());
+    }
+
+    bool ShouldBeVisible()
+    {
+        return !OnboardingTutorial.IsComplete && placer != null && placer.modeManager != null
+            && placer.modeManager.CurrentMode == GameModeManager.Mode.Build;
+    }
+
+    void SetVisible(bool visible)
+    {
+        if (canvasGroup == null)
+        {
+            canvasGroup = GetComponent<CanvasGroup>();
+            if (canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
+        canvasGroup.alpha = visible ? 1f : 0f;
+        canvasGroup.interactable = visible;
+        canvasGroup.blocksRaycasts = visible;
     }
 
     void EnsureBuilt()
     {
-        GameUITheme.EnsureHudCanvas(transform, 20);
+        // Keep the bar above base HUD panels (Build inventory, plan card, etc.)
+        // while leaving tutorial, pause, and milestone overlays above it.
+        GameUITheme.EnsureHudCanvas(transform, 3200);
         RectTransform rt = (RectTransform)transform;
         rt.anchorMin = new Vector2(0.5f, 0f);
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot = new Vector2(0.5f, 0f);
         rt.anchoredPosition = new Vector2(0f, 18f);
-        rt.sizeDelta = new Vector2(440f, 54f);
+        rt.sizeDelta = new Vector2(340f, 54f);
 
         Image background = GetComponent<Image>();
         background.color = HudTabColors.Strip;
@@ -2899,14 +3002,32 @@ public sealed class BuildStationActionBar : MonoBehaviour
             messageLabel.color = GameUITheme.Accent;
             messageLabel.gameObject.SetActive(false);
         }
+        Button oldClearButton = transform.Find("Clear")?.GetComponent<Button>();
+        if (oldClearButton != null)
+        {
+            if (Application.isPlaying) Destroy(oldClearButton.gameObject);
+            else DestroyImmediate(oldClearButton.gameObject);
+        }
         moveButton = transform.Find("Move")?.GetComponent<Button>();
         if (moveButton == null)
-            moveButton = CreateButton("Move", "Move", 202f, () => placer?.BeginMoveSelected());
-        clearButton = transform.Find("Clear")?.GetComponent<Button>();
-        if (clearButton == null)
-            clearButton = CreateButton("Clear", "Clear", 202f, () => placer?.ClearStationSelection());
+            moveButton = CreateButton("Move", "Move", 150f, () => placer?.BeginMoveSelected());
+        deleteButton = transform.Find("Delete")?.GetComponent<Button>();
+        if (deleteButton == null)
+            deleteButton = CreateButton("Delete", "Delete", 150f, () => placer?.DeleteSelectedStationsAndRefund());
 
         GameUITheme.ApplyTo(transform);
+        if (moveButton != null)
+        {
+            Image moveImage = moveButton.GetComponent<Image>();
+            if (moveImage != null) moveImage.color = GameUITheme.Positive;
+            moveButton.GetComponent<GameUIThemeHoverFeedback>()?.SetBaseColor(GameUITheme.Positive);
+        }
+        if (deleteButton != null)
+        {
+            Image deleteImage = deleteButton.GetComponent<Image>();
+            if (deleteImage != null) deleteImage.color = GameUITheme.Danger;
+            deleteButton.GetComponent<GameUIThemeHoverFeedback>()?.SetBaseColor(GameUITheme.Danger);
+        }
         FitToCanvasWidth();
     }
 
@@ -2919,13 +3040,13 @@ public sealed class BuildStationActionBar : MonoBehaviour
         if (canvasWidth <= 0.01f || Mathf.Abs(canvasWidth - lastCanvasWidth) < 0.5f) return;
         lastCanvasWidth = canvasWidth;
 
-        float width = Mathf.Min(440f, Mathf.Max(280f, canvasWidth - 16f));
+        float width = Mathf.Min(340f, Mathf.Max(280f, canvasWidth - 16f));
         RectTransform barRect = (RectTransform)transform;
         barRect.sizeDelta = new Vector2(width, 54f);
 
-        float buttonWidth = Mathf.Max(120f, (width - 32f) * 0.5f);
+        float buttonWidth = Mathf.Max(110f, (width - 40f) * 0.5f);
         SetButtonWidth(moveButton, buttonWidth);
-        SetButtonWidth(clearButton, buttonWidth);
+        SetButtonWidth(deleteButton, buttonWidth);
 
         if (instructionPanel == null) return;
         RectTransform instructionRect = (RectTransform)instructionPanel.transform;
@@ -3025,7 +3146,9 @@ public sealed class BuildStationActionBar : MonoBehaviour
             || !GameTimeManager.Instance.IsShiftInProgress || ShiftPlanningUI.IsPlanning;
         if (moveButton != null) moveButton.interactable = planPhase && count > 0
             && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
-        if (clearButton != null) clearButton.interactable = planPhase && count > 0 && !placer.IsDragging && !placer.IsPlacing;
+        if (deleteButton != null) deleteButton.interactable = planPhase && count > 0
+            && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
+        SetVisible(ShouldBeVisible());
     }
 
     public void SetPlacementInstruction(string instruction)

@@ -178,6 +178,21 @@ public class PurchaseUndoManager : MonoBehaviour
         }
     }
 
+    public bool DeletePlacedStationAndRefund(GameObject placed)
+    {
+        if (placed == null) return false;
+        for (int i = stack.Count - 1; i >= 0; i--)
+        {
+            Entry entry = stack[i];
+            if (entry.kind != Kind.Station || entry.station.placed != placed) continue;
+            if (!UndoStation(entry.station)) return false;
+            stack.RemoveAt(i);
+            RefreshRelatedUi();
+            return true;
+        }
+        return false;
+    }
+
     public void RecordFloorExpand(int addWidth, int addHeight, int paid)
     {
         ReplaceLast(new Entry

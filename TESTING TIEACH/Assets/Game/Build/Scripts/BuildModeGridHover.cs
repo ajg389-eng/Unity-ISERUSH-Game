@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class BuildModeGridHover : MonoBehaviour
 {
@@ -12,6 +13,7 @@ public class BuildModeGridHover : MonoBehaviour
     private Quaternion highlightBaseRotation;
     private BuildPlacer buildPlacer;
     RaycastHit[] counterHits = new RaycastHit[32];
+    readonly List<GameObject> selectedTileHighlights = new List<GameObject>();
 
     [Header("Raycast")]
     public LayerMask floorLayer;         // set to Floor layer
@@ -37,6 +39,7 @@ public class BuildModeGridHover : MonoBehaviour
         if (!modeManager || !grid) return;
 
         bool build = modeManager.CurrentMode == GameModeManager.Mode.Build;
+        RefreshSelectedTileHighlights(build);
 
         // Keep the selected station's underlying grid cell visible in
         // management/play modes, using the same blue tile as pointer hover.
@@ -44,7 +47,6 @@ public class BuildModeGridHover : MonoBehaviour
         {
             GameObject selectedStation = ManagementModeController.Instance != null
                 ? ManagementModeController.Instance.SelectedStationObject : null;
-            if (selectedStation != null && TryShowStationSelection(selectedStation)) return;
             if (highlightInstance) highlightInstance.SetActive(false);
             return;
         }
@@ -87,6 +89,66 @@ public class BuildModeGridHover : MonoBehaviour
         else
         {
             if (highlightInstance) highlightInstance.SetActive(false);
+        }
+    }
+
+    void RefreshSelectedTileHighlights(bool build)
+    {
+        int nextIndex = 0;
+        if (highlightPrefab != null)
+        {
+            if (build && buildPlacer != null)
+            {
+                IReadOnlyList<GameObject> selected = buildPlacer.SelectedObjects;
+                for (int i = 0; i < selected.Count; i++)
+                    AddStationSelectionTiles(selected[i], ref nextIndex);
+            }
+            else if (!build && ManagementModeController.Instance != null)
+                AddStationSelectionTiles(ManagementModeController.Instance.SelectedStationObject, ref nextIndex);
+        }
+
+        for (int i = nextIndex; i < selectedTileHighlights.Count; i++)
+            if (selectedTileHighlights[i] != null)
+                selectedTileHighlights[i].SetActive(false);
+    }
+
+    void AddStationSelectionTiles(GameObject station, ref int nextIndex)
+    {
+        if (station == null || station.GetComponent<CustomerWallDoor>() != null
+            || !grid.WorldToCell(station.transform.position, out int centerX, out int centerY)) return;
+
+        BuildFootprint footprint = station.GetComponent<BuildFootprint>();
+        int sizeX = Mathf.Max(1, footprint != null ? footprint.sizeX : 1);
+        int sizeY = Mathf.Max(1, footprint != null ? footprint.sizeY : 1);
+        int rotation = (Mathf.RoundToInt(station.transform.eulerAngles.y / 90f) % 4 + 4) % 4;
+        if (rotation == 1 || rotation == 3)
+        {
+            int swap = sizeX;
+            sizeX = sizeY;
+            sizeY = swap;
+        }
+
+        for (int x = 0; x < sizeX; x++)
+        for (int y = 0; y < sizeY; y++)
+        {
+            int cellX = centerX - sizeX / 2 + x;
+            int cellY = centerY - sizeY / 2 + y;
+            if (cellX < 0 || cellY < 0 || cellX >= grid.Width || cellY >= grid.Height) continue;
+
+            while (nextIndex >= selectedTileHighlights.Count)
+            {
+                GameObject tile = Instantiate(highlightPrefab);
+                foreach (Collider collider in tile.GetComponentsInChildren<Collider>())
+                    collider.enabled = false;
+                selectedTileHighlights.Add(tile);
+            }
+
+            GameObject selectedTile = selectedTileHighlights[nextIndex++];
+            if (selectedTile == null) continue;
+            selectedTile.transform.rotation = highlightBaseRotation;
+            selectedTile.transform.localScale = highlightBaseScale;
+            selectedTile.transform.position = grid.CellToWorld(cellX, cellY) + Vector3.up * 0.035f;
+            selectedTile.SetActive(true);
         }
     }
 
