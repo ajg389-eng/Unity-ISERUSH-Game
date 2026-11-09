@@ -79,7 +79,7 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine("  " + s.HeatLampStock + " / " + s.HeatLampCapacity + "  <i><size=80%>Make-to-stock buffer</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Food wasted (expired)</b>");
+        sb.AppendLine("<b>Food wasted</b>");
         sb.AppendLine("  " + s.MealsWasted + "  <i><size=80%>Overproduction cost</size></i>");
         sb.AppendLine();
 

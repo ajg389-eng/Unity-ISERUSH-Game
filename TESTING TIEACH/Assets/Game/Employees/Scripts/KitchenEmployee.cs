@@ -4817,11 +4817,13 @@ public partial class KitchenEmployee : MonoBehaviour
                 if (!TryGetSafeMovementStep(pos, waypoint, step, out Vector3 nextPos))
                     return false;
                 transform.position = nextPos;
-                FaceMoveTarget(waypoint);
+                FaceMoveDirection(nextPos - pos);
                 moveVelocity = Vector3.zero;
                 return false;
             }
 
+            if (dist > 0.0001f)
+                FaceMoveDirection(waypoint - pos);
             if (!SnapToWorldXZ(waypoint))
                 return false;
             path.RemoveAt(0);
@@ -4859,12 +4861,14 @@ public partial class KitchenEmployee : MonoBehaviour
         float step = GetGridNormalizedStep(pos, target);
         if (dist <= step || dist <= ArrivalRadius)
         {
+            if (dist > 0.0001f)
+                FaceMoveDirection(target - pos);
             return SnapToWorldXZ(target);
         }
         if (!TryGetSafeMovementStep(pos, target, step, out Vector3 nextPos))
             return false;
         transform.position = nextPos;
-        FaceMoveTarget(target);
+        FaceMoveDirection(nextPos - pos);
         return false;
     }
 
@@ -4885,12 +4889,12 @@ public partial class KitchenEmployee : MonoBehaviour
         return moveSpeed * directionMultiplier * deltaTime;
     }
 
-    void FaceMoveTarget(Vector3 worldPoint)
+    void FaceMoveDirection(Vector3 direction)
     {
         if (characterAnimator == null)
             characterAnimator = PartyCharacterAnimator.EnsureOn(gameObject);
         if (characterAnimator != null)
-            characterAnimator.FaceMovementToward(worldPoint, smooth: true);
+            characterAnimator.FaceTravelDirection(direction);
     }
 
     void FaceStationObject(GameObject station)

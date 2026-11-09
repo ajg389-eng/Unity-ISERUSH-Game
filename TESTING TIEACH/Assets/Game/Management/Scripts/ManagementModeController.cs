@@ -97,12 +97,13 @@ public class ManagementModeController : MonoBehaviour
     readonly TextMeshProUGUI[] stationStateButtonLabels = new TextMeshProUGUI[4];
     int expandedStationState = -1;
     GameObject pickupInventoryRoot;
+    GameObject pickupSecondRow;
     Button pickupDiscardAllButton;
     TextMeshProUGUI pickupDiscardAllLabel;
     TextMeshProUGUI pickupStockText;
-    readonly RawImage[] pickupSlotPreviews = new RawImage[4];
-    readonly TextMeshProUGUI[] pickupSlotLabels = new TextMeshProUGUI[4];
-    readonly TextMeshProUGUI[] pickupSlotFreshnessLabels = new TextMeshProUGUI[4];
+    readonly RawImage[] pickupSlotPreviews = new RawImage[8];
+    readonly TextMeshProUGUI[] pickupSlotLabels = new TextMeshProUGUI[8];
+    readonly TextMeshProUGUI[] pickupSlotExpiryLabels = new TextMeshProUGUI[8];
 
     [Header("Workflow decision support")]
     public GameObject workflowDecisionHud;
@@ -556,7 +557,10 @@ public class ManagementModeController : MonoBehaviour
             GridManager grid = GridManager.Instance;
             if (grid != null)
             {
-                from = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(outputDragSource.gameObject));
+                Vector3 flowNode = grid.GetCellCenter(
+                    KitchenEmployee.GetInteractionPosition(outputDragSource.gameObject));
+                from = WorkerAssignmentLinkVisuals.GetNearestPlacedTileCenter(
+                    outputDragSource.gameObject, grid, flowNode);
                 to = grid.GetCellCenter(to);
                 // Keep the in-progress connection easy to see above station
                 // previews and floor markings. The committed flow route still
@@ -2418,12 +2422,15 @@ public class ManagementModeController : MonoBehaviour
         if (!show) return;
 
         var inventorySize = pickupInventoryRoot.GetComponent<LayoutElement>();
+        bool showSecondRow = lamp.maxCapacity > 4;
         if (inventorySize != null)
         {
-            inventorySize.minHeight = 170f;
-            inventorySize.preferredHeight = 170f;
+            inventorySize.minHeight = showSecondRow ? 272f : 170f;
+            inventorySize.preferredHeight = inventorySize.minHeight;
             inventorySize.flexibleHeight = 0f;
         }
+        if (pickupSecondRow != null)
+            pickupSecondRow.SetActive(showSecondRow);
 
         pickupStockText.text = "STOCK  " + lamp.Count + " / " + lamp.maxCapacity;
         if (pickupDiscardAllButton != null)
@@ -2444,20 +2451,17 @@ public class ManagementModeController : MonoBehaviour
             pickupSlotLabels[i].color = item != null
                 ? GameUITheme.TextPrimary : GameUITheme.TextSecondary;
 
-            TextMeshProUGUI freshnessLabel = pickupSlotFreshnessLabels[i];
-            if (freshnessLabel != null)
+            TextMeshProUGUI expiryLabel = pickupSlotExpiryLabels[i];
+            if (expiryLabel != null)
             {
                 bool occupied = item != null && meal != null;
-                int percentage = occupied
-                    ? Mathf.RoundToInt(lamp.GetFreshnessModifier(meal) * 100f)
-                    : 0;
-                freshnessLabel.gameObject.SetActive(occupied);
+                expiryLabel.gameObject.SetActive(occupied);
                 if (occupied)
                 {
-                    freshnessLabel.text = percentage > 0 ? $"+{percentage}%" : $"{percentage}%";
-                    freshnessLabel.color = percentage > 0
-                        ? GameUITheme.PositiveAccent
-                        : percentage < 0 ? GameUITheme.DangerAccent : GameUITheme.Accent;
+                    int secondsLeft = Mathf.CeilToInt(lamp.GetRemainingSeconds(meal));
+                    expiryLabel.text = $"{secondsLeft}s left";
+                    expiryLabel.color = secondsLeft <= 15
+                        ? GameUITheme.DangerAccent : GameUITheme.Accent;
                 }
             }
         }
@@ -2499,23 +2503,31 @@ public class ManagementModeController : MonoBehaviour
         pickupStockText.fontStyle = FontStyles.Bold;
         pickupStockText.color = GameUITheme.Accent;
 
-        var row = new GameObject("Slots", typeof(RectTransform), typeof(HorizontalLayoutGroup),
-            typeof(LayoutElement));
-        row.transform.SetParent(pickupInventoryRoot.transform, false);
-        var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
-        rowLayout.spacing = 5f;
-        rowLayout.childAlignment = TextAnchor.MiddleCenter;
-        rowLayout.childControlWidth = true;
-        rowLayout.childControlHeight = true;
-        rowLayout.childForceExpandWidth = true;
-        rowLayout.childForceExpandHeight = true;
-        var rowSize = row.GetComponent<LayoutElement>();
-        rowSize.minHeight = 98f;
-        rowSize.preferredHeight = 98f;
-        rowSize.flexibleHeight = 0f;
+        for (int rowIndex = 0; rowIndex < 2; rowIndex++)
+        {
+            var row = new GameObject("Slots" + (rowIndex + 1), typeof(RectTransform),
+                typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+            row.transform.SetParent(pickupInventoryRoot.transform, false);
+            var rowLayout = row.GetComponent<HorizontalLayoutGroup>();
+            rowLayout.spacing = 5f;
+            rowLayout.childAlignment = TextAnchor.MiddleCenter;
+            rowLayout.childControlWidth = true;
+            rowLayout.childControlHeight = true;
+            rowLayout.childForceExpandWidth = true;
+            rowLayout.childForceExpandHeight = true;
+            var rowSize = row.GetComponent<LayoutElement>();
+            rowSize.minHeight = 98f;
+            rowSize.preferredHeight = 98f;
+            rowSize.flexibleHeight = 0f;
 
-        for (int i = 0; i < pickupSlotPreviews.Length; i++)
-            CreatePickupInventorySlot(row.transform, i);
+            for (int i = rowIndex * 4; i < (rowIndex + 1) * 4; i++)
+                CreatePickupInventorySlot(row.transform, i);
+            if (rowIndex == 1)
+            {
+                pickupSecondRow = row;
+                row.SetActive(false);
+            }
+        }
 
         pickupDiscardAllButton = CreateButton(pickupInventoryRoot.transform, "THROW OUT ALL", ThrowOutPickupStock);
         pickupDiscardAllButton.gameObject.name = "ThrowOutAllButton";
@@ -2582,11 +2594,11 @@ public class ManagementModeController : MonoBehaviour
         label.fontSizeMax = 9f;
         pickupSlotLabels[index] = label;
 
-        var freshness = CreateDiagramText(slot.transform, "Freshness", "+50%", 9f, 14f);
-        freshness.fontStyle = FontStyles.Bold;
-        freshness.color = new Color(0.45f, 0.86f, 0.62f, 1f);
-        freshness.gameObject.SetActive(false);
-        pickupSlotFreshnessLabels[index] = freshness;
+        var expiry = CreateDiagramText(slot.transform, "Expiry", "60s left", 9f, 14f);
+        expiry.fontStyle = FontStyles.Bold;
+        expiry.color = GameUITheme.Accent;
+        expiry.gameObject.SetActive(false);
+        pickupSlotExpiryLabels[index] = expiry;
     }
 
     GameObject GetPickupPreviewPrefab(ItemDefinition item)

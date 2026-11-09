@@ -1582,6 +1582,7 @@ public class InventoryUI : MonoBehaviour
             return;
 
         if (Input.GetMouseButtonDown(0) && !UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen
+            && !IsPointerOverBuildOrBusinessPanel(Input.mousePosition)
             && expansionPreviewObject != null
             && expansionPreviewObject.activeInHierarchy)
         {
@@ -1605,6 +1606,7 @@ public class InventoryUI : MonoBehaviour
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
         Plane previewPlane = new Plane(Vector3.up, new Vector3(0f, planeY, 0f));
         if (!previewPlane.Raycast(ray, out float distance) || distance < 0f) return false;
+        if (CameraWallCutaway.IsRayBlockedByVisibleWall(ray, distance)) return false;
 
         Vector3 point = ray.GetPoint(distance);
         float cellX = (point.x - futureOriginX) / tile;
@@ -1619,6 +1621,37 @@ public class InventoryUI : MonoBehaviour
         float inCellZ = cellZ - z;
         return inCellX >= inset && inCellX <= 1f - inset
             && inCellZ >= inset && inCellZ <= 1f - inset;
+    }
+
+    bool IsPointerOverBuildOrBusinessPanel(Vector2 screenPosition)
+    {
+        if (IsPointerOverPanel(panel, screenPosition))
+            return true;
+
+        if (cachedManagementScreen != null && cachedManagementScreen.IsOpen
+            && IsPointerOverPanel(cachedManagementScreen.managementPanel, screenPosition))
+            return true;
+
+        return false;
+    }
+
+    static bool IsPointerOverPanel(GameObject target, Vector2 screenPosition)
+    {
+        if (target == null || !target.activeInHierarchy)
+            return false;
+
+        RectTransform rect = target.transform as RectTransform;
+        if (rect == null)
+            return false;
+
+        Canvas canvas = target.GetComponentInParent<Canvas>();
+        if (canvas != null)
+            canvas = canvas.rootCanvas;
+        Camera eventCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+
+        return RectTransformUtility.RectangleContainsScreenPoint(rect, screenPosition, eventCamera);
     }
 
     void ShowExpansionConfirmation()

@@ -703,7 +703,7 @@ public sealed class DeterministicProductionController : IDisposable
         if (simulation == null || !workerIndex.TryGetValue(worker, out int wi)) return false;
         Sim.Trip trip = simulation.Trips[wi];
         int target = trip.Phase == Sim.TripPhase.Approach || trip.Phase == Sim.TripPhase.Pickup ? trip.Source : trip.Destination;
-        Vector3 position = Position(wi);
+        Vector3 position = Position(wi, out Vector3 travelDirection);
         float progress = trip.DueAt > trip.PhaseStarted && trip.DueAt != Sim.Never
             ? Mathf.Clamp01((float)(simulation.Now - trip.PhaseStarted) / (trip.DueAt - trip.PhaseStarted)) : 0f;
         int descriptionKey = (trip.Phase, target, trip.Item, trip.Units,
@@ -723,12 +723,14 @@ public sealed class DeterministicProductionController : IDisposable
             workerDescriptionKeys[wi] = descriptionKey;
         }
         worker.ApplyScheduledPresentation(position, trip.CargoItem >= 0 ? items[trip.CargoItem] : null,
-            trip.CargoUnits, workerDescriptions[wi], trip.Phase, progress, target >= 0 && target < bindings.Count ? bindings[target].Object : null);
+            trip.CargoUnits, workerDescriptions[wi], trip.Phase, progress, travelDirection,
+            target >= 0 && target < bindings.Count ? bindings[target].Object : null);
         return true;
     }
 
-    Vector3 Position(int worker)
+    Vector3 Position(int worker, out Vector3 travelDirection)
     {
+        travelDirection = Vector3.zero;
         Sim.Trip trip = simulation.Trips[worker];
         Vector3 p = points[trip.Location];
         bool moving = trip.Phase == Sim.TripPhase.Approach || trip.Phase == Sim.TripPhase.Travel;
@@ -739,6 +741,8 @@ public sealed class DeterministicProductionController : IDisposable
             if (path.Length == 1)
             {
                 p = path[0];
+                travelDirection = path[0] - points[trip.Location];
+                travelDirection.y = 0f;
                 p.y = workers[worker].groundHeight != 0f ? workers[worker].groundHeight
                     : grid != null ? grid.Origin.y : workers[worker].transform.position.y;
                 return p;
@@ -764,6 +768,8 @@ public sealed class DeterministicProductionController : IDisposable
             float segmentProgress = segmentLength > 0.0001f
                 ? Mathf.Clamp01((remaining - cumulative[low - 1]) / segmentLength) : 1f;
             p = Vector3.Lerp(path[low - 1], path[low], segmentProgress);
+            travelDirection = path[low] - path[low - 1];
+            travelDirection.y = 0f;
         }
         p.y = workers[worker].groundHeight != 0f ? workers[worker].groundHeight
             : grid != null ? grid.Origin.y : workers[worker].transform.position.y;

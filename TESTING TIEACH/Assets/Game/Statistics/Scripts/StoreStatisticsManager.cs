@@ -103,7 +103,7 @@ public class StoreStatisticsManager : MonoBehaviour
         mealsWasted++;
         dayMealsWasted++;
         OnStatisticsChanged?.Invoke();
-        NotificationCenter.Post("Prepared food expired at a pickup station. Review customer demand and flow throughput.",
+        NotificationCenter.Post("Prepared food was wasted at a pickup station. Review customer demand and flow throughput.",
             GameNotificationKind.Warning, "food-wasted", 30f);
     }
 

@@ -64,6 +64,7 @@ public class CameraOcclusionWall : MonoBehaviour
     }
 
     public float DuckAmount => cutawayAmount;
+    public bool IsFullyHidden => fullyHidden;
     public bool IsPlacementLocked => placementLocked;
     public bool CutsceneForceVisible => cutsceneForceVisible;
     public float CutawayDropDistance => 0f;

@@ -722,7 +722,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             + station.GetInstanceID(), color, showDirection: false);
     }
 
-    static Vector3 GetNearestPlacedTileCenter(GameObject station, GridManager grid,
+    public static Vector3 GetNearestPlacedTileCenter(GameObject station, GridManager grid,
         Vector3 flowNode)
     {
         BuildFootprint footprint = station.GetComponent<BuildFootprint>();

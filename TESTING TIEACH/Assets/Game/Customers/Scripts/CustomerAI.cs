@@ -598,8 +598,7 @@ public class CustomerAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Replaces this item's base contribution with the value calculated from its
-    /// individual pickup-station age. This supports mixed-freshness orders.
+    /// Uses the served item's regular price for its contribution to the sale.
     /// </summary>
     public void ApplyPickupSaleValue(ItemDefinition item, int adjustedValue)
     {
