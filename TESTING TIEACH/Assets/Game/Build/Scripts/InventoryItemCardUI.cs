@@ -170,6 +170,7 @@ public class InventoryItemCardUI : MonoBehaviour
                 });
             EnsureBuyButtonIcon();
             EnsurePriceOnBuyButton();
+            GameUITheme.ApplyButton(buyButton);
         }
     }
 

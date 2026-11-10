@@ -11,6 +11,7 @@ public class MissionListUI : MonoBehaviour
 {
     public const string PanelObjectName = "SideMenuPanel";
     const string TopTabsObjectName = "TasksProgressionTabs";
+    const string LockedMilestoneIconResourcePath = "UI/LockedMilestoneIcon";
     const float TopTabsWidth = 210f;
     const float TopTabsHeight = 60f;
 
@@ -33,6 +34,7 @@ public class MissionListUI : MonoBehaviour
     public Transform milestoneTasksListContent;
     public Transform progressionListContent;
     TextMeshProUGUI milestoneTaskSubtitle;
+    Sprite lockedMilestoneIcon;
     public TextMeshProUGUI progressionDetailText;
     public Button researchButton;
     [HideInInspector]
@@ -559,14 +561,30 @@ public class MissionListUI : MonoBehaviour
         bool complete, bool showCheckbox = true, Transform rowParent = null,
         List<GameObject> rowPool = null)
     {
-        var rowGo = new GameObject("TaskRow", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
-        rowGo.transform.SetParent(rowParent != null ? rowParent : tasksListContent, false);
+        var rowGo = new GameObject("TaskRow", typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        Transform targetParent = rowParent != null ? rowParent : tasksListContent;
+        rowGo.transform.SetParent(targetParent, false);
         (rowPool ?? taskRowPool).Add(rowGo);
 
+        bool dailyTask = targetParent == tasksListContent;
+        Image rowImage = rowGo.GetComponent<Image>();
+        rowImage.raycastTarget = false;
+        if (dailyTask)
+        {
+            Color tint = Color.Lerp(GameUITheme.Panel, color, 0.22f);
+            tint.a = 0.94f;
+            rowImage.color = tint;
+        }
+        else
+        {
+            rowImage.color = Color.clear;
+        }
         var rowLe = rowGo.GetComponent<LayoutElement>();
         rowLe.minHeight = string.IsNullOrEmpty(description) ? 28f : 44f;
 
         var rowLayout = rowGo.GetComponent<VerticalLayoutGroup>();
+        rowLayout.padding = new RectOffset(8, 8, 6, 6);
         rowLayout.spacing = 2f;
         rowLayout.childAlignment = TextAnchor.UpperLeft;
         rowLayout.childControlWidth = true;
@@ -600,9 +618,48 @@ public class MissionListUI : MonoBehaviour
         textLayout.childForceExpandHeight = false;
 
         // Keep task titles the same size as progress changes; bold marks the current objective.
-        AddText(textColumn.transform, "Title", title, 16, color, emphasize ? FontStyles.Bold : FontStyles.Normal);
+        Color taskTextColor = dailyTask ? Color.white : color;
+        AddText(textColumn.transform, "Title", title, 16, taskTextColor,
+            emphasize ? FontStyles.Bold : FontStyles.Normal);
         if (!string.IsNullOrEmpty(description))
-            AddText(textColumn.transform, "Description", description, 14, new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+            AddText(textColumn.transform, "Description", description, 14,
+                dailyTask ? new Color(1f, 1f, 1f, 0.85f)
+                    : new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+
+        CreateTaskRowBorder(rowGo.transform,
+            dailyTask ? color : new Color(1f, 1f, 1f, 0.9f), 1.5f);
+    }
+
+    static void CreateTaskRowBorder(Transform parent, Color color, float thickness)
+    {
+        CreateTaskRowBorderEdge(parent, "BorderTop", color,
+            new Vector2(0f, 1f), Vector2.one,
+            new Vector2(0f, -thickness), Vector2.zero);
+        CreateTaskRowBorderEdge(parent, "BorderBottom", color,
+            Vector2.zero, new Vector2(1f, 0f),
+            Vector2.zero, new Vector2(0f, thickness));
+        CreateTaskRowBorderEdge(parent, "BorderLeft", color,
+            Vector2.zero, new Vector2(0f, 1f),
+            new Vector2(0f, thickness), new Vector2(thickness, -thickness));
+        CreateTaskRowBorderEdge(parent, "BorderRight", color,
+            new Vector2(1f, 0f), Vector2.one,
+            new Vector2(-thickness, thickness), new Vector2(0f, -thickness));
+    }
+
+    static void CreateTaskRowBorderEdge(Transform parent, string name, Color color,
+        Vector2 anchorMin, Vector2 anchorMax,
+        Vector2 offsetMin, Vector2 offsetMax)
+    {
+        var edge = new GameObject(name, typeof(RectTransform), typeof(Image));
+        edge.transform.SetParent(parent, false);
+        var rect = (RectTransform)edge.transform;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+        Image image = edge.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     static void CreateTaskCheckbox(Transform parent, Color color, bool complete)
@@ -700,7 +757,7 @@ public class MissionListUI : MonoBehaviour
         go.transform.SetParent(progressionListContent, false);
         progressionRowPool.Add(go);
 
-        go.GetComponent<LayoutElement>().minHeight = 52f;
+        go.GetComponent<LayoutElement>().minHeight = 60f;
         var rowImage = go.GetComponent<Image>();
         rowImage.color = ProgressionStateColor(state);
         rowImage.raycastTarget = true;
@@ -712,7 +769,30 @@ public class MissionListUI : MonoBehaviour
             ? milestones.GetMilestoneDisplayLabel(milestone)
             : milestone.isTutorial ? "Tutorial" : $"Milestone {Mathf.Max(1, index)}";
         string label = $"{milestoneLabel}\n{ProgressionStateLabel(state)}";
-        AddText(go.transform, "Label", label, 13, Color.white, FontStyles.Normal, stretch: true);
+        TextMeshProUGUI rowLabel = AddText(go.transform, "Label", label, 13,
+            Color.white, FontStyles.Normal, stretch: true);
+        rowLabel.rectTransform.offsetMax = new Vector2(-38f, -4f);
+
+        if (state == MilestoneProgressManager.MilestoneState.Locked)
+        {
+            if (lockedMilestoneIcon == null)
+                lockedMilestoneIcon = Resources.Load<Sprite>(LockedMilestoneIconResourcePath);
+            if (lockedMilestoneIcon != null)
+            {
+                var iconObject = new GameObject("LockedIcon", typeof(RectTransform), typeof(Image));
+                iconObject.transform.SetParent(go.transform, false);
+                var iconRect = (RectTransform)iconObject.transform;
+                iconRect.anchorMin = iconRect.anchorMax = new Vector2(1f, 0.5f);
+                iconRect.pivot = new Vector2(1f, 0.5f);
+                iconRect.anchoredPosition = new Vector2(-8f, 0f);
+                iconRect.sizeDelta = new Vector2(18f, 24f);
+                var iconImage = iconObject.GetComponent<Image>();
+                iconImage.sprite = lockedMilestoneIcon;
+                iconImage.color = Color.white;
+                iconImage.preserveAspect = true;
+                iconImage.raycastTarget = false;
+            }
+        }
     }
 
     static string ProgressionStateLabel(MilestoneProgressManager.MilestoneState state)
@@ -1298,6 +1378,7 @@ public class MissionListUI : MonoBehaviour
         rt.pivot = new Vector2(1f, 1f);
         rt.anchoredPosition = new Vector2(-25f, -68f);
         rt.sizeDelta = new Vector2(500f, 320f);
+        rt.localScale = Vector3.one * 1.25f;
 
         if (headerText != null)
             headerText.gameObject.SetActive(false);
@@ -1363,7 +1444,7 @@ public class MissionListUI : MonoBehaviour
         float screenHeight = targetCanvas.pixelRect.height;
         lastCanvasHeight = screenHeight;
         if (screenHeight <= 0f) screenHeight = Screen.height;
-        float maxHeight = Mathf.Max(220f, screenHeight - 150f);
+        float maxHeight = Mathf.Max(220f, (screenHeight - 150f) / 1.25f);
         var panelLayout = panelRoot.GetComponent<VerticalLayoutGroup>();
         float panelPadding = panelLayout != null
             ? panelLayout.padding.top + panelLayout.padding.bottom
@@ -1615,7 +1696,8 @@ public class MissionListUI : MonoBehaviour
         return tmp;
     }
 
-    static void AddText(Transform parent, string name, string text, float size, Color color, FontStyles style, bool stretch = false)
+    static TextMeshProUGUI AddText(Transform parent, string name, string text, float size,
+        Color color, FontStyles style, bool stretch = false)
     {
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent, false);
@@ -1637,5 +1719,6 @@ public class MissionListUI : MonoBehaviour
         tmp.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) tmp.font = TMP_Settings.defaultFontAsset;
         go.AddComponent<GameUIThemeStyled>();
+        return tmp;
     }
 }

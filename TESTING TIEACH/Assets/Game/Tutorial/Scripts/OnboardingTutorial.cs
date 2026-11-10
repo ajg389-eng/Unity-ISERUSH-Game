@@ -334,6 +334,10 @@ public class OnboardingTutorial : MonoBehaviour
     int tutorialVisibleCharacters;
     int tutorialTotalCharacters;
     float tutorialCharacterProgress;
+    float nextGlossaryTermFlashRefresh;
+    GameObject glossaryTermFlashBox;
+    RectTransform glossaryTermFlashBoxRect;
+    CanvasGroup glossaryTermFlashBoxGroup;
     float nextTutorialVoiceTime;
     AudioSource tutorialTypewriterVoiceSource;
     readonly Dictionary<Graphic, GameObject> tutorialBorders = new Dictionary<Graphic, GameObject>();
@@ -537,10 +541,6 @@ public class OnboardingTutorial : MonoBehaviour
             "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
             "Next", Highlight.None),
         new Step(
-            "Open the recipe book",
-            "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
-            "Next", Highlight.None, requireRecipeScreen: true),
-        new Step(
             "Configure ingredients and recipes",
             "Let me walk you through how to make a simple burger production line.",
             "Next", Highlight.Management, requireRecipes: true, requireStationSequence: true),
@@ -555,8 +555,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None, requireHamburger: true),
         new Step(
             "Buy ingredients",
-            "A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty</b>, then the green <b>+</b> beside <b>Bun</b>. Each <b>+</b> adds one pack; the gray <b>−</b> removes one.\n\n" +
-            "Use the Plan card's <b>Shift Total</b> to estimate how many packs you need. Deliveries arrive through the front door after a short wait. Potatoes are used later for fries.",
+            "Click <b>Business > Supply</b> to order ingredients. A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty & Bun</b>. Each <b>+</b> adds one pack.",
             "Next", Highlight.Management, openIngredients: true, requireIngredients: true, requireStationSequence: true),
         new Step(
             "Hire workers",
@@ -569,27 +568,14 @@ public class OnboardingTutorial : MonoBehaviour
             "Start by clicking <b>Create Flow</b>. Gus will guide you through each connection in the kitchen. Drag from the source station to the destination station, then release.",
             "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
         new Step(
-            "Edit a flow",
-            "Select the flow chip at the top of Workers, then click <b>Edit Flow</b>.\n\n" +
-            "Drag to add a connection. Click selects a station; Ctrl-click removes it and its connections. Press Esc to cancel edits.\n\n" +
-            "Edit an existing flow and click Finish to save it before continuing. Later, use Edit to correct a station or build a second line (fryer → Pickup Station).",
-            "Next", Highlight.Management, openWorkers: true, requireEditedFlow: true, requireStationSequence: true),
-        new Step(
             "Assign workers to a flow",
-            "Select your burger flow, then <b>drag a worker card onto Drop Worker Here</b> in the flow panel. Follow the arrow to the drop zone.\n\n" +
-            "That worker's name appears on the flow. Click the name chip to unassign. A worker's route and handling time affect how much material they can move, so use short, clear routes and assign enough capacity for the station workload. The kitchen will not cook until at least one worker is on a flow.\n\n" +
-            "Next stays locked until you drop a worker card onto the highlighted zone.",
+            "Click and drag the worker into flashing yellow box.",
             "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true,
-            requireStationSequence: true, requireWorkerDragToFlow: true),
+            requireStationSequence: true, requireWorkerDragToFlow: true, requireAllStations: true),
         new Step(
-            "One customer loop",
-            "Your setup is still in the <b>Plan phase</b>. Review menu demand and full-shift totals on the Plan screen; its list fills in as you enable menu items. Place stations, choose recipes and menu items, and design flows before opening. During a shift, you can still adjust target rates, reorder supplies, and move workers between flows, but station placement, recipe and menu choices, and flow redesign are locked.\n\n" +
-            "Here is the basic service loop:\n\n" +
-            "1. Customer arrives and orders at the register.\n" +
-            "2. Workers follow the flow you built: freezer > grill > assembly for burgers, pantry > cutting > fryer for fries, with both grill and pantry feeding burger assembly.\n" +
-            "3. Finished items wait at the Pickup Station.\n" +
-            "4. Food is handed off and the customer leaves.",
-            "Try one customer", Highlight.None, requireAllStations: true, requireFlow: true, requireWorkerOnFlow: true),
+            "Open the recipe book",
+            "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
+            "Next", Highlight.None, requireRecipeScreen: true),
         new Step(
             "Use Objectives",
             "Daily Tasks reset each day. Milestone Tasks must be completed in a single shift. Completing them advances you to the next milestone. Review the tasks, then click <b>Next</b>.",
@@ -597,12 +583,7 @@ public class OnboardingTutorial : MonoBehaviour
         new Step(
             "Start the shift",
             "Click <b>Start Shift</b> on the Plan card. One customer will order a burger so we can observe the system. A readiness warning means forecast demand exceeds predicted output or available stock. Review its shortfalls and adjust the plan, or confirm <b>Start Shift Anyway</b>.",
-            "Next", Highlight.None, liveCustomer: true, requireShiftStarted: true),
-        new Step(
-            "Control the shift",
-            "Use the three time controls in order. I will explain each one, then point to the next button. Complete the checklist and serve the test burger before continuing.",
-            "Next", Highlight.None, liveCustomer: true, requireOrderServed: true,
-            requireTimeControlInteractions: true),
+            "Next", Highlight.None, liveCustomer: true, requireShiftStarted: true, requireOrderServed: true),
         new Step(
             "Review analytics",
             "Click <b>Analytics</b> in the top HUD. Gus will walk you through the live performance measures and item table.",
@@ -662,9 +643,6 @@ public class OnboardingTutorial : MonoBehaviour
         "Now choose the product customers can order. Open <b>Business</b>, click the <b>Menu</b> tab, and enable <b>Hamburger</b>.\n\n" +
         "Every sellable item starts turned off. That keeps your menu intentional and prevents customers from ordering a recipe before its line is ready.",
 
-        "Plans change, so you need to know how to revise one. Select the flow chip, then click <b>Edit Flow</b>.\n\n" +
-        "Drag to connect stations. Click selects a station; Ctrl-click removes it and its connections. Check the route, then click Finish to save it.",
-
         "A process plan does nothing until someone owns the work. Select the burger flow, then <b>drag a worker card onto DROP WORKER</b>.\n\n" +
         "Their name will appear on the flow. Assign at least one worker so production can begin.",
 
@@ -688,19 +666,16 @@ public class OnboardingTutorial : MonoBehaviour
         "• Register and Pickup Station can only be placed on a counter.\n" +
         "• Distance between stations affects output time.",
         "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
-        "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
         "Let me walk you through how to make a simple burger production line.",
         "The Plan screen shows menu demand per minute and full-shift totals. Use the shift totals to estimate ingredient needs, then click <b>Next</b>.",
-        "Open <b>Objectives</b> in the top-right HUD. Once it opens, I will explain its task sections and milestone progress.",
         "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. Its demand forecast and shift total appear.",
-        "Plan inputs from <b>Shift Total</b>: 5 burgers/min × 12 minutes = 60 patties and buns. Stock caps at 100 per ingredient, so replenish during the shift. Open <b>Business > Supply</b> and order packs.",
+        "Click <b>Business > Supply</b> to order ingredients. A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty & Bun</b>. Each <b>+</b> adds one pack.",
         "Open <b>Business > Workers</b> and hire one worker. The first is free; later hires cost more. Assign staff by flow and balance transport capacity with workload. Short routes reduce travel.",
         "Click <b>Create Flow</b>, then drag from each source to its destination. A flow maps material movement through the process.",
-        "Select a flow and click <b>Edit Flow</b>. Drag to connect stations; click to select; Ctrl-click to remove. Press Esc to cancel or <b>Finish</b> to save.",
-        "Drag a worker card onto <b>Drop Worker Here</b> in the burger flow. Assign enough labor capacity for the workload.",
-        "Before opening, set stations, recipes, menu, and flows. During a shift, adjust rates, supplies, and worker assignments. Customers order at Register; workers replenish Pickup through the process flow. Queues and starved or blocked stations reveal constraints.",
+        "Click and drag the worker into flashing yellow box.",
+        "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
+        "Open <b>Objectives</b> in the top-right HUD. Once it opens, I will explain its task sections and milestone progress.",
         "Click <b>Start Shift</b> on the Plan card. One customer will order a burger. If a readiness warning appears, choose <b>Start Shift Anyway</b>.",
-        "Use <b>Pause</b> to inspect, <b>Play</b> to resume at normal speed, and <b>Fast Forward</b> to speed through the shift. Click each button as I point it out, then serve the test burger.",
         "Click <b>Analytics</b>. Gus will guide you through the live metrics and item table."
     };
 
@@ -1026,7 +1001,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         // Hide the previous step's demo before reactivating the panel to avoid
         // a one-frame video flash during step transitions.
-        SetFlowLinkingVideoVisible(stepIndex == 10);
+        SetFlowLinkingVideoVisible(stepIndex == 9);
 
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
@@ -1253,7 +1228,7 @@ public class OnboardingTutorial : MonoBehaviour
             // A changed instruction can have a different focus target. Resume
             // contextual placement so the dragged card cannot hide that target.
             bool keepPanelPlacement = running && stepIndex >= 0 && stepIndex < Steps.Length
-                && (Steps[stepIndex].requireAnalyticsScreen || stepIndex == 5);
+                && (Steps[stepIndex].requireAnalyticsScreen || Steps[stepIndex].requireRecipes);
             if (!keepPanelPlacement)
             {
                 panelDragHandle?.ResetUserPosition();
@@ -1267,6 +1242,123 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (bodyText == null || bodyText.text == lastTutorialHighlightedText) return;
         SetTutorialBodyText(bodyText.text);
+    }
+
+    void UpdateGlossaryTermFlashBox()
+    {
+        if (bodyText == null) return;
+
+        bool shouldFlash = running && stepIndex == 0 && !glossaryTermClicked
+            && bodyText.gameObject.activeInHierarchy;
+        if (!shouldFlash)
+        {
+            if (glossaryTermFlashBox != null)
+                glossaryTermFlashBox.SetActive(false);
+            return;
+        }
+
+        if (Time.unscaledTime >= nextGlossaryTermFlashRefresh)
+        {
+            nextGlossaryTermFlashRefresh = Time.unscaledTime + 0.08f;
+            bodyText.ForceMeshUpdate();
+
+            const string term = "industrial and systems engineer";
+            TMP_TextInfo textInfo = bodyText.textInfo;
+            int termStart = -1;
+            for (int start = 0; start <= textInfo.characterCount - term.Length; start++)
+            {
+                bool matches = true;
+                for (int offset = 0; offset < term.Length; offset++)
+                {
+                    char actual = char.ToLowerInvariant(textInfo.characterInfo[start + offset].character);
+                    if (actual != term[offset])
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (!matches) continue;
+                termStart = start;
+                break;
+            }
+
+            if (termStart >= 0 && tutorialVisibleCharacters >= termStart + term.Length)
+            {
+                Vector3 min = new Vector3(float.PositiveInfinity, float.PositiveInfinity, 0f);
+                Vector3 max = new Vector3(float.NegativeInfinity, float.NegativeInfinity, 0f);
+                for (int i = termStart; i < termStart + term.Length; i++)
+                {
+                    TMP_CharacterInfo character = textInfo.characterInfo[i];
+                    if (!character.isVisible) continue;
+                    min = Vector3.Min(min, character.bottomLeft);
+                    max = Vector3.Max(max, character.topRight);
+                }
+
+                if (float.IsInfinity(min.x) || float.IsInfinity(min.y))
+                {
+                    if (glossaryTermFlashBox != null)
+                        glossaryTermFlashBox.SetActive(false);
+                }
+                else
+                {
+                    EnsureGlossaryTermFlashBox();
+                    glossaryTermFlashBoxRect.anchoredPosition = (Vector2)((min + max) * 0.5f);
+                    glossaryTermFlashBoxRect.sizeDelta = new Vector2(max.x - min.x + 10f,
+                        max.y - min.y + 8f);
+                    glossaryTermFlashBox.SetActive(true);
+                }
+            }
+            else if (glossaryTermFlashBox != null)
+            {
+                glossaryTermFlashBox.SetActive(false);
+            }
+        }
+
+        if (glossaryTermFlashBoxGroup != null && glossaryTermFlashBox.activeSelf)
+            glossaryTermFlashBoxGroup.alpha = Mathf.Lerp(0.08f, 1f,
+                (Mathf.Sin(Time.unscaledTime * Mathf.PI * 2f) + 1f) * 0.5f);
+    }
+
+    void EnsureGlossaryTermFlashBox()
+    {
+        if (glossaryTermFlashBox != null || bodyText == null) return;
+
+        glossaryTermFlashBox = new GameObject("Glossary Term Flash Box", typeof(RectTransform),
+            typeof(CanvasGroup));
+        glossaryTermFlashBox.transform.SetParent(bodyText.transform, false);
+        glossaryTermFlashBox.transform.SetAsLastSibling();
+        glossaryTermFlashBoxRect = (RectTransform)glossaryTermFlashBox.transform;
+        glossaryTermFlashBoxRect.anchorMin = glossaryTermFlashBoxRect.anchorMax = new Vector2(0.5f, 0.5f);
+        glossaryTermFlashBoxRect.pivot = new Vector2(0.5f, 0.5f);
+        glossaryTermFlashBoxGroup = glossaryTermFlashBox.GetComponent<CanvasGroup>();
+        glossaryTermFlashBoxGroup.interactable = false;
+        glossaryTermFlashBoxGroup.blocksRaycasts = false;
+
+        Color yellow = new Color(1f, 0.82f, 0.15f, 1f);
+        for (int side = 0; side < 4; side++)
+        {
+            var edge = new GameObject("Edge", typeof(RectTransform), typeof(Image));
+            edge.transform.SetParent(glossaryTermFlashBox.transform, false);
+            Image image = edge.GetComponent<Image>();
+            image.color = yellow;
+            image.raycastTarget = false;
+            RectTransform rect = (RectTransform)edge.transform;
+            rect.anchorMin = side == 1 ? Vector2.up : side == 3 ? Vector2.right : Vector2.zero;
+            rect.anchorMax = side == 0 ? Vector2.right : side == 2 ? Vector2.up : Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            if (side < 2)
+            {
+                rect.sizeDelta = new Vector2(0f, 2.5f);
+                rect.pivot = new Vector2(0.5f, side);
+            }
+            else
+            {
+                rect.sizeDelta = new Vector2(2.5f, 0f);
+                rect.pivot = new Vector2(side - 2, 0.5f);
+            }
+        }
     }
 
     void UpdateContextualCallout()
@@ -1297,7 +1389,7 @@ public class OnboardingTutorial : MonoBehaviour
             && objectivesTutorial.panelRoot != null
                 ? objectivesTutorial.panelRoot.transform as RectTransform : null;
         bool analyticsTutorial = running && Steps[stepIndex].requireAnalyticsScreen;
-        bool stationaryRecipeTutorial = running && stepIndex == 5;
+        bool stationaryRecipeTutorial = running && Steps[stepIndex].requireRecipes;
         bool timeControlTutorial = running && Steps[stepIndex].requireTimeControlInteractions;
         float desiredPanelWidth = recipePickerPanel != null ? 420f
             : objectivesPanelRect != null ? 460f
@@ -1540,6 +1632,8 @@ public class OnboardingTutorial : MonoBehaviour
                     rootHeight * 0.5f - panelHeight * 0.5f - 18f);
             }
         }
+        if (stationaryRecipeTutorial)
+            panelPosition = new Vector2(0f, -rootHeight * 0.12f);
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
         float calloutScreenMargin = running && stepIndex == 3 && tutorialUnlockContinuePending ? 10f : 18f;
         panelPosition.x = Mathf.Clamp(panelPosition.x,
@@ -2556,10 +2650,14 @@ public class OnboardingTutorial : MonoBehaviour
 
     void UpdateControlHighlightPulse()
     {
-        bool pulse = running && stepIndex >= 0 && stepIndex < Steps.Length
+        bool ingredientPulse = running && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireIngredients;
+        bool workerDropPulse = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireWorkerDragToFlow && !workerDraggedToFlow;
+        bool pulse = ingredientPulse || workerDropPulse;
+        float pulseRate = workerDropPulse ? Mathf.PI * 3f : 6f;
         float alpha = pulse
-            ? Mathf.Lerp(0.08f, 1f, (Mathf.Sin(Time.unscaledTime * 6f) + 1f) * 0.5f)
+            ? Mathf.Lerp(0.08f, 1f, (Mathf.Sin(Time.unscaledTime * pulseRate) + 1f) * 0.5f)
             : 1f;
 
         foreach (GameObject border in tutorialBorders.Values)
@@ -2899,16 +2997,11 @@ public class OnboardingTutorial : MonoBehaviour
                     || step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step)
                         && button.name == "WorkerDropZone")
                     HighlightControl(button);
-                if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step)
-                    && button.name == "WorkerDropZone")
-                {
-                    var flowPanel = button.transform.parent.GetComponentInParent<Image>();
-                    if (flowPanel != null) HighlightControl(flowPanel);
-                }
             }
             if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step))
-                foreach (var card in workers.GetComponentsInChildren<WorkerCardUI>())
-                    if (card.employee != null) HighlightControl(card);
+                foreach (WorkerCardUI card in workers.GetComponentsInChildren<WorkerCardUI>())
+                    if (card != null && card.employee != null)
+                        HighlightControl(card);
         }
         if (step.requireRecipes && recipeTutorialStationIndex < 4)
         {
@@ -2966,6 +3059,7 @@ public class OnboardingTutorial : MonoBehaviour
             SpawnPracticeCustomer();
         RefreshAutomaticAdvance();
         UpdateTutorialTextReveal();
+        UpdateGlossaryTermFlashBox();
 
         if (highlight == null || !highlight.activeSelf || highlightTarget == null)
             return;
@@ -3337,43 +3431,29 @@ public class OnboardingTutorial : MonoBehaviour
 
             if (ingredientTutorialStep < 2 && item != null)
             {
-                string name = string.IsNullOrEmpty(item.itemName) ? item.name : item.itemName;
                 if (ingredients.TutorialCartPacks(item) > 0)
                 {
                     ingredientTutorialStep++;
                     if (ingredientTutorialStep == 2)
                     {
-                        ingredientExplanationUntil = Time.unscaledTime + 3f;
-                        tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
+                        ingredientExplanationUntil = 0f;
                         calloutTarget = null;
-                        SetTutorialBodyText(tutorialFocusText);
                     }
                     return;
                 }
 
                 Button add = ingredients.TutorialAddButton(item);
-                tutorialFocusText = "In <b>Supplies</b>, click the green <b>+</b> beside <b>" + name +
-                    "</b> to add one pack. The gray <b>−</b> beside it removes one pack.";
                 FocusTutorialControl(add);
                 return;
             }
 
             if (ingredientTutorialStep == 2)
             {
-                if (string.IsNullOrEmpty(tutorialFocusText))
-                {
-                    tutorialFocusText = "A burger needs a patty and a bun. The green <b>+</b> adds a pack and the gray <b>−</b> removes one. <b>Add All</b> adds one pack of every supply; <b>Clear</b> empties the cart.";
-                    ingredientExplanationUntil = Time.unscaledTime + 3f;
-                    SetTutorialBodyText(tutorialFocusText);
-                }
                 calloutTarget = null;
-                if (Time.unscaledTime < ingredientExplanationUntil) return;
                 ingredientTutorialStep = 3;
-                tutorialFocusText = null;
             }
 
             Button placeOrder = ingredients.TutorialPlaceOrderButton;
-            tutorialFocusText = "Click <b>Place Order</b> to send the cart by regular delivery. <b>Express</b> costs $200 and arrives immediately.";
             FocusTutorialControl(placeOrder);
             return;
         }
@@ -3444,7 +3524,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (step.requireWorkerOnFlow && IsWorkerAssignmentStepIncomplete(step))
         {
-            tutorialFocusText = "Drag a worker card onto the highlighted <b>Drop Worker Here</b> area on the selected flow. Follow the arrow to the drop zone.";
+            tutorialFocusText = "Click and drag the worker into flashing yellow box.";
             var workers = FindFirstObjectByType<WorkersUI>();
             if (workers != null)
             {

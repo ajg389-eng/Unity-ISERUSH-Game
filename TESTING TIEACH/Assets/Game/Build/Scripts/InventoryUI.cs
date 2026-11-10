@@ -1585,8 +1585,10 @@ public class InventoryUI : MonoBehaviour
             && expansionPreviewObject != null
             && expansionPreviewObject.activeInHierarchy)
         {
+            BuildPlacer placer = FindFirstObjectByType<BuildPlacer>();
+            bool placingOrDraggingItem = placer != null && (placer.IsPlacing || placer.IsDragging);
             Camera cam = Camera.main;
-            if (cam != null && IsPointerOnExpansionPreview(cam))
+            if (!placingOrDraggingItem && cam != null && IsPointerOnExpansionPreview(cam))
                 ShowExpansionConfirmation();
         }
     }

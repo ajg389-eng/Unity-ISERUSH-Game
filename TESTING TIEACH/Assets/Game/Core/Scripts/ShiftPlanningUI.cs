@@ -275,13 +275,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // Keep the planning phase active even if another UI panel temporarily
         // hides the card. Station movement remains available until Start Shift.
         preShiftPlanningActive = true;
-        ShowAndFitPlanningPanel();
+        bool showPlanCard = !OnboardingTutorial.IsActive
+            || OnboardingTutorial.ShouldShowPlanCardDuringTutorial;
+        if (showPlanCard)
+            ShowAndFitPlanningPanel();
+        else
+            panelRoot.SetActive(false);
         ManagementModeController management = ManagementModeController.Instance;
         if (management != null && management.HasOpenStationPanel)
             SetStationPopupOpen(true);
         CaptureStationBaseline();
         timeManager.RequestExternalPause(PauseSource);
-        Sfx.Play(SfxId.UiOpen);
+        if (showPlanCard)
+            Sfx.Play(SfxId.UiOpen);
     }
 
     void ShowAndFitPlanningPanel()
