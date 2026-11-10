@@ -12,13 +12,13 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public GameModeManager modeManager;
 
     [Header("Grid route look")]
-    public Color routeColor = new Color(0.2f, 0.9f, 1f, 0.95f);
+    public Color routeColor = new Color(0.12f, 0.65f, 0.95f, 0.38f);
     public Color startColor = new Color(0.2f, 1f, 0.35f, 0.95f);
     public Color stopColor = new Color(1f, 0.75f, 0.12f, 0.95f);
     public Color endColor = new Color(1f, 0.25f, 0.2f, 0.95f);
-    public Color routeOutlineColor = new Color(0.035f, 0.08f, 0.11f, 0.82f);
     public float lineWidth = 0.11f;
-    public float lineOutlineWidth = 0.09f;
+    public Color routeBackgroundColor = new Color(0.035f, 0.08f, 0.11f, 0.82f);
+    [Min(0f)] public float routeBackgroundPadding = 0.09f;
     public float floorOffset = 0.08f;
     [Range(0.2f, 0.9f)] public float markerTileScale = 0.42f;
     [Range(0.1f, 0.5f)] public float arrowTileScale = 0.24f;
@@ -28,11 +28,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     public float raiseHeight = 1.35f;
 
     readonly List<LineRenderer> lines = new List<LineRenderer>();
+    readonly HashSet<(Vector3, Vector3)> backgroundSegments = new HashSet<(Vector3, Vector3)>();
     readonly List<Transform> recipePreviewBadges = new List<Transform>();
     readonly List<Mesh> generatedMeshes = new List<Mesh>();
     readonly List<WorkerHoverHighlight> flowWorkerHighlights = new List<WorkerHoverHighlight>();
     Material lineMaterial;
-    Material lineOutlineMaterial;
     Material markerCenterMaterial;
     Material arrowMaterial;
     Material startMaterial;
@@ -50,24 +50,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     StationNode focusedStation;
     ProductionFlowPlan focusedFlow;
 
-    static readonly Color[] TeamColors =
-    {
-        new Color(0.2f, 0.9f, 1f, 0.95f),
-        new Color(1f, 0.55f, 0.18f, 0.95f),
-        new Color(0.72f, 0.4f, 1f, 0.95f),
-        new Color(0.25f, 1f, 0.45f, 0.95f)
-    };
-
-    static readonly Color[] FlowBranchColors =
-    {
-        new Color(0.18f, 0.72f, 0.79f, 0.96f),
-        new Color(0.25f, 0.60f, 0.76f, 0.96f),
-        new Color(0.23f, 0.67f, 0.62f, 0.96f),
-        new Color(0.37f, 0.55f, 0.72f, 0.96f),
-        new Color(0.31f, 0.66f, 0.72f, 0.96f),
-        new Color(0.36f, 0.62f, 0.58f, 0.96f)
-    };
-
     public static bool HasFocusedWorker => Instance != null && Instance.focusedWorker != null;
     public static ProductionFlowPlan FocusedFlow => Instance != null ? Instance.focusedFlow : null;
 
@@ -84,7 +66,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         RefreshFlowWorkerHighlights();
         if (Instance == this) Instance = null;
         DestroyMaterial(lineMaterial);
-        DestroyMaterial(lineOutlineMaterial);
         DestroyMaterial(markerCenterMaterial);
         DestroyMaterial(arrowMaterial);
         DestroyMaterial(startMaterial);
@@ -233,13 +214,28 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-        // Flow focus (including live flow capture): always draw the station route on the grid.
-        if (focusedFlow != null)
+        DrawAllFlows();
+    }
+
+    void DrawAllFlows()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        bool focusedFlowDrawn = false;
+        if (production != null && production.productionFlows != null)
         {
-            DrawDraftFlow(focusedFlow);
-            return;
+            foreach (ProductionFlowPlan flow in production.productionFlows)
+            {
+                if (flow == null) continue;
+                bool focused = flow == focusedFlow;
+                DrawDraftFlow(flow, focused);
+                focusedFlowDrawn |= focused;
+            }
         }
 
+        // A new flow being captured is not added to the production list until
+        // it is finished, but its route should still appear while editing.
+        if (focusedFlow != null && !focusedFlowDrawn)
+            DrawDraftFlow(focusedFlow, true);
     }
 
     void DrawStationConnections(StationNode station)
@@ -261,6 +257,8 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
             var incoming = new HashSet<GameObject>();
             var outgoing = new HashSet<GameObject>();
+            var connectedStationsInFlow = new HashSet<GameObject>();
+            var routeSegmentsInFlow = new HashSet<(Vector3, Vector3)>();
             var incomingCount = new Dictionary<GameObject, int>();
             var outgoingCount = new Dictionary<GameObject, int>();
             foreach (ProductionFlowConnection connection in flow.connections)
@@ -282,19 +280,17 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                     continue;
 
                 if (markedStations.Add(connection.from))
-                {
                     CreateStationConnectionMarker(connection.from, grid, incoming, outgoing,
                         incomingCount, outgoingCount);
+                if (connectedStationsInFlow.Add(connection.from))
                     CreateStationNodeConnector(connection.from, grid,
-                        GetFlowNodeColor(connection.from, incoming, outgoing), "Selected_" + flowIndex);
-                }
+                        routeColor, "Selected_" + flowIndex);
                 if (markedStations.Add(connection.to))
-                {
                     CreateStationConnectionMarker(connection.to, grid, incoming, outgoing,
                         incomingCount, outgoingCount);
+                if (connectedStationsInFlow.Add(connection.to))
                     CreateStationNodeConnector(connection.to, grid,
-                        GetFlowNodeColor(connection.to, incoming, outgoing), "Selected_" + flowIndex);
-                }
+                        routeColor, "Selected_" + flowIndex);
 
                 Vector3 from = grid.GetCellCenter(
                     KitchenEmployee.GetInteractionPosition(connection.from));
@@ -304,12 +300,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 AppendGridLeg(points, grid, from, to);
                 if (points.Count < 2) continue;
 
-                Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
                 Color sourceColor = GetFlowNodeColor(connection.from, incoming, outgoing);
-                CreateGridLine(points,
+                CreateUniqueFlowRoute(points,
                     (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
                     + "_Station_Connection_" + flowIndex + "_" + edgeIndex,
-                    branchColor, true, sourceColor);
+                    routeSegmentsInFlow, true, sourceColor);
             }
         }
     }
@@ -354,7 +349,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         }
     }
 
-    void DrawDraftFlow(ProductionFlowPlan flow)
+    void DrawDraftFlow(ProductionFlowPlan flow, bool showMarkers)
     {
         GridManager grid = GridManager.Instance;
         if (grid == null || flow == null || flow.stations == null || flow.stations.Count == 0)
@@ -376,10 +371,11 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 ? inCount + 1 : 1;
         }
 
+        var connectedStationsInFlow = new HashSet<GameObject>();
         for (int i = 0; i < flow.stations.Count; i++)
         {
             GameObject station = flow.stations[i];
-            if (station == null) continue;
+            if (station == null || !connectedStationsInFlow.Add(station)) continue;
 
             // Route markers sit at the same tile center the workers use. Using
             // the model's interaction point here left short diagonal stubs at
@@ -392,10 +388,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             bool split = outgoingCount.TryGetValue(station, out int branches) && branches > 1;
             bool merge = incomingCount.TryGetValue(station, out int sources) && sources > 1;
             string role = root ? "START" : end ? "END" : split ? "SPLIT" : merge ? "MERGE" : "STOP";
-            CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
-            CreateStationNodeConnector(station, grid, color, "Draft_" + flow.GetHashCode());
+            if (showMarkers)
+                CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
+            CreateStationNodeConnector(station, grid, routeColor, "Draft_" + flow.GetHashCode());
         }
 
+        var routeSegmentsInFlow = new HashSet<(Vector3, Vector3)>();
         int edgeIndex = 0;
         foreach (ProductionFlowConnection connection in flow.connections)
         {
@@ -405,10 +403,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             Vector3 to = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(connection.to));
             AppendGridLeg(points, grid, from, to);
             if (points.Count < 2) continue;
-            Color branchColor = FlowBranchColors[edgeIndex % FlowBranchColors.Length];
             Color sourceColor = GetFlowNodeColor(connection.from, incoming, outgoing);
-            CreateGridLine(points, (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
-                + "_Branch_" + edgeIndex, branchColor, true, sourceColor);
+            CreateUniqueFlowRoute(points,
+                (string.IsNullOrEmpty(flow.flowName) ? "Flow" : flow.flowName)
+                + "_Branch_" + edgeIndex, routeSegmentsInFlow, showMarkers, sourceColor);
             edgeIndex++;
         }
     }
@@ -446,7 +444,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 Color markerColor = isStart ? startColor : isEnd ? endColor : stopColor;
                 string owner = showOwner ? worker.employeeName + "\n" : "";
                 CreateMarker(stopPosition, role, owner + GetDisplayName(chain[i]), markerColor, grid.cellSize);
-                CreateStationNodeConnector(chain[i], grid, markerColor,
+                CreateStationNodeConnector(chain[i], grid, routeColor,
                     "Worker_" + worker.GetInstanceID() + "_" + chainIndex + "_" + i);
 
                 if (i == 0) continue;
@@ -560,21 +558,110 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void CreateGridLine(List<Vector3> points, string routeName, Color color,
         bool showDirection = true, Color? directionColor = null)
     {
-        var outlineObject = new GameObject(routeName + "_Outline");
-        outlineObject.transform.SetParent(visualsRoot, false);
-        var outline = outlineObject.AddComponent<LineRenderer>();
-        ConfigureLine(outline, points, lineWidth + lineOutlineWidth,
-            GetLineOutlineMaterial(), routeOutlineColor);
-        lines.Add(outline);
+        CreateRouteBackground(points, routeName);
 
         var go = new GameObject(routeName);
         go.transform.SetParent(visualsRoot, false);
         var lr = go.AddComponent<LineRenderer>();
         ConfigureLine(lr, points, lineWidth, GetLineMaterial(), color);
+        lr.sortingOrder = 3;
         lines.Add(lr);
 
         if (showDirection)
             CreateDirectionArrow(points, routeName + "_Direction", directionColor ?? color);
+    }
+
+    // The dark backing belongs to the grid route, not to an individual flow.
+    // Draw it once per edge so only the colored layers change at overlaps.
+    void CreateRouteBackground(List<Vector3> points, string routeName)
+    {
+        if (routeBackgroundColor.a <= 0f || routeBackgroundPadding <= 0f)
+            return;
+
+        var run = new List<Vector3>();
+        int runIndex = 0;
+        for (int i = 1; i < points.Count; i++)
+        {
+            Vector3 from = points[i - 1];
+            Vector3 to = points[i];
+            if (from == to) continue;
+            var segment = from.x < to.x || (from.x == to.x && from.z <= to.z)
+                ? (from, to) : (to, from);
+            if (!backgroundSegments.Add(segment))
+            {
+                if (run.Count >= 2)
+                    DrawBackgroundRun(run, routeName, runIndex++);
+                run.Clear();
+                continue;
+            }
+
+            if (run.Count == 0)
+                run.Add(from);
+            else if (run[run.Count - 1] != from)
+            {
+                DrawBackgroundRun(run, routeName, runIndex++);
+                run.Clear();
+                run.Add(from);
+            }
+            run.Add(to);
+        }
+
+        if (run.Count >= 2)
+            DrawBackgroundRun(run, routeName, runIndex);
+    }
+
+    void DrawBackgroundRun(List<Vector3> points, string routeName, int runIndex)
+    {
+        var backgroundPoints = new List<Vector3>(points.Count);
+        for (int i = 0; i < points.Count; i++)
+            backgroundPoints.Add(points[i] - Vector3.up * 0.005f);
+
+        var go = new GameObject(routeName + "_Background_" + runIndex);
+        go.transform.SetParent(visualsRoot, false);
+        var line = go.AddComponent<LineRenderer>();
+        ConfigureLine(line, backgroundPoints, lineWidth + routeBackgroundPadding,
+            GetLineMaterial(), routeBackgroundColor);
+        line.sortingOrder = 2;
+        lines.Add(line);
+    }
+
+    // Each flow draws a shared grid edge once. Separate flows still draw their
+    // own translucent copy, so the edge becomes darker where flows overlap.
+    void CreateUniqueFlowRoute(List<Vector3> points, string routeName,
+        HashSet<(Vector3, Vector3)> seenSegments, bool showDirection, Color directionColor)
+    {
+        var run = new List<Vector3>();
+        int runIndex = 0;
+        for (int i = 1; i < points.Count; i++)
+        {
+            Vector3 from = points[i - 1];
+            Vector3 to = points[i];
+            if (from == to) continue;
+            var segment = from.x < to.x || (from.x == to.x && from.z <= to.z)
+                ? (from, to) : (to, from);
+            if (!seenSegments.Add(segment))
+            {
+                if (run.Count >= 2)
+                    CreateGridLine(run, routeName + "_Part_" + runIndex++, routeColor, false);
+                run.Clear();
+                continue;
+            }
+
+            if (run.Count == 0)
+                run.Add(from);
+            else if (run[run.Count - 1] != from)
+            {
+                CreateGridLine(run, routeName + "_Part_" + runIndex++, routeColor, false);
+                run.Clear();
+                run.Add(from);
+            }
+            run.Add(to);
+        }
+
+        if (run.Count >= 2)
+            CreateGridLine(run, routeName + "_Part_" + runIndex, routeColor, false);
+        if (showDirection)
+            CreateDirectionArrow(points, routeName + "_Direction", directionColor);
     }
 
     static void ConfigureLine(LineRenderer line, List<Vector3> points, float width,
@@ -587,13 +674,13 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         line.endWidth = width;
         line.numCapVertices = 6;
         line.numCornerVertices = 6;
-        line.material = material;
+        line.sharedMaterial = material;
         line.startColor = color;
         line.endColor = color;
         line.textureMode = LineTextureMode.Stretch;
         line.shadowCastingMode = ShadowCastingMode.Off;
         line.receiveShadows = false;
-        line.sortingOrder = width > 0.15f ? 2 : 3;
+        line.sortingOrder = 3;
     }
 
     void CreateDirectionArrow(List<Vector3> points, string arrowName, Color color)
@@ -722,7 +809,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             + station.GetInstanceID(), color, showDirection: false);
     }
 
-    static Vector3 GetNearestPlacedTileCenter(GameObject station, GridManager grid,
+    public static Vector3 GetNearestPlacedTileCenter(GameObject station, GridManager grid,
         Vector3 flowNode)
     {
         BuildFootprint footprint = station.GetComponent<BuildFootprint>();
@@ -982,13 +1069,6 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         return null;
     }
 
-    Material GetLineOutlineMaterial()
-    {
-        if (lineOutlineMaterial == null)
-            lineOutlineMaterial = CreateMaterial(routeOutlineColor);
-        return lineOutlineMaterial;
-    }
-
     Material GetMarkerCenterMaterial()
     {
         if (markerCenterMaterial == null)
@@ -1032,6 +1112,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     void ClearVisuals()
     {
         lines.Clear();
+        backgroundSegments.Clear();
         recipePreviewBadges.Clear();
         for (int i = 0; i < generatedMeshes.Count; i++)
             if (generatedMeshes[i] != null) Destroy(generatedMeshes[i]);

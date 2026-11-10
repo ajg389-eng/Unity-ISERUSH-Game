@@ -60,6 +60,9 @@ public class PartyCharacterAnimator : MonoBehaviour
     [Tooltip("How fast the model turns to face movement / targets.")]
     public float turnSpeed = 10f;
 
+    [Tooltip("Maximum turning speed while a worker travels, in degrees per second.")]
+    public float travelTurnDegreesPerSecond = 900f;
+
     static readonly int IdleTrigger = Animator.StringToHash("idle");
     static readonly int RunTrigger = Animator.StringToHash("run");
 
@@ -68,6 +71,7 @@ public class PartyCharacterAnimator : MonoBehaviour
     bool hasIdle;
     bool hasRun;
     int lockFacingFrames;
+    bool travelFacing;
     Vector3 lockedFaceDir = Vector3.forward;
     GameObject cachedAimTarget;
     Collider[] cachedAimColliders;
@@ -190,7 +194,10 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (lockFacingFrames > 0)
         {
             lockFacingFrames--;
-            FaceDirection(lockedFaceDir, smooth: true);
+            if (travelFacing)
+                TurnTowardTravelDirection();
+            else
+                FaceDirection(lockedFaceDir, smooth: true);
             UpdateAnimTriggers(movingNow);
             lastPos = pos;
             return;
@@ -536,6 +543,15 @@ public class PartyCharacterAnimator : MonoBehaviour
         visualRoot.rotation = Quaternion.Slerp(visualRoot.rotation, targetRot, t);
     }
 
+    void TurnTowardTravelDirection()
+    {
+        if (visualRoot == null) visualRoot = transform;
+        Quaternion targetRot = Quaternion.LookRotation(lockedFaceDir, Vector3.up);
+        float maxDegrees = Mathf.Max(0f, travelTurnDegreesPerSecond)
+            * Mathf.Min(Time.deltaTime, 0.05f);
+        visualRoot.rotation = Quaternion.RotateTowards(visualRoot.rotation, targetRot, maxDegrees);
+    }
+
     /// <summary>
     /// Dominant N/S/E/W direction from one world point toward another,
     /// using grid cells when available so characters face from their own square.
@@ -586,7 +602,18 @@ public class PartyCharacterAnimator : MonoBehaviour
     public void FaceMovementToward(Vector3 worldPoint, bool smooth = true)
     {
         lockFacingFrames = 0;
+        travelFacing = false;
         FaceToward(worldPoint, smooth);
+    }
+
+    /// <summary>Face the worker's current travel segment before playing its run animation.</summary>
+    public void FaceTravelDirection(Vector3 direction)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.0001f) return;
+        lockedFaceDir = direction.normalized;
+        lockFacingFrames = 1;
+        travelFacing = true;
     }
 
     /// <summary>
@@ -598,6 +625,7 @@ public class PartyCharacterAnimator : MonoBehaviour
         Vector3 dir = GetCardinalToward(transform.position, targetWorld);
         lockedFaceDir = dir;
         lockFacingFrames = 3; // refreshed each Update while working / waiting
+        travelFacing = false;
         FaceDirection(dir, smooth);
     }
 

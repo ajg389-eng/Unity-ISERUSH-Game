@@ -11,7 +11,8 @@ public partial class KitchenEmployee
     bool previousTrigger, previousKinematic;
 
     public void ApplyScheduledPresentation(Vector3 position, ItemDefinition cargo, int quantity,
-        string description, ProductionSimulation.TripPhase phase, float progress, GameObject facing)
+        string description, ProductionSimulation.TripPhase phase, float progress,
+        Vector3 travelDirection, GameObject facing)
     {
         if (!scheduledPresentation)
         {
@@ -40,8 +41,12 @@ public partial class KitchenEmployee
         SetStationWorkAnimation(ShowTaskBar ? PartyCharacterAnimator.StationWorkKind.Plating
             : PartyCharacterAnimator.StationWorkKind.None);
         if (characterAnimator == null) characterAnimator = PartyCharacterAnimator.EnsureOn(gameObject);
-        if (moving && (position - oldPosition).sqrMagnitude > 0.000001f)
-            characterAnimator?.FaceMovementToward(position + position - oldPosition);
+        if (moving)
+        {
+            if (travelDirection.sqrMagnitude <= 0.000001f)
+                travelDirection = position - oldPosition;
+            characterAnimator?.FaceTravelDirection(travelDirection);
+        }
         else if (facing != null) characterAnimator?.FaceTowardAdjacentObject(facing);
     }
 

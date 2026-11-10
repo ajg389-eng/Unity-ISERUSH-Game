@@ -523,11 +523,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HeatLampStation
   maxCapacity: 4
   targetStock: 3
-  freshBonusSeconds: 8
-  normalValueAfterSeconds: 28
-  minimumValueAfterSeconds: 56
-  maximumFreshnessBonus: 0.5
-  maximumFreshnessPenalty: -0.5
+  expireAfterSeconds: 60
   interactionOffset: {x: 0, y: 0, z: 0}
   customerPickupOffset: {x: 0, y: 0, z: 0}
   customerPickupSpacing: 1.15

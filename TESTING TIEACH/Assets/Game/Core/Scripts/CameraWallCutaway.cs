@@ -160,6 +160,40 @@ public class CameraWallCutaway : MonoBehaviour
             wallTargetsDirty = true;
     }
 
+    /// <summary>
+    /// Returns true when a visible wall section intersects the pointer ray before
+    /// it reaches the requested world point. Floor expansion previews must not be
+    /// clickable through architecture that is still visible on screen.
+    /// </summary>
+    public static bool IsRayBlockedByVisibleWall(Ray ray, float maxDistance)
+    {
+        if (maxDistance <= 0f) return false;
+
+        for (int i = Walls.Count - 1; i >= 0; i--)
+        {
+            CameraOcclusionWall wall = Walls[i];
+            if (wall == null)
+            {
+                Walls.RemoveAt(i);
+                wallTargetsDirty = true;
+                continue;
+            }
+
+            if (!wall.isActiveAndEnabled || wall.sectionContainer || wall.IsFullyHidden)
+                continue;
+
+            Bounds bounds = wall.WorldBounds;
+            if (bounds.size.sqrMagnitude < 0.0001f)
+                continue;
+
+            if (bounds.IntersectRay(ray, out float hitDistance)
+                && hitDistance >= 0f && hitDistance < maxDistance - 0.05f)
+                return true;
+        }
+
+        return false;
+    }
+
     public static void EnsureExists()
     {
         if (Instance != null) return;

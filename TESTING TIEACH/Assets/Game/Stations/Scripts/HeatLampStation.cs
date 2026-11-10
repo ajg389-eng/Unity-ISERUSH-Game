@@ -1,11 +1,10 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// One prepared meal sitting at pickup. Its age changes its sale value.
+/// One prepared meal sitting at pickup until it is collected or expires.
 /// </summary>
 [System.Serializable]
 public class HeldMeal
@@ -25,7 +24,7 @@ public class HeldMeal
 /// <summary>
 /// Fast-food holding / pass-through. Kitchen workers deliver finished meals here;
 /// customers grab matching orders from the lobby side of the counter.
-/// Meals remain available, but their freshness changes the value earned when sold.
+/// Each delivered meal expires after its holding time and counts as food waste.
 /// Inventory is viewed in Manage mode by clicking the heat lamp.
 /// </summary>
 public class HeatLampStation : MonoBehaviour, IStationBuffer
@@ -45,16 +44,9 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     [Tooltip("Kitchen tries to keep this many meals ready (demand + buffer)")]
     public int targetStock = 3;
 
-    [Header("Freshness pricing")]
-    [Tooltip("Items at or below this age receive the full freshness bonus.")]
-    [Min(0f)] public float freshBonusSeconds = 8f;
-    [FormerlySerializedAs("expireAfterSeconds")]
-    [Tooltip("At this age the item sells for its normal base value.")]
-    [Min(0f)] public float normalValueAfterSeconds = 28f;
-    [Tooltip("At this age the item reaches the maximum freshness penalty.")]
-    [Min(0f)] public float minimumValueAfterSeconds = 56f;
-    [Range(0f, 1f)] public float maximumFreshnessBonus = 0.5f;
-    [Range(-1f, 0f)] public float maximumFreshnessPenalty = -0.5f;
+    [Header("Food expiration")]
+    [Tooltip("Seconds a delivered item can wait at pickup before it is discarded as food waste.")]
+    [Min(1f)] public float expireAfterSeconds = 60f;
 
     [Header("Interaction")]
     public Vector3 interactionOffset = Vector3.zero;
@@ -296,6 +288,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
+        ExpireMeals();
         if (PrunePickupQueue())
             RefreshPickupQueueTargets();
         if (Time.unscaledTime >= nextCautionRefresh)
@@ -717,37 +710,35 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             grid.Origin.z + (z + 0.5f) * size);
     }
 
-    public float GetFreshnessModifier(HeldMeal meal)
+    public float GetRemainingSeconds(HeldMeal meal)
     {
-        if (meal == null) return 0f;
-
-        float age = Mathf.Max(0f, meal.AgeSeconds);
-        float freshUntil = Mathf.Max(0f, freshBonusSeconds);
-        float normalAt = Mathf.Max(freshUntil, normalValueAfterSeconds);
-        float minimumAt = Mathf.Max(normalAt, minimumValueAfterSeconds);
-
-        if (age <= freshUntil) return maximumFreshnessBonus;
-        if (age < normalAt && normalAt > freshUntil)
-            return Mathf.Lerp(maximumFreshnessBonus, 0f,
-                Mathf.InverseLerp(freshUntil, normalAt, age));
-        if (age < minimumAt && minimumAt > normalAt)
-            return Mathf.Lerp(0f, maximumFreshnessPenalty,
-                Mathf.InverseLerp(normalAt, minimumAt, age));
-        return maximumFreshnessPenalty;
+        return meal == null ? 0f
+            : Mathf.Max(0f, Mathf.Max(1f, expireAfterSeconds)
+                - Mathf.Max(0f, meal.AgeSeconds));
     }
 
-    public int GetFreshnessSaleValue(HeldMeal meal, ItemDefinition item)
+    void ExpireMeals()
     {
-        if (item == null) return 0;
-        return Mathf.Max(0, Mathf.RoundToInt(item.price * (1f + GetFreshnessModifier(meal))));
-    }
+        if (meals.Count == 0) return;
 
-    static string FormatFreshness(float modifier)
-    {
-        int percent = Mathf.RoundToInt(modifier * 100f);
-        if (percent > 0) return $"Fresh +{percent}%";
-        if (percent < 0) return $"Aged {percent}%";
-        return "Base value";
+        int expiredItems = 0;
+        float now = Time.time;
+        float holdingTime = Mathf.Max(1f, expireAfterSeconds);
+        for (int i = meals.Count - 1; i >= 0; i--)
+        {
+            HeldMeal meal = meals[i];
+            if (meal != null && now - meal.placedAt < holdingTime) continue;
+            expiredItems += Mathf.Max(1, meal?.order?.GetTotalQuantity() ?? 0);
+            meals.RemoveAt(i);
+        }
+
+        if (expiredItems <= 0) return;
+        totalWasted += expiredItems;
+        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+        if (statistics != null)
+            for (int i = 0; i < expiredItems; i++) statistics.RecordMealWasted();
+        Sfx.Play(SfxId.FoodWasted);
+        RefreshStatusLabel();
     }
 
     static string MealDisplayName(CustomerOrder order)
@@ -757,7 +748,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         return string.IsNullOrEmpty(name) || name == "—" ? "Item" : name;
     }
 
-    /// <summary>One line per held meal with its current sale-value modifier.</summary>
+    /// <summary>One line per held meal with its remaining pickup time.</summary>
     public string GetInventoryDisplay()
     {
         if (meals.Count == 0) return "Empty";
@@ -768,9 +759,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
             var meal = meals[i];
             if (meal?.order == null) continue;
             string itemName = MealDisplayName(meal.order);
-            ItemDefinition item = meal.order.PrimaryItem;
-            string saleValue = item != null ? $" (${GetFreshnessSaleValue(meal, item)})" : string.Empty;
-            parts.Add($"{itemName}: {FormatFreshness(GetFreshnessModifier(meal))}{saleValue}");
+            parts.Add($"{itemName}: {Mathf.CeilToInt(GetRemainingSeconds(meal))}s left");
         }
 
         return parts.Count > 0 ? string.Join("\n", parts) : "Empty";
@@ -779,7 +768,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public string GetManagePanelText()
     {
         string text = $"Stock: {meals.Count}/{maxCapacity}\n{GetIncomingRateDisplay()}\n{GetCustomerDemandRateDisplay()}\n{GetInventoryDisplay()}";
-        text += $"\nFreshness value: +{Mathf.RoundToInt(maximumFreshnessBonus * 100f)}% to {Mathf.RoundToInt(maximumFreshnessPenalty * 100f)}%";
+        text += $"\nHolding time: {Mathf.Max(1f, expireAfterSeconds):0}s";
         if (totalWasted > 0)
             text += $"\nWaste: {totalWasted}";
         return text;
@@ -1087,11 +1076,14 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     {
         int n = meals.Count;
         if (n <= 0) return 0;
+        int wastedItems = 0;
+        for (int i = 0; i < n; i++)
+            wastedItems += Mathf.Max(1, meals[i]?.order?.GetTotalQuantity() ?? 0);
         meals.Clear();
-        totalWasted += n;
+        totalWasted += wastedItems;
         StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
         if (statistics != null)
-            for (int i = 0; i < n; i++) statistics.RecordMealWasted();
+            for (int i = 0; i < wastedItems; i++) statistics.RecordMealWasted();
         Sfx.Play(SfxId.FoodWasted);
         RefreshStatusLabel();
         return n;
@@ -1281,17 +1273,16 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     {
         adjustedSaleValue = 0;
         freshnessModifier = 0f;
+        ExpireMeals();
         int idx = FindSingleItemIndex(item);
         if (idx < 0) return null;
         var meal = meals[idx];
-        ItemDefinition held = meal?.order?.PrimaryItem;
         if (meal?.order == null || !meal.order.TryRemoveOne(item)) return null;
-        freshnessModifier = GetFreshnessModifier(meal);
-        adjustedSaleValue = GetFreshnessSaleValue(meal, held);
+        adjustedSaleValue = Mathf.Max(0, item.price);
         if (meal.order.GetTotalQuantity() <= 0)
             meals.RemoveAt(idx);
         RefreshStatusLabel();
-        return CustomerOrder.FromItem(held != null ? held : item);
+        return CustomerOrder.FromItem(item);
     }
 
     public bool TryCustomerTakeSingleItem(ItemDefinition item)
@@ -1328,6 +1319,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     public CustomerOrder TryTakeMatching(CustomerOrder order)
     {
         if (order == null) return null;
+        ExpireMeals();
 
         int exact = FindMatchingIndex(order);
         if (exact >= 0)

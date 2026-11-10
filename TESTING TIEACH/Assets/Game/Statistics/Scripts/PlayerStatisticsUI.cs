@@ -217,7 +217,7 @@ public sealed class PlayerStatisticsUI : MonoBehaviour
         values[4].text = lost.ToString("N0");
         details[4].text = concluded > 0 ? (lost * 100f / concluded).ToString("F1") + "% of completed or lost visits" : "No completed visits yet";
         values[5].text = statistics.MealsWasted.ToString("N0");
-        details[5].text = "Meals expired before customer pickup";
+        details[5].text = "Prepared items expired or discarded at pickup";
         values[6].text = statistics.CareerAverageWaitTimeSeconds.ToString("F1") + " s";
         details[6].text = "Average order to full pickup";
         values[7].text = conversion.ToString("F1") + "%";
