@@ -2482,6 +2482,116 @@ public class BuildPlacer : MonoBehaviour
         return placedCount;
     }
 
+    /// <summary>Seeds the small inherited burger line used by onboarding.</summary>
+    public bool EnsureTutorialBurgerStations()
+    {
+        if (grid == null) grid = GridManager.Instance != null
+            ? GridManager.Instance : FindFirstObjectByType<GridManager>();
+        if (inventory == null) inventory = FindFirstObjectByType<InventoryManager>();
+        if (grid == null || inventory == null || inventory.allItems == null) return false;
+
+        CancelPlacement();
+        CancelDrag();
+        // Hide the old scene registers. The tutorial uses one register from the
+        // same build-catalog prefab players can buy later.
+        foreach (Register oldRegister in FindObjectsByType<Register>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (oldRegister != null
+                && oldRegister.GetComponentInParent<PlacedBuildItem>() == null)
+                oldRegister.gameObject.SetActive(false);
+        grid.ResyncOccupancyFromScene();
+        RememberPlacedRegisterAndPickup();
+
+        string[] names = { "Freezer", "Pantry", "Grill MK1", "Assembly Station MK1",
+            "Pickup Station MK1", "Register" };
+        bool ready = true;
+        foreach (string name in names)
+        {
+            ItemDefinition item = null;
+            foreach (ItemDefinition candidate in inventory.allItems)
+                if (candidate != null && candidate.itemName == name)
+                {
+                    item = candidate;
+                    break;
+                }
+            if (item == null || item.prefab == null)
+            {
+                Debug.LogError("Tutorial station definition is missing: " + name);
+                ready = false;
+                continue;
+            }
+            if (GetDebugStationPlacedCount(item) > 0) continue;
+            bool placed = IsPickupStationDefinition(item)
+                ? PlaceTutorialPickupStation(item)
+                : item.placementSurface == ItemDefinition.PlacementSurface.Counter
+                    ? PlaceTutorialCounterStation(item)
+                    : item.placementSurface == ItemDefinition.PlacementSurface.Floor
+                        && DebugPlaceFloorStation(item);
+            if (!placed)
+            {
+                Debug.LogError("Tutorial could not place " + name + " in the starter kitchen.");
+                ready = false;
+            }
+        }
+        grid.ResyncOccupancyFromScene();
+        return ready;
+    }
+
+    bool PlaceTutorialCounterStation(ItemDefinition item)
+    {
+        int span = Mathf.Max(1, item.counterSlotSpan);
+        CounterSurface bestSurface = null;
+        int bestSlot = -1;
+        float bestDistance = float.PositiveInfinity;
+        foreach (CounterSurface surface in FindObjectsByType<CounterSurface>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (surface.GetComponentInParent<CounterMountedItem>() != null) continue;
+            for (int slot = 0; slot <= Mathf.Max(1, surface.slotCount) - span; slot++)
+            {
+                if (!surface.IsSlotRangeAvailable(slot, span)) continue;
+                float distance = Mathf.Abs(surface.GetSlotWorldCenter(slot, span).z - 3.5f);
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                bestSurface = surface;
+                bestSlot = slot;
+            }
+        }
+        return bestSurface != null && bestSlot >= 0
+            && MountDebugStation(item, bestSurface, bestSlot, 0);
+    }
+
+    bool PlaceTutorialPickupStation(ItemDefinition item)
+    {
+        foreach (CounterSurface surface in FindObjectsByType<CounterSurface>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (surface.GetComponentInParent<CounterMountedItem>() != null) continue;
+            for (int slot = 0; slot < Mathf.Max(1, surface.slotCount); slot++)
+            {
+                if (!surface.IsSlotRangeAvailable(slot, 1)
+                    || surface.GetGroundStationAtSlot(slot) != null
+                    || !surface.OpenGroundStationSlot(slot)) continue;
+                GameObject placed = Instantiate(item.prefab);
+                placed.name = item.itemName + " (Tutorial)";
+                placed.transform.localScale = GetPlacementScale(item);
+                placed.transform.rotation = Quaternion.Euler(item.placementEuler);
+                ConfigurePlacedObject(placed, item);
+                Vector3 position = surface.GetSlotWorldCenter(slot);
+                position.y = GetYOnFloor(placed, grid.Origin.y);
+                placed.transform.position = position;
+                var marker = placed.GetComponent<PlacedBuildItem>()
+                    ?? placed.AddComponent<PlacedBuildItem>();
+                marker.itemDefinition = item;
+                var groundPlacement = placed.GetComponent<GroundPickupStationPlacement>()
+                    ?? placed.AddComponent<GroundPickupStationPlacement>();
+                groundPlacement.BindSlot(surface, slot, item);
+                return true;
+            }
+        }
+        return false;
+    }
+
     static bool IsDebugStationDefinition(ItemDefinition item)
     {
         if (item == null || item.prefab == null

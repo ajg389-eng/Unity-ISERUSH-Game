@@ -163,6 +163,7 @@ public class ManagementModeController : MonoBehaviour
     public KitchenEmployee SelectedEmployee => selectedEmployee;
     public GameObject SelectedStationObject => selectedStation != null ? selectedStation.gameObject : null;
     public GameObject TutorialSelectedStation => SelectedStationObject;
+    public int TutorialStationSelectionRevision { get; private set; }
     bool IsShiftConfigurationLocked => GameTimeManager.Instance != null
         && GameTimeManager.Instance.IsShiftInProgress && !ShiftPlanningUI.IsPlanning;
     public bool TutorialRecipePickerOpen => recipePickerOpen
@@ -3379,6 +3380,7 @@ public class ManagementModeController : MonoBehaviour
 
     void SetSelectedStation(StationNode node)
     {
+        TutorialStationSelectionRevision++;
         if (selectedStation == node) return;
 
         expandedStationState = -1;

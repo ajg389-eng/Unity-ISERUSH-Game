@@ -1037,6 +1037,10 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
 
         meals.Add(new HeldMeal(order.Clone(), Time.time));
         totalDelivered++;
+        if (order.lines != null)
+            foreach (CustomerOrder.OrderLine line in order.lines)
+                if (line.item != null && line.quantity > 0)
+                    TutorialVoiceEvents.Raise(TutorialVoiceEventId.PickupItemDelivered(line.item));
         if (ProductionManager.Instance != null)
             ProductionManager.Instance.RecordPickupDelivery(order);
         Sfx.Play(SfxId.HeatLampStock);

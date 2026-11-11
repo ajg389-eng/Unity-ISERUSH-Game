@@ -1365,7 +1365,7 @@ public partial class ProductionManager : MonoBehaviour
     public void AddWorkerToFlow(ProductionFlowPlan targetFlow, KitchenEmployee employee)
     {
         if (targetFlow == null || employee == null) return;
-        if (IsShiftInProgress)
+        if (IsShiftInProgress && !OnboardingTutorial.BlocksProgression)
         {
             if (RequestWorkerFlowReassignment(employee, targetFlow))
             {
@@ -1474,7 +1474,7 @@ public partial class ProductionManager : MonoBehaviour
     /// <summary>Hire without spending money (debug).</summary>
     public KitchenEmployee HireWorkerFree()
     {
-        if (IsShiftInProgress) return null;
+        if (IsShiftInProgress && !OnboardingTutorial.BlocksProgression) return null;
         if (employeePrefab == null)
         {
             Debug.LogWarning("ProductionManager: no employeePrefab assigned.");
@@ -1567,7 +1567,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public bool CanHireWorker()
     {
-        return !IsShiftInProgress && employeePrefab != null;
+        return !IsShiftInProgress && !OnboardingTutorial.IsActive && employeePrefab != null;
     }
 
     static bool raisedFirstWorkerEvent;
@@ -1582,7 +1582,7 @@ public partial class ProductionManager : MonoBehaviour
 
     public void FireWorker(KitchenEmployee emp)
     {
-        if (IsShiftInProgress) return;
+        if (IsShiftInProgress || OnboardingTutorial.IsActive) return;
         if (emp == null) return;
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)

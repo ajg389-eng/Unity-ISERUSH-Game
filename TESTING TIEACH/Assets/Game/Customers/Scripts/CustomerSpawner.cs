@@ -453,7 +453,7 @@ public class CustomerSpawner : MonoBehaviour
         Register r = GetBestRegister();
         if (r == null && force)
             r = GetAnyRegister();
-        if (r == null && !force)
+        if (r == null)
         {
             LastSpawnError = GetAnyRegister() != null
                 ? "All register queues are full"

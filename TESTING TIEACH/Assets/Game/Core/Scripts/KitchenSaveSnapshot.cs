@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 40;
+    public const int CurrentVersion = 45;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -31,6 +31,10 @@ public class KitchenSaveSnapshot
     public bool tutorialShiftStarted;
     public int tutorialFastForwardRateMask;
     public int tutorialAnalyticsStage = -1;
+    public float tutorialBaselineRate, tutorialTargetRate;
+    public bool tutorialStationMoved;
+    public bool milestoneOneBottleneckLessonDone;
+    public bool milestoneOneAnalyticsLessonDone;
     public bool activeMilestoneShiftObjectives;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
@@ -82,6 +86,13 @@ public class KitchenSaveSnapshot
         s.tutorialShiftStarted = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialShiftStartedForSave;
         s.tutorialFastForwardRateMask = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialFastForwardRateMaskForSave : 0;
         s.tutorialAnalyticsStage = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialAnalyticsStageForSave : -1;
+        s.tutorialBaselineRate = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialBaselineRateForSave : 0f;
+        s.tutorialTargetRate = OnboardingTutorial.Instance != null ? OnboardingTutorial.Instance.TutorialTargetRateForSave : 0f;
+        s.tutorialStationMoved = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.TutorialStationMovedForSave;
+        s.milestoneOneBottleneckLessonDone = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.MilestoneOneBottleneckLessonDoneForSave;
+        s.milestoneOneAnalyticsLessonDone = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
         if (MilestoneProgressManager.Instance != null)
         {
@@ -607,6 +618,14 @@ public class KitchenSaveSnapshot
             else if (restoredTutorialStep >= 8 && restoredTutorialStep <= 14)
                 restoredTutorialStep--;
         }
+        // The short-play tutorial adds a required movement card and changes its
+        // checkpoint indices. Restart incomplete tutorials at the welcome card.
+        if (version < 43 && !tutorialComplete)
+            restoredTutorialStep = 0;
+        // Version 44 separates observing production from following a customer.
+        // Move old layout-improvement checkpoints past the added customer step.
+        if (version < 44 && !tutorialComplete && restoredTutorialStep >= 4)
+            restoredTutorialStep++;
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
@@ -703,13 +722,20 @@ public class KitchenSaveSnapshot
         // setup must not run while stations, research, missions, or customers are
         // still being rebuilt from this save.
         if (OnboardingTutorial.Instance != null)
-            OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep, tutorialOrderServed,
+            OnboardingTutorial.Instance.RestoreCheckpoint(tutorialComplete, restoredTutorialStep,
+                version >= 43 && tutorialOrderServed,
                 version >= 36 && tutorialPauseControlUsed,
                 version >= 36 && tutorialPlayControlUsed,
                 version >= 36 && tutorialFastForwardControlUsed,
-                version >= 38 && tutorialShiftStarted,
+                version >= 43 && tutorialShiftStarted,
                 version >= 40 ? tutorialFastForwardRateMask : 0,
-                version >= 40 ? tutorialAnalyticsStage : -1);
+                version >= 40 ? tutorialAnalyticsStage : -1,
+                version >= 41 && restoredTutorialStep > 0,
+                version >= 41 ? tutorialBaselineRate : 0f,
+                version >= 41 ? tutorialTargetRate : 0f,
+                version >= 41 && tutorialStationMoved,
+                version >= 45 && milestoneOneBottleneckLessonDone,
+                version >= 45 && milestoneOneAnalyticsLessonDone);
         return true;
     }
 

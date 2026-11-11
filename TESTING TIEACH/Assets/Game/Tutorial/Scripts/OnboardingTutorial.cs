@@ -5,19 +5,22 @@ using TMPro;
 using UnityEngine.Video;
 
 /// <summary>
-/// Guided first-run tour: plan and build the kitchen, then run one practice customer.
-/// Skip from the debug menu restores the starter kitchen.
+/// Guided first-run tour: diagnose and improve an inherited burger kitchen.
 /// </summary>
 public class OnboardingTutorial : MonoBehaviour
 {
     public const string PrefsCompleteKey = "TIEACH_OnboardingComplete";
     public const string PauseSource = "OnboardingTutorial";
     const int AnalyticsTourCloseStage = 12;
+    const int OnboardingStepCount = 6;
+    const int MilestoneOneBottleneckStep = 6;
+    const int MilestoneOneAnalyticsStep = 7;
 
     public static OnboardingTutorial Instance { get; private set; }
 
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
-    public static bool IsActive => Instance != null && Instance.running;
+    public static bool IsActive => Instance != null && Instance.running
+        && !Instance.milestoneOneLessonActive;
     public static bool CanStartShiftFromPlan => !IsActive
         || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
             && Steps[Instance.stepIndex].requireShiftStarted && !Instance.tutorialShiftStarted);
@@ -27,7 +30,10 @@ public class OnboardingTutorial : MonoBehaviour
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
     public static bool IsResearchTutorialActive => IsCurrentStep(step => step.requireResearch);
     public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
-    public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen);
+    public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen)
+        || Instance != null && Instance.milestoneOneLessonActive
+            && Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
+            && Steps[Instance.stepIndex].requireAnalyticsScreen;
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
     public static bool IsObjectivesTutorialActive => IsCurrentStep(step => step.requireObjectivesScreen);
     public static bool IsTimeControlTutorialActive => IsCurrentStep(step => step.requireTimeControlInteractions);
@@ -227,10 +233,33 @@ public class OnboardingTutorial : MonoBehaviour
     bool pendingStart;
     bool gameplayReady;
     bool liveCustomerSpawned;
+    bool milestoneOneLessonActive;
+    bool milestoneOneBottleneckLessonDone;
+    bool milestoneOneAnalyticsLessonDone;
+    GameObject lastStationHealthLessonTarget;
+    bool milestoneOneStationClickObserved;
+    int stationHealthLessonSelectionRevision;
+    bool burgerArrivedAtPickup;
+    bool customerJourneyComplete;
+    bool tutorialCustomerOrderServed;
+    int customerJourneyStage = -1;
+    CustomerAI tutorialCustomer;
+    PlayerCameraController tutorialFollowCamera;
+    readonly Queue<string> customerJourneyCardQueue = new Queue<string>();
+    bool customerJourneyCustomerGone;
+    bool customerJourneyFinalMessageDisplayed;
     bool planScreenIntroduced;
     bool tutorialBurgerUnlockShown;
     bool tutorialUnlockContinuePending;
     bool starterKitchenHidden;
+    bool inheritedKitchenPrepared;
+    bool inheritedSetupWarningLogged;
+    bool preserveLoadedKitchen;
+    bool inheritedStationMoved;
+    float inheritedBaselineRate;
+    float inheritedTargetRate;
+    float inheritedCurrentRate;
+    float nextInheritedForecastRefresh;
     int stepIndex;
     public int SaveStepIndex => stepIndex;
     public bool OrderServedForSave => orderServed;
@@ -240,30 +269,44 @@ public class OnboardingTutorial : MonoBehaviour
     public bool TutorialShiftStartedForSave => tutorialShiftStarted;
     public int TutorialFastForwardRateMaskForSave => tutorialFastForwardRateMask;
     public int TutorialAnalyticsStageForSave => analyticsTutorialStage;
+    public float TutorialBaselineRateForSave => inheritedBaselineRate;
+    public float TutorialTargetRateForSave => inheritedTargetRate;
+    public bool TutorialStationMovedForSave => inheritedStationMoved;
+    public bool MilestoneOneBottleneckLessonDoneForSave => milestoneOneBottleneckLessonDone;
+    public bool MilestoneOneAnalyticsLessonDoneForSave => milestoneOneAnalyticsLessonDone;
 
     public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false,
         bool savedPauseUsed = false, bool savedPlayUsed = false, bool savedFastForwardUsed = false,
         bool savedShiftStarted = false, int savedFastForwardRateMask = 0,
-        int savedAnalyticsStage = -1)
+        int savedAnalyticsStage = -1, bool preserveKitchen = false,
+        float savedBaselineRate = 0f, float savedTargetRate = 0f,
+        bool savedStationMoved = false, bool savedMilestoneOneBottleneckLessonDone = false,
+        bool savedMilestoneOneAnalyticsLessonDone = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
+        // Save restore replaces scene-authored stations with checkpoint objects.
+        // Keep the tutorial's station references aligned with those replacements.
+        starterKitchen.Clear();
+        if (!complete) CacheStarterKitchen();
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
-        tutorialShiftStarted = savedShiftStarted || stepIndex >= 16
-            || stepIndex == 15 && GameTimeManager.Instance != null
-                && GameTimeManager.Instance.IsShiftInProgress;
-        // In older saves, the former combined shift lesson was step 15. If its
-        // clock has advanced, resume at the new controls checklist instead.
-        if (!complete && stepIndex == 15 && tutorialShiftStarted)
-        {
-            tutorialShiftStarted = true;
-            stepIndex = 16;
-        }
-        if (!complete && tutorialShiftStarted && stepIndex >= 16)
+        tutorialShiftStarted = savedShiftStarted || stepIndex >= 3;
+        if (!complete && tutorialShiftStarted && stepIndex == 3)
             ShiftPlanningUI.Instance?.ResumeTutorialPracticeShift();
         glossaryTermClicked = false;
         objectivesScreenOpened = false;
-        planScreenIntroduced = !complete && stepIndex >= 6;
-        tutorialBurgerUnlockShown = stepIndex > 3;
+        planScreenIntroduced = !complete && stepIndex >= 2;
+        tutorialBurgerUnlockShown = true;
+        preserveLoadedKitchen = preserveKitchen;
+        inheritedKitchenPrepared = preserveKitchen;
+        inheritedBaselineRate = savedBaselineRate;
+        inheritedTargetRate = savedTargetRate;
+        inheritedStationMoved = savedStationMoved;
+        milestoneOneBottleneckLessonDone = savedMilestoneOneBottleneckLessonDone;
+        milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone;
+        milestoneOneLessonActive = false;
+        milestoneOneStationClickObserved = false;
+        lastStationHealthLessonTarget = null;
+        stationHealthLessonSelectionRevision = 0;
         stationChecklistInitialized = false;
         nextStationChecklistRefresh = 0f;
         furthestStepIndex = stepIndex;
@@ -277,6 +320,24 @@ public class OnboardingTutorial : MonoBehaviour
         if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireCameraControls)
             ResetCameraTutorialInputs();
         orderServed = savedOrderServed;
+        burgerArrivedAtPickup = stepIndex == 3 && (savedOrderServed || HasTutorialBurgerAtPickup());
+        tutorialCustomerOrderServed = stepIndex == 4 && savedOrderServed;
+        customerJourneyComplete = false;
+        if (stepIndex == 4 && savedOrderServed)
+        {
+            CustomerAI[] restoredCustomers = FindObjectsByType<CustomerAI>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            customerJourneyComplete = restoredCustomers == null || restoredCustomers.Length == 0;
+        }
+        if (stepIndex == 3)
+        {
+            CustomerAI.DespawnAllCustomers();
+            liveCustomerSpawned = false;
+        }
+        customerJourneyStage = -1;
+        customerJourneyCardQueue.Clear();
+        customerJourneyCustomerGone = false;
+        customerJourneyFinalMessageDisplayed = false;
         if (complete)
         {
             pendingStart = false;
@@ -364,6 +425,13 @@ public class OnboardingTutorial : MonoBehaviour
     TextMeshProUGUI cameraZoomPromptStatus;
     RectTransform calloutTarget;
     RectTransform calloutArrow;
+    GameObject fastForwardHelpCard;
+    RectTransform fastForwardHelpCardRect;
+    RectTransform fastForwardHelpArrow;
+    RectTransform fastForwardRateHelpArrow;
+    GameTimeUI cachedTutorialTimeControls;
+    readonly Vector3[] fastForwardButtonCorners = new Vector3[4];
+    readonly Vector3[] fastForwardRateButtonCorners = new Vector3[4];
     Vector2 calloutPanelPositionVelocity;
     bool calloutPanelPositionInitialized;
     int lastCalloutPanelMotionFrame = -1;
@@ -443,6 +511,10 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireGlossaryTermClick;
         public bool requireTimeControlInteractions;
         public bool requireShiftStarted;
+        public bool requireOptimizedLayout;
+        public bool requirePickupDelivery;
+        public bool requireCustomerJourney;
+        public bool requireStationHealthReview;
 
         public Step(
             string title,
@@ -478,7 +550,11 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireWorkerDragToFlow = false,
             bool requireGlossaryTermClick = false,
             bool requireTimeControlInteractions = false,
-            bool requireShiftStarted = false)
+            bool requireShiftStarted = false,
+            bool requireOptimizedLayout = false,
+            bool requirePickupDelivery = false,
+            bool requireCustomerJourney = false,
+            bool requireStationHealthReview = false)
         {
             this.title = title;
             this.body = body;
@@ -515,169 +591,53 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireGlossaryTermClick = requireGlossaryTermClick;
             this.requireTimeControlInteractions = requireTimeControlInteractions;
             this.requireShiftStarted = requireShiftStarted;
+            this.requireOptimizedLayout = requireOptimizedLayout;
+            this.requirePickupDelivery = requirePickupDelivery;
+            this.requireCustomerJourney = requireCustomerJourney;
+            this.requireStationHealthReview = requireStationHealthReview;
         }
     }
 
     static readonly Step[] Steps =
     {
-        new Step(
-            "Empty kitchen",
-            "You are the <b>industrial and systems engineer</b>. We'll improve how people, equipment, materials, and work fit together. Click the highlighted phrase for its Guidebook entry, then close the book.",
-            "Next", Highlight.None, requireGlossaryTermClick: true),
-        new Step(
-            "Move around the kitchen",
-            "Alright now get used to movin around this joint.\n\n" +
-            "Move with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
-            "Next", Highlight.None, requireCameraControls: true),
-        new Step(
-            "Facility Layout and Design",
-            "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
-            "<b>Layout rules</b>\n" +
-            "• Register and Pickup Station can only be placed on a counter.\n" +
-            "• Distance between stations affects output time.",
-            "Next", Highlight.None, openInventory: true, requireStationChecklist: true),
-        new Step(
-            "Milestone unlocks",
-            "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
+        new Step("The kitchen you inherited",
+            "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. We will learn how to improve it while the kitchen runs.",
             "Next", Highlight.None),
-        new Step(
-            "Configure ingredients and recipes",
-            "Let me walk you through how to make a simple burger production line.",
-            "Next", Highlight.Management, requireRecipes: true, requireStationSequence: true),
-        new Step(
-            "Plan the shift",
-            "This is the <b>Plan</b> screen. It shows each selected menu item's forecast demand per minute and its total demand for the full shift. The shift total is demand per minute multiplied by the shift length.\n\n" +
-            "Use shift totals to estimate ingredients. Review the Plan card, then click <b>Next</b>.",
-            "Next", Highlight.None, requirePlanIntroduction: true),
-        new Step(
-            "Choose what to sell",
-            "Choose menu items on the <b>Plan card</b>. Click <b>Add Item to Menu</b>, then choose <b>Hamburger</b>. The demand forecast and full-shift total will now show what the kitchen needs to cover.",
-            "Next", Highlight.None, requireHamburger: true),
-        new Step(
-            "Buy ingredients",
-            "Click <b>Business > Supply</b> to order ingredients. A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty & Bun</b>. Each <b>+</b> adds one pack.",
-            "Next", Highlight.Management, openIngredients: true, requireIngredients: true, requireStationSequence: true),
-        new Step(
-            "Hire workers",
-            "Stations only cook if people work a <b>flow</b>. Open <b>Business > Staff</b> (top-left, or press 2).\n\n" +
-            "Click <b>Hire</b> at the top of the Workers tab to add staff. Your first worker is free; each additional worker costs more than the previous one. This is <b>workforce planning</b>: give each worker a clear flow and enough transport capacity for its workload. Direct station layouts reduce walking and leave more capacity for moving materials.\n\n" +
-            "Hire at least one worker to continue.",
-            "Next", Highlight.Management, openWorkers: true, requireHiredWorker: true, requireStationSequence: true),
-        new Step(
-            "Create a flow",
-            "Start by clicking <b>Create Flow</b>. Gus will guide you through each connection in the kitchen. Drag from the source station to the destination station, then release.",
-            "Next", Highlight.Management, openWorkers: true, requireFlow: true, requireStationSequence: true),
-        new Step(
-            "Assign workers to a flow",
-            "Click and drag the worker into flashing yellow box.",
-            "Next", Highlight.Management, openWorkers: true, requireWorkerOnFlow: true,
-            requireStationSequence: true, requireWorkerDragToFlow: true, requireAllStations: true),
-        new Step(
-            "Open the recipe book",
-            "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
-            "Next", Highlight.None, requireRecipeScreen: true),
-        new Step(
-            "Use Objectives",
-            "Daily Tasks reset each day. Milestone Tasks must be completed in a single shift. Completing them advances you to the next milestone. Review the tasks, then click <b>Next</b>.",
-            "Next", Highlight.None, requireObjectivesScreen: true),
-        new Step(
-            "Start the shift",
-            "Click <b>Start Shift</b> on the Plan card. One customer will order a burger so we can observe the system. A readiness warning means forecast demand exceeds predicted output or available stock. Review its shortfalls and adjust the plan, or confirm <b>Start Shift Anyway</b>.",
-            "Next", Highlight.None, liveCustomer: true, requireShiftStarted: true, requireOrderServed: true),
-        new Step(
-            "Review analytics",
-            "Click <b>Analytics</b> in the top HUD. Gus will walk you through the live performance measures and item table.",
-            "Finish", Highlight.None, requireAnalyticsScreen: true),
+        new Step("Move around the kitchen",
+            "Move with <b>WASD</b>. Right-drag to turn the camera, and scroll to zoom in and out. Try each input to continue.",
+            "Next", Highlight.None, requireCameraControls: true),
+        new Step("Start your first shift",
+            "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
+            "Next", Highlight.None, requirePlanIntroduction: true, requireShiftStarted: true),
+        new Step("Follow the worker",
+            "Follow the worker from station to station. Watch the burger arrive at Pickup.",
+            "Next", Highlight.None, requirePickupDelivery: true),
+        new Step("Follow one customer",
+            "A customer will enter at the door. Follow them to the register, then to Pickup, and out of the restaurant.",
+            "Next", Highlight.None, liveCustomer: true, requireCustomerJourney: true),
+        new Step("Improve the layout",
+            "Now improve the line. In <b>Build</b>, move an existing station to shorten worker travel and raise predicted output to the target below.",
+            "Finish", Highlight.None, openInventory: true, requireOptimizedLayout: true),
+        new Step("Identify a bottleneck",
+            "It is noon. Open <b>Business</b> and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
+            "Got it", Highlight.None, requireStationHealthReview: true),
+        new Step("Review Analytics",
+            "It is 6 PM. Open <b>Analytics</b> and review how demand, orders, production, and reputation are performing.",
+            "Finish", Highlight.None, requireAnalyticsScreen: true)
     };
 
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
-    static readonly string[] GusDialogue =
-    {
-        "I cleared out the kitchen so we can rebuild the operation properly, one step at a time.\n\n" +
-        "I will walk you through the stations, ingredients, and staffing, then we will test your system with one customer.",
-
-        "Alright now get used to movin around this joint.\n\n" +
-        "Move with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
-
-        "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
-        "<b>Layout rules</b>\n" +
-        "• Register and Pickup Station can only be placed on a counter.\n" +
-        "• Distance between stations affects output time.",
-
-        "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
-
-        "Let's start the burger process. Buy and place a <b>freezer</b>. Each freezer stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Raw Patty</b>.\n\n" +
-        "If it is unconfigured or empty, burger production cannot begin.",
-
-        "Next, buy and place a <b>grill</b>. Workers carry raw patties here from the freezer to cook them.\n\n" +
-        "Distance matters because every extra tile adds travel time. Put it somewhere sensible and we will connect its output later.",
-
-        "Now place a <b>fryer</b>. Fries use their own short production path, separate from burgers.\n\n" +
-        "Fries use Potato Pantry > Cutting Station > Fryer > Assembly > Pickup Station. The Fryer makes cooked potato slices, and Assembly combines them with a fry container supplied by a second Pantry. We will practice a basic burger first; no cutting station is required for it.",
-
-        "Place a <b>pantry</b> for the burger line. Each pantry stores one ingredient, so select it under <b>Business > Staff</b> and choose <b>Bun</b>.\n\n" +
-        "A fries line needs one pantry configured for potatoes and another configured for fry containers.",
-
-        "Place an <b>assembly</b> table. Workers combine one cooked patty with one bun here to finish a burger.\n\n" +
-        "Connect Grill > Assembly for cooked patties and Pantry > Assembly for buns, then Assembly > Pickup Station. Both input branches belong in the same flow.",
-
-        "Place a <b>Pickup Station</b> on the counter. Finished burgers, fries, and drinks wait here until customers collect them.\n\n" +
-        "If it stays empty, production may be too slow. If it stays full, we may be producing more than customers need.",
-
-        "You do not need to purchase research. Recipes, stations, and upgrades unlock automatically through milestones. Hamburger production is part of Restaurant Basics; fries and shakes unlock at Process Analysis.",
-
-        "The foundations are complete. Open the <b>Recipes</b> screen and inspect the Burger, Fries, and Shake production trees. We will configure the burger line next.",
-
-        "Select the source stations under <b>Business > Staff</b>. Set the <b>Freezer to Raw Patty</b> and the <b>Pantry to Bun</b>, then choose the Hamburger recipe at Assembly.\n\n" +
-        "Set <b>Grill to Cooked Patty</b> too. Click each station outside Create/Edit Flow to select its ingredient or recipe. Next waits for all four settings. A warning above a station means its selection is missing.",
-
-        "The equipment is useless without material to process. Open <b>Business</b>, or press <b>2</b>, and choose <b>Supply</b>.\n\n" +
-        "Order at least one pack of <b>Raw Patties</b> and <b>Buns</b> for the burger line. A delivery person will bring the combined order through the front door. Potatoes are for the later fries line.",
-
-        "Now we need someone to run the process. Open <b>Business > Staff</b>, or press <b>2</b>, and click <b>Hire</b>. Your first worker is free. Later hires cost progressively more, so staffing is a capacity decision.\n\n" +
-        "Workers carry up to <b>4 items per trip</b> with a fixed handling limit of <b>60 items per minute</b>. Travel and station interaction also take time, so use direct routes and enough workers for the workload.",
-
-        "Let's define how work should move. In Workers, click <b>Create Flow</b>, then drag from each source station to its destination.\n\n" +
-        "In ONE flow, drag Freezer to Grill, Grill to Assembly, Pantry to Assembly, and Assembly to Pickup Station. Release on each destination and click Finish. The pantry supplies buns to the same assembly station.",
-
-        "Now choose the product customers can order. Open <b>Business</b>, click the <b>Menu</b> tab, and enable <b>Hamburger</b>.\n\n" +
-        "Every sellable item starts turned off. That keeps your menu intentional and prevents customers from ordering a recipe before its line is ready.",
-
-        "A process plan does nothing until someone owns the work. Select the burger flow, then <b>drag a worker card onto DROP WORKER</b>.\n\n" +
-        "Their name will appear on the flow. Assign at least one worker so production can begin.",
-
-        "Here is the system I need you to observe:\n\n" +
-        "1. A customer orders at the register.\n2. Workers follow the flows you designed.\n3. Finished items wait at a Pickup Station.\n4. The customer collects each item and leaves.\n\n" +
-        "Waiting, walking, and blocked stations are all clues.",
-
-        "Click <b>Start Shift</b> on the Plan card. One customer will order a burger so we can observe the system. If a readiness warning appears, choose <b>Start Shift Anyway</b>.",
-
-        "Use the time controls in order. <b>Pause</b> stops the shift so you can inspect it. <b>Play</b> resumes normal speed. <b>Fast Forward</b> speeds up the run. Use Fast Forward for most of the shift, and pause when you need to diagnose a problem. Serve the test burger to continue.",
-
-        "In System counts customers waiting or being served. Avg Order Wait is order placement to full pickup. Orders Served / Min counts completed customer orders per minute. Service Rate is served divided by served plus lost. Produced / Min in the item table counts item units delivered into Pickup Stations during the last 60 seconds. Open Analytics, review it, close it, then Finish."
-    };
-
     static readonly string[] CompactTutorialText =
     {
-        "You are the <b>industrial and systems engineer</b>. We'll improve how people, equipment, materials, and work fit together. Click the highlighted phrase for its Guidebook entry, then close the book.",
-        "Alright now get used to movin around this joint.\n\nMove with <b>WASD</b>. Hold the right mouse button and drag to rotate your view. Scroll the wheel to zoom in and out.",
-        "I was running my old layout for 30 years, but I'll need you to build me a new production line from scratch.\n\n" +
-        "<b>Layout rules</b>\n" +
-        "• Register and Pickup Station can only be placed on a counter.\n" +
-        "• Distance between stations affects output time.",
-        "If you manage to hit quotas, I can invest the extra revenue into expanding our menu.",
-        "Let me walk you through how to make a simple burger production line.",
-        "The Plan screen shows menu demand per minute and full-shift totals. Use the shift totals to estimate ingredient needs, then click <b>Next</b>.",
-        "On the Plan card, click <b>Add Item to Menu</b> and choose <b>Hamburger</b>. Its demand forecast and shift total appear.",
-        "Click <b>Business > Supply</b> to order ingredients. A burger needs a patty and a bun. In <b>Supplies</b>, click the green <b>+</b> beside <b>Raw Patty & Bun</b>. Each <b>+</b> adds one pack.",
-        "Open <b>Business > Workers</b> and hire one worker. The first is free; later hires cost more. Assign staff by flow and balance transport capacity with workload. Short routes reduce travel.",
-        "Click <b>Create Flow</b>, then drag from each source to its destination. A flow maps material movement through the process.",
-        "Click and drag the worker into flashing yellow box.",
-        "Open <b>Recipes</b> and trace the Burger, Fries, and Shake process flows.",
-        "Open <b>Objectives</b> in the top-right HUD. Once it opens, I will explain its task sections and milestone progress.",
-        "Click <b>Start Shift</b> on the Plan card. One customer will order a burger. If a readiness warning appears, choose <b>Start Shift Anyway</b>.",
-        "Click <b>Analytics</b>. Gus will guide you through the live metrics and item table."
+        "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. We will learn how to improve it while the kitchen runs.",
+        "Move with <b>WASD</b>. Right-drag to turn the camera, and scroll to zoom in and out. Try each input to continue.",
+        "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
+        "Follow the worker through the process. Watch the burger arrive at Pickup.",
+        "Follow the customer from the door. See how they order, collect their burger, and leave.",
+        "Now improve the line. In <b>Build</b>, move an existing station to shorten worker travel and raise predicted output to the target below."
     };
+
+    static readonly string[] GusDialogue = CompactTutorialText;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -696,10 +656,12 @@ public class OnboardingTutorial : MonoBehaviour
         }
         Instance = this;
         pendingStart = !IsComplete;
+        if (!IsComplete) CacheStarterKitchen();
     }
 
     void OnDestroy()
     {
+        ClearTutorialCustomerFollow();
         ClearControlHighlights();
         ReleaseFlowLinkingVideo();
         DestroyTutorialFlowGuide();
@@ -714,10 +676,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         TutorialVoiceEvents.OnEvent += OnGameEvent;
         if (!IsComplete)
-        {
             pendingStart = true;
-            PrepareEmptyKitchen();
-        }
         Invoke(nameof(TryBeginIfNoTitle), 0.15f);
     }
 
@@ -744,18 +703,25 @@ public class OnboardingTutorial : MonoBehaviour
         if (title != null && title.IsShowingTitle)
             return;
 
-        PrepareEmptyKitchen();
-        foreach (var customer in FindObjectsByType<CustomerAI>(FindObjectsSortMode.None))
-        {
-            customer.gameObject.SetActive(false);
-            Destroy(customer.gameObject);
-        }
+        if (!inheritedKitchenPrepared && !preserveLoadedKitchen)
+            PrepareInheritedKitchen();
+        if (!inheritedKitchenPrepared) return;
+        if (!preserveLoadedKitchen)
+            foreach (var customer in FindObjectsByType<CustomerAI>(FindObjectsSortMode.None))
+            {
+                customer.gameObject.SetActive(false);
+                Destroy(customer.gameObject);
+            }
         running = true;
         pendingStart = false;
+        if (!tutorialShiftStarted && !ShiftPlanningUI.IsPlanning)
+            ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
         PauseMenuUI.SuppressPauseInputFor(0.35f);
         flowEditCompleted = false;
         flowCreateCompleted = false;
         liveCustomerSpawned = false;
+        tutorialCustomer = null;
+        ClearTutorialCustomerFollow();
         EnsureUI();
         ShowStep();
         if (stepIndex == 0)
@@ -781,16 +747,38 @@ public class OnboardingTutorial : MonoBehaviour
         PlayerPrefs.Save();
         pendingStart = true;
         running = false;
+        gameplayReady = false;
         stepIndex = 0;
         glossaryTermClicked = false;
         objectivesScreenOpened = false;
         stationChecklistInitialized = false;
         nextStationChecklistRefresh = 0f;
+        inheritedKitchenPrepared = false;
+        inheritedSetupWarningLogged = false;
+        preserveLoadedKitchen = false;
+        inheritedStationMoved = false;
+        inheritedBaselineRate = 0f;
+        inheritedTargetRate = 0f;
         furthestStepIndex = -1;
         flowEditCompleted = false;
         flowCreateCompleted = false;
         recipeBusinessOpened = false;
         liveCustomerSpawned = false;
+        burgerArrivedAtPickup = false;
+        customerJourneyComplete = false;
+        tutorialCustomerOrderServed = false;
+        customerJourneyStage = -1;
+        customerJourneyCardQueue.Clear();
+        customerJourneyCustomerGone = false;
+        customerJourneyFinalMessageDisplayed = false;
+        milestoneOneLessonActive = false;
+        milestoneOneBottleneckLessonDone = false;
+        milestoneOneAnalyticsLessonDone = false;
+        milestoneOneStationClickObserved = false;
+        lastStationHealthLessonTarget = null;
+        stationHealthLessonSelectionRevision = 0;
+        tutorialCustomer = null;
+        ClearTutorialCustomerFollow();
         researchScreenOpened = false;
         recipeScreenOpened = false;
         analyticsScreenOpened = false;
@@ -808,13 +796,31 @@ public class OnboardingTutorial : MonoBehaviour
         ClearHighlight();
         if (GameTimeManager.Instance != null)
             GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+        ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
+        starterKitchen.Clear();
         DestroyTutorialPlacements();
-        PrepareEmptyKitchen();
         TryBegin();
     }
 
     void OnGameEvent(string eventId)
     {
+        CustomerOrderConfig tutorialConfig = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (running && tutorialConfig != null && tutorialConfig.burgerBase != null
+            && eventId == TutorialVoiceEventId.PickupItemDelivered(tutorialConfig.burgerBase))
+        {
+            burgerArrivedAtPickup = true;
+            RefreshAdvanceGate();
+            UpdateContextualCallout();
+            return;
+        }
+        if (eventId == TutorialVoiceEventId.StationRepositioned && running)
+        {
+            inheritedStationMoved = true;
+            nextInheritedForecastRefresh = 0f;
+            RefreshAdvanceGate();
+            return;
+        }
         if (eventId != TutorialVoiceEventId.FirstOrderServed && eventId != TutorialVoiceEventId.OrderServed)
             return;
 
@@ -823,8 +829,19 @@ public class OnboardingTutorial : MonoBehaviour
         // a fact that should depend on the current tutorial panel timing.
         orderServed = true;
         if (!running) return;
+        if (stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireCustomerJourney)
+        {
+            tutorialCustomerOrderServed = true;
+            QueueCustomerJourneyThroughStage(3);
+            RefreshCustomerJourneyCard();
+            RefreshAdvanceGate();
+            UpdateContextualCallout();
+        }
         if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireOrderServed)
         {
+            if (stepIndex < Steps.Length - 1)
+                ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
             if (Steps[stepIndex].requireTimeControlInteractions)
                 RefreshTimeControlTutorialStep();
             RefreshAdvanceGate();
@@ -845,7 +862,25 @@ public class OnboardingTutorial : MonoBehaviour
 
     void OnNext()
     {
-        if (stepIndex == 2 && IsFreezerExplanationPhase(freezerWalkthroughPhase))
+        if (milestoneOneLessonActive && stepIndex == MilestoneOneBottleneckStep
+            && StepRequirementMet())
+        {
+            if (tutorialVisibleCharacters < tutorialTotalCharacters)
+            {
+                tutorialVisibleCharacters = tutorialTotalCharacters;
+                tutorialCharacterProgress = tutorialTotalCharacters;
+                if (bodyText != null)
+                    bodyText.maxVisibleCharacters = tutorialVisibleCharacters;
+                return;
+            }
+            Sfx.Play(SfxId.UiClick);
+            milestoneOneBottleneckLessonDone = true;
+            EndMilestoneOneLesson();
+            return;
+        }
+
+        if (Steps[stepIndex].requireStationChecklist
+            && IsFreezerExplanationPhase(freezerWalkthroughPhase))
         {
             if (tutorialVisibleCharacters < tutorialTotalCharacters)
             {
@@ -928,7 +963,14 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         Sfx.Play(SfxId.UiClick);
-        if (stepIndex >= Steps.Length - 1)
+        if (milestoneOneLessonActive && stepIndex == MilestoneOneAnalyticsStep)
+        {
+            milestoneOneAnalyticsLessonDone = true;
+            EndMilestoneOneLesson();
+            return;
+        }
+
+        if (stepIndex >= OnboardingStepCount - 1)
         {
             Complete(skipped: false);
             return;
@@ -944,6 +986,16 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         var step = Steps[stepIndex];
+        if (!step.requireCustomerJourney)
+        {
+            tutorialCustomer = null;
+            customerJourneyStage = -1;
+            ClearTutorialCustomerFollow();
+        }
+        else if (!customerJourneyComplete)
+        {
+            GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
+        }
         if (step.requireAnalyticsScreen)
         {
             analyticsScreenOpened = false;
@@ -962,7 +1014,7 @@ public class OnboardingTutorial : MonoBehaviour
             MissionListUI objectives = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
             if (objectives != null) objectives.SetVisible(false);
         }
-        if (stepIndex == 3 && !tutorialBurgerUnlockShown)
+        if (step.requireStationChecklist && !tutorialBurgerUnlockShown)
         {
             MilestoneProgressManager milestoneProgress = MilestoneProgressManager.Instance;
             MilestoneDefinition tutorialMilestone = milestoneProgress != null
@@ -980,8 +1032,12 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requirePlanIntroduction)
             planScreenIntroduced = true;
         if (step.requireShiftStarted)
+        {
+            var build = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (build != null && build.IsPanelOpen) build.TogglePanel();
             ShiftPlanningUI.Instance?.FocusPlanningCard();
-        else if (planScreenIntroduced && !step.liveCustomer)
+        }
+        else if (!milestoneOneLessonActive && planScreenIntroduced && !step.liveCustomer)
             ShiftPlanningUI.Instance?.FocusPlanningCard();
         if (step.requireWorkerDragToFlow)
             workerDraggedToFlow = false;
@@ -990,7 +1046,7 @@ public class OnboardingTutorial : MonoBehaviour
         ingredientTutorialStep = 0;
         ingredientExplanationUntil = 0f;
         tutorialFocusText = null;
-        freezerWalkthroughPhase = stepIndex == 2
+        freezerWalkthroughPhase = step.requireStationChecklist
             ? HasPlacedStation(Highlight.Freezer)
                 ? FreezerWalkthroughPhase.RemainingStations
                 : FreezerWalkthroughPhase.StationName
@@ -1001,7 +1057,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         // Hide the previous step's demo before reactivating the panel to avoid
         // a one-frame video flash during step transitions.
-        SetFlowLinkingVideoVisible(stepIndex == 9);
+        SetFlowLinkingVideoVisible(step.requireFlow);
 
         if (canvasRoot != null)
             canvasRoot.SetActive(true);
@@ -1010,14 +1066,19 @@ public class OnboardingTutorial : MonoBehaviour
             tutorialCanvas.sortingOrder = tutorialUnlockContinuePending ? 7100 : 4200;
         if (panel != null)
             panel.SetActive(true);
+        SetFastForwardHelpVisible(stepIndex == 3 && running);
         if (cameraPromptPanel != null)
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
             titleText.text = ISEVocabularyHighlighter.Highlight(step.title);
         string initialBody = !string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText
             : stepIndex < CompactTutorialText.Length ? CompactTutorialText[stepIndex] : step.body;
-        if (stepIndex == 2)
+        if (step.requireStationChecklist)
             initialBody = GetFreezerWalkthroughText(freezerWalkthroughPhase);
+        else if (step.requirePlanIntroduction)
+            initialBody += "\n\nInherited output: " + inheritedBaselineRate.ToString("0.0")
+                + " burgers/min. Improvement target: " + inheritedTargetRate.ToString("0.0")
+                + " burgers/min.";
         else if (step.requireTimeControlInteractions)
             initialBody = GetTimeControlInstruction();
         else if (step.requireAnalyticsScreen)
@@ -1026,19 +1087,24 @@ public class OnboardingTutorial : MonoBehaviour
         if (coreStationChecklistText != null)
         {
             coreStationChecklistText.gameObject.SetActive(
-                step.requireStationChecklist || step.requireTimeControlInteractions);
+                step.requireStationChecklist || step.requireTimeControlInteractions
+                || step.requireOptimizedLayout);
             if (step.requireStationChecklist)
                 RefreshStationChecklist();
             else if (step.requireTimeControlInteractions)
                 RefreshTimeControlChecklist();
+            else if (step.requireOptimizedLayout)
+                RefreshInheritedLayoutText();
         }
         if (stepLabel != null)
-            stepLabel.text = $"Tutorial  {stepIndex + 1} / {Steps.Length}";
+            stepLabel.text = milestoneOneLessonActive
+                ? stepIndex == MilestoneOneBottleneckStep ? "MILESTONE 1  |  12 PM" : "MILESTONE 1  |  6 PM"
+                : $"Tutorial  {stepIndex + 1} / {OnboardingStepCount}";
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
         if (nextButton != null)
         {
-            bool freezerGuideNext = stepIndex == 2
+            bool freezerGuideNext = step.requireStationChecklist
                 && IsFreezerExplanationPhase(freezerWalkthroughPhase);
             nextButton.gameObject.SetActive(step.requireAnalyticsScreen
                 ? false
@@ -1048,7 +1114,7 @@ public class OnboardingTutorial : MonoBehaviour
         autoAdvanceStep = -1;
 
         ApplyPause(step.pauseSim);
-        currentHighlight = stepIndex == 2
+        currentHighlight = step.requireStationChecklist
             && freezerWalkthroughPhase != FreezerWalkthroughPhase.RemainingStations
                 ? Highlight.Freezer : step.highlight;
         calloutTarget = null;
@@ -1064,7 +1130,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (!step.openAnalytics)
             AnalyticsPopupUI.CloseIfOpen();
 
-        if (stepIndex == 2)
+        if (step.requireStationChecklist)
         {
             var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inventoryUI != null && inventoryUI.IsPanelOpen) inventoryUI.TogglePanel();
@@ -1228,7 +1294,8 @@ public class OnboardingTutorial : MonoBehaviour
             // A changed instruction can have a different focus target. Resume
             // contextual placement so the dragged card cannot hide that target.
             bool keepPanelPlacement = running && stepIndex >= 0 && stepIndex < Steps.Length
-                && (Steps[stepIndex].requireAnalyticsScreen || Steps[stepIndex].requireRecipes);
+                && (Steps[stepIndex].requireAnalyticsScreen || Steps[stepIndex].requireRecipes
+                    || Steps[stepIndex].requireOptimizedLayout);
             if (!keepPanelPlacement)
             {
                 panelDragHandle?.ResetUserPosition();
@@ -1800,7 +1867,7 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
-        bool freezerGuideNext = stepIndex == 2
+        bool freezerGuideNext = Steps[stepIndex].requireStationChecklist
             && IsFreezerExplanationPhase(freezerWalkthroughPhase);
         bool ready = freezerGuideNext || StepRequirementMet();
         bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
@@ -1848,6 +1915,10 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireAnalyticsScreen) return "Click Analytics";
         if (step.requireMenuScreen && !menuScreenOpened) return "Open Menu";
         if (step.requireHamburger) return "Add Hamburger to the menu";
+        if (step.requireOptimizedLayout)
+            return inheritedStationMoved
+                ? "Reach " + inheritedTargetRate.ToString("0.0") + " burgers/min"
+                : "Move a station to shorten the route";
         if (step.requireShiftStarted) return "Start Shift";
         if (step.requireCameraControls)
         {
@@ -1863,6 +1934,8 @@ public class OnboardingTutorial : MonoBehaviour
             if (!AllTutorialFastForwardRatesVisited()) return "Cycle through each fast-forward speed";
         }
         if (step.requireOrderServed && !orderServed) return "Serve the burger";
+        if (step.requirePickupDelivery && !burgerArrivedAtPickup) return "Wait for the burger at Pickup";
+        if (step.requireCustomerJourney && !customerJourneyComplete) return "Follow the customer to the exit";
         if (step.requireIngredients) return "Order Raw Patties and Buns";
         if (step.requireRecipes) return MissingRecipeLabel();
         if (step.requireEditedFlow) return "Edit and save flow";
@@ -1932,9 +2005,15 @@ public class OnboardingTutorial : MonoBehaviour
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
         if (step.requireMenuScreen && !menuScreenOpened) return false;
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
+        if (step.requireOptimizedLayout && (!inheritedStationMoved
+            || inheritedTargetRate <= 0f
+            || CurrentInheritedOutputRate() + 0.05f < inheritedTargetRate)) return false;
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced()) return false;
         if (step.requireShiftStarted && !tutorialShiftStarted) return false;
         if (step.requireOrderServed && !orderServed) return false;
+        if (step.requirePickupDelivery && !burgerArrivedAtPickup) return false;
+        if (step.requireCustomerJourney && !customerJourneyComplete) return false;
+        if (step.requireStationHealthReview && !HasSelectedProductionStation()) return false;
         if (step.requireTimeControlInteractions
             && (!tutorialPauseControlUsed || !tutorialPlayControlUsed || !tutorialFastForwardControlUsed
                 || !AllTutorialFastForwardRatesVisited()))
@@ -1967,7 +2046,7 @@ public class OnboardingTutorial : MonoBehaviour
             || step.requireFlow || step.requireWorkerOnFlow || step.requireHiredWorker
             || step.requireEditedFlow || step.requireRecipes || step.requireIngredients
             || step.requireResearch || step.requireHamburger
-            || step.requireShiftStarted
+            || step.requireShiftStarted || step.requirePickupDelivery || step.requireCustomerJourney
             || step.requireOrderServed;
     }
 
@@ -2004,6 +2083,31 @@ public class OnboardingTutorial : MonoBehaviour
             + ChecklistLine("Register", stationChecklistStatus[4]) + "\n"
             + ChecklistLine("Fryer", stationChecklistStatus[5]) + "\n"
             + ChecklistLine("Pickup Station", stationChecklistStatus[6]);
+        if (coreStationChecklistText.text != text)
+            coreStationChecklistText.text = text;
+    }
+
+    float CurrentInheritedOutputRate()
+    {
+        if (nextInheritedForecastRefresh > Time.unscaledTime)
+            return inheritedCurrentRate;
+        nextInheritedForecastRefresh = Time.unscaledTime + 0.5f;
+        ProductionManager production = ProductionManager.Instance;
+        inheritedCurrentRate = production != null && production.orderConfig != null
+            ? production.GetPredictedOutputPerMinute(production.orderConfig.burgerBase) : 0f;
+        return inheritedCurrentRate;
+    }
+
+    void RefreshInheritedLayoutText()
+    {
+        if (coreStationChecklistText == null) return;
+        float current = CurrentInheritedOutputRate();
+        string text = "INHERITED  " + inheritedBaselineRate.ToString("0.0") + "/min"
+            + "    CURRENT  " + current.ToString("0.0") + "/min"
+            + "    TARGET  " + inheritedTargetRate.ToString("0.0") + "/min\n"
+            + (inheritedStationMoved ? "Station moved" : "Move an existing station in Build mode")
+            + "  |  " + (current + 0.05f >= inheritedTargetRate && inheritedTargetRate > 0f
+                ? "Output target reached" : "Shorten the worker route");
         if (coreStationChecklistText.text != text)
             coreStationChecklistText.text = text;
     }
@@ -2123,10 +2227,10 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return;
         Step step = Steps[stepIndex];
-        // Observation steps remain open. Shift-start and completed-order steps
-        // advance automatically once their requirements are met.
+        // Observation steps remain open. Shift-start, pickup-delivery, and
+        // completed-customer steps advance once their requirements are met.
         bool waitingForServedOrder = step.liveCustomer && !step.requireOrderServed
-            && !step.requireShiftStarted;
+            && !step.requireShiftStarted && !step.requireCustomerJourney;
         if (!AutomaticallyAdvances(step) || waitingForServedOrder || !StepRequirementMet())
         {
             autoAdvanceStep = -1;
@@ -2355,20 +2459,154 @@ public class OnboardingTutorial : MonoBehaviour
 
     void SpawnPracticeCustomer()
     {
+        if (customerJourneyComplete) return;
         if (liveCustomerSpawned) return;
         if (ShiftPlanningUI.IsPlanning) return;
         var existing = FindObjectsByType<CustomerAI>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         if (existing != null && existing.Length > 0)
         {
             liveCustomerSpawned = true;
+            if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireCustomerJourney)
+                BeginTutorialCustomerFollow(existing[0]);
             return;
         }
-
-        if (!HasPlacedStation(Highlight.Register)) return;
 
         var spawner = FindFirstObjectByType<CustomerSpawner>();
         if (spawner != null)
             liveCustomerSpawned = spawner.SpawnTutorialCustomer();
+        if (liveCustomerSpawned && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireCustomerJourney)
+        {
+            CustomerAI[] spawned = FindObjectsByType<CustomerAI>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            if (spawned != null && spawned.Length > 0)
+                BeginTutorialCustomerFollow(spawned[0]);
+        }
+    }
+
+    void BeginTutorialCustomerFollow(CustomerAI customer)
+    {
+        if (customer == null) return;
+        tutorialCustomer = customer;
+        customer.patienceDuration = Mathf.Max(customer.patienceDuration, 180f);
+        customerJourneyStage = -1;
+        if (tutorialFollowCamera == null)
+            tutorialFollowCamera = FindFirstObjectByType<PlayerCameraController>(FindObjectsInactive.Exclude);
+        if (tutorialFollowCamera != null)
+            tutorialFollowCamera.BeginLockedFollow(customer.transform);
+    }
+
+    void ClearTutorialCustomerFollow()
+    {
+        if (tutorialFollowCamera != null)
+            tutorialFollowCamera.EndLockedFollow();
+        tutorialFollowCamera = null;
+    }
+
+    bool HasTutorialBurgerAtPickup()
+    {
+        ItemDefinition burger = ProductionManager.Instance != null
+            && ProductionManager.Instance.orderConfig != null
+                ? ProductionManager.Instance.orderConfig.burgerBase : null;
+        if (burger == null) return false;
+        HeatLampStation[] pickupStations = FindObjectsByType<HeatLampStation>(
+            FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        foreach (HeatLampStation station in pickupStations)
+            if (station != null && station.GetOutputCount(burger) > 0)
+                return true;
+        return false;
+    }
+
+    void RefreshCustomerJourneyCard()
+    {
+        if (!running || stepIndex < 0 || stepIndex >= Steps.Length
+            || !Steps[stepIndex].requireCustomerJourney)
+            return;
+
+        if (tutorialCustomer == null)
+        {
+            if (!liveCustomerSpawned || customerJourneyComplete)
+                return;
+            if (!tutorialCustomerOrderServed)
+            {
+                QueueCustomerJourneyThroughStage(4);
+                liveCustomerSpawned = false;
+                ShowNextCustomerJourneyMessage();
+                return;
+            }
+
+            if (!customerJourneyCustomerGone)
+            {
+                customerJourneyCustomerGone = true;
+                customerJourneyStage = 5;
+                ClearTutorialCustomerFollow();
+                customerJourneyCardQueue.Enqueue(
+                    "The customer collected the burger and left. The order is complete and the sale is recorded.");
+            }
+            ShowNextCustomerJourneyMessage();
+            return;
+        }
+
+        int stage = tutorialCustomer.IsLeaving
+            ? tutorialCustomerOrderServed ? 3 : 4
+            : tutorialCustomer.IsAtPickupQueueSlot ? 2
+            : tutorialCustomer.HasOrderedAtRegister ? 1 : 0;
+        QueueCustomerJourneyThroughStage(stage);
+        ShowNextCustomerJourneyMessage();
+    }
+
+    void QueueCustomerJourneyThroughStage(int stage)
+    {
+        while (customerJourneyStage < stage)
+        {
+            customerJourneyStage++;
+            switch (customerJourneyStage)
+            {
+                case 0:
+                    customerJourneyCardQueue.Enqueue(
+                        "The customer enters through the door and joins the register queue. The register records the order.");
+                    break;
+                case 1:
+                    customerJourneyCardQueue.Enqueue(
+                        "The register accepts the order. Patience starts, and the customer moves to the Pickup queue.");
+                    break;
+                case 2:
+                    customerJourneyCardQueue.Enqueue(
+                        "At Pickup, the customer waits for the worker to deliver the burger. Ordering and collection happen in separate queues.");
+                    break;
+                case 3:
+                    customerJourneyCardQueue.Enqueue(
+                        "The customer collected the burger and is leaving. The completed pickup records the sale.");
+                    break;
+                case 4:
+                    customerJourneyCardQueue.Enqueue(
+                        "This customer left before receiving the burger. The tutorial will send another customer to try the process.");
+                    break;
+            }
+        }
+    }
+
+    void ShowNextCustomerJourneyMessage()
+    {
+        if (customerJourneyCardQueue.Count > 0
+            && tutorialVisibleCharacters >= tutorialTotalCharacters)
+        {
+            string nextMessage = customerJourneyCardQueue.Dequeue();
+            SetTutorialBodyText(nextMessage);
+            ResetTutorialTextReveal();
+            if (customerJourneyCustomerGone && customerJourneyCardQueue.Count == 0)
+                customerJourneyFinalMessageDisplayed = true;
+        }
+
+        if (!customerJourneyCustomerGone || !customerJourneyFinalMessageDisplayed
+            || customerJourneyCardQueue.Count > 0
+            || tutorialVisibleCharacters < tutorialTotalCharacters
+            || customerJourneyComplete)
+            return;
+
+        customerJourneyComplete = true;
+        ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
+        RefreshAdvanceGate();
     }
 
     void Complete(bool skipped)
@@ -2454,14 +2692,114 @@ public class OnboardingTutorial : MonoBehaviour
         ResyncGridSoon();
     }
 
+    void PrepareInheritedKitchen()
+    {
+        CacheStarterKitchen();
+        DestroyTutorialPlacements();
+        starterKitchenHidden = false;
+        ClearExtraDoors();
+        var placer = FindFirstObjectByType<BuildPlacer>();
+        if (placer != null)
+            placer.EnsureTutorialBurgerStations();
+        starterKitchen.Clear();
+        CacheStarterKitchen();
+
+        ProductionManager production = ProductionManager.Instance;
+        CustomerOrderConfig config = production != null ? production.orderConfig : null;
+        FreezerStation freezer = StarterStation<FreezerStation>();
+        PantryStation pantry = StarterStation<PantryStation>();
+        GrillStation grill = StarterStation<GrillStation>();
+        AssemblyStation assembly = StarterStation<AssemblyStation>();
+        HeatLampStation pickup = StarterStation<HeatLampStation>();
+        AssemblyRecipeDefinition burger = config != null
+            ? config.GetAssemblyRecipe(config.burgerBase) : null;
+        if (production == null || burger == null || freezer == null || pantry == null
+            || grill == null || assembly == null || pickup == null)
+        {
+            if (!inheritedSetupWarningLogged)
+            {
+                Debug.LogError("Tutorial burger setup is incomplete: production=" + (production != null)
+                    + ", recipe=" + (burger != null) + ", freezer=" + (freezer != null)
+                    + ", pantry=" + (pantry != null) + ", grill=" + (grill != null)
+                    + ", assembly=" + (assembly != null) + ", pickup=" + (pickup != null) + ".");
+                inheritedSetupWarningLogged = true;
+            }
+            return;
+        }
+        inheritedSetupWarningLogged = false;
+
+        // Authored from the player's improved Play Mode layout. These are the
+        // actual station roots, so their colliders and interaction tiles follow.
+        PositionStarterStation(freezer.gameObject, new Vector3(-5.5f, 1f, 0.5f), 0f);
+        PositionStarterStation(pantry.gameObject, new Vector3(-1.5f, 1f, 0.5f), 0f);
+        PositionStarterStation(grill.gameObject, new Vector3(-5.5f, 0.5077203f, 7.5f), -180f);
+        PositionStarterStation(assembly.gameObject, new Vector3(-1f, 0.5f, 7.5f), 0f);
+        Physics.SyncTransforms();
+
+        freezer.SetStoredItem(config.rawPattyIngredient);
+        pantry.SetStoredItem(burger.rawPantryInput != null
+            ? burger.rawPantryInput : burger.pantryInput);
+        grill.SetRecipeOutput(config.cookedPattyIngredient);
+        assembly.SetRecipe(burger);
+        config.ClearEnabledMenuItems();
+        config.SetItemEnabled(config.burgerBase, true);
+        KitchenInventory stock = KitchenInventory.Instance;
+        if (stock != null)
+        {
+            stock.RestoreStartingStock();
+            stock.AddStock(config.rawPattyIngredient, KitchenInventory.MaxIngredientStock);
+            stock.AddStock(pantry.selectedItem, KitchenInventory.MaxIngredientStock);
+        }
+
+        production.EnsureProductionFlows();
+        production.productionFlows.Clear();
+        production.EnsureProductionFlows();
+        ProductionFlowPlan flow = production.SelectedFlow;
+        flow.SetAutomaticName("Hamburger #1");
+        flow.connections.Clear();
+        flow.stations.Clear();
+        flow.graphInitialized = true;
+        flow.AddConnection(freezer.gameObject, grill.gameObject);
+        flow.AddConnection(grill.gameObject, assembly.gameObject);
+        flow.AddConnection(pantry.gameObject, assembly.gameObject);
+        flow.AddConnection(assembly.gameObject, pickup.gameObject);
+        WorkerFlowAssigner.RebuildStepIdsFromStations(flow);
+        KitchenEmployee worker = production.employees.Find(value => value != null);
+        if (worker == null) worker = production.HireWorkerFree();
+        if (worker != null) production.AddWorkerToFlow(flow, worker);
+        else Debug.LogError("Tutorial starter burger kitchen could not hire a worker.");
+
+        GridManager grid = GridManager.Instance;
+        if (grid != null) grid.ResyncOccupancyFromScene();
+        production.NotifyProductionStateChanged(0f);
+        production.ScheduledProduction.Tick();
+        inheritedBaselineRate = production.GetPredictedOutputPerMinute(config.burgerBase);
+        inheritedTargetRate = Mathf.Min(5f, inheritedBaselineRate + 0.1f);
+        inheritedCurrentRate = inheritedBaselineRate;
+        inheritedStationMoved = false;
+        inheritedKitchenPrepared = true;
+        nextInheritedForecastRefresh = 0f;
+        if (placer != null) placer.EnsureCustomerEntrance();
+    }
+
+    T StarterStation<T>() where T : Component
+    {
+        foreach (GameObject station in starterKitchen)
+            if (station != null && station.TryGetComponent(out T component))
+                return component;
+        return null;
+    }
+
+    static void PositionStarterStation(GameObject station, Vector3 position, float yaw)
+    {
+        if (station == null) return;
+        station.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
+    }
+
     void RestoreStarterKitchen()
     {
-        DestroyTutorialPlacements();
-        for (int i = 0; i < starterKitchen.Count; i++)
-        {
-            if (starterKitchen[i] != null)
-                starterKitchen[i].SetActive(true);
-        }
+        if (!preserveLoadedKitchen)
+            DestroyTutorialPlacements();
         starterKitchenHidden = false;
 
         var stock = KitchenInventory.Instance != null ? KitchenInventory.Instance : FindFirstObjectByType<KitchenInventory>();
@@ -2503,7 +2841,13 @@ public class OnboardingTutorial : MonoBehaviour
         var found = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < found.Length; i++)
         {
-            if (found[i] != null && !starterKitchen.Contains(found[i].gameObject))
+            if (found[i] == null) continue;
+            // Destroy is deferred until the frame ends. Do not recache an old
+            // placed station that Restart has already deactivated for removal.
+            if (!found[i].gameObject.activeSelf
+                && found[i].GetComponent<PlacedBuildItem>() != null)
+                continue;
+            if (!starterKitchen.Contains(found[i].gameObject))
                 starterKitchen.Add(found[i].gameObject);
         }
     }
@@ -2515,6 +2859,7 @@ public class OnboardingTutorial : MonoBehaviour
         {
             if (placed[i] == null) continue;
             if (starterKitchen.Contains(placed[i].gameObject)) continue;
+            placed[i].gameObject.SetActive(false);
             Destroy(placed[i].gameObject);
         }
     }
@@ -2863,6 +3208,18 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
+        if (step.requireStationHealthReview)
+        {
+            ManagementModeController stationManagement = ManagementModeController.Instance;
+            ManagementScreenController managementScreen = FindFirstObjectByType<ManagementScreenController>(
+                FindObjectsInactive.Include);
+            if (stationManagement == null || managementScreen == null || !managementScreen.IsOpen)
+                HighlightHudButton("ManagementButton");
+            else if (HasSelectedProductionStation() && stationManagement.stationPopup != null)
+                calloutTarget = stationManagement.stationPopup.transform as RectTransform;
+            return;
+        }
+
         if (step.requireAnalyticsScreen)
         {
             if (analyticsScreenClosed && analyticsTutorialStage >= AnalyticsTourCloseStage)
@@ -3041,8 +3398,11 @@ public class OnboardingTutorial : MonoBehaviour
         if (!running)
         {
             ClearControlHighlights();
+            SetFastForwardHelpVisible(false);
             if (pendingStart && !IsComplete)
                 TryBegin();
+            else
+                UpdateMilestoneOneLessonSchedule();
             return;
         }
         TrackCameraTutorialInputs();
@@ -3051,12 +3411,18 @@ public class OnboardingTutorial : MonoBehaviour
         RefreshFreezerWalkthroughProgress();
         RefreshControlHighlights();
         UpdateControlHighlightPulse();
+        UpdateFastForwardHelpCard();
         if (Steps[stepIndex].requireStationChecklist)
             RefreshStationChecklist();
+        if (Steps[stepIndex].requireOptimizedLayout)
+            RefreshInheritedLayoutText();
         UpdateContextualCallout();
         UpdateTutorialWorldHighlights();
         if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
             SpawnPracticeCustomer();
+        if (milestoneOneLessonActive && stepIndex == MilestoneOneBottleneckStep)
+            RefreshStationHealthLesson();
+        RefreshCustomerJourneyCard();
         RefreshAutomaticAdvance();
         UpdateTutorialTextReveal();
         UpdateGlossaryTermFlashBox();
@@ -3066,6 +3432,107 @@ public class OnboardingTutorial : MonoBehaviour
         float pulse = 0.5f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.25f);
         highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
         highlight.transform.localScale = Vector3.one * pulse;
+    }
+
+    void UpdateMilestoneOneLessonSchedule()
+    {
+        if (!IsComplete || milestoneOneLessonActive || ShiftPlanningUI.IsPlanning)
+            return;
+
+        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
+        GameTimeManager clock = GameTimeManager.Instance;
+        if (milestones == null || milestones.ActiveMilestoneId != "milestone_01"
+            || clock == null || !clock.IsShiftInProgress || clock.IsShiftOver)
+            return;
+
+        if (!milestoneOneBottleneckLessonDone && clock.CurrentMinutes >= 12f * 60f)
+            BeginMilestoneOneLesson(MilestoneOneBottleneckStep);
+        else if (milestoneOneBottleneckLessonDone && !milestoneOneAnalyticsLessonDone
+            && clock.CurrentMinutes >= 18f * 60f)
+            BeginMilestoneOneLesson(MilestoneOneAnalyticsStep);
+    }
+
+    void BeginMilestoneOneLesson(int lessonStep)
+    {
+        if (lessonStep < MilestoneOneBottleneckStep || lessonStep > MilestoneOneAnalyticsStep)
+            return;
+
+        milestoneOneLessonActive = true;
+        running = true;
+        pendingStart = false;
+        stepIndex = lessonStep;
+        analyticsScreenOpened = false;
+        analyticsScreenClosed = false;
+        if (lessonStep == MilestoneOneAnalyticsStep)
+            analyticsTutorialStage = -1;
+        ManagementModeController management = ManagementModeController.Instance;
+        lastStationHealthLessonTarget = management != null
+            ? management.TutorialSelectedStation : null;
+        stationHealthLessonSelectionRevision = management != null
+            ? management.TutorialStationSelectionRevision : 0;
+        milestoneOneStationClickObserved = false;
+        EnsureUI();
+        ShowStep();
+        ApplyPause(true);
+        if (lessonStep == MilestoneOneBottleneckStep)
+            SetTutorialBodyText(Steps[lessonStep].body);
+    }
+
+    void RefreshStationHealthLesson()
+    {
+        ManagementModeController management = ManagementModeController.Instance;
+        GameObject selected = management != null ? management.TutorialSelectedStation : null;
+        bool selectionChanged = selected != lastStationHealthLessonTarget;
+        if (selectionChanged)
+            lastStationHealthLessonTarget = selected;
+
+        bool clickedAfterLessonStarted = management != null
+            && management.TutorialStationSelectionRevision != stationHealthLessonSelectionRevision;
+        if (!milestoneOneStationClickObserved && clickedAfterLessonStarted && selected != null
+            && IsProductionStationWithHealth(selected) && management.stationPopup != null
+            && management.stationPopup.activeInHierarchy)
+        {
+            milestoneOneStationClickObserved = true;
+            SetTutorialBodyText(
+                "Read the station's percentages. They add to 100%. <b>Working</b> is processing time. <b>Blocked</b> means output cannot move; <b>Starved</b> means inputs are missing. <b>Idle</b> means no work is needed, often because demand is low. High Blocked or Starved time points to a bottleneck to investigate.");
+            RefreshAdvanceGate();
+            UpdateContextualCallout();
+        }
+        else if (!milestoneOneStationClickObserved && selectionChanged)
+        {
+            SetTutorialBodyText(
+                "Open <b>Business</b>, then click a production station. Its card shows the share of time spent Working, Blocked, Starved, and Idle.");
+            RefreshAdvanceGate();
+            UpdateContextualCallout();
+        }
+    }
+
+    bool HasSelectedProductionStation()
+    {
+        if (!milestoneOneStationClickObserved) return false;
+        ManagementModeController management = ManagementModeController.Instance;
+        return management != null
+            && IsProductionStationWithHealth(management.TutorialSelectedStation)
+            && management.stationPopup != null && management.stationPopup.activeInHierarchy;
+    }
+
+    static bool IsProductionStationWithHealth(GameObject station)
+    {
+        if (station == null || station.GetComponent<StationNode>() == null) return false;
+        return station.GetComponent<FreezerStation>() == null
+            && station.GetComponent<PantryStation>() == null
+            && station.GetComponent<Register>() == null
+            && station.GetComponent<HeatLampStation>() == null;
+    }
+
+    void EndMilestoneOneLesson()
+    {
+        milestoneOneLessonActive = false;
+        running = false;
+        pendingStart = false;
+        HideUI();
+        ClearHighlight();
+        ApplyPause(false);
     }
 
     Vector3 GetTutorialWorldAimPoint(Transform target)
@@ -3737,10 +4204,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (item == null || !BlocksProgression) return false;
         if (IsChecklistStation(item))
-        {
-            int checklistStep = System.Array.FindIndex(Steps, step => step.requireStationChecklist);
-            return checklistStep > Instance.furthestStepIndex;
-        }
+            return true;
         for (int i = 0; i < Steps.Length; i++)
         {
             if (Steps[i].requirePlaced && ItemMatchesHighlight(item, Steps[i].highlight))
@@ -3757,7 +4221,9 @@ public class OnboardingTutorial : MonoBehaviour
             || ItemMatchesHighlight(item, Highlight.Assembly)
             || ItemMatchesHighlight(item, Highlight.Register)
             || ItemMatchesHighlight(item, Highlight.Fryer)
-            || ItemMatchesHighlight(item, Highlight.HeatLamp);
+            || ItemMatchesHighlight(item, Highlight.HeatLamp)
+            || ItemMatchesHighlight(item, Highlight.Drink)
+            || (item.itemName != null && item.itemName.Contains("Shake Station"));
     }
 
     static bool ItemMatchesHighlight(ItemDefinition item, Highlight kind)
@@ -3829,6 +4295,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void HideUI()
     {
+        ClearTutorialCustomerFollow();
         if (tutorialTypewriterVoiceSource != null)
             tutorialTypewriterVoiceSource.Stop();
         SetFlowLinkingVideoVisible(false);
@@ -3843,6 +4310,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         EnsureTutorialTypewriterVoice();
         if (canvasRoot != null && panel != null && nextButton != null && cameraPromptPanel != null
+            && fastForwardHelpCard != null && fastForwardHelpArrow != null
+            && fastForwardRateHelpArrow != null
             && nextButton.transform.IsChildOf(panel.transform))
         {
             EnsureFlowLinkingVideoUi();
@@ -4041,7 +4510,147 @@ public class OnboardingTutorial : MonoBehaviour
         nextLabel.fontSizeMin = 16f;
         nextLabel.fontSizeMax = 22f;
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
+        CreateFastForwardHelpCard(canvasRoot.transform);
         GameUITheme.ApplyToCanvas(canvas);
+    }
+
+    void CreateFastForwardHelpCard(Transform parent)
+    {
+        fastForwardHelpArrow = CreateCalloutArrow(parent);
+        fastForwardRateHelpArrow = CreateCalloutArrow(parent);
+
+        fastForwardHelpCard = new GameObject("FastForwardTutorialCard", typeof(RectTransform),
+            typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        fastForwardHelpCard.transform.SetParent(parent, false);
+        fastForwardHelpCardRect = (RectTransform)fastForwardHelpCard.transform;
+        fastForwardHelpCardRect.anchorMin = fastForwardHelpCardRect.anchorMax = new Vector2(0.5f, 0.5f);
+        fastForwardHelpCardRect.pivot = new Vector2(0.5f, 0.5f);
+        fastForwardHelpCardRect.sizeDelta = new Vector2(430f, 104f);
+
+        Image background = fastForwardHelpCard.GetComponent<Image>();
+        background.color = new Color(0.08f, 0.09f, 0.12f, 0.985f);
+        background.raycastTarget = false;
+
+        VerticalLayoutGroup layout = fastForwardHelpCard.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(14, 14, 10, 10);
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        LayoutElement cardSize = fastForwardHelpCard.GetComponent<LayoutElement>();
+        cardSize.minWidth = cardSize.preferredWidth = 430f;
+        cardSize.minHeight = cardSize.preferredHeight = 104f;
+        cardSize.flexibleWidth = cardSize.flexibleHeight = 0f;
+
+        TextMeshProUGUI heading = CreateLabel(fastForwardHelpCard.transform,
+            "SHIFT SPEED", 16f, FontStyles.Bold, GameUITheme.Accent);
+        heading.alignment = TextAlignmentOptions.Left;
+        heading.textWrappingMode = TextWrappingModes.NoWrap;
+        TextMeshProUGUI instructions = CreateLabel(fastForwardHelpCard.transform,
+            "<b>Fast Forward:</b> Run the shift faster.\n<b>Speed:</b> Choose the rate Fast Forward uses.",
+            18f, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
+        instructions.alignment = TextAlignmentOptions.Left;
+        instructions.textWrappingMode = TextWrappingModes.Normal;
+        fastForwardHelpCard.SetActive(false);
+    }
+
+    void UpdateFastForwardHelpCard()
+    {
+        bool show = running && stepIndex == 3 && !tutorialUnlockContinuePending;
+        SetFastForwardHelpVisible(show);
+        if (!show || fastForwardHelpCardRect == null || canvasRoot == null)
+            return;
+
+        if (cachedTutorialTimeControls == null)
+            cachedTutorialTimeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Exclude);
+        GameTimeUI timeControls = cachedTutorialTimeControls;
+        RectTransform fastButton = timeControls != null && timeControls.fastForwardButton != null
+            ? timeControls.fastForwardButton.transform as RectTransform : null;
+        RectTransform rateButton = timeControls != null && timeControls.fastForwardRateButton != null
+            ? timeControls.fastForwardRateButton.transform as RectTransform : null;
+        RectTransform rootRect = canvasRoot.transform as RectTransform;
+        if (fastButton == null || rateButton == null || rootRect == null
+            || !fastButton.gameObject.activeInHierarchy || !rateButton.gameObject.activeInHierarchy)
+        {
+            SetFastForwardHelpVisible(false);
+            return;
+        }
+
+        if (!TryGetScreenLocalBounds(fastButton, rootRect, fastForwardButtonCorners, out Rect fastBounds)
+            || !TryGetScreenLocalBounds(rateButton, rootRect, fastForwardRateButtonCorners, out Rect rateBounds))
+        {
+            SetFastForwardHelpVisible(false);
+            return;
+        }
+
+        Vector2 cardSize = fastForwardHelpCardRect.sizeDelta;
+        float centerX = (fastBounds.center.x + rateBounds.center.x) * 0.5f;
+        float cardY = Mathf.Min(fastBounds.yMin, rateBounds.yMin) - cardSize.y * 0.5f - 28f;
+        float lowerLimit = rootRect.rect.yMin + cardSize.y * 0.5f + 150f;
+        if (cardY < lowerLimit)
+            cardY = Mathf.Max(fastBounds.yMax, rateBounds.yMax) + cardSize.y * 0.5f + 26f;
+        centerX = Mathf.Clamp(centerX,
+            rootRect.rect.xMin + cardSize.x * 0.5f + 12f,
+            rootRect.rect.xMax - cardSize.x * 0.5f - 12f);
+        cardY = Mathf.Clamp(cardY,
+            rootRect.rect.yMin + cardSize.y * 0.5f + 12f,
+            rootRect.rect.yMax - cardSize.y * 0.5f - 12f);
+
+        Vector2 cardPosition = new Vector2(centerX, cardY);
+        fastForwardHelpCardRect.anchoredPosition = cardPosition;
+        PositionSpecificCalloutArrow(fastForwardHelpArrow, cardPosition, cardSize,
+            fastBounds.center, fastBounds);
+        PositionSpecificCalloutArrow(fastForwardRateHelpArrow, cardPosition, cardSize,
+            rateBounds.center, rateBounds);
+    }
+
+    void SetFastForwardHelpVisible(bool visible)
+    {
+        if (fastForwardHelpCard != null && fastForwardHelpCard.activeSelf != visible)
+            fastForwardHelpCard.SetActive(visible);
+        if (!visible)
+        {
+            if (fastForwardHelpArrow != null) fastForwardHelpArrow.gameObject.SetActive(false);
+            if (fastForwardRateHelpArrow != null) fastForwardRateHelpArrow.gameObject.SetActive(false);
+        }
+    }
+
+    void PositionSpecificCalloutArrow(RectTransform arrow, Vector2 cardPosition, Vector2 cardSize,
+        Vector2 targetPosition, Rect targetBounds)
+    {
+        if (arrow == null) return;
+        RectTransform previousArrow = calloutArrow;
+        calloutArrow = arrow;
+        PositionCalloutArrow(cardPosition, cardSize, targetPosition, targetBounds, true);
+        calloutArrow = previousArrow;
+    }
+
+    static bool TryGetScreenLocalBounds(RectTransform target, RectTransform rootRect,
+        Vector3[] corners, out Rect bounds)
+    {
+        bounds = default;
+        if (target == null || rootRect == null || corners == null || corners.Length < 4) return false;
+        target.GetWorldCorners(corners);
+        Canvas targetCanvas = target.GetComponentInParent<Canvas>();
+        Camera eventCamera = targetCanvas != null && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? targetCanvas.worldCamera : null;
+        Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
+        Vector2 max = new Vector2(float.MinValue, float.MinValue);
+        for (int i = 0; i < corners.Length; i++)
+        {
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(eventCamera, corners[i]);
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rootRect, screen, null,
+                    out Vector2 local))
+                continue;
+            min = Vector2.Min(min, local);
+            max = Vector2.Max(max, local);
+        }
+        if (min.x == float.MaxValue) return false;
+        bounds = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        return true;
     }
 
     void EnsureFlowLinkingVideoUi()

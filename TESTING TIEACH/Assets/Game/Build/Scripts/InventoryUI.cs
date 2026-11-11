@@ -413,11 +413,22 @@ public class InventoryUI : MonoBehaviour
                 (IsMilestoneStationLocked(item) ? lockedItems : unlockedItems).Add(item);
         }
 
-        shownFamilies.Clear();
-        for (int i = 0; i < unlockedItems.Count + lockedItems.Count; i++)
+        var displayItems = new List<ItemDefinition>(unlockedItems.Count + lockedItems.Count);
+        displayItems.AddRange(unlockedItems);
+        displayItems.AddRange(lockedItems);
+        var originalOrder = new Dictionary<ItemDefinition, int>();
+        for (int i = 0; i < displayItems.Count; i++)
+            originalOrder[displayItems[i]] = i;
+        displayItems.Sort((a, b) =>
         {
-            ItemDefinition item = i < unlockedItems.Count
-                ? unlockedItems[i] : lockedItems[i - unlockedItems.Count];
+            int order = StationCardOrder(a).CompareTo(StationCardOrder(b));
+            return order != 0 ? order : originalOrder[a].CompareTo(originalOrder[b]);
+        });
+
+        shownFamilies.Clear();
+        for (int i = 0; i < displayItems.Count; i++)
+        {
+            ItemDefinition item = displayItems[i];
             if (squareCards && item.IsTieredStation)
             {
                 if (!shownFamilies.Add(item.stationFamily)) continue;
@@ -447,6 +458,24 @@ public class InventoryUI : MonoBehaviour
         for (int i = 0; i < contentParent.childCount; i++)
             displayedCardRows.Add(contentParent.GetChild(i).gameObject);
         cardsSnapshotValid = true;
+    }
+
+    static int StationCardOrder(ItemDefinition item)
+    {
+        string name = item.IsTieredStation ? item.stationFamily : item.itemName;
+        switch (name)
+        {
+            case "Freezer": return 0;
+            case "Pantry": return 1;
+            case "Assembly Station": return 2;
+            case "Grill": return 3;
+            case "Fryer": return 4;
+            case "Cutting Station": return 5;
+            case "Shake Station": return 6;
+            case "Register": return 7;
+            case "Pickup Station": return 8;
+            default: return 9;
+        }
     }
 
     bool HasDisplayedRows()

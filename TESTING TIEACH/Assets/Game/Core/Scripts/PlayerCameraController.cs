@@ -47,8 +47,11 @@ public class PlayerCameraController : MonoBehaviour
     float pitchVelocity;
     bool freeLooking;
     bool freeCamera;
+    Transform lockedFollowTarget;
+    Vector3 lastLockedFollowTargetPosition;
 
     public bool FreeCameraEnabled => freeCamera;
+    public bool IsLockedFollowing => lockedFollowTarget != null;
 
     void Start()
     {
@@ -63,13 +66,19 @@ public class PlayerCameraController : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.F3))
+        if (lockedFollowTarget == null && Input.GetKeyDown(KeyCode.F3))
             SetFreeCamera(!freeCamera);
 
         if (PauseMenuUI.IsOpen)
         {
             currentMoveVelocity = Vector3.zero;
             zoomVelocity = 0f;
+            return;
+        }
+
+        if (lockedFollowTarget != null)
+        {
+            UpdateLockedFollow();
             return;
         }
 
@@ -179,6 +188,47 @@ public class PlayerCameraController : MonoBehaviour
 
         if (count > 0)
             PanTo(total / count);
+    }
+
+    public void BeginLockedFollow(Transform target)
+    {
+        if (target == null) return;
+        if (freeCamera) SetFreeCamera(false);
+        lockedFollowTarget = target;
+        lastLockedFollowTargetPosition = target.position;
+        currentMoveVelocity = Vector3.zero;
+        PanTo(target.position);
+    }
+
+    public void EndLockedFollow()
+    {
+        lockedFollowTarget = null;
+        isFocusing = false;
+        focusVelocity = Vector3.zero;
+        currentMoveVelocity = Vector3.zero;
+    }
+
+    void UpdateLockedFollow()
+    {
+        if (lockedFollowTarget == null)
+        {
+            EndLockedFollow();
+            return;
+        }
+
+        Vector3 currentTargetPosition = lockedFollowTarget.position;
+        Vector3 movement = currentTargetPosition - lastLockedFollowTargetPosition;
+        movement.y = 0f;
+        if (isFocusing)
+            focusTargetPosition += movement;
+        else
+            transform.position += movement;
+        lastLockedFollowTargetPosition = currentTargetPosition;
+
+        if (isFocusing)
+            UpdateFocusPan();
+        else
+            ClampToPlayableBounds();
     }
 
     void UpdateFocusPan()

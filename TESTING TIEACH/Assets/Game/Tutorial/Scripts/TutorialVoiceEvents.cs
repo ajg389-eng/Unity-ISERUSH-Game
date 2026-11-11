@@ -38,6 +38,8 @@ public static class TutorialVoiceEventId
     public const string CapacityInvested = "capacity_invested";
     public const string StationRepositioned = "station_repositioned";
     public const string Mk2StationPurchased = "mk2_station_purchased";
+    public static string PickupItemDelivered(ItemDefinition item) =>
+        ItemEvent("pickup_item_delivered", item);
 
     public static string RecipeConfigured(ItemDefinition item) =>
         ItemEvent("recipe_configured", item);

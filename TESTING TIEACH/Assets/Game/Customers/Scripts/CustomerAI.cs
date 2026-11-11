@@ -107,6 +107,7 @@ public class CustomerAI : MonoBehaviour
 
     public bool IsEntering => phase == Phase.Entering;
     public bool IsLeaving => phase == Phase.Leaving;
+    public bool IsAtPickupQueueSlot => waitingForPickup && hasQueueSlot && phase == Phase.Waiting;
     /// <summary>True after the customer has ordered and is waiting at pickup.</summary>
     public bool IsWaitingForPickup => waitingForPickup && !leaving;
 
