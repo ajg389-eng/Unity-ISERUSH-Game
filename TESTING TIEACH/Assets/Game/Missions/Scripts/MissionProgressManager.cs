@@ -138,32 +138,28 @@ public class MissionProgressManager : MonoBehaviour
             OnMissionsChanged?.Invoke();
     }
 
-    /// <summary>Counts menu item units only when a Pickup Station accepts the order.</summary>
-    public void RecordPickupDelivery(CustomerOrder order)
+    /// <summary>Counts an item only after a customer actually picks it up.</summary>
+    public void RecordCustomerPickupItem(ItemDefinition item, int units = 1)
     {
-        if (order?.lines == null || database?.missions == null) return;
+        if (item == null || units <= 0 || database?.missions == null) return;
 
         bool anyChange = false;
-        foreach (CustomerOrder.OrderLine line in order.lines)
+        foreach (MissionDefinition mission in database.missions)
         {
-            if (line.item == null || line.quantity <= 0) continue;
-            foreach (MissionDefinition mission in database.missions)
-            {
-                if (mission == null || mission.deliveredItem == null
-                    || string.IsNullOrEmpty(mission.missionId)
-                    || completedMissionIds.Contains(mission.missionId)
-                    || !ItemsMatch(mission.deliveredItem, line.item))
-                    continue;
+            if (mission == null || mission.deliveredItem == null
+                || string.IsNullOrEmpty(mission.missionId)
+                || completedMissionIds.Contains(mission.missionId)
+                || !ItemsMatch(mission.deliveredItem, item))
+                continue;
 
-                int needed = Mathf.Max(1, mission.requiredCount);
-                int current = Mathf.Min(needed, GetProgress(mission.missionId) + line.quantity);
-                progressByMissionId[mission.missionId] = current;
-                anyChange = true;
-                if (current >= needed)
-                {
-                    completedMissionIds.Add(mission.missionId);
-                    Sfx.Play(SfxId.MissionComplete);
-                }
+            int needed = Mathf.Max(1, mission.requiredCount);
+            int current = Mathf.Min(needed, GetProgress(mission.missionId) + units);
+            progressByMissionId[mission.missionId] = current;
+            anyChange = true;
+            if (current >= needed)
+            {
+                completedMissionIds.Add(mission.missionId);
+                Sfx.Play(SfxId.MissionComplete);
             }
         }
 

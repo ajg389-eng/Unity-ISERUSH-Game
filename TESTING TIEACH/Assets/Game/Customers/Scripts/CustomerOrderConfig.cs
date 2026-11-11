@@ -908,7 +908,19 @@ public class CustomerOrderConfig : ScriptableObject
         if (demandOrderCycle.Length == 0) return new CustomerOrder();
         int index = (sequenceIndex % demandOrderCycle.Length + demandOrderCycle.Length)
             % demandOrderCycle.Length;
-        return demandOrderCycle[index].Clone();
+        return FilterOrderToEnabledMenu(demandOrderCycle[index]);
+    }
+
+    CustomerOrder FilterOrderToEnabledMenu(CustomerOrder scheduledOrder)
+    {
+        var currentMenuOrder = new CustomerOrder();
+        if (scheduledOrder?.lines == null) return currentMenuOrder;
+
+        foreach (CustomerOrder.OrderLine line in scheduledOrder.lines)
+            if (IsItemEnabled(line.item))
+                currentMenuOrder.lines.Add(new CustomerOrder.OrderLine(line.item, line.quantity));
+
+        return currentMenuOrder;
     }
 
     /// <summary>Returns an immutable copy of the current repeating order cycle for backlog scheduling.</summary>
@@ -970,11 +982,60 @@ public class CustomerOrderConfig : ScriptableObject
 
     int GetDemandRate(ItemDefinition item)
     {
+        int normalDemandRate = GetNormalDemandRate(item);
+        ProductKind kind = GetProductKind(item);
+        ItemDefinition milestoneTarget = GetActiveMilestoneTarget(kind);
+        if (milestoneTarget == null) return normalDemandRate;
+
+        // Keep the product-family's total demand unchanged, but direct its
+        // existing orders toward the active milestone item.
+        if (item != milestoneTarget) return 0;
+
+        int familyDemandRate = 0;
+        foreach (ItemDefinition candidate in GetEnabledMenuItems())
+            if (GetProductKind(candidate) == kind)
+                familyDemandRate += GetNormalDemandRate(candidate);
+        return familyDemandRate > 0 ? familyDemandRate : normalDemandRate;
+    }
+
+    int GetNormalDemandRate(ItemDefinition item)
+    {
         int reputationBonus = TryGetItemReputation(item, out ItemReputationState state)
             ? state.activeDemandTier * DemandBonusPerTier
             : 0;
         return DefaultItemDemandPerMinute
             + Mathf.Clamp(reputationBonus, 0, MaxItemDemandBonusPerMinute);
+    }
+
+    ItemDefinition GetActiveMilestoneTarget(ProductKind kind)
+    {
+        if (kind == ProductKind.None) return null;
+
+        MilestoneDefinition milestone = MilestoneProgressManager.Instance != null
+            ? MilestoneProgressManager.Instance.GetActiveMilestone() : null;
+        if (milestone == null) return null;
+
+        foreach (MissionDefinition mission in milestone.GetMissions())
+        {
+            if (mission == null) continue;
+            ItemDefinition target = mission.deliveredItem;
+            // Some milestone assets track serving through the repeatable event
+            // instead of the deliveredItem field.
+            if (target == null && !string.IsNullOrEmpty(mission.completionEventId))
+            {
+                foreach (ItemDefinition menuItem in GetMenuItems())
+                    if (GetProductKind(menuItem) == kind
+                        && mission.completionEventId == TutorialVoiceEventId.MenuItemServed(menuItem))
+                    {
+                        target = menuItem;
+                        break;
+                    }
+            }
+
+            if (target != null && GetProductKind(target) == kind && IsItemEnabled(target))
+                return target;
+        }
+        return null;
     }
 
     static void AddCategoryDemandToCycle(List<DemandProduct> products, int categoryRate,

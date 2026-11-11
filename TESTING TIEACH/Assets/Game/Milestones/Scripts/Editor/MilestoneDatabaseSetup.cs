@@ -23,6 +23,7 @@ public static class MilestoneDatabaseSetup
         public string eventId;
         public int count;
         public string productItemName;
+        public string deliveredItemName;
         public bool countAnyUnlockedMenuProduct;
         public string missionIdOverride;
     }
@@ -166,9 +167,11 @@ public static class MilestoneDatabaseSetup
                 mission.missionId += "_production";
             mission.title = spec.title;
             mission.description = spec.description;
-            mission.completionEventId = spec.eventId;
+            mission.completionEventId = string.IsNullOrEmpty(spec.deliveredItemName)
+                ? spec.eventId : null;
             mission.requiredCount = Mathf.Max(1, spec.count);
             mission.producedItem = FindItemDefinition(spec.productItemName);
+            mission.deliveredItem = FindItemDefinition(spec.deliveredItemName);
             mission.countAnyUnlockedMenuProduct = spec.countAnyUnlockedMenuProduct;
             mission.showBeforeComplete = true;
             mission.showAfterComplete = true;
@@ -181,7 +184,7 @@ public static class MilestoneDatabaseSetup
 
     static MissionSpec M(string id, string title, string description, string eventId, int count = 1,
         string productItemName = null, bool countAnyUnlockedMenuProduct = false,
-        string missionIdOverride = null)
+        string missionIdOverride = null, string deliveredItemName = null)
     {
         return new MissionSpec
         {
@@ -191,6 +194,7 @@ public static class MilestoneDatabaseSetup
             eventId = eventId,
             count = count,
             productItemName = productItemName,
+            deliveredItemName = deliveredItemName,
             countAnyUnlockedMenuProduct = countAnyUnlockedMenuProduct,
             missionIdOverride = missionIdOverride
         };
@@ -294,14 +298,17 @@ public static class MilestoneDatabaseSetup
                 missions = new[]
                 {
                     M("balance_output", "Serve 50 Cheeseburgers",
-                        "Serve 50 Cheeseburgers to customers.", ServedItemEvent("Cheeseburger"), 50,
-                        missionIdOverride: "milestone_02_serve_cheeseburgers"),
+                        "Have customers pick up 50 Cheeseburgers during this shift.", null, 50,
+                        missionIdOverride: "milestone_02_serve_cheeseburgers",
+                        deliveredItemName: "Cheeseburger"),
                     M("finish_shift", "Serve 50 Cheese Fries",
-                        "Serve 50 Cheese Fries to customers.", ServedItemEvent("Cheese Fries"), 50,
-                        missionIdOverride: "milestone_02_serve_cheese_fries"),
+                        "Have customers pick up 50 Cheese Fries during this shift.", null, 50,
+                        missionIdOverride: "milestone_02_serve_cheese_fries",
+                        deliveredItemName: "Cheese Fries"),
                     M("produce_whipped_cream_shake", "Serve 50 Whipped Cream Shakes",
-                        "Serve 50 Whipped Cream Shakes to customers.", ServedItemEvent("Whipped Cream Shake"), 50,
-                        missionIdOverride: "milestone_02_serve_whipped_cream_shakes")
+                        "Have customers pick up 50 Whipped Cream Shakes during this shift.", null, 50,
+                        missionIdOverride: "milestone_02_serve_whipped_cream_shakes",
+                        deliveredItemName: "Whipped Cream Shake")
                 },
                 questions = new[]
                 {

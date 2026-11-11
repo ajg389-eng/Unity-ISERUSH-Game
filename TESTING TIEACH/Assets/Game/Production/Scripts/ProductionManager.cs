@@ -577,7 +577,6 @@ public partial class ProductionManager : MonoBehaviour
     public void RecordPickupDelivery(CustomerOrder order)
     {
         RecordHistory(pickupDeliveryHistory, order);
-        MissionProgressManager.Instance?.RecordPickupDelivery(order);
     }
 
     /// <summary>Delivered item rate over the current observed shift window.</summary>

@@ -31,6 +31,7 @@ public class MusicManager : MonoBehaviour
     readonly List<AudioClip> tracks = new List<AudioClip>();
     int index;
     bool explicitlyPaused;
+    bool applicationHasFocus = true;
 
     public event Action OnPlaybackChanged;
 
@@ -68,8 +69,27 @@ public class MusicManager : MonoBehaviour
     void Update()
     {
         if (source == null || tracks.Count == 0) return;
+        // Unity can report AudioSource.isPlaying == false while the app is
+        // unfocused (for example, during Alt+Tab). That is not end-of-track.
+        if (!applicationHasFocus) return;
         if (!explicitlyPaused && !source.isPlaying && source.clip != null)
             Next();
+    }
+
+    void OnApplicationFocus(bool hasFocus)
+    {
+        applicationHasFocus = hasFocus;
+        if (hasFocus && !explicitlyPaused && source != null && source.clip != null
+            && !source.isPlaying && source.time < source.clip.length)
+            source.UnPause();
+    }
+
+    void OnApplicationPause(bool isPaused)
+    {
+        applicationHasFocus = !isPaused;
+        if (!isPaused && !explicitlyPaused && source != null && source.clip != null
+            && !source.isPlaying && source.time < source.clip.length)
+            source.UnPause();
     }
 
     void ConfigureSource()

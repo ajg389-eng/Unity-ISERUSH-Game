@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: milestone_02_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_serve_cheese_fries
-  title: Deliver 30 Cheese Fries
-  description: Deliver at least 30 Cheese Fries to a Pickup Station this shift.
+  title: Serve 30 Cheese Fries
+  description: Have customers pick up at least 30 Cheese Fries this shift.
   completionEventId:
   requiredCount: 30
   producedItem: {fileID: 0}

@@ -571,6 +571,7 @@ public class CustomerAI : MonoBehaviour
         if (item == null || order == null) return false;
         if (!order.TryRemoveOne(item)) return false;
         deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
+        MissionProgressManager.Instance?.RecordCustomerPickupItem(item);
         RefreshOrderLabel();
         return true;
     }
@@ -1177,6 +1178,7 @@ public class CustomerAI : MonoBehaviour
                 out int adjustedSaleValue, out float freshnessModifier)) return;
         if (!order.TryRemoveOne(item)) return;
         deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
+        MissionProgressManager.Instance?.RecordCustomerPickupItem(item);
         ApplyPickupSaleValue(item, adjustedSaleValue);
 
         RefreshOrderLabel();
