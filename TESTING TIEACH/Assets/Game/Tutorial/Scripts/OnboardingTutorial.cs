@@ -11,6 +11,7 @@ public class OnboardingTutorial : MonoBehaviour
 {
     public const string PrefsCompleteKey = "TIEACH_OnboardingComplete";
     public const string PauseSource = "OnboardingTutorial";
+    const string CustomerJourneyPauseSource = "OnboardingTutorial.CustomerJourney";
     const int AnalyticsTourCloseStage = 12;
     const int OnboardingStepCount = 6;
     const int MilestoneOneBottleneckStep = 6;
@@ -248,6 +249,8 @@ public class OnboardingTutorial : MonoBehaviour
     readonly Queue<string> customerJourneyCardQueue = new Queue<string>();
     bool customerJourneyCustomerGone;
     bool customerJourneyFinalMessageDisplayed;
+    bool customerJourneyActionMessageActive;
+    float customerJourneyMessageHoldUntil;
     bool planScreenIntroduced;
     bool tutorialBurgerUnlockShown;
     bool tutorialUnlockContinuePending;
@@ -338,6 +341,9 @@ public class OnboardingTutorial : MonoBehaviour
         customerJourneyCardQueue.Clear();
         customerJourneyCustomerGone = false;
         customerJourneyFinalMessageDisplayed = false;
+        customerJourneyActionMessageActive = false;
+        customerJourneyMessageHoldUntil = 0f;
+        GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
         if (complete)
         {
             pendingStart = false;
@@ -616,8 +622,8 @@ public class OnboardingTutorial : MonoBehaviour
             "A customer will enter at the door. Follow them to the register, then to Pickup, and out of the restaurant.",
             "Next", Highlight.None, liveCustomer: true, requireCustomerJourney: true),
         new Step("Improve the layout",
-            "Now improve the line. In <b>Build</b>, move an existing station to shorten worker travel and raise predicted output to the target below.",
-            "Finish", Highlight.None, openInventory: true, requireOptimizedLayout: true),
+            "In the <b>Build Menu</b>, click a station and drag it to shorten worker travel. Press <b>R</b> to rotate it. Reach the output target below.",
+            "Finish", Highlight.None, requireOptimizedLayout: true),
         new Step("Identify a bottleneck",
             "It is noon. Open <b>Business</b> and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
@@ -669,7 +675,10 @@ public class OnboardingTutorial : MonoBehaviour
             Instance = null;
         TutorialVoiceEvents.OnEvent -= OnGameEvent;
         if (GameTimeManager.Instance != null)
+        {
             GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            GameTimeManager.Instance.ReleaseExternalPause(CustomerJourneyPauseSource);
+        }
     }
 
     void Start()
@@ -771,6 +780,9 @@ public class OnboardingTutorial : MonoBehaviour
         customerJourneyCardQueue.Clear();
         customerJourneyCustomerGone = false;
         customerJourneyFinalMessageDisplayed = false;
+        customerJourneyActionMessageActive = false;
+        customerJourneyMessageHoldUntil = 0f;
+        GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
         milestoneOneLessonActive = false;
         milestoneOneBottleneckLessonDone = false;
         milestoneOneAnalyticsLessonDone = false;
@@ -795,7 +807,10 @@ public class OnboardingTutorial : MonoBehaviour
         HideUI();
         ClearHighlight();
         if (GameTimeManager.Instance != null)
+        {
             GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            GameTimeManager.Instance.ReleaseExternalPause(CustomerJourneyPauseSource);
+        }
         ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
         starterKitchen.Clear();
         DestroyTutorialPlacements();
@@ -988,6 +1003,8 @@ public class OnboardingTutorial : MonoBehaviour
         var step = Steps[stepIndex];
         if (!step.requireCustomerJourney)
         {
+            GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
+            customerJourneyActionMessageActive = false;
             tutorialCustomer = null;
             customerJourneyStage = -1;
             ClearTutorialCustomerFollow();
@@ -1076,14 +1093,17 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireStationChecklist)
             initialBody = GetFreezerWalkthroughText(freezerWalkthroughPhase);
         else if (step.requirePlanIntroduction)
-            initialBody += "\n\nInherited output: " + inheritedBaselineRate.ToString("0.0")
-                + " burgers/min. Improvement target: " + inheritedTargetRate.ToString("0.0")
-                + " burgers/min.";
+            initialBody += "\n\n<color=#63E6FF><b>Current output:</b></color> <color=#63E6FF>"
+                + inheritedBaselineRate.ToString("0.0") + " burgers/min.</color> "
+                + "<color=#FFE45C><b>Improvement target:</b> "
+                + inheritedTargetRate.ToString("0.0") + " burgers/min.</color>";
         else if (step.requireTimeControlInteractions)
             initialBody = GetTimeControlInstruction();
         else if (step.requireAnalyticsScreen)
             initialBody = step.body;
         SetTutorialBodyText(initialBody);
+        if (step.requireCustomerJourney)
+            customerJourneyMessageHoldUntil = 0f;
         if (coreStationChecklistText != null)
         {
             coreStationChecklistText.gameObject.SetActive(
@@ -1918,7 +1938,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireOptimizedLayout)
             return inheritedStationMoved
                 ? "Reach " + inheritedTargetRate.ToString("0.0") + " burgers/min"
-                : "Move a station to shorten the route";
+                : "Move a station";
         if (step.requireShiftStarted) return "Start Shift";
         if (step.requireCameraControls)
         {
@@ -2102,12 +2122,13 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (coreStationChecklistText == null) return;
         float current = CurrentInheritedOutputRate();
-        string text = "INHERITED  " + inheritedBaselineRate.ToString("0.0") + "/min"
-            + "    CURRENT  " + current.ToString("0.0") + "/min"
-            + "    TARGET  " + inheritedTargetRate.ToString("0.0") + "/min\n"
-            + (inheritedStationMoved ? "Station moved" : "Move an existing station in Build mode")
-            + "  |  " + (current + 0.05f >= inheritedTargetRate && inheritedTargetRate > 0f
-                ? "Output target reached" : "Shorten the worker route");
+        string text = "<color=#B9C5D2>BASELINE  " + inheritedBaselineRate.ToString("0.0") + "/min</color>"
+            + "   <color=#63E6FF><b>CURRENT  " + current.ToString("0.0") + "/min</b></color>"
+            + "   <color=#FFE45C><b>TARGET  " + inheritedTargetRate.ToString("0.0") + "/min</b></color>\n"
+            + (inheritedStationMoved ? "Station moved" : "Open Build Menu and move a station")
+            + "\n" + (current + 0.05f >= inheritedTargetRate && inheritedTargetRate > 0f
+                ? "<mark=#1D6849 padding=\"5,3,5,3\"><color=#A8FFD4><b>✓ OUTPUT TARGET REACHED</b></color></mark>"
+                : "<color=#FFF04A>Shorten the worker route</color>");
         if (coreStationChecklistText.text != text)
             coreStationChecklistText.text = text;
     }
@@ -2542,6 +2563,7 @@ public class OnboardingTutorial : MonoBehaviour
                 ClearTutorialCustomerFollow();
                 customerJourneyCardQueue.Enqueue(
                     "The customer collected the burger and left. The order is complete and the sale is recorded.");
+                BeginCustomerJourneyActionMessage();
             }
             ShowNextCustomerJourneyMessage();
             return;
@@ -2584,22 +2606,49 @@ public class OnboardingTutorial : MonoBehaviour
                     break;
             }
         }
+        if (customerJourneyCardQueue.Count > 0)
+            BeginCustomerJourneyActionMessage();
+    }
+
+    void BeginCustomerJourneyActionMessage()
+    {
+        GameTimeManager.Instance?.RequestExternalPause(CustomerJourneyPauseSource);
+        if (customerJourneyActionMessageActive || customerJourneyCardQueue.Count == 0)
+            return;
+
+        string message = customerJourneyCardQueue.Dequeue();
+        SetTutorialBodyText(message);
+        ResetTutorialTextReveal();
+        customerJourneyMessageHoldUntil = 0f;
+        customerJourneyActionMessageActive = true;
+        if (customerJourneyCustomerGone && customerJourneyCardQueue.Count == 0)
+            customerJourneyFinalMessageDisplayed = true;
     }
 
     void ShowNextCustomerJourneyMessage()
     {
-        if (customerJourneyCardQueue.Count > 0
+        if (!customerJourneyActionMessageActive && customerJourneyCardQueue.Count > 0)
+            BeginCustomerJourneyActionMessage();
+
+        if (customerJourneyActionMessageActive
             && tutorialVisibleCharacters >= tutorialTotalCharacters)
         {
-            string nextMessage = customerJourneyCardQueue.Dequeue();
-            SetTutorialBodyText(nextMessage);
-            ResetTutorialTextReveal();
-            if (customerJourneyCustomerGone && customerJourneyCardQueue.Count == 0)
-                customerJourneyFinalMessageDisplayed = true;
+            if (customerJourneyMessageHoldUntil <= 0f)
+                customerJourneyMessageHoldUntil = Time.unscaledTime + 4.5f;
+            else if (Time.unscaledTime >= customerJourneyMessageHoldUntil)
+            {
+                customerJourneyActionMessageActive = false;
+                customerJourneyMessageHoldUntil = 0f;
+                if (customerJourneyCardQueue.Count > 0)
+                    BeginCustomerJourneyActionMessage();
+                else
+                    GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
+            }
         }
 
         if (!customerJourneyCustomerGone || !customerJourneyFinalMessageDisplayed
             || customerJourneyCardQueue.Count > 0
+            || customerJourneyActionMessageActive
             || tutorialVisibleCharacters < tutorialTotalCharacters
             || customerJourneyComplete)
             return;
@@ -2614,6 +2663,7 @@ public class OnboardingTutorial : MonoBehaviour
         running = false;
         pendingStart = false;
         currentHighlight = Highlight.None;
+        GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
         PlayerPrefs.SetInt(PrefsCompleteKey, 1);
         PlayerPrefs.Save();
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.TutorialCompleted);
@@ -2658,6 +2708,7 @@ public class OnboardingTutorial : MonoBehaviour
         {
             GameTimeManager.Instance.SetSpeed(GameTimeManager.SpeedMode.Play);
             GameTimeManager.Instance.ReleaseExternalPause(PauseSource);
+            GameTimeManager.Instance.ReleaseExternalPause(CustomerJourneyPauseSource);
         }
 
         // Reset the deterministic arrival schedule. The Plan phase pause holds
@@ -4198,8 +4249,7 @@ public class OnboardingTutorial : MonoBehaviour
         return ItemMatchesHighlight(item, Instance.currentHighlight);
     }
 
-    // Checklist stations unlock together. Counters and other build items
-    // remain available through their normal progression rules.
+    // Checklist stations unlock together after the tutorial introduces them.
     public static bool IsStationLocked(ItemDefinition item)
     {
         if (item == null || !BlocksProgression) return false;
@@ -4459,7 +4509,7 @@ public class OnboardingTutorial : MonoBehaviour
         bodyText = CreateLabel(panel.transform, "", 20, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
-        bodyText.overflowMode = TextOverflowModes.Overflow;
+        bodyText.overflowMode = TextOverflowModes.Truncate;
         ISEGlossaryLinkHandler.Attach(bodyText);
 
         EnsureFlowLinkingVideoUi();
@@ -4467,6 +4517,11 @@ public class OnboardingTutorial : MonoBehaviour
         coreStationChecklistText = CreateLabel(panel.transform, "", 17, FontStyles.Bold, GameUITheme.TextPrimary);
         coreStationChecklistText.alignment = TextAlignmentOptions.TopLeft;
         coreStationChecklistText.textWrappingMode = TextWrappingModes.Normal;
+        coreStationChecklistText.fontSize = 15f;
+        coreStationChecklistText.fontSizeMin = 13f;
+        coreStationChecklistText.fontSizeMax = 15f;
+        coreStationChecklistText.enableAutoSizing = true;
+        coreStationChecklistText.overflowMode = TextOverflowModes.Truncate;
         coreStationChecklistText.gameObject.SetActive(false);
 
         cameraPromptPanel = new GameObject("CameraControlPrompts", typeof(RectTransform),

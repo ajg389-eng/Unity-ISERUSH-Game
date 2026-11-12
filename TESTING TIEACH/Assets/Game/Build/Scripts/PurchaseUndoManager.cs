@@ -56,7 +56,9 @@ public class PurchaseUndoManager : MonoBehaviour
     readonly List<Entry> stack = new List<Entry>();
 
     public int Count => stack.Count;
-    public bool CanUndo => stack.Count > 0;
+    public bool CanUndo => stack.Count > 0
+        && !(OnboardingTutorial.BlocksProgression
+            && stack[stack.Count - 1].kind == Kind.Station);
     public bool CanUndoIngredient => stack.Count > 0 && stack[stack.Count - 1].kind == Kind.Ingredient;
 
     public bool TryUndoIngredient()
@@ -275,6 +277,7 @@ public class PurchaseUndoManager : MonoBehaviour
 
     public bool TryUndo()
     {
+        if (!CanUndo) return false;
         if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return false;
         return TryUndoInternal(allowIngredientDuringShift: false);
     }

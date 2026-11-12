@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 public static class ISEVocabularyHighlighter
 {
     const string HighlightFillColor = "#214B56";
-    const string HighlightTextColor = "#FFF0C4";
+    const string HighlightTextColor = "#FFF04A";
     static readonly Regex Vocabulary = new Regex(
         @"\b(?:ISE|facility\s+layout\s+and\s+design|industrial\s+(?:(?:&|and)\s+)?systems?\s+engineer(?:ing)?|"
         + @"industrial\s+engineer(?:ing)?|systems?\s+engineer(?:ing)?|"
@@ -16,7 +16,7 @@ public static class ISEVocabularyHighlighter
         + @"production\s+(?:rate|line|system)|target\s+(?:output\s+)?rate|target\s*/\s*min|planned\s+output|supply\s+chain|value\s+stream|"
         + @"quality\s+control|freshness|cycle\s+time|lead\s+time|takt\s+time|"
         + @"bottlenecks?|throughput|utilization|efficiency|capacity|inventory|"
-        + @"variability|measurement|constraints?|queues?|flows?|demand|waste|"
+        + @"variability|measurement|constraints?|queues?|flows?|demand|waste|shortfalls?|patience|"
         + @"optimi[sz](?:e|ation)|forecast(?:ing)?|process(?:es)?|systems?|production)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 

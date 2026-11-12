@@ -82,6 +82,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     readonly Dictionary<string, StationSnapshot> stationBaseline =
         new Dictionary<string, StationSnapshot>(System.StringComparer.Ordinal);
     readonly Dictionary<ItemDefinition, Button> itemPickerOptionButtons = new Dictionary<ItemDefinition, Button>();
+    readonly Dictionary<GameObject, bool> planExpandedChildStates = new Dictionary<GameObject, bool>();
     readonly List<ItemDefinition> goalItems = new List<ItemDefinition>();
     readonly List<DemandRow> demandRows = new List<DemandRow>();
     GameTimeManager timeManager;
@@ -114,6 +115,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     ShiftResult previousShift;
     bool initialized;
     bool planHiddenForStationPopup;
+    bool planCondensedForObjectives;
     bool preShiftPlanningActive;
     bool hasSavedStationBaseline;
     float nextLiveRefreshTime;
@@ -212,6 +214,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void Update()
     {
+        RefreshObjectivesPlanPresentation();
+
         if (panelRoot != null && preShiftPlanningActive && !planHiddenForStationPopup)
         {
             // Once Gus introduces the plan, keep it visible throughout setup.
@@ -300,6 +304,46 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         // Unity skips layout for inactive hierarchies, so rebuild after activation
         // before the first visible frame to keep the footer clear of menu rows.
         Canvas.ForceUpdateCanvases();
+        FitPlanPanel();
+        Canvas.ForceUpdateCanvases();
+    }
+
+    void RefreshObjectivesPlanPresentation()
+    {
+        if (panelRoot == null || dayTitle == null) return;
+        bool objectivesOpen = MissionListUI.Instance != null && MissionListUI.Instance.IsOpen;
+        bool shouldCondense = panelRoot.activeSelf && preShiftPlanningActive && objectivesOpen;
+        if (shouldCondense == planCondensedForObjectives) return;
+
+        planCondensedForObjectives = shouldCondense;
+        RectTransform rect = panelRoot.transform as RectTransform;
+        if (shouldCondense)
+        {
+            planExpandedChildStates.Clear();
+            for (int i = 0; i < panelRoot.transform.childCount; i++)
+            {
+                GameObject child = panelRoot.transform.GetChild(i).gameObject;
+                planExpandedChildStates[child] = child.activeSelf;
+                if (child != dayTitle.gameObject)
+                    child.SetActive(false);
+            }
+
+            dayTitle.alignment = TextAlignmentOptions.Center;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = new Vector2(0f, 20f);
+        }
+        else
+        {
+            foreach (KeyValuePair<GameObject, bool> childState in planExpandedChildStates)
+                if (childState.Key != null)
+                    childState.Key.SetActive(childState.Value);
+            planExpandedChildStates.Clear();
+
+            dayTitle.alignment = TextAlignmentOptions.Left;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 0f);
+            rect.anchoredPosition = new Vector2(-20f, 20f);
+        }
+
         FitPlanPanel();
         Canvas.ForceUpdateCanvases();
     }
@@ -501,9 +545,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         title.alignment = TextAlignmentOptions.Center;
 
         TextMeshProUGUI message = CreateText(card.transform, "WarningMessage",
-            "This appears when forecast demand exceeds predicted production or ingredient stock. Add or configure stations, recipes, workers, and flow links, raise output targets, or order the listed ingredients. Review the shortfalls before starting.",
-            15f, FontStyles.Normal, 78f, GameUITheme.TextPrimary);
+            "A shortfall means expected demand is higher than predicted production or available ingredient stock. Add or configure stations, recipes, workers, and flow links, raise output targets, or order the listed ingredients before starting.",
+            17f, FontStyles.Normal, 92f, GameUITheme.TextPrimary);
         message.textWrappingMode = TextWrappingModes.Normal;
+        message.text = ISEVocabularyHighlighter.Highlight(message.text);
+        ISEGlossaryLinkHandler.Attach(message);
 
         startShiftWarningDetails = CreateText(card.transform, "WarningItemRates",
             string.Empty, 15f, FontStyles.Bold, 100f, GameUITheme.TextPrimary);
@@ -512,6 +558,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         startShiftWarningDetails.fontSizeMin = 12f;
         startShiftWarningDetails.fontSizeMax = 15f;
         startShiftWarningDetails.alignment = TextAlignmentOptions.MidlineLeft;
+        ISEGlossaryLinkHandler.Attach(startShiftWarningDetails);
 
         GameObject actions = new GameObject("WarningActions", typeof(RectTransform),
             typeof(HorizontalLayoutGroup), typeof(LayoutElement));
@@ -1167,13 +1214,15 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             preferredHeight += layout.spacing * Mathf.Max(0, activeChildCount - 1);
         // Keep a small inset below Start Shift. Hidden UI elements do not add
         // phantom spacing to the plan card's measured height.
-        float desiredHeight = Mathf.Max(360f, preferredHeight + 16f);
+        float desiredHeight = planCondensedForObjectives
+            ? 72f : Mathf.Max(360f, preferredHeight + 16f);
         float availableHeight = canvasRect != null
             ? Mathf.Max(240f, canvasRect.rect.height - 40f)
             : Mathf.Max(240f, Screen.height - 40f);
-        float width = canvasRect != null
-            ? Mathf.Min(520f, Mathf.Max(320f, canvasRect.rect.width - 40f))
-            : Mathf.Min(520f, Mathf.Max(320f, Screen.width - 40f));
+        float availableWidth = canvasRect != null ? canvasRect.rect.width : Screen.width;
+        float width = planCondensedForObjectives
+            ? Mathf.Min(360f, Mathf.Max(1f, availableWidth - 32f))
+            : Mathf.Min(520f, Mathf.Max(320f, availableWidth - 40f));
 
         rect.sizeDelta = new Vector2(width, desiredHeight);
         rect.localScale = desiredHeight > availableHeight
@@ -1299,7 +1348,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             if (i > 0) details.Append('\n');
             details.Append("- ").Append(shortfalls[i]);
         }
-        startShiftWarningDetails.text = details.ToString();
+        startShiftWarningDetails.text = ISEVocabularyHighlighter.Highlight(details.ToString());
         LayoutElement detailsSize = startShiftWarningDetails.GetComponent<LayoutElement>();
         if (detailsSize != null)
         {
@@ -1312,7 +1361,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (canvasRect != null && startShiftWarningCardRect != null)
         {
             float width = Mathf.Min(620f, Mathf.Max(320f, canvasRect.rect.width - 48f));
-            float desiredHeight = 228f + (detailsSize != null ? detailsSize.preferredHeight : 100f);
+            float desiredHeight = 242f + (detailsSize != null ? detailsSize.preferredHeight : 100f);
             float availableHeight = Mathf.Max(280f, canvasRect.rect.height - 48f);
             float height = Mathf.Min(desiredHeight, availableHeight);
             startShiftWarningCardRect.sizeDelta = new Vector2(width, height);

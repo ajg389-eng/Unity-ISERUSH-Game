@@ -182,7 +182,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
             FontStyles.Bold, 48f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
         SplitDescriptionAndTopics(milestone.description, out string description, out string topics);
         TextMeshProUGUI descriptionText = CreateLayoutText(panel.transform, "Description", description, 18f,
-            FontStyles.Normal, 50f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
+            FontStyles.Normal, 50f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
         descriptionText.enableAutoSizing = true;
         descriptionText.fontSizeMin = 16f;
         descriptionText.fontSizeMax = 18f;

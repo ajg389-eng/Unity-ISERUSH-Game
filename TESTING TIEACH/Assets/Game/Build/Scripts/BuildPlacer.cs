@@ -220,6 +220,8 @@ public class BuildPlacer : MonoBehaviour
             {
                 if (draggingWallDoor != null && draggingWallDoor.permanentFixture)
                     CancelDrag();
+                else if (OnboardingTutorial.BlocksProgression)
+                    CancelDrag();
                 else
                     RemoveDraggedAndReturnToInventory();
                 return;
@@ -474,9 +476,16 @@ public class BuildPlacer : MonoBehaviour
             ? IsCurrentDragRotationLocked()
             : IsRotationLocked(placingItem, ghost));
         if (dragging)
-            instruction = rotationLocked
-                ? "LMB: Place    RMB: Remove & return to inventory    ESC: Cancel"
-                : "LMB: Place    R: Rotate    RMB: Remove & return to inventory    ESC: Cancel";
+        {
+            if (OnboardingTutorial.BlocksProgression)
+                instruction = rotationLocked
+                    ? "LMB: Place    RMB: Cancel move"
+                    : "LMB: Place    R: Rotate    RMB: Cancel move";
+            else
+                instruction = rotationLocked
+                    ? "LMB: Place    RMB: Return to inventory    ESC: Cancel"
+                    : "LMB: Place    R: Rotate    RMB: Return to inventory    ESC: Cancel";
+        }
         else if (IsPickupStationDefinition(placingItem))
             instruction = "Click a counter slot    LMB: Place    ESC: Cancel";
         else if (placingItem != null && placingItem.placementSurface == ItemDefinition.PlacementSurface.Counter)
@@ -1475,7 +1484,8 @@ public class BuildPlacer : MonoBehaviour
 
     public void DeleteSelectedStationsAndRefund()
     {
-        if (IsStationEditingLocked || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
+        if (OnboardingTutorial.BlocksProgression || IsStationEditingLocked
+            || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
         if (HasFixedDoorSelected)
         {
             ShowStationActionMessage("The entrance door cannot be deleted");
@@ -3089,7 +3099,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
         instructionRect.anchorMax = new Vector2(0.5f, 0f);
         instructionRect.pivot = new Vector2(0.5f, 0f);
         instructionRect.anchoredPosition = new Vector2(0f, 54f);
-        instructionRect.sizeDelta = new Vector2(440f, 36f);
+        instructionRect.sizeDelta = new Vector2(640f, 54f);
         Image instructionBackground = instructionPanel.GetComponent<Image>();
         instructionBackground.color = HudTabColors.Strip;
         instructionBackground.raycastTarget = false;
@@ -3160,7 +3170,8 @@ public sealed class BuildStationActionBar : MonoBehaviour
 
         if (instructionPanel == null) return;
         RectTransform instructionRect = (RectTransform)instructionPanel.transform;
-        instructionRect.sizeDelta = new Vector2(width, 36f);
+        float instructionWidth = Mathf.Min(680f, Mathf.Max(1f, canvasWidth - 24f));
+        instructionRect.sizeDelta = new Vector2(instructionWidth, 54f);
     }
 
     static void SetButtonWidth(Button button, float width)
@@ -3193,6 +3204,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
         label.color = GameUITheme.TextPrimary;
         label.alignment = TextAlignmentOptions.MidlineLeft;
         label.textWrappingMode = TextWrappingModes.NoWrap;
+        label.overflowMode = TextOverflowModes.Truncate;
         label.raycastTarget = false;
         return label;
     }
@@ -3256,7 +3268,8 @@ public sealed class BuildStationActionBar : MonoBehaviour
             || !GameTimeManager.Instance.IsShiftInProgress || ShiftPlanningUI.IsPlanning;
         if (moveButton != null) moveButton.interactable = planPhase && count > 0
             && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
-        if (deleteButton != null) deleteButton.interactable = planPhase && count > 0
+        if (deleteButton != null) deleteButton.interactable = !OnboardingTutorial.BlocksProgression
+            && planPhase && count > 0
             && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
         SetVisible(ShouldBeVisible());
     }

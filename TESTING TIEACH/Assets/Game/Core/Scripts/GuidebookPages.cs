@@ -96,6 +96,7 @@ public static class GuidebookPages
             "Planning and supply",
             "<b>Demand</b>: The rate and amount of products customers want.\n\n" +
             "<b>Forecast</b>: An estimate of future demand or resource needs, based on the information available.\n\n" +
+            "<b>Shortfall</b>: The amount by which expected demand exceeds predicted production or available ingredient stock. It is the gap the kitchen must address to meet the plan.\n\n" +
             "<b>Facility layout and design</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
             "<b>Capacity / capacity planning</b>: The maximum work a resource can complete, and the process of matching that capacity to expected demand.\n\n" +
             "<b>Resource allocation</b>: Deciding where to assign limited resources such as workers, stock, or equipment.\n\n" +
@@ -105,7 +106,7 @@ public static class GuidebookPages
             "<b>Variability</b>: Natural differences in demand, processing, or delivery over time.\n\n" +
             "<b>Freshness</b>: How suitable an ingredient remains after storage or waiting.\n\n" +
             "<b>Waste</b>: Resources used without creating useful output, including spoiled or excess production.",
-            "demand", "forecast", "forecasting", "facility layout and design", "capacity", "capacity planning", "resource allocation",
+            "demand", "forecast", "forecasting", "shortfall", "shortfalls", "facility layout and design", "capacity", "capacity planning", "resource allocation",
             "inventory", "supply chain", "lead time", "variability", "freshness", "waste"),
         new Page(
             "ISE Glossary",
@@ -131,6 +132,7 @@ public static class GuidebookPages
             "ISE Glossary",
             "People, work, and quality",
             "<b>Human factors</b>: Designing work around people's abilities and limits so it is safe, clear, and reliable.\n\n" +
+            "<b>Customer patience / patience</b>: How long a customer is willing to wait for an order before leaving without it. In ISE Rush, patience starts after the customer orders.\n\n" +
             "<b>Ergonomics</b>: Fitting tools, tasks, and workspaces to the people using them.\n\n" +
             "<b>Work design</b>: Defining tasks, responsibilities, methods, and routes so work can be performed effectively.\n\n" +
             "<b>Workforce planning</b>: Matching the number and skills of workers to the expected workload.\n\n" +
@@ -138,7 +140,7 @@ public static class GuidebookPages
             "<b>Work measurement</b>: Estimating how long tasks take and how much labor capacity they require.\n\n" +
             "<b>Standard work</b>: A clear, repeatable method for completing a task.\n\n" +
             "<b>Quality control</b>: Checking that output meets the required standard and correcting causes of defects.",
-            "human factors", "ergonomics", "work design", "workforce planning", "line balancing",
+            "human factors", "customer patience", "patience", "ergonomics", "work design", "workforce planning", "line balancing",
             "work measurement", "standard work", "quality control")
     };
 

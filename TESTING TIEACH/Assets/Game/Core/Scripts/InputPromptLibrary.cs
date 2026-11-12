@@ -243,7 +243,7 @@ public sealed class InputPromptLibrary : ScriptableObject
         float availableWidth = rowRect.rect.width;
         float preferredWidth = LayoutUtility.GetPreferredWidth(rowRect);
         rowRect.localScale = preferredWidth > availableWidth && availableWidth > 0.01f
-            ? Vector3.one * Mathf.Clamp(availableWidth / preferredWidth, 0.72f, 1f)
+            ? Vector3.one * (availableWidth / preferredWidth)
             : Vector3.one;
     }
 
@@ -283,7 +283,7 @@ public sealed class InputPromptLibrary : ScriptableObject
         text.color = GameUITheme.TextPrimary;
         text.alignment = TextAlignmentOptions.Center;
         text.textWrappingMode = TextWrappingModes.NoWrap;
-        text.overflowMode = TextOverflowModes.Overflow;
+        text.overflowMode = TextOverflowModes.Truncate;
         text.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) text.font = TMP_Settings.defaultFontAsset;
         text.ForceMeshUpdate(true, true);
