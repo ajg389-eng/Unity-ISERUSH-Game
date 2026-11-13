@@ -77,6 +77,9 @@ public static class GuidebookPages
             "<b>ISE / Industrial and Systems Engineering</b>: Improving connected systems of people, equipment, materials, information, and work.\n\n" +
             "<b>Industrial engineer / systems engineer</b>: An engineer who studies how a complete operation performs and finds practical ways to improve it.\n\n" +
             "<b>Systems thinking</b>: Looking at how parts interact, including effects that move to other parts of the operation.\n\n" +
+            "<b>Component interdependence</b>: How a change to one resource or process step affects the connected steps that rely on it.\n\n" +
+            "<b>Holistic performance evaluation</b>: Judging the whole operation using connected measures such as output, service, cost, and waste.\n\n" +
+            "<b>Onboarding</b>: A guided introduction to the tools, goals, and first tasks needed to begin work.\n\n" +
             "<b>Systems analysis</b>: Measuring how a system works to understand its performance and limits.\n\n" +
             "<b>Systems design</b>: Choosing and arranging people, equipment, materials, and rules to meet a goal.\n\n" +
             "<b>Operations research</b>: Using models and data to compare choices and make better decisions.\n\n" +
@@ -88,26 +91,31 @@ public static class GuidebookPages
             "industrial systems engineering", "industrial engineer", "industrial engineering",
             "industrial systems engineer", "industrial systems engineering", "system engineer",
             "systems engineer", "system engineering", "systems engineering", "engineering",
-            "system thinking", "systems thinking", "system analysis", "systems analysis",
+            "system thinking", "systems thinking", "component interdependence", "holistic performance evaluation", "onboarding", "system analysis", "systems analysis",
             "system design", "systems design", "operations research", "optimization", "optimisation", "optimize",
             "optimise", "measurement", "continuous improvement", "process improvement", "system", "systems"),
         new Page(
             "ISE Glossary",
             "Planning and supply",
             "<b>Demand</b>: The rate and amount of products customers want.\n\n" +
-            "<b>Forecast</b>: An estimate of future demand or resource needs, based on the information available.\n\n" +
+            "<b>Demand forecasting</b>: Estimating future demand from available information, such as prior sales and expected customer traffic. Forecasts guide plans but are not guarantees.\n\n" +
             "<b>Shortfall</b>: The amount by which expected demand exceeds predicted production or available ingredient stock. It is the gap the kitchen must address to meet the plan.\n\n" +
-            "<b>Facility layout and design</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
+            "<b>Facility layout</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
             "<b>Capacity / capacity planning</b>: The maximum work a resource can complete, and the process of matching that capacity to expected demand.\n\n" +
             "<b>Resource allocation</b>: Deciding where to assign limited resources such as workers, stock, or equipment.\n\n" +
+            "<b>Inventory holding cost</b>: The cost of keeping stock available, including cash tied up, storage, handling, and spoilage.\n\n" +
             "<b>Inventory</b>: Materials or products held for future use. The stock cap is storage capacity; daily use can exceed it when replenishment arrives.\n\n" +
             "<b>Supply chain</b>: The suppliers, deliveries, storage, and processes that move materials to where they are needed.\n\n" +
-            "<b>Lead time</b>: The delay between placing an order and receiving it.\n\n" +
+            "<b>Purchase lead time</b>: The delay between placing an ingredient order and receiving the delivery. Stock planning must cover expected use during this wait.\n\n" +
+            "<b>Safety stock</b>: Extra inventory kept as a buffer against uncertain demand, usage, or delivery timing.\n\n" +
+            "<b>Automatic replenishment</b>: A repeating supply rule that orders or restores ingredients as stock is consumed, reducing manual ordering.\n\n" +
+            "<b>Supply rate control</b>: Choosing how quickly each ingredient is replenished. Too little risks a stockout; too much can create excess stock.\n\n" +
+            "<b>Stockout risk</b>: The chance an ingredient runs out before more arrives, interrupting production or service.\n\n" +
             "<b>Variability</b>: Natural differences in demand, processing, or delivery over time.\n\n" +
             "<b>Freshness</b>: How suitable an ingredient remains after storage or waiting.\n\n" +
             "<b>Waste</b>: Resources used without creating useful output, including spoiled or excess production.",
-            "demand", "forecast", "forecasting", "shortfall", "shortfalls", "facility layout and design", "capacity", "capacity planning", "resource allocation",
-            "inventory", "supply chain", "lead time", "variability", "freshness", "waste"),
+            "demand", "forecast", "forecasting", "demand forecasting", "shortfall", "shortfalls", "facility layout", "facility layout and design", "capacity", "capacity planning", "resource allocation",
+            "inventory holding cost", "inventory", "supply chain", "purchase lead time", "lead time", "safety stock", "automatic replenishment", "supply rate control", "stockout risk", "variability", "freshness", "waste"),
         new Page(
             "ISE Glossary",
             "Production and flow",
@@ -118,15 +126,22 @@ public static class GuidebookPages
             "<b>Cycle time</b>: The time needed to complete one unit at a step.\n\n" +
             "<b>Takt time</b>: The pace required to meet demand, calculated as available time divided by required output.\n\n" +
             "<b>Throughput</b>: The rate of completed output from the whole process.\n\n" +
-            "<b>Bottleneck / constraint</b>: The condition that currently limits completed system output. Parallel branches can combine, so inspect the full flow.\n\n" +
-            "<b>Utilization</b>: The share of available time a resource spends working.\n\n" +
+            "<b>Bottleneck identification</b>: Finding the condition that limits completed system output. Parallel branches can combine, so inspect the full flow.\n\n" +
+            "<b>Station utilization</b>: The share of available time a station spends working. High utilization alone does not guarantee high system output.\n\n" +
             "<b>Efficiency</b>: How well resources produce useful output relative to the work or time available.\n\n" +
             "<b>Queue / work in process (WIP)</b>: Items or orders waiting or being worked on between steps.\n\n" +
-            "<b>Production rate / target per minute</b>: The number of units planned or completed per minute.",
+            "<b>Queue analysis</b>: Studying where and why work waits by comparing queue location, size, and growth.\n\n" +
+            "<b>Workload balancing</b>: Distributing work across steps and workers to reduce overload, starvation, and avoidable waiting.\n\n" +
+            "<b>Batch processing</b>: Processing several units together in one operation or production run.\n\n" +
+            "<b>Production scheduling</b>: Choosing what to produce, in what order, and when, so available capacity and materials meet demand.\n\n" +
+            "<b>Production rate / target per minute</b>: The number of units planned or completed per minute.\n\n" +
+            "<b>Simple payback</b>: The time an investment takes to recover its initial cost through benefits or savings.\n\n" +
+            "<b>Profit analysis</b>: Comparing sales revenue with ingredient, labor, operating, and upgrade costs to understand profitability.",
             "process", "processes", "production", "production system", "production line", "production rate",
             "flow", "flows", "value stream", "target rate", "target output rate", "target / min",
-            "planned output", "cycle time", "takt time", "throughput", "bottleneck", "bottlenecks",
-            "constraint", "constraints", "utilization", "efficiency", "queue", "queues",
+            "planned output", "cycle time", "takt time", "throughput", "bottleneck identification", "bottleneck", "bottlenecks",
+            "constraint", "constraints", "station utilization", "utilization", "efficiency", "queue analysis", "queue", "queues",
+            "workload balancing", "batch processing", "production scheduling", "simple payback", "profit analysis",
             "work in process", "system", "systems"),
         new Page(
             "ISE Glossary",
@@ -136,11 +151,12 @@ public static class GuidebookPages
             "<b>Ergonomics</b>: Fitting tools, tasks, and workspaces to the people using them.\n\n" +
             "<b>Work design</b>: Defining tasks, responsibilities, methods, and routes so work can be performed effectively.\n\n" +
             "<b>Workforce planning</b>: Matching the number and skills of workers to the expected workload.\n\n" +
+            "<b>Labor allocation</b>: Assigning available worker time to the flows and tasks where it best supports planned output.\n\n" +
             "<b>Line balancing</b>: Distributing work across steps so one step does not create avoidable waiting or overload.\n\n" +
             "<b>Work measurement</b>: Estimating how long tasks take and how much labor capacity they require.\n\n" +
             "<b>Standard work</b>: A clear, repeatable method for completing a task.\n\n" +
             "<b>Quality control</b>: Checking that output meets the required standard and correcting causes of defects.",
-            "human factors", "customer patience", "patience", "ergonomics", "work design", "workforce planning", "line balancing",
+            "human factors", "customer patience", "patience", "ergonomics", "work design", "workforce planning", "labor allocation", "line balancing",
             "work measurement", "standard work", "quality control")
     };
 
@@ -186,7 +202,7 @@ public static class GuidebookPages
         if (bestIndex >= 0 && bestScore >= 500)
         {
             Match headingMatch = headings[bestIndex];
-            const string emphasisStart = "<mark=#214B56 padding=\"20,0,20,0\"><color=#FFF0C4>";
+            const string emphasisStart = "<mark=#51430F padding=\"20,0,20,0\"><color=#FFE15A>";
             const string emphasisEnd = "</color></mark>";
             return body.Substring(0, headingMatch.Index)
                 + emphasisStart + headingMatch.Value + emphasisEnd
@@ -196,7 +212,7 @@ public static class GuidebookPages
         int textIndex = body.IndexOf(term, StringComparison.OrdinalIgnoreCase);
         if (textIndex < 0) return body;
         return body.Substring(0, textIndex)
-            + "<mark=#214B56 padding=\"20,0,20,0\"><color=#FFF0C4>"
+            + "<mark=#51430F padding=\"20,0,20,0\"><color=#FFE15A>"
             + body.Substring(textIndex, term.Length) + "</color></mark>"
             + body.Substring(textIndex + term.Length);
     }

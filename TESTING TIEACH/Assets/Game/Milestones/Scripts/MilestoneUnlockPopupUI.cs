@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -190,23 +189,10 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         {
             CreateLayoutText(panel.transform, "FocusHeader", "FOCUS AREAS", 16f,
                 FontStyles.Bold, 26f, GameUITheme.Accent, TextAlignmentOptions.Left);
-            string[] topicParts = topics.Split(',');
-            var topicMarkup = new StringBuilder();
-            for (int i = 0; i < topicParts.Length; i++)
-            {
-                string topic = topicParts[i].Trim();
-                if (topic.StartsWith("and ", System.StringComparison.OrdinalIgnoreCase))
-                    topic = topic.Substring(4).Trim();
-                if (topic.Length == 0) continue;
-                if (topicMarkup.Length > 0) topicMarkup.Append("   <color=#D8B365>•</color>   ");
-                topicMarkup.Append("<color=#F2EEE7>").Append(ToTitleCaseTopic(topic)).Append("</color>");
-            }
-            TextMeshProUGUI topicText = CreateLayoutText(panel.transform, "FocusTopics",
-                topicMarkup.ToString(), 17f, FontStyles.Normal, 36f,
-                GameUITheme.TextSecondary, TextAlignmentOptions.Left);
-            topicText.enableAutoSizing = true;
-            topicText.fontSizeMin = 15f;
-            topicText.fontSizeMax = 17f;
+            CreateLayoutText(panel.transform, "FocusAreasHint",
+                "Select an area to read its ISE Guidebook definition.", 13f,
+                FontStyles.Normal, 20f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
+            CreateFocusAreaButtons(panel.transform, topics, panelRect.sizeDelta.x);
         }
         CreateLayoutText(panel.transform, "UnlockHeader", newlyUnlocked ? "UNLOCKED" : "UNLOCKS", 16f,
             FontStyles.Bold, 26f, GameUITheme.Accent, TextAlignmentOptions.Left);
@@ -297,6 +283,90 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
             words[i] = char.ToUpperInvariant(words[i][0]) + words[i].Substring(1);
         }
         return string.Join(" ", words);
+    }
+
+    void CreateFocusAreaButtons(Transform parent, string topics, float panelWidth)
+    {
+        string[] topicParts = topics.Split(',');
+        var validTopics = new System.Collections.Generic.List<string>(topicParts.Length);
+        for (int i = 0; i < topicParts.Length; i++)
+        {
+            string topic = topicParts[i].Trim();
+            if (topic.StartsWith("and ", System.StringComparison.OrdinalIgnoreCase))
+                topic = topic.Substring(4).Trim();
+            if (topic.Length > 0)
+                validTopics.Add(topic);
+        }
+        if (validTopics.Count == 0) return;
+
+        const int columns = 2;
+        const float buttonHeight = 40f;
+        const float horizontalSpacing = 8f;
+        const float verticalSpacing = 6f;
+        int rows = (validTopics.Count + columns - 1) / columns;
+        float contentWidth = Mathf.Max(240f, panelWidth - 64f);
+        float buttonWidth = (contentWidth - horizontalSpacing) / columns;
+
+        var container = new GameObject("FocusAreas", typeof(RectTransform),
+            typeof(GridLayoutGroup), typeof(LayoutElement));
+        container.transform.SetParent(parent, false);
+        GridLayoutGroup grid = container.GetComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(buttonWidth, buttonHeight);
+        grid.spacing = new Vector2(horizontalSpacing, verticalSpacing);
+        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = columns;
+        grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+        grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        grid.childAlignment = TextAnchor.UpperLeft;
+        LayoutElement containerLayout = container.GetComponent<LayoutElement>();
+        containerLayout.minHeight = containerLayout.preferredHeight =
+            rows * buttonHeight + (rows - 1) * verticalSpacing;
+
+        for (int i = 0; i < validTopics.Count; i++)
+        {
+            string topic = validTopics[i];
+            var buttonObject = new GameObject("FocusArea_" + i,
+                typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonObject.transform.SetParent(container.transform, false);
+            Image background = buttonObject.GetComponent<Image>();
+            background.color = GameUITheme.Surface;
+            Button button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = background;
+            ColorBlock colors = button.colors;
+            colors.normalColor = GameUITheme.Surface;
+            colors.highlightedColor = GameUITheme.SurfaceHover;
+            colors.pressedColor = GameUITheme.Accent;
+            colors.selectedColor = GameUITheme.SurfaceHover;
+            button.colors = colors;
+            Outline outline = buttonObject.AddComponent<Outline>();
+            outline.effectColor = GameUITheme.Accent;
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = false;
+
+            TextMeshProUGUI label = CreateLayoutText(buttonObject.transform, "Label",
+                ToTitleCaseTopic(topic), 16f, FontStyles.Bold, buttonHeight,
+                GameUITheme.TextPrimary, TextAlignmentOptions.Center);
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 12f;
+            label.fontSizeMax = 16f;
+            label.rectTransform.anchorMin = Vector2.zero;
+            label.rectTransform.anchorMax = Vector2.one;
+            label.rectTransform.offsetMin = new Vector2(8f, 2f);
+            label.rectTransform.offsetMax = new Vector2(-8f, -2f);
+            label.GetComponent<LayoutElement>().ignoreLayout = true;
+
+            string selectedTopic = topic;
+            button.onClick.AddListener(() => OpenFocusAreaInGuidebook(selectedTopic));
+        }
+    }
+
+    static void OpenFocusAreaInGuidebook(string topic)
+    {
+        PauseMenuUI pauseMenu = PauseMenuUI.Instance;
+        if (pauseMenu == null)
+            pauseMenu = FindFirstObjectByType<PauseMenuUI>(FindObjectsInactive.Include);
+        if (pauseMenu != null)
+            pauseMenu.OpenGuidebookTermFromHud(topic);
     }
 
     static void SplitDescriptionAndTopics(string source, out string description, out string topics)

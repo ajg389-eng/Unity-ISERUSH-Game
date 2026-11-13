@@ -4887,18 +4887,18 @@ public class OnboardingTutorial : MonoBehaviour
         var root = new GameObject("TutorialArrow", typeof(RectTransform), typeof(CanvasGroup));
         root.transform.SetParent(parent, false);
         var rootRect = (RectTransform)root.transform;
-        rootRect.sizeDelta = new Vector2(80f, 34f);
+        rootRect.sizeDelta = new Vector2(56f, 24f);
         var group = root.GetComponent<CanvasGroup>();
         group.interactable = false;
         group.blocksRaycasts = false;
 
         Color outlineColor = new Color32(25, 30, 39, 255);
-        CreateArrowShaft(root.transform, "ShaftOutline", 12f, 21f, outlineColor);
-        CreateArrowShaft(root.transform, "Shaft", 6f, 19f, GameUITheme.Accent);
-        CreateArrowHead(root.transform, "HeadUpperOutline", 42f, 29f, 12f, outlineColor);
-        CreateArrowHead(root.transform, "HeadLowerOutline", -42f, 29f, 12f, outlineColor);
-        CreateArrowHead(root.transform, "HeadUpper", 42f, 23f, 6f, GameUITheme.Accent);
-        CreateArrowHead(root.transform, "HeadLower", -42f, 23f, 6f, GameUITheme.Accent);
+        CreateArrowShaft(root.transform, "ShaftOutline", 8f, 15f, outlineColor);
+        CreateArrowShaft(root.transform, "Shaft", 4f, 14f, GameUITheme.Accent);
+        CreateArrowHead(root.transform, "HeadUpperOutline", 42f, 27f, 9f, outlineColor);
+        CreateArrowHead(root.transform, "HeadLowerOutline", -42f, 27f, 9f, outlineColor);
+        CreateArrowHead(root.transform, "HeadUpper", 42f, 22f, 4f, GameUITheme.Accent);
+        CreateArrowHead(root.transform, "HeadLower", -42f, 22f, 4f, GameUITheme.Accent);
         root.transform.SetAsFirstSibling();
         root.SetActive(false);
         return rootRect;

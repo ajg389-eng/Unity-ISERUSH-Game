@@ -62,6 +62,19 @@ public static class CutscenePresentation
             if (canvas == null || !canvas.isRootCanvas || IsCutsceneCanvas(canvas))
                 continue;
 
+            // Glossary links in Gus's dialogue can open the guidebook while the
+            // cutscene is active. Its UI lives under the pause-menu canvas, so
+            // keep that canvas visible for as long as the guidebook is open.
+            if (HasOpenGuidebook(canvas))
+            {
+                if (CanvasStates.TryGetValue(canvas, out bool wasEnabled))
+                {
+                    canvas.enabled = wasEnabled;
+                    CanvasStates.Remove(canvas);
+                }
+                continue;
+            }
+
             if (!CanvasStates.ContainsKey(canvas))
                 CanvasStates.Add(canvas, canvas.enabled);
             if (canvas.enabled)
@@ -101,5 +114,11 @@ public static class CutscenePresentation
         // visible, along with the title controller's fade overlay for transitions.
         return canvas.GetComponent<IntroCutsceneUI>() != null
             || canvas.name == "TitleScreenFadeCanvas";
+    }
+
+    static bool HasOpenGuidebook(Canvas canvas)
+    {
+        GuidebookUI guidebook = canvas.GetComponentInChildren<GuidebookUI>(true);
+        return guidebook != null && guidebook.IsOpen;
     }
 }
