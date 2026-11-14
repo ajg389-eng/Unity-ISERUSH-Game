@@ -30,6 +30,7 @@ public class GuidebookUI : MonoBehaviour
     readonly List<Button> categoryButtons = new List<Button>();
     readonly List<int> categoryPageIndexes = new List<int>();
     int spreadIndex;
+    int selectedBookmarkPageIndex = -1;
     int focusedTermPageIndex = -1;
     string focusedTerm;
     bool visible;
@@ -60,6 +61,7 @@ public class GuidebookUI : MonoBehaviour
         root.SetActive(true);
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
         spreadIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpreadIndex, 0), 0, maxSpread);
+        selectedBookmarkPageIndex = -1;
         Refresh();
     }
 
@@ -75,6 +77,7 @@ public class GuidebookUI : MonoBehaviour
                 continue;
 
             spreadIndex = Mathf.Clamp(i / 2, 0, Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1));
+            selectedBookmarkPageIndex = i;
             SaveCurrentSpread();
             Refresh();
             return;
@@ -206,8 +209,17 @@ public class GuidebookUI : MonoBehaviour
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
-        chapter = CreateLaidOutLabel(page.transform, "Chapter", 17f, FontStyles.Bold, GameUITheme.Accent, 24f);
-        title = CreateLaidOutLabel(page.transform, "Title", 32f, FontStyles.Bold, InkColor, 42f);
+        chapter = CreateLaidOutLabel(page.transform, "Chapter", 15f, FontStyles.Bold, GameUITheme.Accent, 22f);
+        chapter.characterSpacing = 1.1f;
+        title = CreateLaidOutLabel(page.transform, "Title", 29f, FontStyles.Bold, InkColor, 40f);
+        // Keep long chapter titles on one line and shrink them slightly when needed.
+        // A wrapped title used to overflow its fixed-height layout slot and collide
+        // with the first section heading below it.
+        title.textWrappingMode = TextWrappingModes.NoWrap;
+        title.enableAutoSizing = true;
+        title.fontSizeMin = 22f;
+        title.fontSizeMax = 29f;
+        title.characterSpacing = -0.35f;
 
         var scrollGo = new GameObject("BodyScroll", typeof(RectTransform), typeof(ScrollRect), typeof(LayoutElement), typeof(RectMask2D));
         scrollGo.transform.SetParent(page.transform, false);
@@ -238,8 +250,8 @@ public class GuidebookUI : MonoBehaviour
         bodyGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         body = bodyGo.AddComponent<TextMeshProUGUI>();
-        body.fontSize = 21f;
-        body.lineSpacing = 5f;
+        body.fontSize = 20f;
+        body.lineSpacing = 4f;
         body.color = InkColor;
         body.alignment = TextAlignmentOptions.TopLeft;
         body.textWrappingMode = TextWrappingModes.Normal;
@@ -262,6 +274,7 @@ public class GuidebookUI : MonoBehaviour
         int next = Mathf.Clamp(spreadIndex + delta, 0, Mathf.Max(0, maxSpread));
         if (next == spreadIndex) return;
         spreadIndex = next;
+        selectedBookmarkPageIndex = -1;
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
         Refresh();
@@ -270,6 +283,7 @@ public class GuidebookUI : MonoBehaviour
     void JumpToPage(int pageIndex)
     {
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
+        selectedBookmarkPageIndex = Mathf.Clamp(pageIndex, 0, GuidebookPages.All.Length - 1);
         spreadIndex = Mathf.Clamp(pageIndex / 2, 0, maxSpread);
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
@@ -351,10 +365,14 @@ public class GuidebookUI : MonoBehaviour
 
     void RefreshCategoryBookmarks(int visibleRightPage)
     {
+        int visibleLeftPage = Mathf.Max(0, visibleRightPage - 1);
+        int focusPage = selectedBookmarkPageIndex >= visibleLeftPage && selectedBookmarkPageIndex <= visibleRightPage
+            ? selectedBookmarkPageIndex
+            : visibleRightPage;
         int active = 0;
         for (int i = 0; i < categoryPageIndexes.Count; i++)
         {
-            if (categoryPageIndexes[i] <= visibleRightPage)
+            if (categoryPageIndexes[i] <= focusPage)
                 active = i;
         }
 
@@ -363,13 +381,20 @@ public class GuidebookUI : MonoBehaviour
             Button button = categoryButtons[i];
             if (button == null) continue;
             bool selected = i == active;
+            if (button.targetGraphic != null)
+                button.targetGraphic.color = GameUITheme.Surface;
+            // Keep button state tint neutral so Unity's transition colors cannot
+            // wash the dark bookmark backgrounds out to white.
             var colors = button.colors;
-            colors.normalColor = selected ? GameUITheme.Accent : GameUITheme.Surface;
-            colors.selectedColor = selected ? GameUITheme.Accent : GameUITheme.SurfaceHover;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = Color.white;
+            colors.pressedColor = Color.white;
+            colors.selectedColor = Color.white;
+            colors.disabledColor = Color.white;
             button.colors = colors;
             var label = button.GetComponentInChildren<TextMeshProUGUI>();
             if (label != null)
-                label.color = selected ? GameUITheme.Charcoal : GameUITheme.TextPrimary;
+                label.color = selected ? new Color(1f, 0.79f, 0.27f, 1f) : GameUITheme.TextPrimary;
         }
     }
 
@@ -384,7 +409,7 @@ public class GuidebookUI : MonoBehaviour
             return;
         }
 
-        chapter.text = page.chapter ?? "";
+        chapter.text = (page.chapter ?? "").ToUpperInvariant();
         title.text = page.title ?? "";
         body.text = GuidebookPages.HighlightGlossaryEntry(page.body ?? "", focusedTerm);
         var scroll = body.GetComponentInParent<ScrollRect>();

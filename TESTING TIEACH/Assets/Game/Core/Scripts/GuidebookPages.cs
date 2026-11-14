@@ -75,88 +75,140 @@ public static class GuidebookPages
             "ISE Glossary",
             "ISE and systems",
             "<b>ISE / Industrial and Systems Engineering</b>: Improving connected systems of people, equipment, materials, information, and work.\n\n" +
-            "<b>Industrial engineer / systems engineer</b>: An engineer who studies how a complete operation performs and finds practical ways to improve it.\n\n" +
+            "<b>Engineering</b>: Applying scientific, mathematical, and practical knowledge to design or improve products, processes, and systems.\n\n" +
+            "<b>System</b>: A set of connected parts that work together toward an outcome. People, equipment, materials, information, and customer actions can all interact within one system.\n\n" +
+            "<b>Industrial systems engineer / industrial engineer / systems engineer</b>: A professional who studies how an operation performs and finds practical ways to improve it.",
+            "ISE", "industrial and systems engineering", "industrial & systems engineering",
+            "industrial and systems engineer", "industrial & systems engineer", "industrial systems engineering",
+            "industrial engineer", "industrial engineering", "industrial systems engineer", "system engineer",
+            "systems engineer", "system engineering", "systems engineering", "engineering", "system", "systems"),
+        new Page(
+            "ISE Glossary",
+            "Systems and performance",
             "<b>Systems thinking</b>: Looking at how parts interact, including effects that move to other parts of the operation.\n\n" +
             "<b>Component interdependence</b>: How a change to one resource or process step affects the connected steps that rely on it.\n\n" +
-            "<b>Holistic performance evaluation</b>: Judging the whole operation using connected measures such as output, service, cost, and waste.\n\n" +
+            "<b>Holistic performance evaluation</b>: Judging the whole operation using connected measures such as output, service, cost, and waste.",
+            "system thinking", "systems thinking", "component interdependence", "holistic performance evaluation"),
+        new Page(
+            "ISE Glossary",
+            "Analysis and improvement",
             "<b>Onboarding</b>: A guided introduction to the tools, goals, and first tasks needed to begin work.\n\n" +
             "<b>Systems analysis</b>: Measuring how a system works to understand its performance and limits.\n\n" +
             "<b>Systems design</b>: Choosing and arranging people, equipment, materials, and rules to meet a goal.\n\n" +
-            "<b>Operations research</b>: Using models and data to compare choices and make better decisions.\n\n" +
+            "<b>Operations research</b>: Using models and data to compare choices and make better decisions.",
+            "onboarding", "system analysis", "systems analysis", "system design", "systems design", "operations research"),
+        new Page(
+            "ISE Glossary",
+            "Improvement methods",
             "<b>Optimization</b>: Finding the best option for a stated goal and its constraints.\n\n" +
             "<b>Measurement</b>: Collecting comparable data to describe performance.\n\n" +
             "<b>Continuous improvement / process improvement</b>: Repeatedly testing changes and using results to improve the operation.",
-            "ISE", "industrial and systems engineering", "industrial & systems engineering",
-            "industrial and systems engineer", "industrial & systems engineer",
-            "industrial systems engineering", "industrial engineer", "industrial engineering",
-            "industrial systems engineer", "industrial systems engineering", "system engineer",
-            "systems engineer", "system engineering", "systems engineering", "engineering",
-            "system thinking", "systems thinking", "component interdependence", "holistic performance evaluation", "onboarding", "system analysis", "systems analysis",
-            "system design", "systems design", "operations research", "optimization", "optimisation", "optimize",
-            "optimise", "measurement", "continuous improvement", "process improvement", "system", "systems"),
+            "optimization", "optimisation", "optimize", "optimise", "measurement", "continuous improvement", "process improvement"),
         new Page(
             "ISE Glossary",
-            "Planning and supply",
+            "Planning and demand",
             "<b>Demand</b>: The rate and amount of products customers want.\n\n" +
             "<b>Demand forecasting</b>: Estimating future demand from available information, such as prior sales and expected customer traffic. Forecasts guide plans but are not guarantees.\n\n" +
-            "<b>Shortfall</b>: The amount by which expected demand exceeds predicted production or available ingredient stock. It is the gap the kitchen must address to meet the plan.\n\n" +
-            "<b>Facility layout</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
+            "<b>Shortfall</b>: The gap when expected demand exceeds planned production or available ingredient stock.",
+            "demand", "forecast", "forecasting", "demand forecasting", "shortfall", "shortfalls"),
+        new Page(
+            "ISE Glossary",
+            "Layout and capacity",
+            "<b>Facility layout and design</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
             "<b>Capacity / capacity planning</b>: The maximum work a resource can complete, and the process of matching that capacity to expected demand.\n\n" +
-            "<b>Resource allocation</b>: Deciding where to assign limited resources such as workers, stock, or equipment.\n\n" +
+            "<b>Resource allocation</b>: Deciding where to assign limited resources such as workers, stock, or equipment.",
+            "facility layout", "facility layout and design", "capacity", "capacity planning", "resource allocation"),
+        new Page(
+            "ISE Glossary",
+            "Supply and inventory",
             "<b>Inventory holding cost</b>: The cost of keeping stock available, including cash tied up, storage, handling, and spoilage.\n\n" +
             "<b>Inventory</b>: Materials or products held for future use. The stock cap is storage capacity; daily use can exceed it when replenishment arrives.\n\n" +
-            "<b>Supply chain</b>: The suppliers, deliveries, storage, and processes that move materials to where they are needed.\n\n" +
+            "<b>Supply chain</b>: The suppliers, deliveries, storage, and processes that move materials where they are needed.",
+            "inventory holding cost", "inventory", "supply chain"),
+        new Page(
+            "ISE Glossary",
+            "Replenishment planning",
             "<b>Purchase lead time</b>: The delay between placing an ingredient order and receiving the delivery. Stock planning must cover expected use during this wait.\n\n" +
             "<b>Safety stock</b>: Extra inventory kept as a buffer against uncertain demand, usage, or delivery timing.\n\n" +
-            "<b>Automatic replenishment</b>: A repeating supply rule that orders or restores ingredients as stock is consumed, reducing manual ordering.\n\n" +
+            "<b>Automatic replenishment</b>: A repeating supply rule that orders or restores ingredients as stock is consumed, reducing manual ordering.",
+            "purchase lead time", "lead time", "safety stock", "automatic replenishment"),
+        new Page(
+            "ISE Glossary",
+            "Supply and inventory (continued)",
             "<b>Supply rate control</b>: Choosing how quickly each ingredient is replenished. Too little risks a stockout; too much can create excess stock.\n\n" +
             "<b>Stockout risk</b>: The chance an ingredient runs out before more arrives, interrupting production or service.\n\n" +
             "<b>Variability</b>: Natural differences in demand, processing, or delivery over time.\n\n" +
             "<b>Freshness</b>: How suitable an ingredient remains after storage or waiting.\n\n" +
             "<b>Waste</b>: Resources used without creating useful output, including spoiled or excess production.",
-            "demand", "forecast", "forecasting", "demand forecasting", "shortfall", "shortfalls", "facility layout", "facility layout and design", "capacity", "capacity planning", "resource allocation",
-            "inventory holding cost", "inventory", "supply chain", "purchase lead time", "lead time", "safety stock", "automatic replenishment", "supply rate control", "stockout risk", "variability", "freshness", "waste"),
+            "supply rate control", "stockout risk", "variability", "freshness", "waste"),
         new Page(
             "ISE Glossary",
-            "Production and flow",
+            "Production and processes",
+            "<b>Production</b>: Creating goods or services by combining work, equipment, materials, and information.\n\n" +
             "<b>Process</b>: A sequence of steps that transforms inputs into an output.\n\n" +
             "<b>Production system / production line</b>: Connected resources and steps that make a product.\n\n" +
             "<b>Flow / value stream</b>: The path materials and work follow from supply to the finished product.\n\n" +
             "<b>Target rate / planned output</b>: The output pace a station is asked to achieve. The actual pace can be lower if a resource is starved, blocked, or constrained.\n\n" +
-            "<b>Cycle time</b>: The time needed to complete one unit at a step.\n\n" +
-            "<b>Takt time</b>: The pace required to meet demand, calculated as available time divided by required output.\n\n" +
-            "<b>Throughput</b>: The rate of completed output from the whole process.\n\n" +
-            "<b>Bottleneck identification</b>: Finding the condition that limits completed system output. Parallel branches can combine, so inspect the full flow.\n\n" +
-            "<b>Station utilization</b>: The share of available time a station spends working. High utilization alone does not guarantee high system output.\n\n" +
-            "<b>Efficiency</b>: How well resources produce useful output relative to the work or time available.\n\n" +
-            "<b>Queue / work in process (WIP)</b>: Items or orders waiting or being worked on between steps.\n\n" +
-            "<b>Queue analysis</b>: Studying where and why work waits by comparing queue location, size, and growth.\n\n" +
-            "<b>Workload balancing</b>: Distributing work across steps and workers to reduce overload, starvation, and avoidable waiting.\n\n" +
-            "<b>Batch processing</b>: Processing several units together in one operation or production run.\n\n" +
-            "<b>Production scheduling</b>: Choosing what to produce, in what order, and when, so available capacity and materials meet demand.\n\n" +
-            "<b>Production rate / target per minute</b>: The number of units planned or completed per minute.\n\n" +
-            "<b>Simple payback</b>: The time an investment takes to recover its initial cost through benefits or savings.\n\n" +
-            "<b>Profit analysis</b>: Comparing sales revenue with ingredient, labor, operating, and upgrade costs to understand profitability.",
+            "<b>Production rate / target per minute</b>: The number of units planned or completed per minute.",
             "process", "processes", "production", "production system", "production line", "production rate",
-            "flow", "flows", "value stream", "target rate", "target output rate", "target / min",
-            "planned output", "cycle time", "takt time", "throughput", "bottleneck identification", "bottleneck", "bottlenecks",
-            "constraint", "constraints", "station utilization", "utilization", "efficiency", "queue analysis", "queue", "queues",
-            "workload balancing", "batch processing", "production scheduling", "simple payback", "profit analysis",
-            "work in process", "system", "systems"),
+            "flow", "flows", "value stream", "target rate", "target output rate", "target / min", "planned output", "target per minute"),
         new Page(
             "ISE Glossary",
-            "People, work, and quality",
+            "Production pace",
+            "<b>Cycle time</b>: The time needed to complete one unit at a step.\n\n" +
+            "<b>Takt time</b>: The pace required to meet demand, calculated as available time divided by required output.",
+            "cycle time", "takt time"),
+        new Page(
+            "ISE Glossary",
+            "Capacity and flow",
+            "<b>Throughput</b>: The rate of completed output from the whole process.\n\n" +
+            "<b>Bottleneck identification</b>: Finding the condition that limits completed system output. Parallel branches can combine, so inspect the full flow.\n\n" +
+            "<b>Constraint</b>: A resource, step, or condition that limits the system's completed output. A bottleneck is the current constraint.",
+            "throughput", "bottleneck identification", "bottleneck", "bottlenecks", "constraint", "constraints",
+            "system", "systems"),
+        new Page(
+            "ISE Glossary",
+            "Efficiency and queues",
+            "<b>Station utilization</b>: The share of available time a station spends working. High utilization alone does not guarantee high system output.\n\n" +
+            "<b>Efficiency</b>: How well resources produce useful output relative to the work or time available.\n\n" +
+            "<b>Queue / work in process (WIP)</b>: Items or orders waiting or being worked on between steps.",
+            "station utilization", "utilization", "efficiency", "work in process", "queue", "queues"),
+        new Page(
+            "ISE Glossary",
+            "Queues and work balance",
+            "<b>Queue analysis</b>: Studying where and why work waits by comparing queue location, size, and growth.\n\n" +
+            "<b>Queueing</b>: Work or customers waiting for a resource to become available. Queueing analysis compares arrival and service rates to understand how waits grow.\n\n" +
+            "<b>Workload balancing</b>: Distributing work across steps and workers to reduce overload, starvation, and avoidable waiting.\n\n" +
+            "<b>Batch processing</b>: Processing several units together in one operation or production run.",
+            "queue analysis", "queueing", "queuing", "workload balancing", "batch processing"),
+        new Page(
+            "ISE Glossary",
+            "Production planning and economics",
+            "<b>Production scheduling</b>: Choosing what to produce, in what order, and when, so available capacity and materials meet demand.\n\n" +
+            "<b>Simple payback</b>: The time an investment takes to recover its initial cost through benefits or savings.\n\n" +
+            "<b>Profit analysis</b>: Comparing sales revenue with ingredient, labor, operating, and upgrade costs to understand profitability.",
+            "production scheduling", "simple payback", "profit analysis"),
+        new Page(
+            "ISE Glossary",
+            "People and work",
             "<b>Human factors</b>: Designing work around people's abilities and limits so it is safe, clear, and reliable.\n\n" +
             "<b>Customer patience / patience</b>: How long a customer is willing to wait for an order before leaving without it. In ISE Rush, patience starts after the customer orders.\n\n" +
             "<b>Ergonomics</b>: Fitting tools, tasks, and workspaces to the people using them.\n\n" +
-            "<b>Work design</b>: Defining tasks, responsibilities, methods, and routes so work can be performed effectively.\n\n" +
+            "<b>Work design</b>: Defining tasks, responsibilities, methods, and routes so work can be performed effectively.",
+            "human factors", "customer patience", "patience", "ergonomics", "work design"),
+        new Page(
+            "ISE Glossary",
+            "Staffing and line balance",
             "<b>Workforce planning</b>: Matching the number and skills of workers to the expected workload.\n\n" +
             "<b>Labor allocation</b>: Assigning available worker time to the flows and tasks where it best supports planned output.\n\n" +
-            "<b>Line balancing</b>: Distributing work across steps so one step does not create avoidable waiting or overload.\n\n" +
+            "<b>Line balancing</b>: Distributing work across steps so one step does not create avoidable waiting or overload.",
+            "workforce planning", "labor allocation", "line balancing"),
+        new Page(
+            "ISE Glossary",
+            "Work methods and quality",
             "<b>Work measurement</b>: Estimating how long tasks take and how much labor capacity they require.\n\n" +
             "<b>Standard work</b>: A clear, repeatable method for completing a task.\n\n" +
             "<b>Quality control</b>: Checking that output meets the required standard and correcting causes of defects.",
-            "human factors", "customer patience", "patience", "ergonomics", "work design", "workforce planning", "labor allocation", "line balancing",
             "work measurement", "standard work", "quality control")
     };
 
@@ -251,6 +303,7 @@ public static class GuidebookPages
             string token = tokens[i];
             if (token == "forecasting") token = "forecast";
             else if (token == "min") token = "rate";
+            else if (token == "queuing") token = "queueing";
             else if (token == "optimization" || token == "optimisation"
                 || token == "optimize" || token == "optimise") token = "optimization";
             else if (token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4)

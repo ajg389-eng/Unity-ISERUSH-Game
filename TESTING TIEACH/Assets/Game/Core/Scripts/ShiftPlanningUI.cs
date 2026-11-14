@@ -115,7 +115,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     ShiftResult previousShift;
     bool initialized;
     bool planHiddenForStationPopup;
-    bool planCondensedForObjectives;
+    bool planCondensedForOverlay;
     bool preShiftPlanningActive;
     bool hasSavedStationBaseline;
     float nextLiveRefreshTime;
@@ -214,7 +214,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void Update()
     {
-        RefreshObjectivesPlanPresentation();
+        RefreshPlanOverlayPresentation();
 
         if (panelRoot != null && preShiftPlanningActive && !planHiddenForStationPopup)
         {
@@ -308,14 +308,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         Canvas.ForceUpdateCanvases();
     }
 
-    void RefreshObjectivesPlanPresentation()
+    void RefreshPlanOverlayPresentation()
     {
         if (panelRoot == null || dayTitle == null) return;
         bool objectivesOpen = MissionListUI.Instance != null && MissionListUI.Instance.IsOpen;
-        bool shouldCondense = panelRoot.activeSelf && preShiftPlanningActive && objectivesOpen;
-        if (shouldCondense == planCondensedForObjectives) return;
+        bool analyticsOpen = AnalyticsPopupUI.IsOpen;
+        bool recipesOpen = IngredientsOrderUI.IsRecipeOverlayOpen;
+        bool shouldCondense = panelRoot.activeSelf && preShiftPlanningActive
+            && (objectivesOpen || analyticsOpen || recipesOpen);
+        if (shouldCondense == planCondensedForOverlay) return;
 
-        planCondensedForObjectives = shouldCondense;
+        planCondensedForOverlay = shouldCondense;
         RectTransform rect = panelRoot.transform as RectTransform;
         if (shouldCondense)
         {
@@ -1214,13 +1217,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             preferredHeight += layout.spacing * Mathf.Max(0, activeChildCount - 1);
         // Keep a small inset below Start Shift. Hidden UI elements do not add
         // phantom spacing to the plan card's measured height.
-        float desiredHeight = planCondensedForObjectives
+        float desiredHeight = planCondensedForOverlay
             ? 72f : Mathf.Max(360f, preferredHeight + 16f);
         float availableHeight = canvasRect != null
             ? Mathf.Max(240f, canvasRect.rect.height - 40f)
             : Mathf.Max(240f, Screen.height - 40f);
         float availableWidth = canvasRect != null ? canvasRect.rect.width : Screen.width;
-        float width = planCondensedForObjectives
+        float width = planCondensedForOverlay
             ? Mathf.Min(360f, Mathf.Max(1f, availableWidth - 32f))
             : Mathf.Min(520f, Mathf.Max(320f, availableWidth - 40f));
 

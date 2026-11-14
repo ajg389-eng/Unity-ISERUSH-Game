@@ -9,6 +9,8 @@ using TMPro;
 /// </summary>
 public class IngredientsOrderUI : MonoBehaviour
 {
+    public static bool IsRecipeOverlayOpen { get; private set; }
+
     [Tooltip("Parent for order rows. Created at runtime if null.")]
     public Transform listContainer;
     public TextMeshProUGUI headerText;
@@ -132,6 +134,12 @@ public class IngredientsOrderUI : MonoBehaviour
         nextCatalogCheck = Time.unscaledTime + CatalogCheckInterval;
         nextRefresh = Time.unscaledTime + Mathf.Max(0.1f, refreshInterval);
         RefreshAll();
+    }
+
+    void OnDestroy()
+    {
+        if (recipesOverlay != null && recipesOverlay.activeSelf)
+            IsRecipeOverlayOpen = false;
     }
 
     void Update()
@@ -683,6 +691,7 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         if (recipesOverlay == null) BuildRecipesOverlay(menu);
         recipesOverlay.SetActive(true);
+        IsRecipeOverlayOpen = true;
         UpdateNavigationTabs();
         ShowRecipeTab(menu, 0);
         recipesOverlay.transform.SetAsLastSibling();
@@ -694,6 +703,7 @@ public class IngredientsOrderUI : MonoBehaviour
     {
         if (recipesOverlay != null)
             recipesOverlay.SetActive(false);
+        IsRecipeOverlayOpen = false;
         UpdateNavigationTabs();
     }
 
