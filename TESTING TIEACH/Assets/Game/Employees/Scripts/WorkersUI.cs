@@ -19,6 +19,17 @@ public class WorkersUI : MonoBehaviour
     public GameObject workerCardPrefab;
     public Transform cardContainer;
     public ScrollRect workerCardsScroll;
+    public Component TutorialFlowHeaderTarget => flowHeaderLabel;
+    public Component TutorialWorkerCardsTarget
+    {
+        get
+        {
+            if (workerCardsScroll == null) return cardContainer as Component;
+            Image image = workerCardsScroll.GetComponent<Image>();
+            if (image != null) return image;
+            return workerCardsScroll.viewport;
+        }
+    }
 
     ProductionManager production;
     bool listenerAdded;

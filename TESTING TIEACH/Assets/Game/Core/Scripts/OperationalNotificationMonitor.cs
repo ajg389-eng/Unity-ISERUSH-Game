@@ -7,12 +7,10 @@ using UnityEngine;
 /// </summary>
 public class OperationalNotificationMonitor : MonoBehaviour
 {
-    const int LowStockThreshold = 2;
     const int CongestedQueueThreshold = 3;
     const int LowCashThreshold = 100;
     const float PollInterval = 1f;
 
-    readonly Dictionary<ItemDefinition, int> stockBands = new Dictionary<ItemDefinition, int>();
     readonly HashSet<int> congestedRegisters = new HashSet<int>();
     readonly HashSet<int> congestedPickupStations = new HashSet<int>();
     readonly HashSet<int> liveRegisters = new HashSet<int>();
@@ -32,50 +30,8 @@ public class OperationalNotificationMonitor : MonoBehaviour
     {
         if (Time.unscaledTime < nextPoll) return;
         nextPoll = Time.unscaledTime + PollInterval;
-        CheckIngredientStock();
         CheckQueues();
         CheckCash();
-    }
-
-    void CheckIngredientStock()
-    {
-        KitchenInventory inventory = KitchenInventory.Instance;
-        if (inventory == null || inventory.stock == null) return;
-
-        foreach (IngredientStockEntry entry in inventory.stock)
-        {
-            if (entry == null || entry.item == null) continue;
-
-            // The stock list includes locked ingredients so supply and production
-            // systems can inspect the full recipe graph. Only alert about items the
-            // player can currently order, and establish a fresh baseline when they
-            // become available so hidden stock changes do not trigger stale notices.
-            if (!inventory.IsOrderItemUnlocked(entry.item))
-            {
-                stockBands.Remove(entry.item);
-                continue;
-            }
-
-            int band = entry.quantity <= 0 ? 0 : entry.quantity <= LowStockThreshold ? 1 : 2;
-            if (!stockBands.TryGetValue(entry.item, out int previous))
-            {
-                stockBands[entry.item] = band;
-                continue;
-            }
-            if (band >= previous)
-            {
-                stockBands[entry.item] = band;
-                continue;
-            }
-
-            string itemName = inventory.GetDisplayName(entry.item);
-            string message = band == 0
-                ? itemName + " ingredients are out of stock."
-                : itemName + " ingredients are running low (" + entry.quantity + " left).";
-            NotificationCenter.Post(message, GameNotificationKind.Warning,
-                "stock-" + entry.item.GetInstanceID() + "-" + band, 20f);
-            stockBands[entry.item] = band;
-        }
     }
 
     void CheckQueues()

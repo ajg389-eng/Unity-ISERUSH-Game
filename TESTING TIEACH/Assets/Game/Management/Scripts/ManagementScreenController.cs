@@ -198,6 +198,9 @@ public class ManagementScreenController : MonoBehaviour
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
         if (selectedTabIndex == index && tabPanels[index] != null && tabPanels[index].activeSelf)
         {
+            var supplyPlan = tabPanels[index].GetComponentInChildren<SupplyPlanningScreenUI>(true);
+            if (supplyPlan != null)
+                supplyPlan.RefreshScreen();
             var ingredients = tabPanels[index].GetComponentInChildren<IngredientsOrderUI>(true);
             if (ingredients != null)
                 ingredients.ConfigureBusinessSection(false);
@@ -225,6 +228,9 @@ public class ManagementScreenController : MonoBehaviour
                 page.offsetMax = new Vector2(-12f, -6f);
             }
 
+            var supplyPlan = selectedPanel.GetComponentInChildren<SupplyPlanningScreenUI>(true);
+            if (supplyPlan != null)
+                supplyPlan.RefreshScreen();
             var ingredients = selectedPanel.GetComponentInChildren<IngredientsOrderUI>(true);
             if (ingredients != null)
                 ingredients.ConfigureBusinessSection(false);
@@ -275,11 +281,47 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (managementPanel == null || tabPanels == null) return;
         int staffIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<WorkersUI>(true) != null);
-        int foodIndex = System.Array.FindIndex(tabPanels, p => p != null && p.GetComponentInChildren<IngredientsOrderUI>(true) != null);
+        int foodIndex = System.Array.FindIndex(tabPanels, p => p != null
+            && (p.GetComponentInChildren<SupplyPlanningScreenUI>(true) != null
+                || p.GetComponentInChildren<IngredientsOrderUI>(true) != null));
         if (staffIndex < 0 || foodIndex < 0 || tabButtons == null || foodIndex >= tabButtons.Length) return;
 
         Button workers = tabButtons[staffIndex];
         Button supplies = tabButtons[foodIndex];
+        GameObject legacyFoodPanel = tabPanels[foodIndex];
+        SupplyPlanningScreenUI supplyPlan = legacyFoodPanel.GetComponentInChildren<SupplyPlanningScreenUI>(true);
+        GameObject supplyPanel = supplyPlan != null ? supplyPlan.gameObject : null;
+        if (supplyPanel == null)
+        {
+            Transform parent = legacyFoodPanel.transform.parent;
+            if (parent == null) return;
+            Transform existingPanel = parent.Find("SupplyPlanningPanel");
+            if (existingPanel != null)
+                supplyPanel = existingPanel.gameObject;
+            else
+            {
+                supplyPanel = new GameObject("SupplyPlanningPanel", typeof(RectTransform));
+                supplyPanel.transform.SetParent(parent, false);
+                RectTransform sourceRect = legacyFoodPanel.transform as RectTransform;
+                RectTransform destinationRect = supplyPanel.transform as RectTransform;
+                if (sourceRect != null && destinationRect != null)
+                {
+                    destinationRect.anchorMin = sourceRect.anchorMin;
+                    destinationRect.anchorMax = sourceRect.anchorMax;
+                    destinationRect.pivot = sourceRect.pivot;
+                    destinationRect.anchoredPosition = sourceRect.anchoredPosition;
+                    destinationRect.sizeDelta = sourceRect.sizeDelta;
+                    destinationRect.offsetMin = sourceRect.offsetMin;
+                    destinationRect.offsetMax = sourceRect.offsetMax;
+                    destinationRect.localScale = sourceRect.localScale;
+                    destinationRect.localRotation = sourceRect.localRotation;
+                }
+                supplyPanel.transform.SetSiblingIndex(legacyFoodPanel.transform.GetSiblingIndex());
+            }
+            supplyPlan = SupplyPlanningScreenUI.EnsureOn(supplyPanel);
+            legacyFoodPanel.SetActive(false);
+        }
+
         workers.gameObject.name = "Tab_Workers";
         supplies.gameObject.name = "Tab_Supplies";
         SetTabLabel(workers, "Workers");
@@ -291,13 +333,15 @@ public class ManagementScreenController : MonoBehaviour
             legacyMenu.gameObject.SetActive(false);
 
         var buttons = new Button[] { workers, supplies };
-        var panels = new GameObject[] { tabPanels[staffIndex], tabPanels[foodIndex] };
+        var panels = new GameObject[] { tabPanels[staffIndex], supplyPanel };
         tabButtons = buttons;
         tabPanels = panels;
 
-        var foodUi = panels[1].GetComponentInChildren<IngredientsOrderUI>(true);
+        var foodUi = legacyFoodPanel.GetComponentInChildren<IngredientsOrderUI>(true);
         if (foodUi != null)
             foodUi.ConfigureBusinessSection(false);
+        if (supplyPlan != null)
+            supplyPlan.RefreshScreen();
     }
 
     static void ConfigureBusinessTabWidths(Transform tabBar, Button workers, Button supplies)
@@ -610,7 +654,8 @@ public class ManagementScreenController : MonoBehaviour
         if (tabPanels == null) return;
         for (int i = 0; i < tabPanels.Length; i++)
         {
-            if (tabPanels[i] != null && tabPanels[i].GetComponentInChildren<IngredientsOrderUI>(true) != null)
+            if (tabPanels[i] != null && (tabPanels[i].GetComponentInChildren<SupplyPlanningScreenUI>(true) != null
+                || tabPanels[i].GetComponentInChildren<IngredientsOrderUI>(true) != null))
             {
                 SelectTab(i);
                 return;

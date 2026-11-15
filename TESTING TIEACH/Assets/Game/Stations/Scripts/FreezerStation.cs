@@ -15,8 +15,6 @@ public partial class FreezerStation : MonoBehaviour, IStationBuffer
     [Min(0f)] public float processTimeSeconds = 0f;
     [Tooltip("Maximum sustained amount this freezer can dispense per minute.")]
     [Min(0.1f)] public float maxOutputPerMinute = StationNode.MaximumStationOutputPerMinute;
-    [Tooltip("Show the station caution sign when assigned stock reaches this amount or lower.")]
-    [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
 
     [System.NonSerialized] float outputTokens;
@@ -86,16 +84,6 @@ public partial class FreezerStation : MonoBehaviour, IStationBuffer
     }
 
     public bool HasItemSelected => selectedItem != null;
-
-    public bool IsAssignedIngredientLow
-    {
-        get
-        {
-            KitchenInventory inventory = KitchenInventory.Instance;
-            if (inventory == null || selectedItem == null) return false;
-            return inventory.GetCount(selectedItem) <= Mathf.Max(0, lowStockWarningThreshold);
-        }
-    }
 
     public void SetStoredItem(ItemDefinition item)
     {

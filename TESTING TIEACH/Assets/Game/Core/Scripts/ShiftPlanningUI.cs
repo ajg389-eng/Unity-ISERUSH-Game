@@ -1314,15 +1314,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         KitchenInventory inventory = KitchenInventory.Instance;
         if (inventory != null)
         {
-            bool supplyRatesActive = MilestoneFeatures.IsResearchComplete("automatic_ordering");
             foreach (KeyValuePair<ItemDefinition, float> requirement in requiredIngredients)
             {
                 ItemDefinition ingredient = requirement.Key;
                 if (ingredient == null) continue;
                 int needed = Mathf.CeilToInt(requirement.Value);
                 int onHand = inventory.GetCount(ingredient);
-                int supplyRate = supplyRatesActive
-                    ? inventory.GetSupplyRatePerMinute(ingredient) : 0;
+                int supplyRate = inventory.GetSupplyRatePerMinute(ingredient);
                 float expectedSupply = supplyRate * shiftMinutes;
                 // Cap cumulative receipts by free storage plus items consumed during the shift.
                 expectedSupply = Mathf.Min(expectedSupply,

@@ -22,6 +22,9 @@ public class KitchenInventory : MonoBehaviour
     public const int MaxIngredientStock = 100;
     public const int MaxSupplyRatePerMinute = 80;
 
+    static readonly int[] SupplierCapacityTiers = { 10, 20, 30, 40, 60, 80 };
+    static readonly int[] SupplierUpgradeCosts = { 0, 250, 600, 1200, 2000, 3500 };
+
     public static KitchenInventory Instance { get; private set; }
 
     struct IngredientUseSample
@@ -43,6 +46,8 @@ public class KitchenInventory : MonoBehaviour
 
     [Header("Runtime stock (read-only in play)")]
     public List<IngredientStockEntry> stock = new List<IngredientStockEntry>();
+    [Tooltip("Saved tier for the restaurant's shared supplier throughput.")]
+    [SerializeField] int supplierCapacityTierIndex;
 
     MoneyManager money;
     GameTimeManager usageClock;
@@ -316,12 +321,122 @@ public class KitchenInventory : MonoBehaviour
         return EnsureEntry(item)?.supplyRatePerMinute ?? 0;
     }
 
+    public int SupplierCapacityTierIndex => Mathf.Clamp(supplierCapacityTierIndex, 0, SupplierCapacityTiers.Length - 1);
+    public int SupplierCapacityPerMinute => SupplierCapacityTiers[SupplierCapacityTierIndex];
+    public int ConfiguredSupplyRatePerMinute
+    {
+        get
+        {
+            int total = 0;
+            foreach (IngredientStockEntry entry in stock)
+                if (entry != null && entry.item != null && IsOrderItemUnlocked(entry.item))
+                    total += Mathf.Max(0, entry.supplyRatePerMinute);
+            return total;
+        }
+    }
+    public int RemainingSupplierCapacityPerMinute => Mathf.Max(0, SupplierCapacityPerMinute - ConfiguredSupplyRatePerMinute);
+
+    public int GetNextSupplierCapacityPerMinute()
+    {
+        int next = SupplierCapacityTierIndex + 1;
+        return next < SupplierCapacityTiers.Length ? SupplierCapacityTiers[next] : SupplierCapacityPerMinute;
+    }
+
+    public int GetNextSupplierUpgradeCost()
+    {
+        int next = SupplierCapacityTierIndex + 1;
+        return next < SupplierUpgradeCosts.Length ? SupplierUpgradeCosts[next] : 0;
+    }
+
+    public bool CanUpgradeSupplierCapacity(out string reason)
+    {
+        reason = string.Empty;
+        if (!ShiftPlanningUI.IsPlanning)
+        {
+            reason = "Supplier capacity can only be changed before the shift starts.";
+            return false;
+        }
+        int nextIndex = SupplierCapacityTierIndex + 1;
+        if (nextIndex >= SupplierCapacityTiers.Length)
+        {
+            reason = "Supplier capacity is fully upgraded.";
+            return false;
+        }
+
+        int requiredMilestone = nextIndex >= 4 ? MilestoneFeatures.SystemsIntegration
+            : nextIndex >= 3 ? MilestoneFeatures.QualityAndReliability : 0;
+        if (requiredMilestone > 0 && !MilestoneFeatures.HasReached(requiredMilestone))
+        {
+            reason = requiredMilestone == MilestoneFeatures.QualityAndReliability
+                ? "Reach Milestone 5 to expand supplier capacity to 40 items/min."
+                : "Reach Milestone 6 to expand supplier capacity beyond 40 items/min.";
+            return false;
+        }
+
+        int cost = GetNextSupplierUpgradeCost();
+        if (money == null) money = FindObjectOfType<MoneyManager>();
+        if (money != null && !money.CanAfford(cost))
+        {
+            reason = "Not enough cash for this supplier capacity upgrade.";
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool TryUpgradeSupplierCapacity(out string reason)
+    {
+        if (!CanUpgradeSupplierCapacity(out reason)) return false;
+        if (money == null) money = FindObjectOfType<MoneyManager>();
+        int cost = GetNextSupplierUpgradeCost();
+        if (money != null && cost > 0 && !money.TrySpend(cost))
+        {
+            reason = "Not enough cash for this supplier capacity upgrade.";
+            return false;
+        }
+
+        supplierCapacityTierIndex = Mathf.Min(SupplierCapacityTierIndex + 1, SupplierCapacityTiers.Length - 1);
+        reason = string.Empty;
+        return true;
+    }
+
+    public void RestoreSupplierCapacityTier(int tierIndex)
+    {
+        supplierCapacityTierIndex = Mathf.Clamp(tierIndex, 0, SupplierCapacityTiers.Length - 1);
+        NormalizeConfiguredSupplyRatesToCapacity();
+    }
+
+    public void NormalizeConfiguredSupplyRatesToCapacity()
+    {
+        int remaining = SupplierCapacityPerMinute;
+        foreach (IngredientStockEntry entry in stock)
+        {
+            if (entry == null) continue;
+            if (entry.item == null || !IsOrderItemUnlocked(entry.item))
+            {
+                entry.supplyRatePerMinute = 0;
+                entry.supplyUnitProgress = 0f;
+                continue;
+            }
+            int rate = Mathf.Clamp(entry.supplyRatePerMinute, 0, MaxSupplyRatePerMinute);
+            rate = Mathf.Min(rate, remaining);
+            rate = (rate / 5) * 5;
+            entry.supplyRatePerMinute = rate;
+            if (rate == 0) entry.supplyUnitProgress = 0f;
+            remaining -= rate;
+        }
+    }
+
     public void SetSupplyRatePerMinute(ItemDefinition item, int rate)
     {
+        if (!ShiftPlanningUI.IsPlanning) return;
         IngredientStockEntry entry = EnsureEntry(item);
         if (entry == null) return;
         int clampedRate = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(0, rate) / 5f) * 5,
             0, MaxSupplyRatePerMinute);
+        int otherRates = Mathf.Max(0, ConfiguredSupplyRatePerMinute - entry.supplyRatePerMinute);
+        int available = Mathf.Max(0, SupplierCapacityPerMinute - otherRates);
+        clampedRate = Mathf.Min(clampedRate, (available / 5) * 5);
         entry.supplyRatePerMinute = clampedRate;
         if (clampedRate == 0)
             entry.supplyUnitProgress = 0f;
@@ -350,7 +465,7 @@ public class KitchenInventory : MonoBehaviour
 
     void DeliverConfiguredSupplyRates(float elapsedMinutes)
     {
-        if (elapsedMinutes <= 0f || !MilestoneFeatures.IsResearchComplete("automatic_ordering")) return;
+        if (elapsedMinutes <= 0f) return;
         if (money == null) money = FindObjectOfType<MoneyManager>();
         bool stockChanged = false;
         for (int i = 0; i < stock.Count; i++)

@@ -302,7 +302,7 @@ public class OnboardingTutorial : MonoBehaviour
         preserveLoadedKitchen = preserveKitchen;
         inheritedKitchenPrepared = preserveKitchen;
         inheritedBaselineRate = savedBaselineRate;
-        inheritedTargetRate = savedTargetRate;
+        inheritedTargetRate = complete ? savedTargetRate : 5f;
         inheritedStationMoved = savedStationMoved;
         milestoneOneBottleneckLessonDone = savedMilestoneOneBottleneckLessonDone;
         milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone;
@@ -521,6 +521,7 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requirePickupDelivery;
         public bool requireCustomerJourney;
         public bool requireStationHealthReview;
+        public bool requireBusinessOverview;
 
         public Step(
             string title,
@@ -560,7 +561,8 @@ public class OnboardingTutorial : MonoBehaviour
             bool requireOptimizedLayout = false,
             bool requirePickupDelivery = false,
             bool requireCustomerJourney = false,
-            bool requireStationHealthReview = false)
+            bool requireStationHealthReview = false,
+            bool requireBusinessOverview = false)
         {
             this.title = title;
             this.body = body;
@@ -601,17 +603,18 @@ public class OnboardingTutorial : MonoBehaviour
             this.requirePickupDelivery = requirePickupDelivery;
             this.requireCustomerJourney = requireCustomerJourney;
             this.requireStationHealthReview = requireStationHealthReview;
+            this.requireBusinessOverview = requireBusinessOverview;
         }
     }
 
     static readonly Step[] Steps =
     {
-        new Step("The kitchen you inherited",
-            "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. We will learn how to improve it while the kitchen runs.",
-            "Next", Highlight.None),
         new Step("Move around the kitchen",
-            "Move with <b>WASD</b>. Right-drag to turn the camera, and scroll to zoom in and out. Try each input to continue.",
+            "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
             "Next", Highlight.None, requireCameraControls: true),
+        new Step("Explore Business",
+            "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
+            "Next", Highlight.None, requireBusinessOverview: true),
         new Step("Start your first shift",
             "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
             "Next", Highlight.None, requirePlanIntroduction: true, requireShiftStarted: true),
@@ -619,7 +622,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Follow the worker from station to station. Watch the burger arrive at Pickup.",
             "Next", Highlight.None, requirePickupDelivery: true),
         new Step("Follow one customer",
-            "A customer will enter at the door. Follow them to the register, then to Pickup, and out of the restaurant.",
+            "Customers arrive based on item popularity. They order, wait, and pick up their food. Do not make them wait too long!",
             "Next", Highlight.None, liveCustomer: true, requireCustomerJourney: true),
         new Step("Improve the layout",
             "Open <b>Build</b>, select the highlighted station, click <b>Move</b>, then click a new tile. Reduce worker travel and reach the output target below.",
@@ -635,11 +638,11 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] CompactTutorialText =
     {
-        "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. We will learn how to improve it while the kitchen runs.",
-        "Move with <b>WASD</b>. Right-drag to turn the camera, and scroll to zoom in and out. Try each input to continue.",
+        "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
+        "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
         "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
         "Follow the worker through the process. Watch the burger arrive at Pickup.",
-        "Follow the customer from the door. See how they order, collect their burger, and leave.",
+        "Customers arrive based on item popularity. They order, wait, and pick up their food. Do not make them wait too long!",
         "Open <b>Build</b>, select the highlighted station, click <b>Move</b>, then click a new tile. Reduce worker travel and reach the output target below."
     };
 
@@ -848,7 +851,6 @@ public class OnboardingTutorial : MonoBehaviour
             && Steps[stepIndex].requireCustomerJourney)
         {
             tutorialCustomerOrderServed = true;
-            QueueCustomerJourneyThroughStage(3);
             RefreshCustomerJourneyCard();
             RefreshAdvanceGate();
             UpdateContextualCallout();
@@ -993,6 +995,13 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (Steps[stepIndex].requireObjectivesScreen)
             MissionListUI.Instance?.SetVisible(false);
+        if (Steps[stepIndex].requireBusinessOverview)
+        {
+            ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
+                FindObjectsInactive.Include);
+            if (management != null && management.IsOpen)
+                management.Close();
+        }
         stepIndex++;
         ShowStep();
     }
@@ -1094,9 +1103,9 @@ public class OnboardingTutorial : MonoBehaviour
             initialBody = GetFreezerWalkthroughText(freezerWalkthroughPhase);
         else if (step.requirePlanIntroduction)
             initialBody += "\n\n<color=#63E6FF><b>Current output:</b></color> <color=#63E6FF>"
-                + inheritedBaselineRate.ToString("0.0") + " burgers/min.</color> "
+                + inheritedBaselineRate.ToString("0.#") + " burgers/min.</color> "
                 + "<color=#FFE45C><b>Improvement target:</b> "
-                + inheritedTargetRate.ToString("0.0") + " burgers/min.</color>";
+                + inheritedTargetRate.ToString("0.#") + " burgers/min.</color>";
         else if (step.requireTimeControlInteractions)
             initialBody = GetTimeControlInstruction();
         else if (step.requireAnalyticsScreen)
@@ -1771,6 +1780,7 @@ public class OnboardingTutorial : MonoBehaviour
             && !(running && (Steps[stepIndex].requireWorkerDragToFlow
                 || Steps[stepIndex].requireRecipes
                 || Steps[stepIndex].requireHamburger
+                || Steps[stepIndex].requireBusinessOverview
                 || Steps[stepIndex].requireOptimizedLayout
                 || Steps[stepIndex].requireShiftStarted
                 || Steps[stepIndex].requireTimeControlInteractions
@@ -1929,6 +1939,8 @@ public class OnboardingTutorial : MonoBehaviour
             return "Click the highlighted ISE term";
         if (step.requireObjectivesScreen && !objectivesScreenOpened)
             return "Open Objectives";
+        if (step.requireBusinessOverview && !IsBusinessOverviewOpen())
+            return "Open Business";
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced())
             return "Place the seven stations";
         if (step.requireResearch) return "Research all three foundations";
@@ -1938,7 +1950,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireHamburger) return "Add Hamburger to the menu";
         if (step.requireOptimizedLayout)
             return inheritedStationMoved
-                ? "Reach " + inheritedTargetRate.ToString("0.0") + " burgers/min"
+                ? "Reach " + inheritedTargetRate.ToString("0.#") + " burgers/min"
                 : "Move a station";
         if (step.requireShiftStarted) return "Start Shift";
         if (step.requireCameraControls)
@@ -2024,6 +2036,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireAnalyticsScreen
             && (!analyticsScreenOpened || !analyticsScreenClosed
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
+        if (step.requireBusinessOverview && !IsBusinessOverviewOpen()) return false;
         if (step.requireMenuScreen && !menuScreenOpened) return false;
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
         if (step.requireOptimizedLayout && (!inheritedStationMoved
@@ -2123,9 +2136,9 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (coreStationChecklistText == null) return;
         float current = CurrentInheritedOutputRate();
-        string text = "<color=#B9C5D2>BASELINE  " + inheritedBaselineRate.ToString("0.0") + "/min</color>"
-            + "   <color=#63E6FF><b>CURRENT  " + current.ToString("0.0") + "/min</b></color>"
-            + "   <color=#FFE45C><b>TARGET  " + inheritedTargetRate.ToString("0.0") + "/min</b></color>\n"
+        string text = "<color=#B9C5D2>BASELINE  " + inheritedBaselineRate.ToString("0.#") + "/min</color>"
+            + "   <color=#63E6FF><b>CURRENT  " + current.ToString("0.#") + "/min</b></color>"
+            + "   <color=#FFE45C><b>TARGET  " + inheritedTargetRate.ToString("0.#") + "/min</b></color>\n"
             + (inheritedStationMoved ? "Station moved" : "Open Build Menu and move a station")
             + "\n" + (current + 0.05f >= inheritedTargetRate && inheritedTargetRate > 0f
                 ? "<mark=#1D6849 padding=\"5,3,5,3\"><color=#A8FFD4><b>✓ OUTPUT TARGET REACHED</b></color></mark>"
@@ -2512,10 +2525,6 @@ public class OnboardingTutorial : MonoBehaviour
         tutorialCustomer = customer;
         customer.patienceDuration = Mathf.Max(customer.patienceDuration, 180f);
         customerJourneyStage = -1;
-        if (tutorialFollowCamera == null)
-            tutorialFollowCamera = FindFirstObjectByType<PlayerCameraController>(FindObjectsInactive.Exclude);
-        if (tutorialFollowCamera != null)
-            tutorialFollowCamera.BeginLockedFollow(customer.transform);
     }
 
     void ClearTutorialCustomerFollow()
@@ -2545,37 +2554,25 @@ public class OnboardingTutorial : MonoBehaviour
             || !Steps[stepIndex].requireCustomerJourney)
             return;
 
-        if (tutorialCustomer == null)
-        {
-            if (!liveCustomerSpawned || customerJourneyComplete)
-                return;
-            if (!tutorialCustomerOrderServed)
-            {
-                QueueCustomerJourneyThroughStage(4);
-                liveCustomerSpawned = false;
-                ShowNextCustomerJourneyMessage();
-                return;
-            }
+        if (!liveCustomerSpawned || customerJourneyComplete) return;
 
-            if (!customerJourneyCustomerGone)
-            {
-                customerJourneyCustomerGone = true;
-                customerJourneyStage = 5;
-                ClearTutorialCustomerFollow();
-                customerJourneyCardQueue.Enqueue(
-                    "The customer collected the burger and left. The order is complete and the sale is recorded.");
-                BeginCustomerJourneyActionMessage();
-            }
-            ShowNextCustomerJourneyMessage();
+        bool customerLeft = tutorialCustomer == null || tutorialCustomer.IsLeaving;
+        if (!customerLeft) return;
+
+        ClearTutorialCustomerFollow();
+        tutorialCustomer = null;
+        if (tutorialCustomerOrderServed)
+        {
+            customerJourneyComplete = true;
+            ShiftPlanningUI.ReturnToPlanPhaseAfterTutorial();
+            RefreshAdvanceGate();
             return;
         }
 
-        int stage = tutorialCustomer.IsLeaving
-            ? tutorialCustomerOrderServed ? 3 : 4
-            : tutorialCustomer.IsAtPickupQueueSlot ? 2
-            : tutorialCustomer.HasOrderedAtRegister ? 1 : 0;
-        QueueCustomerJourneyThroughStage(stage);
-        ShowNextCustomerJourneyMessage();
+        // If a practice customer leaves without completing the order, try one
+        // more customer while keeping the same single explanatory card visible.
+        liveCustomerSpawned = false;
+        customerJourneyStage = -1;
     }
 
     void QueueCustomerJourneyThroughStage(int stage)
@@ -2676,10 +2673,22 @@ public class OnboardingTutorial : MonoBehaviour
             RestoreStarterKitchen();
 
         var milestones = MilestoneProgressManager.Instance;
+        bool onboardingMilestoneCompleted = false;
         if (milestones != null)
+        {
+            string activeMilestoneBefore = milestones.GetActiveMilestone() != null
+                ? milestones.GetActiveMilestone().milestoneId : null;
             milestones.NotifyOnboardingFinished();
+            MilestoneDefinition activeMilestoneAfter = milestones.GetActiveMilestone();
+            onboardingMilestoneCompleted = !string.IsNullOrEmpty(activeMilestoneBefore)
+                && (activeMilestoneAfter == null
+                    || activeMilestoneAfter.milestoneId != activeMilestoneBefore);
+        }
 
-        Sfx.Play(skipped ? SfxId.UiClose : SfxId.MissionComplete);
+        if (skipped)
+            Sfx.Play(SfxId.UiClose);
+        else if (!onboardingMilestoneCompleted)
+            Sfx.Play(SfxId.MissionComplete);
         var inventoryUI = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         if (inventoryUI != null) inventoryUI.RefreshAll();
 
@@ -2826,7 +2835,7 @@ public class OnboardingTutorial : MonoBehaviour
         production.NotifyProductionStateChanged(0f);
         production.ScheduledProduction.Tick();
         inheritedBaselineRate = production.GetPredictedOutputPerMinute(config.burgerBase);
-        inheritedTargetRate = Mathf.Min(5f, inheritedBaselineRate + 0.1f);
+        inheritedTargetRate = 5f;
         inheritedCurrentRate = inheritedBaselineRate;
         inheritedStationMoved = false;
         inheritedKitchenPrepared = true;
@@ -3078,6 +3087,13 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
+    static bool IsBusinessOverviewOpen()
+    {
+        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
+            FindObjectsInactive.Include);
+        return management != null && management.IsOpen;
+    }
+
     void RefreshLayoutTutorialHighlight()
     {
         InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
@@ -3085,7 +3101,12 @@ public class OnboardingTutorial : MonoBehaviour
         {
             ClearHighlight();
             SetTutorialBodyText("Open <b>Build</b> to reposition a station and improve the production line.");
-            HighlightHudButton("InventoryButton");
+            MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            Transform buildTab = tabs != null ? tabs.InventoryTabTransform : null;
+            if (buildTab != null)
+                FocusTutorialControl(buildTab);
+            else
+                HighlightHudButton("InventoryTab");
             return;
         }
 
@@ -3199,7 +3220,7 @@ public class OnboardingTutorial : MonoBehaviour
         currentHighlight = showingCardDetail ? Highlight.Freezer : Highlight.None;
         UpdateHighlight(currentHighlight);
 
-        if (stepIndex == 2 && nextButton != null)
+        if (stepIndex == 1 && nextButton != null)
             nextButton.gameObject.SetActive(phase == FreezerWalkthroughPhase.StationName
                 || phase == FreezerWalkthroughPhase.ModelPreview
                 || phase == FreezerWalkthroughPhase.OwnedCount);
@@ -3221,7 +3242,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void RefreshFreezerWalkthroughProgress()
     {
-        if (!running || stepIndex != 2
+        if (!running || stepIndex != 1
             || freezerWalkthroughPhase == FreezerWalkthroughPhase.Inactive
             || freezerWalkthroughPhase == FreezerWalkthroughPhase.RemainingStations
             || Time.unscaledTime < nextFreezerWalkthroughRefresh)
@@ -3357,6 +3378,25 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
+        if (step.requireBusinessOverview)
+        {
+            if (!IsBusinessOverviewOpen())
+            {
+                HighlightHudButton("BusinessTab");
+                return;
+            }
+
+            WorkersUI businessWorkers = FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Exclude);
+            if (businessWorkers != null)
+            {
+                if (businessWorkers.TutorialFlowHeaderTarget != null)
+                    FocusTutorialControl(businessWorkers.TutorialFlowHeaderTarget);
+                if (businessWorkers.TutorialWorkerCardsTarget != null)
+                    HighlightControl(businessWorkers.TutorialWorkerCardsTarget);
+            }
+            return;
+        }
+
         if (step.requireAnalyticsScreen)
         {
             if (analyticsScreenClosed && analyticsTutorialStage >= AnalyticsTourCloseStage)
@@ -3402,7 +3442,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (step.requireIngredients)
         {
-            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>();
+            SupplyPlanningScreenUI ingredients = FindFirstObjectByType<SupplyPlanningScreenUI>();
             CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
             ItemDefinition item = config != null && ingredientTutorialStep < 2
                 ? GetTutorialIngredient(ingredientTutorialStep, config) : null;
@@ -4022,7 +4062,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (step.requireIngredients)
         {
-            IngredientsOrderUI ingredients = FindFirstObjectByType<IngredientsOrderUI>();
+            SupplyPlanningScreenUI ingredients = FindFirstObjectByType<SupplyPlanningScreenUI>();
             CustomerOrderConfig config = ProductionManager.Instance != null ? ProductionManager.Instance.orderConfig : null;
             if (ingredients == null || config == null) return;
             ItemDefinition item = ingredientTutorialStep < 2

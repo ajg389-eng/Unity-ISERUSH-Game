@@ -76,9 +76,9 @@ public static class MilestoneFeatures
                     "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake"
                 };
             case "milestone_05":
-                return new[] { "Super Burger", "Automatic supply rates up to 40 items/min" };
+                return new[] { "Super Burger", "Supplier capacity upgrades up to 40 items/min" };
             case "milestone_06":
-                return new[] { "Integrated Supply Planning: supply rates up to 80 items/min" };
+                return new[] { "Integrated Supply Planning: supplier capacity upgrades up to 80 items/min" };
             default:
                 return System.Array.Empty<string>();
         }

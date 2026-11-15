@@ -32,6 +32,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7a8ccd56baa7476eb83291c1650c9c38, type: 2}
   - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
+  shiftQuestions:
+  - questionId: process_bottleneck
+    prompt: In process analysis, what does a bottleneck determine?
+    answers:
+    - The value-added percentage of each unit
+    - The maximum sustainable throughput of the process
+    - The processing time of the fastest operation
+    correctAnswerIndex: 1
+    explanation: The constraint caps process flow until its capacity or the system design changes.
+  - questionId: process_queue
+    prompt: A queue keeps growing before one operation. Which relationship best explains it?
+    answers:
+    - The arrival rate exceeds that operation's effective capacity
+    - The operation's effective capacity exceeds the arrival rate
+    - The workload is evenly balanced across all operations
+    correctAnswerIndex: 0
+    explanation: When work arrives faster than it can be processed, work in process accumulates in the queue.
+  - questionId: process_layout
+    prompt: Which facility-layout choice usually reduces material-handling distance?
+    answers:
+    - Place sequential, high-flow operations near each other
+    - Group every resource by function even if travel increases
+    - Space operations evenly without considering process flow
+    correctAnswerIndex: 0
+    explanation: A product-focused layout can shorten travel between operations with frequent transfers.
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

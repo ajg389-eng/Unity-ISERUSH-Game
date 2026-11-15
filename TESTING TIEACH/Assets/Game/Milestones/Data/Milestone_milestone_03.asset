@@ -30,6 +30,31 @@ MonoBehaviour:
   missions:
   - {fileID: 11400000, guid: 720b3bc1d4e94236af25b99cfc37e39a, type: 2}
   - {fileID: 11400000, guid: 2f81f5e24e884a3890e7bf3f4f9d1eff, type: 2}
+  shiftQuestions:
+  - questionId: economy_payback
+    prompt: What does the simple payback period estimate?
+    answers:
+    - The discount rate that makes net present value zero
+    - The time required for periodic net benefits to recover an investment
+    - The ratio of annual operating cost to production volume
+    correctAnswerIndex: 1
+    explanation: Simple payback divides the initial investment by the net benefit earned per period.
+  - questionId: economy_measure
+    prompt: How should an engineer evaluate an added-capacity investment?
+    answers:
+    - Compare incremental benefits with capital and operating costs
+    - Select the highest-capacity option without considering lifecycle cost
+    - Select the lowest purchase price without considering process impact
+    correctAnswerIndex: 0
+    explanation: Engineering economy compares the costs and benefits caused by each alternative.
+  - questionId: economy_bottleneck
+    prompt: Why remeasure the complete process after increasing one operation's capacity?
+    answers:
+    - The process constraint may shift to another operation
+    - The line's total capacity becomes unlimited
+    - The demand rate automatically matches the new capacity
+    correctAnswerIndex: 0
+    explanation: A local capacity gain can expose another constraint that now limits system throughput.
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

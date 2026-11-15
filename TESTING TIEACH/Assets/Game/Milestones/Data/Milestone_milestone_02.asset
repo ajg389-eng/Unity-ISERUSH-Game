@@ -32,6 +32,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d1be50ffdb1743fd9372bd1d477f336f, type: 2}
   - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}
   - {fileID: 11400000, guid: ef8ec327ad06458ba97a3bb331545b9f, type: 2}
+  shiftQuestions:
+  - questionId: capacity_utilization
+    prompt: In time-based capacity analysis, what does resource utilization measure?
+    answers:
+    - The fraction of available time a resource spends busy
+    - The fraction of scheduled time a resource is available
+    - The fraction of completed units that meet specifications
+    correctAnswerIndex: 0
+    explanation: Utilization compares busy time with available time and helps reveal capacity pressure.
+  - questionId: capacity_balance
+    prompt: Why balance effective capacity across connected process steps?
+    answers:
+    - To reduce work-in-process buildup and downstream starvation
+    - To maximize each operation's utilization regardless of flow
+    - To make equipment purchase costs equal across the line
+    correctAnswerIndex: 0
+    explanation: Capacity balance helps flow between steps without excessive queues or idle time.
+  - questionId: capacity_workers
+    prompt: A resource is frequently starved. Which part of the process should you examine first?
+    answers:
+    - Upstream material availability and transfer capacity
+    - Downstream buffer space and output removal
+    - The resource's utilization target in isolation
+    correctAnswerIndex: 0
+    explanation: Starvation occurs when a resource is ready to work but required input is unavailable.
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

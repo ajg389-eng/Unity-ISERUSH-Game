@@ -86,7 +86,10 @@ public class MissionProgressManager : MonoBehaviour
             if (current >= needed)
             {
                 completedMissionIds.Add(mission.missionId);
-                Sfx.Play(SfxId.MissionComplete);
+                // Tutorial completion also completes its parent milestone, which
+                // owns the single completion sound for that transition.
+                if (eventId != TutorialVoiceEventId.TutorialCompleted)
+                    Sfx.Play(SfxId.MissionComplete);
             }
         }
 

@@ -186,6 +186,7 @@ public class TopHudUtilityControls : MonoBehaviour
             : new GameObject(GusHelpSectionName, typeof(RectTransform));
         if (section.transform.parent != transform)
             section.transform.SetParent(transform, false);
+        section.SetActive(true);
 
         UnityEngine.UI.Button button = FindButton(section.transform, "GusHelpButton");
         if (button == null)
@@ -196,24 +197,73 @@ public class TopHudUtilityControls : MonoBehaviour
             button = buttonObject.GetComponent<UnityEngine.UI.Button>();
             buttonObject.GetComponent<UnityEngine.UI.Image>().color = new Color(0.10f, 0.12f, 0.17f, 1f);
 
-            var portraitObject = new GameObject("GusPortrait", typeof(RectTransform),
+            var createdPortraitObject = new GameObject("GusPortrait", typeof(RectTransform),
                 typeof(UnityEngine.UI.RawImage), typeof(GusCutscenePreview));
-            portraitObject.transform.SetParent(buttonObject.transform, false);
-            RectTransform portraitRect = (RectTransform)portraitObject.transform;
-            portraitRect.anchorMin = Vector2.zero;
-            portraitRect.anchorMax = Vector2.one;
-            portraitRect.offsetMin = new Vector2(3f, 3f);
-            portraitRect.offsetMax = new Vector2(-3f, -3f);
-            portraitObject.GetComponent<UnityEngine.UI.RawImage>().raycastTarget = false;
+            createdPortraitObject.transform.SetParent(buttonObject.transform, false);
+            RectTransform createdPortraitRect = (RectTransform)createdPortraitObject.transform;
+            createdPortraitRect.anchorMin = Vector2.zero;
+            createdPortraitRect.anchorMax = Vector2.one;
+            createdPortraitRect.offsetMin = new Vector2(3f, 3f);
+            createdPortraitRect.offsetMax = new Vector2(-3f, -3f);
+            createdPortraitObject.GetComponent<UnityEngine.UI.RawImage>().raycastTarget = false;
 
+            TitleScreenController createdTitle = FindFirstObjectByType<TitleScreenController>(FindObjectsInactive.Include);
+            GameObject createdGusPrefab = createdTitle != null ? createdTitle.gusPrefab : null;
+            if (createdGusPrefab != null)
+                createdPortraitObject.GetComponent<GusCutscenePreview>().Configure(
+                    createdGusPrefab, createdPortraitObject.GetComponent<UnityEngine.UI.RawImage>(), true);
+            else
+            {
+                Destroy(createdPortraitObject.GetComponent<GusCutscenePreview>());
+                var label = CreateLabel(createdPortraitObject.transform, "Fallback", "G", 24f);
+                label.alignment = TextAlignmentOptions.Center;
+                label.fontStyle = FontStyles.Bold;
+                label.color = GameUITheme.Accent;
+                SetRect(label.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            }
+        }
+        button.gameObject.SetActive(true);
+
+        UnityEngine.UI.Image buttonBackground = button.GetComponent<UnityEngine.UI.Image>();
+        if (buttonBackground == null)
+            buttonBackground = button.gameObject.AddComponent<UnityEngine.UI.Image>();
+        buttonBackground.color = new Color(0.10f, 0.12f, 0.17f, 1f);
+        buttonBackground.raycastTarget = true;
+        button.targetGraphic = buttonBackground;
+        Outline buttonOutline = button.GetComponent<Outline>();
+        if (buttonOutline == null) buttonOutline = button.gameObject.AddComponent<Outline>();
+        buttonOutline.effectColor = GameUITheme.Accent;
+        buttonOutline.effectDistance = new Vector2(1.5f, -1.5f);
+        buttonOutline.useGraphicAlpha = false;
+
+        Transform portraitTransform = button.transform.Find("GusPortrait");
+        GameObject portraitObject = portraitTransform != null
+            ? portraitTransform.gameObject
+            : new GameObject("GusPortrait", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+        if (portraitObject.transform.parent != button.transform)
+            portraitObject.transform.SetParent(button.transform, false);
+        RectTransform portraitRect = (RectTransform)portraitObject.transform;
+        portraitRect.anchorMin = Vector2.zero;
+        portraitRect.anchorMax = Vector2.one;
+        portraitRect.offsetMin = new Vector2(3f, 3f);
+        portraitRect.offsetMax = new Vector2(-3f, -3f);
+        UnityEngine.UI.RawImage portraitImage = portraitObject.GetComponent<UnityEngine.UI.RawImage>();
+        if (portraitImage == null)
+            portraitImage = portraitObject.AddComponent<UnityEngine.UI.RawImage>();
+        portraitImage.raycastTarget = false;
+
+        if (portraitImage.texture == null)
+        {
             TitleScreenController title = FindFirstObjectByType<TitleScreenController>(FindObjectsInactive.Include);
             GameObject gusPrefab = title != null ? title.gusPrefab : null;
             if (gusPrefab != null)
-                portraitObject.GetComponent<GusCutscenePreview>().Configure(
-                    gusPrefab, portraitObject.GetComponent<UnityEngine.UI.RawImage>(), true);
-            else
             {
-                Destroy(portraitObject.GetComponent<GusCutscenePreview>());
+                GusCutscenePreview preview = portraitObject.GetComponent<GusCutscenePreview>();
+                if (preview == null) preview = portraitObject.AddComponent<GusCutscenePreview>();
+                preview.Configure(gusPrefab, portraitImage, true);
+            }
+            else if (portraitObject.GetComponentInChildren<TextMeshProUGUI>(true) == null)
+            {
                 var label = CreateLabel(portraitObject.transform, "Fallback", "G", 24f);
                 label.alignment = TextAlignmentOptions.Center;
                 label.fontStyle = FontStyles.Bold;
@@ -221,6 +271,7 @@ public class TopHudUtilityControls : MonoBehaviour
                 SetRect(label.rectTransform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             }
         }
+        section.transform.SetAsLastSibling();
 
         RectTransform buttonRect = (RectTransform)button.transform;
         buttonRect.anchorMin = Vector2.zero;

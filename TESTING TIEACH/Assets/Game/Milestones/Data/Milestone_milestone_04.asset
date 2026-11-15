@@ -29,6 +29,31 @@ MonoBehaviour:
   missions:
   - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
   - {fileID: 11400000, guid: f2193414de654acebe722bc290248751, type: 2}
+  shiftQuestions:
+  - questionId: inventory_reorder
+    prompt: In a continuous-review inventory policy, what should the reorder point cover?
+    answers:
+    - Expected demand during replenishment lead time plus safety stock
+    - The economic order quantity plus average cycle stock
+    - Annual demand divided by the supplier's unit cost
+    correctAnswerIndex: 0
+    explanation: The reorder point triggers an order early enough to cover lead-time demand and uncertainty.
+  - questionId: inventory_safety
+    prompt: What inventory risk is safety stock designed to buffer?
+    answers:
+    - Variability in demand or replenishment lead time
+    - Predictable demand during a normal replenishment cycle
+    - Fixed ordering costs incurred whenever an order is placed
+    correctAnswerIndex: 0
+    explanation: Safety stock protects service levels when actual demand or lead time differs from its forecast.
+  - questionId: inventory_holding
+    prompt: Which expense is an inventory holding cost?
+    answers:
+    - Capital, storage, and obsolescence costs while inventory is held
+    - Administrative and setup costs for placing an order
+    - Lost margin and service costs caused by a stockout
+    correctAnswerIndex: 0
+    explanation: Holding cost captures resources tied up in inventory over time.
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

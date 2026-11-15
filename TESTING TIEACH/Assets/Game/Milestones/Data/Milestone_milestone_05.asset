@@ -14,20 +14,44 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_05
   displayName: Supply Automation
-  description: 'Set automatic ingredient replenishment rates and monitor stock to keep
-    ingredients available as demand changes.
+  description: 'Expand shared supplier capacity and balance replenishment against forecast
+    demand while keeping stock within storage limits.
 
 
     Topics: Automatic replenishment, supply rate control, stockout risk'
   completionDialogue:
-  - The Super Burger expands the menu, and automatic supply rates keep ingredients
-    moving as demand grows.
-  - Use the higher supply capacity to keep the kitchen ready for service.
+  - Supplier capacity upgrades can now reach 40 items per minute.
+  - Match replenishment to forecast demand and avoid excess stock.
   isTutorial: 0
   minimumSystemEfficiencyPercent: 45
   minimumCustomersServedPercent: 70
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
+  shiftQuestions:
+  - questionId: supply_rate
+    prompt: What should a steady replenishment rate generally be based on?
+    answers:
+    - Forecast consumption over the planning horizon
+    - The supplier's maximum available rate regardless of demand
+    - The inventory holding cost without considering usage
+    correctAnswerIndex: 0
+    explanation: Aligning replenishment with expected consumption helps maintain stock without persistent excess.
+  - questionId: supply_stockout
+    prompt: Which inventory signal should trigger replenishment to protect service?
+    answers:
+    - Inventory position reaches or falls below the reorder point
+    - Cycle stock reaches its planned maximum after replenishment
+    - Forecast demand falls below current on-hand inventory
+    correctAnswerIndex: 0
+    explanation: The reorder point covers expected lead-time demand plus safety stock.
+  - questionId: supply_automation
+    prompt: What is the purpose of an automatic replenishment policy?
+    answers:
+    - Apply defined reorder rules consistently as inventory changes
+    - Eliminate the need to forecast demand or lead time
+    - Guarantee zero stockouts regardless of supplier variability
+    correctAnswerIndex: 0
+    explanation: Automation executes a policy; the policy still needs sound demand, lead-time, and buffer assumptions.
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

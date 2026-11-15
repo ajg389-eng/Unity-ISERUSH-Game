@@ -46,6 +46,13 @@ public sealed class ISEGlossaryLinkHandler : MonoBehaviour, IPointerClickHandler
         string term = linkId.Substring(LinkPrefix.Length).Trim();
         if (term.Length == 0) return;
 
+        MoneyManager money = FindFirstObjectByType<MoneyManager>();
+        if (money != null)
+        {
+            money.AddMoney(50);
+            Sfx.Play(SfxId.EarnMoney);
+        }
+
         PauseMenuUI pauseMenu = PauseMenuUI.Instance;
         if (pauseMenu == null)
             pauseMenu = FindFirstObjectByType<PauseMenuUI>(FindObjectsInactive.Include);

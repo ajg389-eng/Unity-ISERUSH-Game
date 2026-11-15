@@ -17,8 +17,6 @@ public partial class PantryStation : MonoBehaviour
     [Min(0f)] public float processTimeSeconds = 0f;
     [Tooltip("Maximum amount of its assigned ingredient this pantry can dispense per minute.")]
     [Min(0.1f)] public float maxOutputPerMinute = StationNode.MaximumStationOutputPerMinute;
-    [Tooltip("Show a caution sign when the assigned ingredient reaches this stock level or lower.")]
-    [Min(0)] public int lowStockWarningThreshold = 10;
     public Vector3 interactionOffset = Vector3.zero;
 
     [System.NonSerialized] float outputTokens;
@@ -125,16 +123,6 @@ public partial class PantryStation : MonoBehaviour
     static string ItemName(ItemDefinition item) => item == null ? "Select ingredient"
         : string.IsNullOrEmpty(item.itemName) ? item.name : item.itemName;
 
-    public bool IsAssignedIngredientLow
-    {
-        get
-        {
-            if (KitchenInventory.Instance == null) return false;
-            int threshold = Mathf.Max(0, lowStockWarningThreshold);
-            return selectedItem != null && KitchenInventory.Instance.GetCount(selectedItem) <= threshold;
-        }
-    }
-
     public void SetStoredItem(ItemDefinition item)
     {
         selectedItem = item;
@@ -216,8 +204,7 @@ public partial class PantryStation : MonoBehaviour
 }
 
 /// <summary>
-/// Displays the same overlay caution icon used by pickup stations whenever a
-/// configurable station has no selection, or its assigned stock is low.
+/// Legacy caution component. Station caution markers are disabled.
 /// </summary>
 internal sealed class StationConfigurationCaution : MonoBehaviour
 {
@@ -243,14 +230,20 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
 
     public static void Ensure(GameObject station)
     {
-        if (station != null && station.GetComponent<StationConfigurationCaution>() == null)
-            station.AddComponent<StationConfigurationCaution>();
+        if (station == null) return;
+        StationConfigurationCaution caution = station.GetComponent<StationConfigurationCaution>();
+        if (caution != null) caution.enabled = false;
     }
 
     void OnEnable()
     {
-        nextRefresh = 0f;
-        RefreshVisibility();
+        enabled = false;
+    }
+
+    void OnDisable()
+    {
+        if (indicator != null) Destroy(indicator);
+        indicator = null;
     }
 
     void Update()
@@ -295,14 +288,6 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         if (!HasConfiguration())
         {
             details = "NOT CONFIGURED\nPlease left click on station.";
-            return true;
-        }
-        if (TryGetLowStockItem(out ItemDefinition lowItem, out int stock))
-        {
-            string item = !string.IsNullOrEmpty(lowItem.itemName) ? lowItem.itemName : lowItem.name;
-            details = stock <= 0
-                ? item.ToUpperInvariant() + " OUT OF STOCK\nOrder more stock."
-                : item.ToUpperInvariant() + " LOW (" + stock + " LEFT)\nOrder more stock.";
             return true;
         }
         details = "";
@@ -357,44 +342,6 @@ internal sealed class StationConfigurationCaution : MonoBehaviour
         if (freezer != null) return freezer.HasItemSelected;
 
         return true;
-    }
-
-    bool TryGetLowStockItem(out ItemDefinition item, out int stock)
-    {
-        item = null;
-        stock = 0;
-        KitchenInventory inventory = KitchenInventory.Instance;
-        if (inventory == null) return false;
-
-        PantryStation pantry = GetComponent<PantryStation>();
-        if (pantry != null)
-        {
-            int threshold = Mathf.Max(0, pantry.lowStockWarningThreshold);
-            if (IsLow(pantry.selectedItem, threshold, inventory, out stock))
-            {
-                item = pantry.selectedItem;
-                return !OnboardingTutorial.BlocksProgression;
-            }
-            return false;
-        }
-
-        FreezerStation freezer = GetComponent<FreezerStation>();
-        if (freezer == null || !IsLow(freezer.selectedItem,
-                Mathf.Max(0, freezer.lowStockWarningThreshold), inventory, out stock))
-            return false;
-        item = freezer.selectedItem;
-        // During onboarding, stock is empty until the later buy-ingredients step.
-        // Keep the yellow icon for missing selections only.
-        return !OnboardingTutorial.BlocksProgression;
-    }
-
-    static bool IsLow(ItemDefinition candidate, int threshold, KitchenInventory inventory,
-        out int stock)
-    {
-        stock = 0;
-        if (candidate == null) return false;
-        stock = inventory.GetCount(candidate);
-        return stock <= threshold;
     }
 
     GameObject CreateIndicator()

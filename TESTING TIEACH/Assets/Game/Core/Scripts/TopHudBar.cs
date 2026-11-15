@@ -43,6 +43,8 @@ public class TopHudBar : MonoBehaviour
     int displayedStoreReputationDailyTasks = -1;
     int displayedStoreReputationMilestones = -1;
     float nextStoreReputationRefresh;
+    int appliedScreenWidth;
+    int appliedScreenHeight;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -61,6 +63,13 @@ public class TopHudBar : MonoBehaviour
         EnsureUtilityControls();
     }
 
+    void Start()
+    {
+        // MainHudTabs finishes its scene setup in Awake. Reapply once here so
+        // the Gus and Guidebook controls can align beside the visible tabs.
+        ApplyFitLayout();
+    }
+
     void Update()
     {
         RectTransform barRect = transform as RectTransform;
@@ -70,7 +79,9 @@ public class TopHudBar : MonoBehaviour
             && Mathf.Abs(barRect.rect.height - CompactBarHeight) > 0.5f;
         bool backdropHeightMismatch = connectedBackdrop != null
             && Mathf.Abs(connectedBackdrop.rect.height - CompactBarHeight * HudScale) > 0.5f;
-        if (barHeightMismatch || backdropHeightMismatch)
+        bool screenSizeChanged = appliedScreenWidth != Screen.width
+            || appliedScreenHeight != Screen.height;
+        if (barHeightMismatch || backdropHeightMismatch || screenSizeChanged)
             ApplyFitLayout();
 
         if (money == null)
@@ -211,13 +222,14 @@ public class TopHudBar : MonoBehaviour
                 new Vector2(168f, -8f), new Vector2(76f, 44f));
         }
 
+        float utilityStartX = GetUtilityStartAfterNavigation(rt);
         var gusHelpSection = transform.Find(TopHudUtilityControls.GusHelpSectionName) as RectTransform;
         if (gusHelpSection != null)
         {
             var le = gusHelpSection.GetComponent<LayoutElement>() ?? gusHelpSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
             PositionSection(gusHelpSection, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(14f, -8f), new Vector2(42f, 42f));
+                new Vector2(utilityStartX, -8f), new Vector2(42f, 42f));
         }
 
         var guidebookSection = transform.Find(TopHudUtilityControls.GuidebookSectionName) as RectTransform;
@@ -226,7 +238,7 @@ public class TopHudBar : MonoBehaviour
             var le = guidebookSection.GetComponent<LayoutElement>() ?? guidebookSection.gameObject.AddComponent<LayoutElement>();
             le.ignoreLayout = true;
             PositionSection(guidebookSection, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(70f, -8f), new Vector2(42f, 42f));
+                new Vector2(utilityStartX + 50f, -8f), new Vector2(42f, 42f));
         }
 
         var timeSection = transform.Find(TimeSectionName) as RectTransform;
@@ -293,6 +305,9 @@ public class TopHudBar : MonoBehaviour
             PositionSection(noticeSection, new Vector2(1f, 1f), new Vector2(1f, 1f),
                 new Vector2(-16f, -8f), new Vector2(92f, 44f));
         }
+
+        appliedScreenWidth = Screen.width;
+        appliedScreenHeight = Screen.height;
     }
 
     static void EnsureConnectedBackdrop(Transform canvasTransform, float height)
@@ -330,6 +345,23 @@ public class TopHudBar : MonoBehaviour
         section.pivot = pivot;
         section.anchoredPosition = position;
         section.sizeDelta = size;
+    }
+
+    static float GetUtilityStartAfterNavigation(RectTransform barRect)
+    {
+        if (barRect == null) return 14f;
+        MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        Transform lastNavigationTab = tabs != null
+            ? (tabs.BusinessTabTransform ?? tabs.InventoryTabTransform)
+            : null;
+        RectTransform tabRect = lastNavigationTab as RectTransform;
+        if (tabRect == null) return 14f;
+
+        Vector3[] corners = new Vector3[4];
+        tabRect.GetWorldCorners(corners);
+        Vector3 localRight = barRect.InverseTransformPoint(corners[2]);
+        float positionAfterTab = localRight.x - barRect.rect.xMin + 8f;
+        return Mathf.Max(14f, positionAfterTab);
     }
 
     public static void ApplyHudPanelScale(RectTransform panel)

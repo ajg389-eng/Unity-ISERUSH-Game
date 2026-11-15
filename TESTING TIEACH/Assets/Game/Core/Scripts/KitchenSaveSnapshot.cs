@@ -6,8 +6,9 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 45;
+    public const int CurrentVersion = 50;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int supplierCapacityTierIndex;
     public int totalWorkersHired;
     public string activeMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
@@ -36,6 +37,12 @@ public class KitchenSaveSnapshot
     public bool milestoneOneBottleneckLessonDone;
     public bool milestoneOneAnalyticsLessonDone;
     public bool activeMilestoneShiftObjectives;
+    public int gusQuestionScheduledDay, gusQuestionIndex = -1;
+    public float gusQuestionScheduledMinute;
+    public bool gusQuestionAskedThisShift, gusQuestionPending;
+    public float[] gusQuestionScheduledMinutes = Array.Empty<float>();
+    public int[] gusQuestionOrder = Array.Empty<int>();
+    public int gusQuestionCursor, gusQuestionPendingIndex = -1;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
@@ -75,6 +82,19 @@ public class KitchenSaveSnapshot
         var clock = GameTimeManager.Instance;
         s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
         s.shiftPlanningState = ShiftPlanningUI.CaptureSaveState();
+        GusShiftQuestionManager questionManager = GusShiftQuestionManager.Instance;
+        if (questionManager != null)
+        {
+            s.gusQuestionScheduledDay = questionManager.ScheduledDayForSave;
+            s.gusQuestionScheduledMinute = questionManager.ScheduledMinuteForSave;
+            s.gusQuestionIndex = questionManager.QuestionIndexForSave;
+            s.gusQuestionAskedThisShift = questionManager.AskedThisShiftForSave;
+            s.gusQuestionPending = questionManager.QuestionPendingForSave;
+            s.gusQuestionScheduledMinutes = questionManager.ScheduledMinutesForSave;
+            s.gusQuestionOrder = questionManager.QuestionOrderForSave;
+            s.gusQuestionCursor = questionManager.QuestionCursorForSave;
+            s.gusQuestionPendingIndex = questionManager.QuestionIndexForSave;
+        }
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
         var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
         s.tutorialComplete = OnboardingTutorial.IsComplete;
@@ -227,6 +247,7 @@ public class KitchenSaveSnapshot
             for (int i=0;i<objects.Count;i++) { var node=objects[i].GetComponent<StationNode>(); if(node!=null) s.equipment[i].output=objects.IndexOf(node.outputTarget); }
         }
         var kitchen=KitchenInventory.Instance;
+        if (kitchen != null) s.supplierCapacityTierIndex = kitchen.SupplierCapacityTierIndex;
         if(kitchen!=null) foreach(var entry in kitchen.stock) if(entry.item!=null) s.ingredients.Add(new Stock
         {
             item = entry.item.name,
@@ -477,11 +498,33 @@ public class KitchenSaveSnapshot
         if(KitchenInventory.Instance!=null) {
             KitchenInventory.Instance.ClearAllStock();
             KitchenInventory.Instance.ClearAllSupplySettings();
+            int restoredSupplierTier = supplierCapacityTierIndex;
+            if (version < 50)
+            {
+                // Old saves allowed independent ingredient rates. Preserve their
+                // effective total by inferring the smallest matching shared tier.
+                int savedRateTotal = 0;
+                foreach (Stock entry in ingredients)
+                    if (entry != null) savedRateTotal += Mathf.Max(0, entry.supplyRatePerMinute);
+                int[] capacities = { 10, 20, 30, 40, 60, 80 };
+                int lastUnlockedTier = MilestoneFeatures.HasReached(MilestoneFeatures.SystemsIntegration) ? 5
+                    : MilestoneFeatures.HasReached(MilestoneFeatures.QualityAndReliability) ? 3 : 2;
+                for (int i = 0; i <= lastUnlockedTier; i++)
+                    if (capacities[i] >= savedRateTotal)
+                    {
+                        restoredSupplierTier = i;
+                        break;
+                    }
+                if (savedRateTotal > capacities[lastUnlockedTier])
+                    restoredSupplierTier = lastUnlockedTier;
+            }
+            KitchenInventory.Instance.RestoreSupplierCapacityTier(restoredSupplierTier);
             foreach(var entry in ingredients) if(definitions.TryGetValue(entry.item,out var item)) {
                 KitchenInventory.Instance.AddStock(item,entry.count);
                 KitchenInventory.Instance.RestoreSupplySettings(item, entry.supplyRatePerMinute,
                     entry.supplyUnitProgress, entry.supplyCostRemainder);
             }
+            KitchenInventory.Instance.NormalizeConfiguredSupplyRatesToCapacity();
         }
         IngredientDeliveryService.Instance?.RestoreSaveState(ingredientShipments, definitions);
         var staff=new List<KitchenEmployee>();
@@ -626,6 +669,12 @@ public class KitchenSaveSnapshot
         // Move old layout-improvement checkpoints past the added customer step.
         if (version < 44 && !tutorialComplete && restoredTutorialStep >= 4)
             restoredTutorialStep++;
+        // Version 46 adds a Business overview before the shift-start lesson.
+        if (version < 46 && !tutorialComplete && restoredTutorialStep >= 2)
+            restoredTutorialStep++;
+        // Version 47 merges the non-interactive kitchen intro into the movement step.
+        if (version < 47 && !tutorialComplete && restoredTutorialStep >= 1)
+            restoredTutorialStep--;
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
@@ -700,6 +749,14 @@ public class KitchenSaveSnapshot
         // Apply all saved report values first so the EOD panel reads the checkpoint,
         // not whatever statistics happened to be in memory before this load.
         if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
+        if (version >= 49)
+            GusShiftQuestionManager.RestoreState(gusQuestionScheduledDay,
+                gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex);
+        else if (version >= 48)
+            GusShiftQuestionManager.RestoreLegacyState(gusQuestionScheduledDay,
+                gusQuestionIndex, gusQuestionAskedThisShift, gusQuestionPending);
+        else
+            GusShiftQuestionManager.RestoreState(0, null, null, 0, -1);
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
         if (placer != null)

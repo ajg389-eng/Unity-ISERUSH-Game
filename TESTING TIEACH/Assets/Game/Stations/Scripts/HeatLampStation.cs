@@ -60,10 +60,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     [Header("Optional UI")]
     [Tooltip("Optional TMP label if you want a custom HUD readout.")]
     public TextMeshProUGUI statusLabel;
-    [Tooltip("World position of the supply-shortfall warning above the lamp before it is projected to the UI overlay.")]
-    public Vector3 cautionIndicatorOffset = new Vector3(0f, 2.5f, 0f);
-    [Tooltip("World-space width and height used to size the caution indicator on screen.")]
-    public float cautionIndicatorSize = 0.85f;
 
     [Header("Food display")]
     [Tooltip("Finished burger model shown on an occupied Pickup Station tile.")]
@@ -84,13 +80,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     int totalWasted;
     int totalDelivered;
     int totalSold;
-    GameObject cautionIndicator;
-    RectTransform cautionIndicatorRect;
-    TextMeshProUGUI cautionMessage;
-    CanvasGroup cautionMessageGroup;
-    float cautionMessageShownAt = float.NegativeInfinity;
-    float nextCautionRefresh;
-    Camera mainCamera;
     Transform foodDisplayRoot;
     readonly List<GameObject> foodDisplayObjects = new List<GameObject>();
     readonly List<Transform> foodDisplaySlots = new List<Transform>();
@@ -170,8 +159,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         activeStations.Remove(this);
         if (Instance == this)
             Instance = null;
-        if (cautionIndicator != null)
-            Destroy(cautionIndicator);
     }
 
     /// <summary>
@@ -291,49 +278,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         ExpireMeals();
         if (PrunePickupQueue())
             RefreshPickupQueueTargets();
-        if (Time.unscaledTime >= nextCautionRefresh)
-        {
-            nextCautionRefresh = Time.unscaledTime + 0.5f;
-            RefreshCautionIndicator();
-        }
-        HandleCautionClick();
-        UpdateCautionMessageFade();
-    }
-
-    void LateUpdate()
-    {
-        if (cautionIndicator == null || !cautionIndicator.activeSelf) return;
-        UpdateCautionIndicatorTransform();
-    }
-
-    void UpdateCautionIndicatorTransform()
-    {
-        if (cautionIndicator == null) return;
-
-        if (mainCamera == null)
-            mainCamera = Camera.main;
-        Camera cam = mainCamera;
-        if (cam == null) return;
-
-        // Render the warning in a screen-space overlay so world geometry cannot
-        // depth-occlude the icon or its message. Keep it anchored to the same
-        // world point and preserve its projected world size.
-        RectTransform indicator = cautionIndicatorRect;
-        Vector3 worldPosition = transform.position + cautionIndicatorOffset;
-        Vector3 screenPosition = cam.WorldToScreenPoint(worldPosition);
-        Vector3 screenEdge = cam.WorldToScreenPoint(
-            worldPosition + cam.transform.right * Mathf.Max(0.1f, cautionIndicatorSize));
-        float screenSize = Vector2.Distance(
-            new Vector2(screenPosition.x, screenPosition.y),
-            new Vector2(screenEdge.x, screenEdge.y));
-        RectTransform canvasRect = cautionIndicator.GetComponent<RectTransform>();
-        if (canvasRect != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                canvasRect, new Vector2(screenPosition.x, screenPosition.y), null, out Vector2 localPosition))
-            indicator.anchoredPosition = localPosition;
-        else
-            indicator.position = screenPosition;
-        indicator.localScale = Vector3.one * (Mathf.Max(1f, screenSize) / 100f);
-        indicator.rotation = Quaternion.identity;
     }
 
     public Vector3 GetInteractionPosition()
@@ -853,115 +797,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         return true;
     }
 
-    void RefreshCautionIndicator()
-    {
-        bool show = TryGetProductionShortfallDetails(out _);
-        if (show && cautionIndicator == null)
-            cautionIndicator = CreateCautionIndicator();
-        if (cautionIndicator != null)
-        {
-            UpdateCautionIndicatorTransform();
-            cautionIndicator.SetActive(show);
-        }
-    }
-
-    void HandleCautionClick()
-    {
-        if (cautionIndicator == null || !cautionIndicator.activeSelf || cautionIndicatorRect == null)
-            return;
-        if (!Input.GetMouseButtonDown(0)) return;
-
-        Camera cam = Camera.main;
-        if (cam == null || !RectTransformUtility.RectangleContainsScreenPoint(cautionIndicatorRect, Input.mousePosition, null))
-            return;
-        if (!TryGetProductionShortfallDetails(out string details))
-            return;
-
-        cautionMessage.text = details;
-        cautionMessageGroup.alpha = 1f;
-        cautionMessageGroup.gameObject.SetActive(true);
-        cautionMessageShownAt = Time.unscaledTime;
-    }
-
-    void UpdateCautionMessageFade()
-    {
-        if (cautionMessageGroup == null || !cautionMessageGroup.gameObject.activeSelf) return;
-        float age = Time.unscaledTime - cautionMessageShownAt;
-        if (age >= 5f)
-        {
-            cautionMessageGroup.alpha = 0f;
-            cautionMessageGroup.gameObject.SetActive(false);
-            return;
-        }
-        cautionMessageGroup.alpha = age <= 4f ? 1f : 1f - (age - 4f);
-    }
-
-    GameObject CreateCautionIndicator()
-    {
-        Texture2D texture = Resources.Load<Texture2D>("UI/HeatLampCaution");
-        if (texture == null)
-        {
-            Debug.LogWarning("Heat lamp caution icon was not found at Resources/UI/HeatLampCaution.", this);
-            return null;
-        }
-
-        var root = new GameObject("ProductionShortfallCaution", typeof(RectTransform), typeof(Canvas));
-
-        var canvas = root.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.overrideSorting = true;
-        // Keep the world warning above scene geometry, but below HUDs, menus,
-        // popups, and other screen-space UI.
-        canvas.sortingOrder = -100;
-
-        var contentObject = new GameObject("Indicator", typeof(RectTransform));
-        contentObject.transform.SetParent(root.transform, false);
-        var rect = contentObject.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = Vector2.one * 100f;
-        rect.localScale = Vector3.one * (Mathf.Max(0.1f, cautionIndicatorSize) / 100f);
-        cautionIndicatorRect = rect;
-
-        var imageObject = new GameObject("Icon", typeof(RectTransform), typeof(RawImage));
-        imageObject.transform.SetParent(contentObject.transform, false);
-        var imageRect = imageObject.GetComponent<RectTransform>();
-        imageRect.anchorMin = Vector2.zero;
-        imageRect.anchorMax = Vector2.one;
-        imageRect.offsetMin = Vector2.zero;
-        imageRect.offsetMax = Vector2.zero;
-
-        var image = imageObject.GetComponent<RawImage>();
-        image.texture = texture;
-        image.raycastTarget = false;
-
-        var messageObject = new GameObject("ShortfallMessage", typeof(RectTransform), typeof(CanvasGroup), typeof(TextMeshProUGUI));
-        messageObject.transform.SetParent(contentObject.transform, false);
-        var messageRect = messageObject.GetComponent<RectTransform>();
-        messageRect.anchorMin = new Vector2(0.5f, 1f);
-        messageRect.anchorMax = new Vector2(0.5f, 1f);
-        messageRect.pivot = new Vector2(0.5f, 0f);
-        messageRect.anchoredPosition = new Vector2(0f, 12f);
-        messageRect.sizeDelta = new Vector2(360f, 95f);
-
-        cautionMessageGroup = messageObject.GetComponent<CanvasGroup>();
-        cautionMessageGroup.alpha = 0f;
-        cautionMessageGroup.interactable = false;
-        cautionMessageGroup.blocksRaycasts = false;
-
-        cautionMessage = messageObject.GetComponent<TextMeshProUGUI>();
-        cautionMessage.fontSize = 25f;
-        cautionMessage.fontStyle = FontStyles.Bold;
-        cautionMessage.alignment = TextAlignmentOptions.Bottom;
-        cautionMessage.color = Color.white;
-        cautionMessage.outlineColor = new Color32(35, 38, 40, 255);
-        cautionMessage.outlineWidth = 0.28f;
-        cautionMessage.enableWordWrapping = true;
-        cautionMessage.raycastTarget = false;
-        messageObject.SetActive(false);
-        GameUITheme.ApplyToCanvas(canvas);
-        return root;
-    }
-
     /// <summary>Full menu demand at this pickup point, including worker-delivered drinks.</summary>
     public string GetCustomerDemandRateDisplay()
     {
@@ -1101,9 +936,6 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         totalWasted = 0;
         totalDelivered = 0;
         totalSold = 0;
-        cautionMessageShownAt = float.NegativeInfinity;
-        if (cautionIndicator != null) cautionIndicator.SetActive(false);
-        if (cautionMessageGroup != null) cautionMessageGroup.alpha = 0f;
         foreach (CustomerAI customer in waiting)
             if (customer != null) customer.OnPickupStationUnavailable(this);
         RefreshStatusLabel();

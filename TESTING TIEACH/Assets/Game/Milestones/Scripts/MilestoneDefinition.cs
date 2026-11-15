@@ -8,6 +8,16 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "MilestoneDefinition", menuName = "ISE/Milestone Definition")]
 public class MilestoneDefinition : ScriptableObject
 {
+    [System.Serializable]
+    public sealed class ShiftQuestion
+    {
+        public string questionId;
+        [TextArea(2, 4)] public string prompt;
+        [TextArea(1, 2)] public string[] answers = System.Array.Empty<string>();
+        [Min(0)] public int correctAnswerIndex;
+        [TextArea(2, 4)] public string explanation;
+    }
+
     [Tooltip("Unique id (e.g. tutorial, milestone_01).")]
     public string milestoneId;
 
@@ -34,6 +44,9 @@ public class MilestoneDefinition : ScriptableObject
 
     [Tooltip("Optional shared mission list asset. Used when missions list is empty.")]
     public MissionDatabase missionDatabase;
+
+    [Tooltip("Gus can ask one randomly selected question from this list during each shift in this milestone.")]
+    public List<ShiftQuestion> shiftQuestions = new List<ShiftQuestion>();
 
     // Legacy serialized field kept to read existing project assets. Progression ignores it.
     [HideInInspector]
