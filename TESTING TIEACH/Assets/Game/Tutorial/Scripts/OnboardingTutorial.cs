@@ -622,7 +622,7 @@ public class OnboardingTutorial : MonoBehaviour
             "A customer will enter at the door. Follow them to the register, then to Pickup, and out of the restaurant.",
             "Next", Highlight.None, liveCustomer: true, requireCustomerJourney: true),
         new Step("Improve the layout",
-            "In the <b>Build Menu</b>, click a station and drag it to shorten worker travel. Press <b>R</b> to rotate it. Reach the output target below.",
+            "Open <b>Build</b>, select the highlighted station, click <b>Move</b>, then click a new tile. Reduce worker travel and reach the output target below.",
             "Finish", Highlight.None, requireOptimizedLayout: true),
         new Step("Identify a bottleneck",
             "It is noon. Open <b>Business</b> and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
@@ -640,7 +640,7 @@ public class OnboardingTutorial : MonoBehaviour
         "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
         "Follow the worker through the process. Watch the burger arrive at Pickup.",
         "Follow the customer from the door. See how they order, collect their burger, and leave.",
-        "Now improve the line. In <b>Build</b>, move an existing station to shorten worker travel and raise predicted output to the target below."
+        "Open <b>Build</b>, select the highlighted station, click <b>Move</b>, then click a new tile. Reduce worker travel and reach the output target below."
     };
 
     static readonly string[] GusDialogue = CompactTutorialText;
@@ -1771,6 +1771,7 @@ public class OnboardingTutorial : MonoBehaviour
             && !(running && (Steps[stepIndex].requireWorkerDragToFlow
                 || Steps[stepIndex].requireRecipes
                 || Steps[stepIndex].requireHamburger
+                || Steps[stepIndex].requireOptimizedLayout
                 || Steps[stepIndex].requireShiftStarted
                 || Steps[stepIndex].requireTimeControlInteractions
                 || Steps[stepIndex].requireAnalyticsScreen));
@@ -3077,6 +3078,85 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
+    void RefreshLayoutTutorialHighlight()
+    {
+        InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inventory == null || !inventory.IsPanelOpen)
+        {
+            ClearHighlight();
+            SetTutorialBodyText("Open <b>Build</b> to reposition a station and improve the production line.");
+            HighlightHudButton("InventoryButton");
+            return;
+        }
+
+        BuildPlacer placer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+        if (placer == null)
+        {
+            SetTutorialBodyText("In <b>Build</b>, select a station, click <b>Move</b>, then click its new tile.");
+            return;
+        }
+
+        GameObject moveTarget = FindLayoutTutorialMoveTarget();
+        bool targetSelected = false;
+        for (int i = 0; moveTarget != null && i < placer.SelectedObjects.Count; i++)
+            if (placer.SelectedObjects[i] == moveTarget)
+            {
+                targetSelected = true;
+                break;
+            }
+        BuildStationActionBar actionBar = FindFirstObjectByType<BuildStationActionBar>(
+            FindObjectsInactive.Include);
+
+        if (!inheritedStationMoved && placer.IsDragging)
+        {
+            SetTutorialBodyText("Move the station preview to an open tile, then click to place it. Place stations closer together to reduce worker travel.");
+            ClearHighlight();
+            if (actionBar != null && actionBar.PlacementInstructionTarget != null)
+                FocusTutorialControl(actionBar.PlacementInstructionTarget);
+            return;
+        }
+
+        if (!inheritedStationMoved && targetSelected)
+        {
+            SetTutorialBodyText("Click <b>Move</b>, then click an open tile to place the station. Shorter distances reduce worker travel.");
+            ClearHighlight();
+            if (actionBar != null && actionBar.MoveButton != null)
+                FocusTutorialControl(actionBar.MoveButton);
+            return;
+        }
+
+        if (!inheritedStationMoved)
+        {
+            ClearHighlight();
+            Transform stationTarget = moveTarget != null ? moveTarget.transform : null;
+            SetTutorialBodyText(stationTarget != null
+                ? "Click the highlighted station once to select it. Then use <b>Move</b> and click an open tile."
+                : "Select a station, click <b>Move</b>, then click an open tile. Shorter distances reduce worker travel.");
+            if (stationTarget != null)
+            {
+                Highlight kind = moveTarget.GetComponentInChildren<AssemblyStation>(true) != null
+                    ? Highlight.Assembly : Highlight.Grill;
+                UpdateHighlight(kind);
+                calloutTarget = null;
+            }
+            return;
+        }
+
+        ClearHighlight();
+        SetTutorialBodyText("Station moved. Check the output target below, then adjust the layout until predicted output reaches it.");
+    }
+
+    GameObject FindLayoutTutorialMoveTarget()
+    {
+        Component station = FindTutorialPlacedStation<AssemblyStation>();
+        PlacedBuildItem placed = station != null ? station.GetComponentInParent<PlacedBuildItem>() : null;
+        if (placed != null) return placed.gameObject;
+
+        station = FindTutorialPlacedStation<GrillStation>();
+        placed = station != null ? station.GetComponentInParent<PlacedBuildItem>() : null;
+        return placed != null ? placed.gameObject : null;
+    }
+
     string GetFreezerWalkthroughText(FreezerWalkthroughPhase phase)
     {
         switch (phase)
@@ -3268,6 +3348,12 @@ public class OnboardingTutorial : MonoBehaviour
                 HighlightHudButton("ManagementButton");
             else if (HasSelectedProductionStation() && stationManagement.stationPopup != null)
                 calloutTarget = stationManagement.stationPopup.transform as RectTransform;
+            return;
+        }
+
+        if (step.requireOptimizedLayout)
+        {
+            RefreshLayoutTutorialHighlight();
             return;
         }
 

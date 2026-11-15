@@ -2957,6 +2957,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
 
     public RectTransform PlacementInstructionTarget => placementInstructionActive && instructionPanel != null
         ? instructionPanel.transform as RectTransform : null;
+    public Button MoveButton => moveButton;
 
     public static BuildStationActionBar EnsureFor(BuildPlacer owner)
     {
