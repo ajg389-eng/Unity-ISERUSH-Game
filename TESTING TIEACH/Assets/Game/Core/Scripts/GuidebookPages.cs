@@ -49,14 +49,14 @@ public static class GuidebookPages
             "<b>The problem</b>\nLow output can come from missing inputs, station processing, worker transfers, travel, or Pickup space. The slowest individual station is not always the constraint, because parallel branches can combine.\n\n" +
             "<b>ISE idea</b>\nA constraint is the part that limits the whole system's completed output. Diagnose the cause before changing capacity.\n\n" +
             "<b>In ISE Rush</b>\nStart with delivered output and trace backward through the recipe and its queues.\n\n" +
-            "<b>Try this</b>\nFind the first step where items stop accumulating at the pace the next step needs."),
+            "<b>Try this</b>\nFind the step that can't keep up."),
         new Page(
             "Flow",
             "Read queues and work in process",
             "<b>The problem</b>\nA growing queue means work is arriving faster than the next step can handle it. Extra production can simply create more waiting food.\n\n" +
             "<b>ISE idea</b>\nWork in process (WIP) is work waiting or being processed. Queue location helps show where flow is restricted.\n\n" +
             "<b>In ISE Rush</b>\nRegister queues are customers waiting to order. Pickup queues are ordered products waiting to be collected. Station buffers show items waiting between operations.\n\n" +
-            "<b>Try this</b>\nWhen a queue grows, inspect the next step's capacity, inputs, and available space before increasing upstream output."),
+            "<b>Try this</b>\nCheck downstream capacity before boosting upstream output."),
         new Page(
             "Work Design",
             "Make work easier to perform",

@@ -9,6 +9,8 @@ using TMPro;
 public class GuidebookUI : MonoBehaviour
 {
     const string PrefSpreadIndex = "Guidebook.CurrentSpread";
+    const string IllustrationResourcesPath = "GuidebookIllustrations/";
+    const float LessonIllustrationHeight = 154f;
     static readonly Color CoverColor = GameUITheme.Backdrop;
     static readonly Color SpineColor = GameUITheme.Edge;
     static readonly Color PageColor = GameUITheme.Panel;
@@ -16,14 +18,17 @@ public class GuidebookUI : MonoBehaviour
     static readonly Color MutedInk = GameUITheme.TextSecondary;
     static readonly Color NavColor = GameUITheme.Surface;
     static readonly Color NavText = GameUITheme.TextPrimary;
+    static readonly Dictionary<string, Sprite> IllustrationCache = new Dictionary<string, Sprite>();
 
     GameObject root;
     TextMeshProUGUI leftChapter;
     TextMeshProUGUI leftTitle;
     TextMeshProUGUI leftBody;
+    Image leftIllustration;
     TextMeshProUGUI rightChapter;
     TextMeshProUGUI rightTitle;
     TextMeshProUGUI rightBody;
+    Image rightIllustration;
     TextMeshProUGUI folioText;
     Button prevButton;
     Button nextButton;
@@ -132,7 +137,8 @@ public class GuidebookUI : MonoBehaviour
         bookRt.anchorMin = new Vector2(0.5f, 0.5f);
         bookRt.anchorMax = new Vector2(0.5f, 0.5f);
         bookRt.pivot = new Vector2(0.5f, 0.5f);
-        bookRt.sizeDelta = new Vector2(1240f, 760f);
+        bookRt.sizeDelta = new Vector2(1240f, 780f);
+        bookRt.anchoredPosition = new Vector2(0f, -8f);
         book.GetComponent<Image>().color = CoverColor;
         var eatClicks = book.GetComponent<Button>();
         eatClicks.transition = Selectable.Transition.None;
@@ -148,7 +154,7 @@ public class GuidebookUI : MonoBehaviour
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        BuildPage(inner.transform, "LeftPage", out leftChapter, out leftTitle, out leftBody);
+        BuildPage(inner.transform, "LeftPage", out leftChapter, out leftTitle, out leftBody, out leftIllustration);
         var spine = new GameObject("Spine", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         spine.transform.SetParent(inner.transform, false);
         spine.GetComponent<Image>().color = SpineColor;
@@ -158,7 +164,7 @@ public class GuidebookUI : MonoBehaviour
         spineLe.flexibleWidth = 0f;
         spineLe.minHeight = 0f;
         spineLe.flexibleHeight = 1f;
-        BuildPage(inner.transform, "RightPage", out rightChapter, out rightTitle, out rightBody);
+        BuildPage(inner.transform, "RightPage", out rightChapter, out rightTitle, out rightBody, out rightIllustration);
 
         prevButton = CreateNavButton(book.transform, "PrevButton", "‹", new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-14f, 0f));
         prevButton.onClick.AddListener(() => Turn(-1));
@@ -181,11 +187,12 @@ public class GuidebookUI : MonoBehaviour
         folioRt.anchorMin = new Vector2(0.5f, 0f);
         folioRt.anchorMax = new Vector2(0.5f, 0f);
         folioRt.pivot = new Vector2(0.5f, 0f);
-        folioRt.anchoredPosition = new Vector2(0f, 16f);
+        folioRt.anchoredPosition = new Vector2(0f, 8f);
         folioRt.sizeDelta = new Vector2(400f, 28f);
     }
 
-    void BuildPage(Transform parent, string name, out TextMeshProUGUI chapter, out TextMeshProUGUI title, out TextMeshProUGUI body)
+    void BuildPage(Transform parent, string name, out TextMeshProUGUI chapter, out TextMeshProUGUI title,
+        out TextMeshProUGUI body, out Image illustration)
     {
         var page = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
         page.transform.SetParent(parent, false);
@@ -201,8 +208,8 @@ public class GuidebookUI : MonoBehaviour
         pageLe.minHeight = 0f;
         pageLe.flexibleHeight = 1f;
         var vlg = page.GetComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(32, 32, 26, 26);
-        vlg.spacing = 10f;
+        vlg.padding = new RectOffset(32, 32, 20, 20);
+        vlg.spacing = 8f;
         vlg.childAlignment = TextAnchor.UpperLeft;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
@@ -225,10 +232,10 @@ public class GuidebookUI : MonoBehaviour
         scrollGo.transform.SetParent(page.transform, false);
         var scrollLe = scrollGo.GetComponent<LayoutElement>();
         scrollLe.flexibleHeight = 1f;
-        scrollLe.minHeight = 200f;
-        scrollLe.preferredHeight = 520f;
+        scrollLe.minHeight = 160f;
+        scrollLe.preferredHeight = 300f;
 
-        var content = new GameObject("Content", typeof(RectTransform), typeof(ContentSizeFitter));
+        var content = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
         content.transform.SetParent(scrollGo.transform, false);
         var contentRt = (RectTransform)content.transform;
         contentRt.anchorMin = new Vector2(0f, 1f);
@@ -237,17 +244,18 @@ public class GuidebookUI : MonoBehaviour
         contentRt.anchoredPosition = Vector2.zero;
         contentRt.sizeDelta = Vector2.zero;
         content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.spacing = 12f;
+        contentLayout.childAlignment = TextAnchor.UpperLeft;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
 
-        var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(ContentSizeFitter));
+        var bodyGo = new GameObject("Body", typeof(RectTransform), typeof(LayoutElement));
         bodyGo.transform.SetParent(content.transform, false);
-        Stretch((RectTransform)bodyGo.transform);
-        var bodyRt = (RectTransform)bodyGo.transform;
-        bodyRt.anchorMin = new Vector2(0f, 1f);
-        bodyRt.anchorMax = Vector2.one;
-        bodyRt.pivot = new Vector2(0.5f, 1f);
-        bodyRt.anchoredPosition = Vector2.zero;
-        bodyRt.sizeDelta = Vector2.zero;
-        bodyGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var bodyLe = bodyGo.GetComponent<LayoutElement>();
+        bodyLe.flexibleHeight = 0f;
 
         body = bodyGo.AddComponent<TextMeshProUGUI>();
         body.fontSize = 20f;
@@ -258,6 +266,19 @@ public class GuidebookUI : MonoBehaviour
         body.richText = true;
         body.raycastTarget = false;
         if (TMP_Settings.defaultFontAsset != null) body.font = TMP_Settings.defaultFontAsset;
+
+        // Keep the illustration in a dedicated footer slot. Placing it inside the
+        // scroll content caused long lessons to push it past the viewport and crop it.
+        var illustrationGo = new GameObject("LessonIllustration", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        illustrationGo.transform.SetParent(page.transform, false);
+        illustration = illustrationGo.GetComponent<Image>();
+        illustration.preserveAspect = true;
+        illustration.raycastTarget = false;
+        var illustrationLe = illustrationGo.GetComponent<LayoutElement>();
+        illustrationLe.minHeight = LessonIllustrationHeight;
+        illustrationLe.preferredHeight = LessonIllustrationHeight;
+        illustrationLe.flexibleHeight = 0f;
+        illustrationGo.SetActive(false);
 
         var scroll = scrollGo.GetComponent<ScrollRect>();
         scroll.horizontal = false;
@@ -348,9 +369,9 @@ public class GuidebookUI : MonoBehaviour
         var pages = GuidebookPages.All;
         int leftIndex = spreadIndex * 2;
         int rightIndex = leftIndex + 1;
-        ApplyPage(leftIndex < pages.Length ? pages[leftIndex] : default, leftChapter, leftTitle, leftBody,
+        ApplyPage(leftIndex < pages.Length ? pages[leftIndex] : default, leftChapter, leftTitle, leftBody, leftIllustration,
             leftIndex < pages.Length, focusedTermPageIndex == leftIndex ? focusedTerm : null);
-        ApplyPage(rightIndex < pages.Length ? pages[rightIndex] : default, rightChapter, rightTitle, rightBody,
+        ApplyPage(rightIndex < pages.Length ? pages[rightIndex] : default, rightChapter, rightTitle, rightBody, rightIllustration,
             rightIndex < pages.Length, focusedTermPageIndex == rightIndex ? focusedTerm : null);
 
         int shownLeft = leftIndex + 1;
@@ -399,22 +420,57 @@ public class GuidebookUI : MonoBehaviour
     }
 
     static void ApplyPage(GuidebookPages.Page page, TextMeshProUGUI chapter, TextMeshProUGUI title,
-        TextMeshProUGUI body, bool hasPage, string focusedTerm = null)
+        TextMeshProUGUI body, Image illustration, bool hasPage, string focusedTerm = null)
     {
         if (!hasPage)
         {
             chapter.text = "";
             title.text = "";
             body.text = "";
+            illustration.sprite = null;
+            illustration.gameObject.SetActive(false);
             return;
         }
 
         chapter.text = (page.chapter ?? "").ToUpperInvariant();
         title.text = page.title ?? "";
         body.text = GuidebookPages.HighlightGlossaryEntry(page.body ?? "", focusedTerm);
+        illustration.sprite = LoadLessonIllustration(page.chapter);
+        illustration.gameObject.SetActive(illustration.sprite != null);
         var scroll = body.GetComponentInParent<ScrollRect>();
         if (scroll != null)
             scroll.verticalNormalizedPosition = 1f;
+    }
+
+    static Sprite LoadLessonIllustration(string chapter)
+    {
+        string assetName;
+        switch (chapter)
+        {
+            case "ISE Loop": assetName = "ISELoop"; break;
+            case "Plan": assetName = "TaktTime"; break;
+            case "Diagnose": assetName = "DiagnoseBottleneck"; break;
+            case "Flow": assetName = "FlowQueue"; break;
+            case "Work Design": assetName = "WorkDesignRoute"; break;
+            case "Improve": assetName = "ImproveOneChange"; break;
+            default: return null;
+        }
+
+        if (IllustrationCache.TryGetValue(assetName, out Sprite cached))
+            return cached;
+
+        Texture2D texture = Resources.Load<Texture2D>(IllustrationResourcesPath + assetName);
+        if (texture == null)
+        {
+            Debug.LogWarning("Guidebook illustration was not found: " + assetName);
+            IllustrationCache[assetName] = null;
+            return null;
+        }
+
+        Sprite sprite = Sprite.Create(texture,
+            new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+        IllustrationCache[assetName] = sprite;
+        return sprite;
     }
 
     static Button CreateNavButton(Transform parent, string name, string label, Vector2 anchor, Vector2 pivot, Vector2 pos)
