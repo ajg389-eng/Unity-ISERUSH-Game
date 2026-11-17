@@ -551,7 +551,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "taskstab", "objectives", "dailytask"))
             return "Shows daily tasks and milestone service goals with their progress.";
         if (ContainsAny(identity, "analytics", "report", "performance"))
-            return "Opens Analytics to review orders, food delivered to pickup, service, and item reputation.";
+            return "Opens Analytics to review customer orders, food delivered to pickup, forecast demand, and predicted production.";
 
         if (ContainsAny(path, "registerpopup", "registerstation", "register"))
             return label.Equals("Enable", System.StringComparison.OrdinalIgnoreCase)

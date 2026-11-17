@@ -21,6 +21,14 @@ public sealed class ISEGlossaryLinkHandler : MonoBehaviour, IPointerClickHandler
         text.raycastTarget = true;
     }
 
+    public static void RefreshAllHighlights()
+    {
+        ISEGlossaryLinkHandler[] handlers = FindObjectsByType<ISEGlossaryLinkHandler>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < handlers.Length; i++)
+            if (handlers[i] != null) handlers[i].RefreshHighlight();
+    }
+
     void Awake()
     {
         targetText = GetComponent<TMP_Text>();
@@ -46,12 +54,7 @@ public sealed class ISEGlossaryLinkHandler : MonoBehaviour, IPointerClickHandler
         string term = linkId.Substring(LinkPrefix.Length).Trim();
         if (term.Length == 0) return;
 
-        MoneyManager money = FindFirstObjectByType<MoneyManager>();
-        if (money != null)
-        {
-            money.AddMoney(50);
-            Sfx.Play(SfxId.EarnMoney);
-        }
+        GuidebookUI.MarkGlossaryTermDiscovered(term);
 
         PauseMenuUI pauseMenu = PauseMenuUI.Instance;
         if (pauseMenu == null)
@@ -61,6 +64,16 @@ public sealed class ISEGlossaryLinkHandler : MonoBehaviour, IPointerClickHandler
             pauseMenu.OpenGuidebookTermFromHud(term);
             OnboardingTutorial.NotifyGlossaryTermClicked(term);
         }
+    }
+
+    void RefreshHighlight()
+    {
+        if (targetText == null) return;
+        string sourceText = ISEVocabularyHighlighter.RemoveHighlightMarkup(targetText.text);
+        if (string.IsNullOrEmpty(sourceText)) return;
+        int visibleCharacters = targetText.maxVisibleCharacters;
+        targetText.text = ISEVocabularyHighlighter.Highlight(sourceText);
+        targetText.maxVisibleCharacters = visibleCharacters;
     }
 
     bool TryGetVisibleLink(Vector2 screenPoint, Camera eventCamera, out int linkIndex)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -11,6 +12,9 @@ public class GuidebookUI : MonoBehaviour
     const string PrefSpreadIndex = "Guidebook.CurrentSpread";
     const string IllustrationResourcesPath = "GuidebookIllustrations/";
     const float LessonIllustrationHeight = 154f;
+    const int GlossaryTermReward = 50;
+    static readonly Regex NonGlossaryCharacters = new Regex("[^a-z0-9]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     static readonly Color CoverColor = GameUITheme.Backdrop;
     static readonly Color SpineColor = GameUITheme.Edge;
     static readonly Color PageColor = GameUITheme.Panel;
@@ -19,6 +23,8 @@ public class GuidebookUI : MonoBehaviour
     static readonly Color NavColor = GameUITheme.Surface;
     static readonly Color NavText = GameUITheme.TextPrimary;
     static readonly Dictionary<string, Sprite> IllustrationCache = new Dictionary<string, Sprite>();
+    static readonly HashSet<string> DiscoveredGlossaryTerms = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+    static readonly HashSet<string> ClaimedGlossaryTermRewards = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
 
     GameObject root;
     TextMeshProUGUI leftChapter;
@@ -32,15 +38,99 @@ public class GuidebookUI : MonoBehaviour
     TextMeshProUGUI folioText;
     Button prevButton;
     Button nextButton;
+    Button leftRewardButton;
+    Button rightRewardButton;
     readonly List<Button> categoryButtons = new List<Button>();
     readonly List<int> categoryPageIndexes = new List<int>();
     int spreadIndex;
-    int selectedBookmarkPageIndex = -1;
     int focusedTermPageIndex = -1;
     string focusedTerm;
     bool visible;
 
     public bool IsOpen => visible;
+
+    public static bool IsGlossaryTermDiscovered(string term)
+    {
+        string normalized = NormalizeGlossaryTerm(term);
+        return normalized.Length > 0 && DiscoveredGlossaryTerms.Contains(normalized);
+    }
+
+    public static bool IsGlossaryTermRewardClaimed(string term)
+    {
+        string normalized = NormalizeGlossaryTerm(term);
+        return normalized.Length > 0 && ClaimedGlossaryTermRewards.Contains(normalized);
+    }
+
+    public static bool MarkGlossaryTermDiscovered(string term)
+    {
+        string normalized = NormalizeGlossaryTerm(term);
+        if (normalized.Length == 0 || !DiscoveredGlossaryTerms.Add(normalized)) return false;
+        ISEGlossaryLinkHandler.RefreshAllHighlights();
+        SaveGlossaryProgress();
+        return true;
+    }
+
+    public static List<string> CaptureDiscoveredGlossaryTerms()
+    {
+        return new List<string>(DiscoveredGlossaryTerms);
+    }
+
+    public static List<string> CaptureClaimedGlossaryTermRewards()
+    {
+        return new List<string>(ClaimedGlossaryTermRewards);
+    }
+
+    public static void RestoreGlossaryProgress(IEnumerable<string> discovered, IEnumerable<string> claimed)
+    {
+        DiscoveredGlossaryTerms.Clear();
+        ClaimedGlossaryTermRewards.Clear();
+        if (discovered != null)
+            foreach (string term in discovered)
+            {
+                string normalized = NormalizeGlossaryTerm(term);
+                if (normalized.Length > 0) DiscoveredGlossaryTerms.Add(normalized);
+            }
+        if (claimed != null)
+            foreach (string term in claimed)
+            {
+                string normalized = NormalizeGlossaryTerm(term);
+                if (normalized.Length > 0)
+                {
+                    DiscoveredGlossaryTerms.Add(normalized);
+                    ClaimedGlossaryTermRewards.Add(normalized);
+                }
+            }
+        ISEGlossaryLinkHandler.RefreshAllHighlights();
+    }
+
+    static string NormalizeGlossaryTerm(string term)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return string.Empty;
+        string normalized = NonGlossaryCharacters.Replace(term.ToLowerInvariant(), " ").Trim();
+        if (normalized == "starved") return "starvation";
+        if (normalized == "queuing") return "queue";
+        if (normalized == "processes") return "process";
+
+        string[] words = normalized.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            if (word.Length > 5 && word.EndsWith("ies", System.StringComparison.Ordinal))
+                words[i] = word.Substring(0, word.Length - 3) + "y";
+            else if (word.Length > 4 && word.EndsWith("s", System.StringComparison.Ordinal)
+                && !word.EndsWith("ss", System.StringComparison.Ordinal)
+                && !word.EndsWith("us", System.StringComparison.Ordinal)
+                && !word.EndsWith("is", System.StringComparison.Ordinal))
+                words[i] = word.Substring(0, word.Length - 1);
+        }
+        return string.Join(" ", words);
+    }
+
+    static void SaveGlossaryProgress()
+    {
+        GameSaveSlots.SaveGlossaryProgress(
+            CaptureDiscoveredGlossaryTerms(), CaptureClaimedGlossaryTermRewards());
+    }
 
     public static GuidebookUI Create(Transform parent)
     {
@@ -66,7 +156,6 @@ public class GuidebookUI : MonoBehaviour
         root.SetActive(true);
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
         spreadIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpreadIndex, 0), 0, maxSpread);
-        selectedBookmarkPageIndex = -1;
         Refresh();
     }
 
@@ -82,7 +171,6 @@ public class GuidebookUI : MonoBehaviour
                 continue;
 
             spreadIndex = Mathf.Clamp(i / 2, 0, Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1));
-            selectedBookmarkPageIndex = i;
             SaveCurrentSpread();
             Refresh();
             return;
@@ -154,7 +242,8 @@ public class GuidebookUI : MonoBehaviour
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = true;
 
-        BuildPage(inner.transform, "LeftPage", out leftChapter, out leftTitle, out leftBody, out leftIllustration);
+        BuildPage(inner.transform, "LeftPage", out leftChapter, out leftTitle, out leftBody,
+            out leftIllustration, out leftRewardButton);
         var spine = new GameObject("Spine", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         spine.transform.SetParent(inner.transform, false);
         spine.GetComponent<Image>().color = SpineColor;
@@ -164,7 +253,10 @@ public class GuidebookUI : MonoBehaviour
         spineLe.flexibleWidth = 0f;
         spineLe.minHeight = 0f;
         spineLe.flexibleHeight = 1f;
-        BuildPage(inner.transform, "RightPage", out rightChapter, out rightTitle, out rightBody, out rightIllustration);
+        BuildPage(inner.transform, "RightPage", out rightChapter, out rightTitle, out rightBody,
+            out rightIllustration, out rightRewardButton);
+        leftRewardButton.onClick.AddListener(ClaimFocusedTermReward);
+        rightRewardButton.onClick.AddListener(ClaimFocusedTermReward);
 
         prevButton = CreateNavButton(book.transform, "PrevButton", "‹", new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-14f, 0f));
         prevButton.onClick.AddListener(() => Turn(-1));
@@ -192,7 +284,7 @@ public class GuidebookUI : MonoBehaviour
     }
 
     void BuildPage(Transform parent, string name, out TextMeshProUGUI chapter, out TextMeshProUGUI title,
-        out TextMeshProUGUI body, out Image illustration)
+        out TextMeshProUGUI body, out Image illustration, out Button rewardButton)
     {
         var page = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
         page.transform.SetParent(parent, false);
@@ -287,6 +379,36 @@ public class GuidebookUI : MonoBehaviour
         scroll.viewport = (RectTransform)scrollGo.transform;
         scroll.content = contentRt;
         GameUITheme.ConfigureScroll(scroll);
+
+        rewardButton = CreateGlossaryRewardButton(page.transform);
+    }
+
+    static Button CreateGlossaryRewardButton(Transform parent)
+    {
+        var go = new GameObject("ClaimGlossaryReward", typeof(RectTransform), typeof(Image),
+            typeof(Button), typeof(LayoutElement));
+        go.transform.SetParent(parent, false);
+        LayoutElement layout = go.GetComponent<LayoutElement>();
+        layout.minHeight = layout.preferredHeight = 42f;
+        layout.flexibleHeight = 0f;
+        go.GetComponent<Image>().color = GameUITheme.Positive;
+        Button button = go.GetComponent<Button>();
+        button.targetGraphic = go.GetComponent<Image>();
+        ApplyButtonColors(button);
+        ColorBlock colors = button.colors;
+        colors.normalColor = GameUITheme.Positive;
+        colors.highlightedColor = GameUITheme.PositiveHover;
+        colors.pressedColor = GameUITheme.Accent;
+        colors.selectedColor = GameUITheme.PositiveHover;
+        colors.disabledColor = NavColor;
+        button.colors = colors;
+        TextMeshProUGUI label = CreateLabel(go.transform, "Label", "CLAIM $50 FIRST-READ REWARD",
+            15f, TextAlignmentOptions.Center, NavText);
+        Stretch(label.rectTransform, 8f, 2f, 8f, 2f);
+        label.fontStyle = FontStyles.Bold;
+        label.raycastTarget = false;
+        go.SetActive(false);
+        return button;
     }
 
     void Turn(int delta)
@@ -295,7 +417,6 @@ public class GuidebookUI : MonoBehaviour
         int next = Mathf.Clamp(spreadIndex + delta, 0, Mathf.Max(0, maxSpread));
         if (next == spreadIndex) return;
         spreadIndex = next;
-        selectedBookmarkPageIndex = -1;
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
         Refresh();
@@ -304,7 +425,6 @@ public class GuidebookUI : MonoBehaviour
     void JumpToPage(int pageIndex)
     {
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
-        selectedBookmarkPageIndex = Mathf.Clamp(pageIndex, 0, GuidebookPages.All.Length - 1);
         spreadIndex = Mathf.Clamp(pageIndex / 2, 0, maxSpread);
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
@@ -373,6 +493,8 @@ public class GuidebookUI : MonoBehaviour
             leftIndex < pages.Length, focusedTermPageIndex == leftIndex ? focusedTerm : null);
         ApplyPage(rightIndex < pages.Length ? pages[rightIndex] : default, rightChapter, rightTitle, rightBody, rightIllustration,
             rightIndex < pages.Length, focusedTermPageIndex == rightIndex ? focusedTerm : null);
+        RefreshGlossaryRewardButton(leftRewardButton, leftIndex);
+        RefreshGlossaryRewardButton(rightRewardButton, rightIndex);
 
         int shownLeft = leftIndex + 1;
         int shownRight = Mathf.Min(rightIndex + 1, pages.Length);
@@ -384,24 +506,52 @@ public class GuidebookUI : MonoBehaviour
         RefreshCategoryBookmarks(rightIndex);
     }
 
+    void RefreshGlossaryRewardButton(Button button, int pageIndex)
+    {
+        if (button == null) return;
+        bool show = !string.IsNullOrWhiteSpace(focusedTerm)
+            && focusedTermPageIndex == pageIndex
+            && GuidebookUI.IsGlossaryTermDiscovered(focusedTerm);
+        button.gameObject.SetActive(show);
+        if (!show) return;
+
+        bool claimed = GuidebookUI.IsGlossaryTermRewardClaimed(focusedTerm);
+        button.interactable = !claimed;
+        TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>();
+        if (label != null)
+            label.text = claimed ? "FIRST-READ REWARD CLAIMED" : "CLAIM $50 FIRST-READ REWARD";
+        Image image = button.GetComponent<Image>();
+        if (image != null) image.color = claimed ? NavColor : GameUITheme.Positive;
+    }
+
+    void ClaimFocusedTermReward()
+    {
+        if (string.IsNullOrWhiteSpace(focusedTerm)
+            || !GuidebookUI.IsGlossaryTermDiscovered(focusedTerm)
+            || GuidebookUI.IsGlossaryTermRewardClaimed(focusedTerm))
+            return;
+
+        MoneyManager money = FindFirstObjectByType<MoneyManager>();
+        if (money == null) return;
+        money.AddMoney(GlossaryTermReward);
+        ClaimedGlossaryTermRewards.Add(NormalizeGlossaryTerm(focusedTerm));
+        SaveGlossaryProgress();
+        GameSaveSlots.SaveActiveSlot();
+        Sfx.Play(SfxId.EarnMoney);
+        Refresh();
+    }
+
     void RefreshCategoryBookmarks(int visibleRightPage)
     {
         int visibleLeftPage = Mathf.Max(0, visibleRightPage - 1);
-        int focusPage = selectedBookmarkPageIndex >= visibleLeftPage && selectedBookmarkPageIndex <= visibleRightPage
-            ? selectedBookmarkPageIndex
-            : visibleRightPage;
-        int active = 0;
-        for (int i = 0; i < categoryPageIndexes.Count; i++)
-        {
-            if (categoryPageIndexes[i] <= focusPage)
-                active = i;
-        }
-
         for (int i = 0; i < categoryButtons.Count; i++)
         {
             Button button = categoryButtons[i];
             if (button == null) continue;
-            bool selected = i == active;
+            int chapterStart = categoryPageIndexes[i];
+            int chapterEnd = i + 1 < categoryPageIndexes.Count
+                ? categoryPageIndexes[i + 1] - 1 : GuidebookPages.All.Length - 1;
+            bool selected = chapterStart <= visibleRightPage && chapterEnd >= visibleLeftPage;
             if (button.targetGraphic != null)
                 button.targetGraphic.color = GameUITheme.Surface;
             // Keep button state tint neutral so Unity's transition colors cannot

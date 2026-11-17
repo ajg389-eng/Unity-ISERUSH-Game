@@ -52,8 +52,6 @@ public class CustomerAI : MonoBehaviour
     bool leaving;
     bool leavingImpatient;
     bool orderCompletionReported;
-    bool itemReputationFinalized;
-    readonly List<DeliveredItemQuality> deliveredItemQualities = new List<DeliveredItemQuality>();
     PartyCharacterRandomizer characterLook;
     int smilingFaceIndex = -1;
     int frowningFaceIndex = -1;
@@ -110,18 +108,6 @@ public class CustomerAI : MonoBehaviour
     public bool IsAtPickupQueueSlot => waitingForPickup && hasQueueSlot && phase == Phase.Waiting;
     /// <summary>True after the customer has ordered and is waiting at pickup.</summary>
     public bool IsWaitingForPickup => waitingForPickup && !leaving;
-
-    struct DeliveredItemQuality
-    {
-        public ItemDefinition item;
-        public float freshnessModifier;
-
-        public DeliveredItemQuality(ItemDefinition item, float freshnessModifier)
-        {
-            this.item = item;
-            this.freshnessModifier = freshnessModifier;
-        }
-    }
 
     /// <summary>
     /// Distance along <paramref name="forward"/> to the nearest customer
@@ -190,10 +176,8 @@ public class CustomerAI : MonoBehaviour
         public bool leaving;
         public bool leavingImpatient;
         public bool orderCompletionReported;
-        public bool itemReputationFinalized;
         public List<SavedOrderLine> order;
         public List<SavedOrderLine> originalOrder;
-        public List<SavedDeliveredItem> deliveredItems = new List<SavedDeliveredItem>();
     }
 
     [System.Serializable]
@@ -201,13 +185,6 @@ public class CustomerAI : MonoBehaviour
     {
         public string item;
         public int quantity;
-    }
-
-    [System.Serializable]
-    public class SavedDeliveredItem
-    {
-        public string item;
-        public float freshnessModifier;
     }
 
     float standY;
@@ -392,18 +369,9 @@ public class CustomerAI : MonoBehaviour
             leaving = leaving,
             leavingImpatient = leavingImpatient,
             orderCompletionReported = orderCompletionReported,
-            itemReputationFinalized = itemReputationFinalized,
             order = CaptureOrder(order),
             originalOrder = CaptureOrder(OriginalOrder)
         };
-
-        foreach (DeliveredItemQuality delivered in deliveredItemQualities)
-            if (delivered.item != null)
-                saved.deliveredItems.Add(new SavedDeliveredItem
-                {
-                    item = delivered.item.name,
-                    freshnessModifier = delivered.freshnessModifier
-                });
 
         return saved;
     }
@@ -455,20 +423,10 @@ public class CustomerAI : MonoBehaviour
         leaving = saved.leaving;
         leavingImpatient = saved.leavingImpatient;
         orderCompletionReported = saved.orderCompletionReported;
-        itemReputationFinalized = saved.itemReputationFinalized;
         returnSpawnPoint = saved.returnSpawnPoint;
         hasReturnSpawnPoint = saved.hasReturnSpawnPoint;
         reg = restoredRegister;
         pickupStation = null;
-        deliveredItemQualities.Clear();
-        if (saved.deliveredItems != null && definitions != null)
-            foreach (SavedDeliveredItem delivered in saved.deliveredItems)
-                if (delivered != null && !string.IsNullOrEmpty(delivered.item)
-                    && definitions.TryGetValue(delivered.item, out ItemDefinition deliveredItem)
-                    && deliveredItem != null)
-                    deliveredItemQualities.Add(new DeliveredItemQuality(
-                        deliveredItem, delivered.freshnessModifier));
-
         if (characterLook == null)
             characterLook = PartyCharacterRandomizer.EnsureOn(gameObject);
         if (characterLook != null)
@@ -521,8 +479,6 @@ public class CustomerAI : MonoBehaviour
         order = o != null ? o.Clone() : new CustomerOrder();
         OriginalOrder = order.Clone();
         orderCompletionReported = false;
-        itemReputationFinalized = false;
-        deliveredItemQualities.Clear();
         this.includeInOrderRate = includeInOrderRate;
         orderPlacementRecorded = false;
         OrderNumber = ++nextOrderNumber;
@@ -548,8 +504,6 @@ public class CustomerAI : MonoBehaviour
         salePrice = 0;
         orderRevealed = false;
         orderCompletionReported = false;
-        itemReputationFinalized = false;
-        deliveredItemQualities.Clear();
         includeInOrderRate = true;
         orderPlacementRecorded = false;
         StopPatienceMeter();
@@ -571,21 +525,9 @@ public class CustomerAI : MonoBehaviour
     {
         if (item == null || order == null) return false;
         if (!order.TryRemoveOne(item)) return false;
-        deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
         MissionProgressManager.Instance?.RecordCustomerPickupItem(item);
         RefreshOrderLabel();
         return true;
-    }
-
-    void FinalizeCompletedItemReputation()
-    {
-        if (itemReputationFinalized || !IsOrderFullyDelivered) return;
-        itemReputationFinalized = true;
-        CustomerOrderConfig config = ProductionManager.Instance != null
-            ? ProductionManager.Instance.orderConfig : null;
-        if (config == null) return;
-        foreach (DeliveredItemQuality delivered in deliveredItemQualities)
-            config.RecordItemServed(delivered.item, delivered.freshnessModifier);
     }
 
     /// <summary>
@@ -688,15 +630,6 @@ public class CustomerAI : MonoBehaviour
     public void LeaveImpatient(Transform exit)
     {
         if (leaving) return;
-        if (orderRevealed && !IsOrderFullyDelivered && !itemReputationFinalized)
-        {
-            CustomerOrderConfig config = ProductionManager.Instance != null
-                ? ProductionManager.Instance.orderConfig : null;
-            if (config != null)
-                config.RecordMissedOrder(OriginalOrder != null ? OriginalOrder : order);
-            itemReputationFinalized = true;
-        }
-
         Register currentRegister = reg;
         if (currentRegister != null)
             currentRegister.LeaveQueue(this);
@@ -875,7 +808,6 @@ public class CustomerAI : MonoBehaviour
     public void OnServed(Transform exit)
     {
         if (leaving) return;
-        FinalizeCompletedItemReputation();
         StopPatienceMeter();
         waitingForPickup = false;
         if (pickupStation != null) pickupStation.LeavePickupQueue(this);
@@ -1178,7 +1110,6 @@ public class CustomerAI : MonoBehaviour
                 this, pickupStation, order, out ItemDefinition item,
                 out int adjustedSaleValue, out float freshnessModifier)) return;
         if (!order.TryRemoveOne(item)) return;
-        deliveredItemQualities.Add(new DeliveredItemQuality(item, freshnessModifier));
         MissionProgressManager.Instance?.RecordCustomerPickupItem(item);
         ApplyPickupSaleValue(item, adjustedSaleValue);
 
@@ -1194,8 +1125,6 @@ public class CustomerAI : MonoBehaviour
     void FinishPickupAndLeave()
     {
         if (leaving) return;
-        FinalizeCompletedItemReputation();
-
         // Complete the sale while the customer is still registered with the
         // pickup queue. Self-service used to remove the customer first, which
         // made Register.CompleteServe think the customer was untracked and

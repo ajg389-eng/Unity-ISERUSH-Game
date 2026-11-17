@@ -1517,8 +1517,10 @@ public class BuildPlacer : MonoBehaviour
 
     public void DeleteSelectedStationsAndRefund()
     {
-        if (OnboardingTutorial.BlocksProgression || IsStationEditingLocked
-            || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
+        bool tutorialRemoval = OnboardingTutorial.BlocksProgression;
+        if (tutorialRemoval && (selectedObjects.Count != 1
+            || !OnboardingTutorial.CanRemoveTutorialPurchasedPantry(selectedObjects[0]))) return;
+        if (IsStationEditingLocked || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
         if (HasFixedDoorSelected)
         {
             ShowStationActionMessage("The entrance door cannot be deleted");
@@ -1537,7 +1539,9 @@ public class BuildPlacer : MonoBehaviour
         {
             GameObject root = selectedObjects[i];
             if (root == null) { selectedObjects.RemoveAt(i); continue; }
+            if (tutorialRemoval && !OnboardingTutorial.CanRemoveTutorialPurchasedPantry(root)) continue;
             if (!undo.DeletePlacedStationAndRefund(root)) continue;
+            if (tutorialRemoval) OnboardingTutorial.NotifyTutorialPantryRemoved(root);
             root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
             selectedObjects.RemoveAt(i);
             deleted++;
@@ -2991,6 +2995,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     public RectTransform PlacementInstructionTarget => placementInstructionActive && instructionPanel != null
         ? instructionPanel.transform as RectTransform : null;
     public Button MoveButton => moveButton;
+    public Button DeleteButton => deleteButton;
 
     public static BuildStationActionBar EnsureFor(BuildPlacer owner)
     {
@@ -3302,7 +3307,11 @@ public sealed class BuildStationActionBar : MonoBehaviour
             || !GameTimeManager.Instance.IsShiftInProgress || ShiftPlanningUI.IsPlanning;
         if (moveButton != null) moveButton.interactable = planPhase && count > 0
             && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
-        if (deleteButton != null) deleteButton.interactable = !OnboardingTutorial.BlocksProgression
+        bool tutorialDeleteAllowed = OnboardingTutorial.BlocksProgression && count == 1
+            && placer.SelectedObjects.Count == 1
+            && OnboardingTutorial.CanRemoveTutorialPurchasedPantry(placer.SelectedObjects[0]);
+        if (deleteButton != null) deleteButton.interactable = (!OnboardingTutorial.BlocksProgression
+            || tutorialDeleteAllowed)
             && planPhase && count > 0
             && !fixedDoorSelected && !placer.IsDragging && !placer.IsPlacing;
         SetVisible(ShouldBeVisible());

@@ -141,7 +141,7 @@ public class GameTimeManager : MonoBehaviour
         SetSpeed(SpeedMode.Play);
         ProductionManager production = ProductionManager.Instance;
         if (production != null && production.orderConfig != null)
-            production.orderConfig.ApplyItemReputationForNewShift();
+            production.orderConfig.RefreshDemandScheduleForNewShift();
         OnDayStarted?.Invoke();
     }
 

@@ -12,10 +12,10 @@ public class OnboardingTutorial : MonoBehaviour
     public const string PrefsCompleteKey = "TIEACH_OnboardingComplete";
     public const string PauseSource = "OnboardingTutorial";
     const string CustomerJourneyPauseSource = "OnboardingTutorial.CustomerJourney";
-    const int AnalyticsTourCloseStage = 12;
-    const int OnboardingStepCount = 6;
-    const int MilestoneOneBottleneckStep = 6;
-    const int MilestoneOneAnalyticsStep = 7;
+    const int AnalyticsTourCloseStage = 11;
+    const int OnboardingStepCount = 8;
+    const int MilestoneOneBottleneckStep = 8;
+    const int MilestoneOneAnalyticsStep = 9;
 
     public static OnboardingTutorial Instance { get; private set; }
 
@@ -37,6 +37,7 @@ public class OnboardingTutorial : MonoBehaviour
             && Steps[Instance.stepIndex].requireAnalyticsScreen;
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
     public static bool IsObjectivesTutorialActive => IsCurrentStep(step => step.requireObjectivesScreen);
+    public static bool IsBuildTutorialActive => IsCurrentStep(step => step.requireBuildOverview);
     public static bool IsTimeControlTutorialActive => IsCurrentStep(step => step.requireTimeControlInteractions);
     public static bool ShouldShowPlanCardDuringTutorial => IsActive
         && (Instance.planScreenIntroduced
@@ -292,12 +293,12 @@ public class OnboardingTutorial : MonoBehaviour
         starterKitchen.Clear();
         if (!complete) CacheStarterKitchen();
         stepIndex = Mathf.Clamp(savedStep, 0, Steps.Length - 1);
-        tutorialShiftStarted = savedShiftStarted || stepIndex >= 3;
-        if (!complete && tutorialShiftStarted && stepIndex == 3)
+        tutorialShiftStarted = savedShiftStarted || stepIndex >= 5;
+        if (!complete && tutorialShiftStarted && stepIndex == 5)
             ShiftPlanningUI.Instance?.ResumeTutorialPracticeShift();
         glossaryTermClicked = false;
         objectivesScreenOpened = false;
-        planScreenIntroduced = !complete && stepIndex >= 2;
+        planScreenIntroduced = !complete && stepIndex >= 4;
         tutorialBurgerUnlockShown = true;
         preserveLoadedKitchen = preserveKitchen;
         inheritedKitchenPrepared = preserveKitchen;
@@ -323,16 +324,16 @@ public class OnboardingTutorial : MonoBehaviour
         if (stepIndex >= 0 && stepIndex < Steps.Length && Steps[stepIndex].requireCameraControls)
             ResetCameraTutorialInputs();
         orderServed = savedOrderServed;
-        burgerArrivedAtPickup = stepIndex == 3 && (savedOrderServed || HasTutorialBurgerAtPickup());
-        tutorialCustomerOrderServed = stepIndex == 4 && savedOrderServed;
+        burgerArrivedAtPickup = stepIndex == 5 && (savedOrderServed || HasTutorialBurgerAtPickup());
+        tutorialCustomerOrderServed = stepIndex == 6 && savedOrderServed;
         customerJourneyComplete = false;
-        if (stepIndex == 4 && savedOrderServed)
+        if (stepIndex == 6 && savedOrderServed)
         {
             CustomerAI[] restoredCustomers = FindObjectsByType<CustomerAI>(
                 FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             customerJourneyComplete = restoredCustomers == null || restoredCustomers.Length == 0;
         }
-        if (stepIndex == 3)
+        if (stepIndex == 5)
         {
             CustomerAI.DespawnAllCustomers();
             liveCustomerSpawned = false;
@@ -386,6 +387,15 @@ public class OnboardingTutorial : MonoBehaviour
     bool tutorialPlayControlUsed;
     bool tutorialFastForwardControlUsed;
     bool tutorialShiftStarted;
+    int businessOverviewStage;
+    int businessFlowOverviewStage;
+    int businessTutorialFlowConnectionCount;
+    ProductionFlowPlan businessTutorialFlow;
+    bool businessOverviewStarted;
+    int buildTutorialStage;
+    bool buildTutorialPantryPurchaseMade;
+    GameObject buildTutorialPantry;
+    readonly HashSet<GameObject> buildTutorialStartingPantries = new HashSet<GameObject>();
     int recipeTutorialStationIndex;
     int ingredientTutorialStep;
     float ingredientExplanationUntil;
@@ -522,6 +532,8 @@ public class OnboardingTutorial : MonoBehaviour
         public bool requireCustomerJourney;
         public bool requireStationHealthReview;
         public bool requireBusinessOverview;
+        public bool requireProductionFlowOverview;
+        public bool requireBuildOverview;
 
         public Step(
             string title,
@@ -562,7 +574,9 @@ public class OnboardingTutorial : MonoBehaviour
             bool requirePickupDelivery = false,
             bool requireCustomerJourney = false,
             bool requireStationHealthReview = false,
-            bool requireBusinessOverview = false)
+            bool requireBusinessOverview = false,
+            bool requireProductionFlowOverview = false,
+            bool requireBuildOverview = false)
         {
             this.title = title;
             this.body = body;
@@ -604,6 +618,8 @@ public class OnboardingTutorial : MonoBehaviour
             this.requireCustomerJourney = requireCustomerJourney;
             this.requireStationHealthReview = requireStationHealthReview;
             this.requireBusinessOverview = requireBusinessOverview;
+            this.requireProductionFlowOverview = requireProductionFlowOverview;
+            this.requireBuildOverview = requireBuildOverview;
         }
     }
 
@@ -612,9 +628,15 @@ public class OnboardingTutorial : MonoBehaviour
         new Step("Move around the kitchen",
             "You are the restaurant's <nobr><b>industrial and systems engineer</b></nobr>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
             "Next", Highlight.None, requireCameraControls: true),
+        new Step("Explore Build",
+            "Open <b>Build</b> to buy and place one extra Pantry. Then remove that extra station to see how it returns to your inventory.",
+            "Next", Highlight.None, requireBuildOverview: true),
         new Step("Explore Business",
-            "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
+            "Open <b>Business</b>, then select <b>Workers</b>. We will review the staff and production flow sections before looking at Supply.",
             "Next", Highlight.None, requireBusinessOverview: true),
+        new Step("Understand Production Flows",
+            "The current <b>Burger</b> flow shows the station-to-station route workers follow to make an order.",
+            "Next", Highlight.None, requireProductionFlowOverview: true),
         new Step("Start your first shift",
             "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
             "Next", Highlight.None, requirePlanIntroduction: true, requireShiftStarted: true),
@@ -631,7 +653,7 @@ public class OnboardingTutorial : MonoBehaviour
             "It is noon. Open <b>Business</b> and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
         new Step("Review Analytics",
-            "It is 6 PM. Open <b>Analytics</b> and review how demand, orders, production, and reputation are performing.",
+            "It is 6 PM. Open <b>Analytics</b> and review demand, orders, production, and service performance.",
             "Finish", Highlight.None, requireAnalyticsScreen: true)
     };
 
@@ -639,7 +661,9 @@ public class OnboardingTutorial : MonoBehaviour
     static readonly string[] CompactTutorialText =
     {
         "You are the restaurant's <nobr><b>industrial and systems engineer</b></nobr>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
-        "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
+        "Open <b>Build</b> to buy and place one extra Pantry. Then remove that extra station to see how it returns to your inventory.",
+        "Open <b>Business</b>, then select <b>Workers</b>. We will review the staff and production flow sections before looking at Supply.",
+        "The current <b>Burger</b> flow shows the station-to-station route workers follow to make an order.",
         "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
         "Follow the worker through the process. Watch the burger arrive at Pickup.",
         "Customers arrive based on item popularity. They order, wait, and pick up their food. Do not make them wait too long!",
@@ -802,6 +826,10 @@ public class OnboardingTutorial : MonoBehaviour
         menuScreenOpened = false;
         orderServed = false;
         tutorialShiftStarted = false;
+        buildTutorialStage = 0;
+        buildTutorialPantryPurchaseMade = false;
+        buildTutorialPantry = null;
+        buildTutorialStartingPantries.Clear();
         ResetTutorialTimeControlProgress();
         cleanedOldWorldCallout = false;
         planScreenIntroduced = false;
@@ -1003,11 +1031,55 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         Sfx.Play(SfxId.UiClick);
+        if (Steps[stepIndex].requireBuildOverview)
+        {
+            InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+            if (inventory != null && inventory.IsPanelOpen) inventory.TogglePanel();
+        }
         if (milestoneOneLessonActive && stepIndex == MilestoneOneAnalyticsStep)
         {
             milestoneOneAnalyticsLessonDone = true;
             EndMilestoneOneLesson();
             return;
+        }
+
+        if (Steps[stepIndex].requireBusinessOverview)
+        {
+            if (businessOverviewStage <= 2 && !IsBusinessWorkersTabActive())
+            {
+                Sfx.Play(SfxId.UiError);
+                RefreshAdvanceGate();
+                return;
+            }
+            if (businessOverviewStage == 3 && !IsBusinessSupplyTabActive())
+            {
+                Sfx.Play(SfxId.UiError);
+                RefreshAdvanceGate();
+                return;
+            }
+            if (businessOverviewStage < 4)
+            {
+                businessOverviewStage++;
+                SetBusinessOverviewInstruction();
+                RefreshAdvanceGate();
+                UpdateContextualCallout();
+                return;
+            }
+        }
+        if (Steps[stepIndex].requireProductionFlowOverview)
+        {
+            if (businessFlowOverviewStage < GetBusinessFlowTutorialFinalStage())
+            {
+                businessFlowOverviewStage++;
+                SetProductionFlowInstruction();
+                RefreshAdvanceGate();
+                UpdateContextualCallout();
+                return;
+            }
+            ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
+                FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.Close();
+            WorkerAssignmentLinkVisuals.ClearTutorialFlowProgress();
         }
 
         if (stepIndex >= OnboardingStepCount - 1)
@@ -1018,13 +1090,6 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (Steps[stepIndex].requireObjectivesScreen)
             MissionListUI.Instance?.SetVisible(false);
-        if (Steps[stepIndex].requireBusinessOverview)
-        {
-            ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
-                FindObjectsInactive.Include);
-            if (management != null && management.IsOpen)
-                management.Close();
-        }
         stepIndex++;
         ShowStep();
     }
@@ -1115,7 +1180,7 @@ public class OnboardingTutorial : MonoBehaviour
             tutorialCanvas.sortingOrder = tutorialUnlockContinuePending ? 7100 : 4200;
         if (panel != null)
             panel.SetActive(true);
-        SetFastForwardHelpVisible(stepIndex == 3 && running);
+        SetFastForwardHelpVisible(stepIndex == 5 && running);
         if (cameraPromptPanel != null)
             cameraPromptPanel.SetActive(step.requireCameraControls);
         if (titleText != null)
@@ -1134,6 +1199,26 @@ public class OnboardingTutorial : MonoBehaviour
         else if (step.requireAnalyticsScreen)
             initialBody = step.body;
         SetTutorialBodyText(initialBody);
+        if (step.requireBuildOverview)
+        {
+            BeginBuildTutorial();
+            SetBuildTutorialInstruction();
+        }
+        if (step.requireBusinessOverview)
+        {
+            businessOverviewStarted = false;
+            businessOverviewStage = 0;
+        }
+        if (step.requireProductionFlowOverview)
+        {
+            businessFlowOverviewStage = 0;
+            ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (management != null && management.IsOpen) management.OpenWorkersTab();
+            BeginBusinessFlowWalkthrough();
+            SetProductionFlowInstruction();
+        }
+        else
+            WorkerAssignmentLinkVisuals.ClearTutorialFlowProgress();
         if (step.requireCustomerJourney)
             customerJourneyMessageHoldUntil = 0f;
         if (coreStationChecklistText != null)
@@ -1274,7 +1359,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void AdvanceFromTutorialUnlock()
     {
-        if (!running || stepIndex != 3 || !tutorialUnlockContinuePending) return;
+        if (!running || stepIndex != 5 || !tutorialUnlockContinuePending) return;
         tutorialUnlockContinuePending = false;
         Sfx.Play(SfxId.UiClick);
         stepIndex++;
@@ -1716,7 +1801,7 @@ public class OnboardingTutorial : MonoBehaviour
                 rootWidth * 0.5f - panelWidth * 0.5f - 24f,
                 rootHeight * 0.5f - panelHeight * 0.5f - 170f);
         }
-        if (running && stepIndex == 3 && tutorialUnlockContinuePending)
+        if (running && stepIndex == 5 && tutorialUnlockContinuePending)
         {
             RectTransform unlockPanel = MilestoneUnlockPopupUI.ActivePanelRect;
             if (unlockPanel != null)
@@ -1753,8 +1838,10 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (stationaryRecipeTutorial)
             panelPosition = new Vector2(0f, -rootHeight * 0.12f);
+        panelPosition = AvoidOpenPanelOverlap(rootRect, panelPosition, panelWidth, panelHeight,
+            rootWidth, rootHeight);
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
-        float calloutScreenMargin = running && stepIndex == 3 && tutorialUnlockContinuePending ? 10f : 18f;
+        float calloutScreenMargin = running && stepIndex == 5 && tutorialUnlockContinuePending ? 10f : 18f;
         panelPosition.x = Mathf.Clamp(panelPosition.x,
             -rootWidth * 0.5f + panelWidth * 0.5f + calloutScreenMargin,
             rootWidth * 0.5f - panelWidth * 0.5f - calloutScreenMargin);
@@ -1810,6 +1897,87 @@ public class OnboardingTutorial : MonoBehaviour
                 || Steps[stepIndex].requireAnalyticsScreen));
         PositionCalloutArrow(panelRect.anchoredPosition, new Vector2(panelWidth, panelHeight),
             targetPosition, targetBounds, hasTarget && !arrowTargetIsUI);
+    }
+
+    Vector2 AvoidOpenPanelOverlap(RectTransform rootRect, Vector2 preferred, float panelWidth,
+        float panelHeight, float rootWidth, float rootHeight)
+    {
+        var blockers = new List<RectTransform>();
+        InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (inventory != null && inventory.IsPanelOpen && inventory.panel != null)
+            blockers.Add(inventory.panel.transform as RectTransform);
+        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
+            FindObjectsInactive.Include);
+        if (management != null && management.IsOpen && management.managementPanel != null)
+            blockers.Add(management.managementPanel.transform as RectTransform);
+        if (ShiftPlanningUI.Instance != null && ShiftPlanningUI.IsPlanning
+            && ShiftPlanningUI.Instance.TutorialPlanningCard != null)
+            blockers.Add(ShiftPlanningUI.Instance.TutorialPlanningCard);
+        MissionListUI missions = MissionListUI.Instance;
+        if (missions != null && missions.IsOpen && missions.panelRoot != null)
+            blockers.Add(missions.panelRoot.transform as RectTransform);
+
+        var blockerRects = new List<Rect>();
+        foreach (RectTransform blocker in blockers)
+            if (blocker != null && blocker.gameObject.activeInHierarchy
+                && TryGetRectInRoot(blocker, rootRect, out Rect rect))
+                blockerRects.Add(rect);
+        if (blockerRects.Count == 0) return preferred;
+
+        float halfW = panelWidth * 0.5f;
+        float halfH = panelHeight * 0.5f;
+        float margin = 18f;
+        float gap = 16f;
+        Vector2 Clamp(Vector2 p) => new Vector2(
+            Mathf.Clamp(p.x, -rootWidth * 0.5f + halfW + margin, rootWidth * 0.5f - halfW - margin),
+            Mathf.Clamp(p.y, -rootHeight * 0.5f + halfH + margin, rootHeight * 0.5f - halfH - margin));
+        bool Overlaps(Vector2 p, Rect r) => p.x + halfW > r.xMin && p.x - halfW < r.xMax
+            && p.y + halfH > r.yMin && p.y - halfH < r.yMax;
+
+        Vector2 best = Clamp(preferred);
+        float bestCost = float.MaxValue;
+        var candidates = new List<Vector2> { best };
+        foreach (Rect r in blockerRects)
+        {
+            candidates.Add(new Vector2(r.xMin - halfW - gap, best.y));
+            candidates.Add(new Vector2(r.xMax + halfW + gap, best.y));
+            candidates.Add(new Vector2(best.x, r.yMin - halfH - gap));
+            candidates.Add(new Vector2(best.x, r.yMax + halfH + gap));
+        }
+        foreach (Vector2 raw in candidates)
+        {
+            Vector2 candidate = Clamp(raw);
+            bool collision = false;
+            foreach (Rect r in blockerRects)
+                if (Overlaps(candidate, r)) { collision = true; break; }
+            if (collision) continue;
+            float cost = (candidate - preferred).sqrMagnitude;
+            if (cost < bestCost) { best = candidate; bestCost = cost; }
+        }
+        return best;
+    }
+
+    static bool TryGetRectInRoot(RectTransform target, RectTransform root, out Rect rect)
+    {
+        rect = default;
+        if (target == null || root == null) return false;
+        Vector3[] corners = new Vector3[4];
+        target.GetWorldCorners(corners);
+        Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
+        Vector2 max = new Vector2(float.MinValue, float.MinValue);
+        Canvas canvas = target.GetComponentInParent<Canvas>();
+        Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera : null;
+        for (int i = 0; i < corners.Length; i++)
+        {
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screen, null, out Vector2 local))
+                return false;
+            min = Vector2.Min(min, local);
+            max = Vector2.Max(max, local);
+        }
+        rect = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        return true;
     }
 
     bool TryGetCalloutTarget(RectTransform rootRect, out Vector2 localPoint, out Rect localBounds)
@@ -1966,6 +2134,21 @@ public class OnboardingTutorial : MonoBehaviour
             return "Open Objectives";
         if (step.requireBusinessOverview && !IsBusinessOverviewOpen())
             return "Open Business";
+        if (step.requireBuildOverview)
+        {
+            if (!IsBuildInventoryOpen()) return "Open Build";
+            if (buildTutorialStage == 1) return "Buy and place a Pantry";
+            if (buildTutorialStage == 2) return "Remove the extra Pantry";
+        }
+        if (step.requireProductionFlowOverview && !IsBusinessOverviewOpen())
+            return "Open Business";
+        if (step.requireBusinessOverview && businessOverviewStage <= 2 && !IsBusinessWorkersTabActive())
+            return "Click Workers to continue";
+        if (step.requireBusinessOverview && businessOverviewStage == 3)
+            return "Click Supply to continue";
+        if (step.requireProductionFlowOverview && ManagementModeController.Instance != null
+            && ManagementModeController.Instance.IsCapturingFlow)
+            return "Finish or cancel the flow edit";
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced())
             return "Place the seven stations";
         if (step.requireResearch) return "Research all three foundations";
@@ -2062,6 +2245,12 @@ public class OnboardingTutorial : MonoBehaviour
             && (!analyticsScreenOpened || !analyticsScreenClosed
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
         if (step.requireBusinessOverview && !IsBusinessOverviewOpen()) return false;
+        if (step.requireBuildOverview && buildTutorialStage < 3) return false;
+        if (step.requireProductionFlowOverview && !IsBusinessOverviewOpen()) return false;
+        if (step.requireBusinessOverview && businessOverviewStage <= 2 && !IsBusinessWorkersTabActive()) return false;
+        if (step.requireBusinessOverview && businessOverviewStage == 3 && !IsBusinessSupplyTabActive()) return false;
+        if (step.requireProductionFlowOverview && ManagementModeController.Instance != null
+            && ManagementModeController.Instance.IsCapturingFlow) return false;
         if (step.requireMenuScreen && !menuScreenOpened) return false;
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
         if (step.requireOptimizedLayout && (!inheritedStationMoved
@@ -2264,7 +2453,6 @@ public class OnboardingTutorial : MonoBehaviour
             case 8: return "<b>Demand / Min</b> is the forecast rate of customer demand for this item.";
             case 9: return "<b>Produced / Min</b> counts units delivered to Pickup Stations in the last 60 seconds.";
             case 10: return "<b>Predicted / Min</b> estimates steady flow output using timing, supply, and pickup space.";
-            case 11: return "<b>Reputation / Next Shift</b> shows item reputation and the demand change applied next shift.";
             default: return analyticsScreenOpened && !analyticsScreenClosed && AnalyticsPopupUI.IsOpen
                 ? "Close Analytics. Then click <b>Finish</b> to complete the tutorial."
                 : "Open Analytics again to close it and finish the walkthrough.";
@@ -2686,6 +2874,7 @@ public class OnboardingTutorial : MonoBehaviour
         running = false;
         pendingStart = false;
         currentHighlight = Highlight.None;
+        WorkerAssignmentLinkVisuals.ClearTutorialFlowProgress();
         GameTimeManager.Instance?.ReleaseExternalPause(CustomerJourneyPauseSource);
         PlayerPrefs.SetInt(PrefsCompleteKey, 1);
         PlayerPrefs.Save();
@@ -2966,6 +3155,11 @@ public class OnboardingTutorial : MonoBehaviour
     void UpdateHighlight(Highlight kind)
     {
         Transform target = FindHighlightTarget(kind);
+        SetHighlightTarget(target, kind == Highlight.Inventory || kind == Highlight.Management);
+    }
+
+    void SetHighlightTarget(Transform target, bool ui = false)
+    {
         highlightTarget = target;
         if (target is RectTransform targetRect && target.gameObject.activeInHierarchy)
             calloutTarget = targetRect;
@@ -3000,7 +3194,6 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         highlight.SetActive(true);
-        bool ui = kind == Highlight.Inventory || kind == Highlight.Management;
         highlight.transform.position = target.position + (ui ? Vector3.zero : Vector3.up * 2.2f);
         highlight.transform.localScale = Vector3.one * (ui ? 0.01f : 0.55f);
         if (ui)
@@ -3117,6 +3310,223 @@ public class OnboardingTutorial : MonoBehaviour
         ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
             FindObjectsInactive.Include);
         return management != null && management.IsOpen;
+    }
+
+    static bool IsBuildInventoryOpen()
+    {
+        InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        return inventory != null && inventory.IsPanelOpen;
+    }
+
+    void BeginBuildTutorial()
+    {
+        buildTutorialStage = 0;
+        buildTutorialPantryPurchaseMade = false;
+        buildTutorialPantry = null;
+        buildTutorialStartingPantries.Clear();
+        foreach (PantryStation pantry in FindObjectsByType<PantryStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (pantry == null) continue;
+            PlacedBuildItem placed = pantry.GetComponentInParent<PlacedBuildItem>();
+            if (placed != null) buildTutorialStartingPantries.Add(placed.gameObject);
+        }
+    }
+
+    void RefreshBuildTutorialProgress()
+    {
+        if (stepIndex < 0 || stepIndex >= Steps.Length || !Steps[stepIndex].requireBuildOverview)
+            return;
+        if (buildTutorialStage == 0 && IsBuildInventoryOpen())
+        {
+            buildTutorialStage = 1;
+            currentHighlight = Highlight.Pantry;
+            FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
+            SetBuildTutorialInstruction();
+        }
+        if (buildTutorialStage == 1 && buildTutorialPantryPurchaseMade)
+        {
+            buildTutorialPantry = FindNewTutorialPantry();
+            if (buildTutorialPantry != null)
+            {
+                buildTutorialStage = 2;
+                currentHighlight = Highlight.None;
+                FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include)?.RefreshAll();
+                SetBuildTutorialInstruction();
+            }
+        }
+    }
+
+    GameObject FindNewTutorialPantry()
+    {
+        foreach (PantryStation pantry in FindObjectsByType<PantryStation>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (pantry == null) continue;
+            PlacedBuildItem placed = pantry.GetComponentInParent<PlacedBuildItem>();
+            if (placed == null || buildTutorialStartingPantries.Contains(placed.gameObject)) continue;
+            return placed.gameObject;
+        }
+        return null;
+    }
+
+    void SetBuildTutorialInstruction()
+    {
+        string text = buildTutorialStage switch
+        {
+            0 => "Open <b>Build</b> to find the Pantry station.",
+            1 => "Find the <b>Pantry</b> card and click <b>Buy</b>. Place the extra Pantry on an open floor tile to see how a purchase becomes a station.",
+            2 => "The extra Pantry is placed. Select that station, then click <b>Delete</b> in the action bar to remove it and return its cost. Your starting stations stay in place.",
+            _ => "The extra Pantry was removed and refunded. Your original kitchen is still intact."
+        };
+        SetTutorialBodyText(text);
+        RefreshAdvanceGate();
+        UpdateContextualCallout();
+    }
+
+    InventoryItemCardUI FindBuildTutorialPantryCard()
+    {
+        ItemDefinition pantryItem = FindBuildTutorialPantryItem();
+        if (pantryItem == null) return null;
+        foreach (InventoryItemCardUI card in FindObjectsByType<InventoryItemCardUI>(
+                     FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            if (card != null && card.gameObject.activeInHierarchy && card.BoundItem == pantryItem)
+                return card;
+        return null;
+    }
+
+    void RefreshBusinessTutorialProgress()
+    {
+        if (stepIndex < 0 || stepIndex >= Steps.Length) return;
+        if (Steps[stepIndex].requireBusinessOverview && IsBusinessOverviewOpen())
+        {
+            if (!businessOverviewStarted)
+            {
+                businessOverviewStarted = true;
+                businessOverviewStage = 0;
+                SetBusinessOverviewInstruction();
+            }
+            if (businessOverviewStage == 3 && IsBusinessSupplyTabActive())
+            {
+                businessOverviewStage = 4;
+                SetBusinessOverviewInstruction();
+            }
+        }
+    }
+
+    void SetBusinessOverviewInstruction()
+    {
+        string[] pages =
+        {
+            "<b>Workers</b> is the staff view. It lists your employees and lets you hire and assign them. Start by checking the flow and workers sections.",
+            "<b>Production Flows</b> are saved station routes. The flow tabs select which route you are viewing; the selected flow determines the steps workers can follow.",
+            "Worker cards show each employee's role, pay, and assignment. Assign qualified workers to a flow so they can work its stations.",
+            "Now click the highlighted <b>Supply</b> tab to review stock and ingredient planning.",
+            "<b>Supply</b> shows ingredient stock, demand forecasts, and ordering controls. Use it to plan deliveries so production has the ingredients it needs."
+        };
+        businessOverviewStage = Mathf.Clamp(businessOverviewStage, 0, pages.Length - 1);
+        SetTutorialBodyText(pages[businessOverviewStage]);
+    }
+
+    void SetProductionFlowInstruction()
+    {
+        if (businessTutorialFlow == null)
+        {
+            SetTutorialBodyText("Select a production flow to see its connected stations and the route workers follow. You can use <b>Edit Flow</b> to change it or <b>+ New Flow</b> to create another route.");
+            return;
+        }
+
+        businessTutorialFlow.EnsureLegacyConnections();
+        businessTutorialFlowConnectionCount = businessTutorialFlow.connections != null
+            ? businessTutorialFlow.connections.Count : 0;
+        businessFlowOverviewStage = Mathf.Clamp(businessFlowOverviewStage, 0,
+            GetBusinessFlowTutorialFinalStage());
+        int revealedConnections = Mathf.Clamp(businessFlowOverviewStage, 0,
+            businessTutorialFlowConnectionCount);
+        WorkerAssignmentLinkVisuals.ShowTutorialFlowProgress(businessTutorialFlow, revealedConnections);
+
+        if (businessFlowOverviewStage == 0)
+        {
+            GameObject startStation = businessTutorialFlow.stations != null
+                ? businessTutorialFlow.stations.Find(station => station != null) : null;
+            SetTutorialBodyText("Follow the existing <b>" + businessTutorialFlow.flowName
+                + "</b> flow from beginning to end. It starts at <b>" + TutorialFlowStationName(startStation)
+                + "</b>, marked START on the kitchen floor. Click Next to reveal each connection in order.");
+            return;
+        }
+
+        if (businessFlowOverviewStage <= businessTutorialFlowConnectionCount)
+        {
+            ProductionFlowConnection connection = businessTutorialFlow.connections[businessFlowOverviewStage - 1];
+            string from = TutorialFlowStationName(connection != null ? connection.from : null);
+            string to = TutorialFlowStationName(connection != null ? connection.to : null);
+            SetTutorialBodyText("<b>Connection " + businessFlowOverviewStage + " of "
+                + businessTutorialFlowConnectionCount + ":</b> work moves from <b>" + from
+                + "</b> to <b>" + to
+                + "</b>. The highlighted line shows this transfer. Click Next to follow the route.");
+            return;
+        }
+
+        SetTutorialBodyText("The full <b>" + businessTutorialFlow.flowName
+            + "</b> flow is now visible. Follow the lines from START to each ending station. To change this route, select <b>Edit Flow</b>; to make another route, select <b>+ New Flow</b>.");
+    }
+
+    void BeginBusinessFlowWalkthrough()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        businessTutorialFlow = production != null ? production.SelectedFlow : null;
+        if (businessTutorialFlow != null)
+        {
+            businessTutorialFlow.EnsureLegacyConnections();
+            businessTutorialFlowConnectionCount = businessTutorialFlow.connections != null
+                ? businessTutorialFlow.connections.Count : 0;
+        }
+        else
+            businessTutorialFlowConnectionCount = 0;
+    }
+
+    int GetBusinessFlowTutorialFinalStage()
+    {
+        return businessTutorialFlowConnectionCount + 1;
+    }
+
+    static string TutorialFlowStationName(GameObject station)
+    {
+        if (station == null) return "the first station";
+        StationNode node = StationNode.EnsureOn(station);
+        return node != null && !string.IsNullOrEmpty(node.DisplayName)
+            ? node.DisplayName : station.name.Replace("(Clone)", string.Empty).Trim();
+    }
+
+    void HighlightBusinessTab(ManagementScreenController management, string buttonName)
+    {
+        if (management?.tabButtons == null) return;
+        foreach (Button button in management.tabButtons)
+            if (button != null && button.name == buttonName && button.gameObject.activeInHierarchy)
+            {
+                FocusTutorialControl(button);
+                return;
+            }
+    }
+
+    static bool IsBusinessSupplyTabActive()
+    {
+        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (management == null || !management.IsOpen || management.tabPanels == null) return false;
+        foreach (GameObject tab in management.tabPanels)
+            if (tab != null && tab.activeSelf
+                && tab.GetComponentInChildren<SupplyPlanningScreenUI>(true) != null) return true;
+        return false;
+    }
+
+    static bool IsBusinessWorkersTabActive()
+    {
+        ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+        if (management == null || !management.IsOpen || management.tabPanels == null) return false;
+        foreach (GameObject tab in management.tabPanels)
+            if (tab != null && tab.activeSelf
+                && tab.GetComponentInChildren<WorkersUI>(true) != null) return true;
+        return false;
     }
 
     void RefreshLayoutTutorialHighlight()
@@ -3361,6 +3771,41 @@ public class OnboardingTutorial : MonoBehaviour
             }
         }
 
+        if (step.requireBuildOverview)
+        {
+            if (!IsBuildInventoryOpen())
+            {
+                HighlightHudButton("InventoryTab");
+                return;
+            }
+            if (buildTutorialStage == 1)
+            {
+                InventoryItemCardUI pantryCard = FindBuildTutorialPantryCard();
+                if (pantryCard != null && pantryCard.buyButton != null)
+                    FocusTutorialControl(pantryCard.buyButton);
+                return;
+            }
+            if (buildTutorialStage == 2 && buildTutorialPantry != null)
+            {
+                BuildPlacer placer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
+                bool selected = placer != null && placer.SelectedObjects.Count == 1
+                    && placer.SelectedObjects[0] == buildTutorialPantry;
+                if (selected)
+                {
+                    highlightTarget = null;
+                    if (highlight != null) highlight.SetActive(false);
+                    BuildStationActionBar actionBar = FindFirstObjectByType<BuildStationActionBar>(
+                        FindObjectsInactive.Include);
+                    if (actionBar != null && actionBar.DeleteButton != null)
+                        FocusTutorialControl(actionBar.DeleteButton);
+                }
+                else
+                    SetHighlightTarget(buildTutorialPantry.transform);
+                return;
+            }
+            return;
+        }
+
         if (calloutTarget == null && highlightTarget is RectTransform targetRect
             && targetRect.gameObject.activeInHierarchy)
             calloutTarget = targetRect;
@@ -3411,13 +3856,42 @@ public class OnboardingTutorial : MonoBehaviour
                 return;
             }
 
-            WorkersUI businessWorkers = FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Exclude);
-            if (businessWorkers != null)
+            ManagementScreenController businessManagement = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
+            if (!IsBusinessWorkersTabActive()) HighlightBusinessTab(businessManagement, "Tab_Workers");
+            else if (businessOverviewStage == 0) HighlightBusinessTab(businessManagement, "Tab_Workers");
+            else if (businessOverviewStage == 1 || businessOverviewStage == 2)
             {
-                if (businessWorkers.TutorialFlowHeaderTarget != null)
-                    FocusTutorialControl(businessWorkers.TutorialFlowHeaderTarget);
-                if (businessWorkers.TutorialWorkerCardsTarget != null)
-                    HighlightControl(businessWorkers.TutorialWorkerCardsTarget);
+                WorkersUI businessWorkers = FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Exclude);
+                Component target = businessOverviewStage == 1
+                    ? businessWorkers?.TutorialFlowTabsTarget : businessWorkers?.TutorialWorkerCardsTarget;
+                if (target != null) FocusTutorialControl(target);
+            }
+            else if (businessOverviewStage == 3) HighlightBusinessTab(businessManagement, "Tab_Supplies");
+            else
+            {
+                SupplyPlanningScreenUI supply = FindFirstObjectByType<SupplyPlanningScreenUI>(FindObjectsInactive.Exclude);
+                if (supply != null) FocusTutorialControl(supply);
+            }
+            return;
+        }
+
+        if (step.requireProductionFlowOverview)
+        {
+            if (!IsBusinessOverviewOpen())
+            {
+                HighlightHudButton("BusinessTab");
+                return;
+            }
+            WorkersUI flowWorkers = FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Exclude);
+            Component target = flowWorkers == null ? null
+                : businessFlowOverviewStage >= GetBusinessFlowTutorialFinalStage()
+                    ? flowWorkers.TutorialEditFlowTarget : flowWorkers.TutorialFlowTabsTarget;
+            if (target != null) FocusTutorialControl(target);
+            ManagementModeController capture = ManagementModeController.Instance;
+            if (capture != null && capture.IsCapturingFlow)
+            {
+                if (capture.flowCaptureFinishButton != null) FocusTutorialControl(capture.flowCaptureFinishButton);
+                if (capture.flowCaptureCancelButton != null) HighlightControl(capture.flowCaptureCancelButton);
             }
             return;
         }
@@ -3603,12 +4077,11 @@ public class OnboardingTutorial : MonoBehaviour
             SetFastForwardHelpVisible(false);
             if (pendingStart && !IsComplete)
                 TryBegin();
-            else
-                UpdateMilestoneOneLessonSchedule();
             return;
         }
         TrackCameraTutorialInputs();
         RefreshCameraPromptStatus();
+        RefreshBuildTutorialProgress();
         RefreshAdvanceGate();
         RefreshFreezerWalkthroughProgress();
         RefreshControlHighlights();
@@ -4397,13 +4870,39 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (item == null || Instance == null || !Instance.running || IsStationLocked(item))
             return false;
+        if (IsBuildTutorialActive)
+            return Instance.buildTutorialStage == 1 && item == FindBuildTutorialPantryItem();
         return ItemMatchesHighlight(item, Instance.currentHighlight);
+    }
+
+    public static void NotifyTutorialStationPurchased(ItemDefinition item)
+    {
+        if (!IsBuildTutorialActive || Instance.buildTutorialStage != 1
+            || item == null || item != FindBuildTutorialPantryItem()) return;
+        Instance.buildTutorialPantryPurchaseMade = true;
+    }
+
+    public static bool CanRemoveTutorialPurchasedPantry(GameObject target)
+    {
+        return IsBuildTutorialActive && Instance.buildTutorialStage == 2
+            && target != null && target == Instance.buildTutorialPantry;
+    }
+
+    public static void NotifyTutorialPantryRemoved(GameObject target)
+    {
+        if (!CanRemoveTutorialPurchasedPantry(target)) return;
+        Instance.buildTutorialStage = 3;
+        Instance.buildTutorialPantry = null;
+        Instance.SetBuildTutorialInstruction();
+        Instance.RefreshAdvanceGate();
     }
 
     // Checklist stations unlock together after the tutorial introduces them.
     public static bool IsStationLocked(ItemDefinition item)
     {
         if (item == null || !BlocksProgression) return false;
+        if (IsBuildTutorialActive && Instance.buildTutorialStage == 1
+            && item == FindBuildTutorialPantryItem()) return false;
         if (IsChecklistStation(item))
             return true;
         for (int i = 0; i < Steps.Length; i++)
@@ -4425,6 +4924,17 @@ public class OnboardingTutorial : MonoBehaviour
             || ItemMatchesHighlight(item, Highlight.HeatLamp)
             || ItemMatchesHighlight(item, Highlight.Drink)
             || (item.itemName != null && item.itemName.Contains("Shake Station"));
+    }
+
+    static ItemDefinition FindBuildTutorialPantryItem()
+    {
+        InventoryManager inventory = FindFirstObjectByType<InventoryManager>(FindObjectsInactive.Include);
+        if (inventory == null || inventory.allItems == null) return null;
+        foreach (ItemDefinition item in inventory.allItems)
+            if (item != null && item.prefab != null
+                && item.prefab.GetComponentInChildren<PantryStation>(true) != null)
+                return item;
+        return null;
     }
 
     static bool ItemMatchesHighlight(ItemDefinition item, Highlight kind)
@@ -4654,13 +5164,16 @@ public class OnboardingTutorial : MonoBehaviour
 
         stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
-        titleText = CreateLabel(headerText.transform, "", 22, FontStyles.Bold, Color.white);
+        titleText = CreateLabel(headerText.transform, "", 24, FontStyles.Bold, Color.white);
         titleText.alignment = TextAlignmentOptions.Left;
         ISEGlossaryLinkHandler.Attach(titleText);
-        bodyText = CreateLabel(panel.transform, "", 20, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
+        bodyText = CreateLabel(panel.transform, "", 24, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
         bodyText.alignment = TextAlignmentOptions.TopLeft;
         bodyText.textWrappingMode = TextWrappingModes.Normal;
-        bodyText.overflowMode = TextOverflowModes.Truncate;
+        bodyText.enableAutoSizing = true;
+        bodyText.fontSizeMin = 19f;
+        bodyText.fontSizeMax = 24f;
+        bodyText.overflowMode = TextOverflowModes.Overflow;
         ISEGlossaryLinkHandler.Attach(bodyText);
 
         EnsureFlowLinkingVideoUi();
@@ -4765,7 +5278,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void UpdateFastForwardHelpCard()
     {
-        bool show = running && stepIndex == 3 && !tutorialUnlockContinuePending;
+        bool show = running && stepIndex == 5 && !tutorialUnlockContinuePending;
         SetFastForwardHelpVisible(show);
         if (!show || fastForwardHelpCardRect == null || canvasRoot == null)
             return;

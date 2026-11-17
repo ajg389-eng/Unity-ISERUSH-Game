@@ -98,31 +98,8 @@ public class StationProcessingRecipeDefinition
 [CreateAssetMenu(menuName = "FactoryGame/Customer Order Config", fileName = "CustomerOrderConfig")]
 public class CustomerOrderConfig : ScriptableObject
 {
-    public const int MaxItemReputation = 750;
-    public const int MaxReputationStars = 5;
     public const int DefaultItemDemandPerMinute = 5;
-    public const int DemandBonusPerTier = 5;
-    public const int MaxItemDemandBonusPerMinute = 25;
-    public const int ReputationPerServedItem = 1;
-    public const int ReputationPenaltyPerMissedItem = 10;
-    const int LegacyReputationPerDemandTier = 20;
-    static readonly int[] ReputationStarServedThresholds = { 50, 150, 300, 500, 750 };
-
-    [System.Serializable]
-    public class SavedItemReputation
-    {
-        public string itemName;
-        public int reputation;
-        public int activeDemandTier;
-        public int servedCount;
-        public int progressVersion;
-    }
-
-    sealed class ItemReputationState
-    {
-        public int reputation;
-        public int activeDemandTier;
-    }
+    const int MaxDemandMilestoneTier = 6;
 
     [Header("Menu items")]
     [Tooltip("Burger / patty line item")]
@@ -218,8 +195,6 @@ public class CustomerOrderConfig : ScriptableObject
     [System.NonSerialized] CustomerOrder[] demandOrderCycle = System.Array.Empty<CustomerOrder>();
     [System.NonSerialized] readonly Dictionary<ItemDefinition, int> demandRateByItem =
         new Dictionary<ItemDefinition, int>();
-    [System.NonSerialized] readonly Dictionary<string, ItemReputationState> itemReputationByName =
-        new Dictionary<string, ItemReputationState>(System.StringComparer.Ordinal);
     [System.NonSerialized] bool recipeGraphReady;
     [System.NonSerialized] bool rebuildingRecipeGraph;
 
@@ -702,7 +677,7 @@ public class CustomerOrderConfig : ScriptableObject
         {
             int categoryIndex = (int)GetProductKind(item) - 1;
             if (categoryIndex < 0 || categoryIndex >= categoryRates.Length) continue;
-            categoryRates[categoryIndex] += GetDemandRate(item);
+            categoryRates[categoryIndex] += GetDemandRate();
         }
         return Mathf.Max(categoryRates[0], Mathf.Max(categoryRates[1], categoryRates[2]));
     }
@@ -720,185 +695,6 @@ public class CustomerOrderConfig : ScriptableObject
     {
         EnsureDemandSchedule();
         return item != null && demandRateByItem.TryGetValue(item, out int rate) ? rate : 0;
-    }
-
-    public int GetItemReputation(ItemDefinition item)
-    {
-        return TryGetItemReputation(item, out ItemReputationState state) ? state.reputation : 0;
-    }
-
-    public int GetPendingItemDemandChangePerMinute(ItemDefinition item)
-    {
-        if (!TryGetItemReputation(item, out ItemReputationState state)) return 0;
-        int targetTier = GetDemandTier(state.reputation);
-        return (targetTier - state.activeDemandTier) * DemandBonusPerTier;
-    }
-
-    public void RecordItemServed(ItemDefinition item)
-    {
-        if (!IsTrackedMenuItem(item)) return;
-        ItemReputationState state = GetOrCreateItemReputation(item);
-        state.reputation = Mathf.Min(MaxItemReputation,
-            state.reputation + ReputationPerServedItem);
-    }
-
-    /// <summary>Penalizes every menu item in an order that a customer leaves without receiving.</summary>
-    public void RecordMissedOrder(CustomerOrder order)
-    {
-        if (order == null || order.lines == null) return;
-
-        foreach (CustomerOrder.OrderLine line in order.lines)
-        {
-            if (line.item == null || line.quantity <= 0 || !IsTrackedMenuItem(line.item))
-                continue;
-
-            ItemReputationState state = GetOrCreateItemReputation(line.item);
-            int penalty = line.quantity * ReputationPenaltyPerMissedItem;
-            state.reputation = Mathf.Max(0, state.reputation - penalty);
-        }
-    }
-
-    /// <summary>Counts one completed item toward that recipe's next reputation star.</summary>
-    public void RecordItemServed(ItemDefinition item, float freshnessModifier)
-    {
-        RecordItemServed(item);
-    }
-
-    /// <summary>Applies reputation earned during the previous shift to today's fixed demand schedule.</summary>
-    public void ApplyItemReputationForNewShift()
-    {
-        bool changed = false;
-        foreach (ItemReputationState state in itemReputationByName.Values)
-        {
-            int tier = GetDemandTier(state.reputation);
-            if (state.activeDemandTier == tier) continue;
-            state.activeDemandTier = tier;
-            changed = true;
-        }
-
-        if (changed)
-            InvalidateDemandSchedule();
-    }
-
-    public List<SavedItemReputation> CaptureItemReputation()
-    {
-        var saved = new List<SavedItemReputation>(itemReputationByName.Count);
-        foreach (KeyValuePair<string, ItemReputationState> pair in itemReputationByName)
-        {
-            if (pair.Value == null) continue;
-            saved.Add(new SavedItemReputation
-            {
-                itemName = pair.Key,
-                reputation = pair.Value.reputation,
-                activeDemandTier = pair.Value.activeDemandTier,
-                servedCount = pair.Value.reputation,
-                progressVersion = 1
-            });
-        }
-        return saved;
-    }
-
-    public void RestoreItemReputation(IEnumerable<SavedItemReputation> saved)
-    {
-        itemReputationByName.Clear();
-        if (saved != null)
-        {
-            var menuItemNames = new HashSet<string>(System.StringComparer.Ordinal);
-            foreach (ItemDefinition item in GetMenuItems())
-                if (item != null && !string.IsNullOrEmpty(item.name)) menuItemNames.Add(item.name);
-
-            foreach (SavedItemReputation record in saved)
-            {
-                if (record == null || string.IsNullOrEmpty(record.itemName)
-                    || !menuItemNames.Contains(record.itemName)) continue;
-                int servedCount = record.progressVersion > 0
-                    ? Mathf.Clamp(record.servedCount, 0, MaxItemReputation)
-                    : ConvertLegacyReputationToServedCount(record.reputation);
-                itemReputationByName[record.itemName] = new ItemReputationState
-                {
-                    reputation = servedCount,
-                    activeDemandTier = Mathf.Clamp(record.activeDemandTier, 0,
-                        MaxItemDemandBonusPerMinute / DemandBonusPerTier)
-                };
-            }
-        }
-        InvalidateDemandSchedule();
-    }
-
-    public void ClearItemReputation()
-    {
-        itemReputationByName.Clear();
-        InvalidateDemandSchedule();
-    }
-
-    bool TryGetItemReputation(ItemDefinition item, out ItemReputationState state)
-    {
-        state = null;
-        return item != null && !string.IsNullOrEmpty(item.name)
-            && itemReputationByName.TryGetValue(item.name, out state) && state != null;
-    }
-
-    ItemReputationState GetOrCreateItemReputation(ItemDefinition item)
-    {
-        if (TryGetItemReputation(item, out ItemReputationState state)) return state;
-        state = new ItemReputationState();
-        itemReputationByName[item.name] = state;
-        return state;
-    }
-
-    bool IsTrackedMenuItem(ItemDefinition item)
-    {
-        if (item == null) return false;
-        foreach (ItemDefinition candidate in GetMenuItems())
-            if (candidate == item) return true;
-        return false;
-    }
-
-    static int GetDemandTier(int reputation)
-    {
-        int tier = 0;
-        for (int i = 0; i < ReputationStarServedThresholds.Length; i++)
-        {
-            if (reputation < ReputationStarServedThresholds[i]) break;
-            tier++;
-        }
-        return tier;
-    }
-
-    public static int GetItemReputationStars(int servedCount)
-    {
-        return GetDemandTier(Mathf.Clamp(servedCount, 0, MaxItemReputation));
-    }
-
-    public static int GetServedCountProgressToNextStar(int servedCount)
-    {
-        int stars = GetItemReputationStars(servedCount);
-        if (stars >= MaxReputationStars) return 0;
-        int previousThreshold = stars > 0 ? ReputationStarServedThresholds[stars - 1] : 0;
-        return Mathf.Max(0, servedCount - previousThreshold);
-    }
-
-    public static int GetServedCountNeededForNextStar(int servedCount)
-    {
-        int stars = GetItemReputationStars(servedCount);
-        if (stars >= MaxReputationStars) return 0;
-        int previousThreshold = stars > 0 ? ReputationStarServedThresholds[stars - 1] : 0;
-        return ReputationStarServedThresholds[stars] - previousThreshold;
-    }
-
-    static int ConvertLegacyReputationToServedCount(int legacyReputation)
-    {
-        int oldTier = Mathf.Clamp(legacyReputation / LegacyReputationPerDemandTier,
-            0, MaxReputationStars);
-        if (oldTier >= MaxReputationStars) return MaxItemReputation;
-
-        int previousThreshold = oldTier > 0 ? ReputationStarServedThresholds[oldTier - 1] : 0;
-        int nextThreshold = ReputationStarServedThresholds[oldTier];
-        float oldTierProgress = (legacyReputation % LegacyReputationPerDemandTier)
-            / (float)LegacyReputationPerDemandTier;
-        return Mathf.Clamp(Mathf.RoundToInt(previousThreshold
-            + (nextThreshold - previousThreshold) * oldTierProgress),
-            0, MaxItemReputation);
     }
 
     /// <summary>Returns the next order in the exact repeating one-minute demand cycle.</summary>
@@ -955,7 +751,7 @@ public class CustomerOrderConfig : ScriptableObject
             int categoryIndex = (int)kind - 1;
             if (categoryIndex < 0 || categoryIndex >= categories.Length) continue;
 
-            int adjustedRate = GetDemandRate(item);
+            int adjustedRate = GetDemandRate();
             demandRateByItem[item] = adjustedRate;
             categories[categoryIndex].Add(new DemandProduct { item = item, rate = adjustedRate });
             categoryRates[categoryIndex] += adjustedRate;
@@ -980,62 +776,12 @@ public class CustomerOrderConfig : ScriptableObject
         demandScheduleRevision++;
     }
 
-    int GetDemandRate(ItemDefinition item)
+    int GetDemandRate()
     {
-        int normalDemandRate = GetNormalDemandRate(item);
-        ProductKind kind = GetProductKind(item);
-        ItemDefinition milestoneTarget = GetActiveMilestoneTarget(kind);
-        if (milestoneTarget == null) return normalDemandRate;
-
-        // Keep the product-family's total demand unchanged, but direct its
-        // existing orders toward the active milestone item.
-        if (item != milestoneTarget) return 0;
-
-        int familyDemandRate = 0;
-        foreach (ItemDefinition candidate in GetEnabledMenuItems())
-            if (GetProductKind(candidate) == kind)
-                familyDemandRate += GetNormalDemandRate(candidate);
-        return familyDemandRate > 0 ? familyDemandRate : normalDemandRate;
-    }
-
-    int GetNormalDemandRate(ItemDefinition item)
-    {
-        int reputationBonus = TryGetItemReputation(item, out ItemReputationState state)
-            ? state.activeDemandTier * DemandBonusPerTier
-            : 0;
-        return DefaultItemDemandPerMinute
-            + Mathf.Clamp(reputationBonus, 0, MaxItemDemandBonusPerMinute);
-    }
-
-    ItemDefinition GetActiveMilestoneTarget(ProductKind kind)
-    {
-        if (kind == ProductKind.None) return null;
-
-        MilestoneDefinition milestone = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.GetActiveMilestone() : null;
-        if (milestone == null) return null;
-
-        foreach (MissionDefinition mission in milestone.GetMissions())
-        {
-            if (mission == null) continue;
-            ItemDefinition target = mission.deliveredItem;
-            // Some milestone assets track serving through the repeatable event
-            // instead of the deliveredItem field.
-            if (target == null && !string.IsNullOrEmpty(mission.completionEventId))
-            {
-                foreach (ItemDefinition menuItem in GetMenuItems())
-                    if (GetProductKind(menuItem) == kind
-                        && mission.completionEventId == TutorialVoiceEventId.MenuItemServed(menuItem))
-                    {
-                        target = menuItem;
-                        break;
-                    }
-            }
-
-            if (target != null && GetProductKind(target) == kind && IsItemEnabled(target))
-                return target;
-        }
-        return null;
+        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
+        int reachedStage = milestones != null ? milestones.GetHighestReachedNumberedStage() : 1;
+        int demandTier = Mathf.Clamp(reachedStage, 1, MaxDemandMilestoneTier);
+        return DefaultItemDemandPerMinute * demandTier;
     }
 
     static void AddCategoryDemandToCycle(List<DemandProduct> products, int categoryRate,
@@ -1076,6 +822,9 @@ public class CustomerOrderConfig : ScriptableObject
     }
 
     void InvalidateDemandSchedule() => demandScheduleReady = false;
+
+    /// <summary>Rebuilds demand at the start of a new shift using its reached milestone tier.</summary>
+    public void RefreshDemandScheduleForNewShift() => InvalidateDemandSchedule();
 
     public bool IsBurger(ItemDefinition item) => item != null && (item == burgerBase
         || item == cheeseburgerItem || item == cheeseBaconBurgerItem || item == clBurgerItem
@@ -1354,7 +1103,6 @@ public class CustomerOrderConfig : ScriptableObject
     public void ClearEnabledMenuItems()
     {
         enabledMenuItems.Clear();
-        ClearItemReputation();
         InvalidateDemandSchedule();
     }
 

@@ -17,11 +17,6 @@ public class TopHudBar : MonoBehaviour
     const float BarWidth = 760f;
     const float CompactBarHeight = 60f;
     const int StoreReputationMaxStars = 5;
-    const int StoreReputationMaxPoints = 750;
-    const int PointsPerCompletedOrder = 1;
-    const int PointsPerDailyTask = 10;
-    const int PointsPerMilestone = 50;
-    static readonly int[] StoreReputationStarThresholds = { 50, 150, 300, 500, 750 };
 
     [Header("References")]
     public MoneyManager money;
@@ -38,10 +33,10 @@ public class TopHudBar : MonoBehaviour
     Image[] storeReputationStars;
     GameObject storeReputationPopup;
     TextMeshProUGUI storeReputationBreakdown;
-    int displayedStoreReputationScore = -1;
-    int displayedStoreReputationOrders = -1;
-    int displayedStoreReputationDailyTasks = -1;
-    int displayedStoreReputationMilestones = -1;
+    int displayedStoreReputationStage = -1;
+    int displayedScheduledCustomers = -1;
+    int displayedCustomersPerMinute = -1;
+    float displayedShiftMinutes = -1f;
     float nextStoreReputationRefresh;
     int appliedScreenWidth;
     int appliedScreenHeight;
@@ -219,7 +214,7 @@ public class TopHudBar : MonoBehaviour
             le.preferredWidth = 76f;
             le.flexibleWidth = 0f;
             PositionSection(moneySection, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(168f, -8f), new Vector2(76f, 44f));
+                new Vector2(188f, -8f), new Vector2(76f, 44f));
         }
 
         float utilityStartX = GetUtilityStartAfterNavigation(rt);
@@ -484,7 +479,7 @@ public class TopHudBar : MonoBehaviour
             if (rootIndex != targetIndex)
                 root.transform.SetSiblingIndex(targetIndex);
         }
-        DelayedTooltip.Attach(button, "Click to view store reputation factors.");
+        DelayedTooltip.Attach(button, "Click to view milestone reputation and the full-shift customer forecast.");
         EnsureStoreReputationPopup(root.transform);
         RefreshStoreReputation(true);
     }
@@ -572,60 +567,56 @@ public class TopHudBar : MonoBehaviour
     void RefreshStoreReputation(bool force = false)
     {
         if (storeReputationStars == null || storeReputationStars.Length == 0) return;
-        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
-        int servedOrders = statistics != null ? statistics.CareerOrdersServed : 0;
-        int dailyTasks = statistics != null ? statistics.CareerDailyTasksCompleted : 0;
-        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
-        int completedMilestones = milestones != null ? milestones.CompletedNumberedMilestoneCount : 0;
-        int score = servedOrders * PointsPerCompletedOrder
-            + dailyTasks * PointsPerDailyTask
-            + completedMilestones * PointsPerMilestone;
-        if (!force && score == displayedStoreReputationScore
-            && servedOrders == displayedStoreReputationOrders
-            && dailyTasks == displayedStoreReputationDailyTasks
-            && completedMilestones == displayedStoreReputationMilestones) return;
-        displayedStoreReputationScore = score;
-        displayedStoreReputationOrders = servedOrders;
-        displayedStoreReputationDailyTasks = dailyTasks;
-        displayedStoreReputationMilestones = completedMilestones;
 
-        int starsEarned = GetStoreReputationStars(score);
+        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
+        int reachedStage = milestones != null ? milestones.GetHighestReachedNumberedStage() : 0;
+        int starsEarned = Mathf.Clamp(reachedStage, 0, StoreReputationMaxStars);
+        CustomerSpawner spawner = CustomerSpawner.Instance != null
+            ? CustomerSpawner.Instance : FindFirstObjectByType<CustomerSpawner>();
+        int customersPerMinute = spawner != null
+            ? Mathf.RoundToInt(spawner.CustomersPerMinute)
+            : ProductionManager.Instance != null && ProductionManager.Instance.orderConfig != null
+                ? ProductionManager.Instance.orderConfig.DemandCustomersPerMinute
+                : 0;
+        float shiftMinutes = ShiftPlanningUI.GetPlannedShiftDurationMinutes();
+        int scheduledCustomers = Mathf.RoundToInt(customersPerMinute * shiftMinutes);
+        if (!force && reachedStage == displayedStoreReputationStage
+            && scheduledCustomers == displayedScheduledCustomers
+            && customersPerMinute == displayedCustomersPerMinute
+            && Mathf.Abs(shiftMinutes - displayedShiftMinutes) < 0.01f) return;
+
+        displayedStoreReputationStage = reachedStage;
+        displayedScheduledCustomers = scheduledCustomers;
+        displayedCustomersPerMinute = customersPerMinute;
+        displayedShiftMinutes = shiftMinutes;
+
         Color earned = new Color(1f, 0.78f, 0.30f, 1f);
         Color unearned = new Color(0.31f, 0.37f, 0.44f, 0.8f);
         for (int i = 0; i < storeReputationStars.Length; i++)
             if (storeReputationStars[i] != null)
                 storeReputationStars[i].color = i < starsEarned ? earned : unearned;
 
-        if (storeReputationBreakdown != null)
-        {
-            int cappedScore = Mathf.Min(StoreReputationMaxPoints, score);
-            int progress = starsEarned >= StoreReputationMaxStars
-                ? 0 : Mathf.Max(0, cappedScore - (starsEarned > 0 ? StoreReputationStarThresholds[starsEarned - 1] : 0));
-            int needed = starsEarned >= StoreReputationMaxStars
-                ? 0 : StoreReputationStarThresholds[starsEarned] - (starsEarned > 0 ? StoreReputationStarThresholds[starsEarned - 1] : 0);
-            string nextStar = starsEarned >= StoreReputationMaxStars
-                ? "All 5 stars earned."
-                : "Next star: " + progress + "/" + needed + " points";
-            storeReputationBreakdown.text = "Orders served      " + servedOrders + " × 1 = " + servedOrders
-                + "\nDaily tasks           " + dailyTasks + " × " + PointsPerDailyTask + " = " + (dailyTasks * PointsPerDailyTask)
-                + "\nMilestones           " + completedMilestones + " × " + PointsPerMilestone + " = " + (completedMilestones * PointsPerMilestone)
-                + "\n\nReputation: " + cappedScore + "/" + StoreReputationMaxPoints + " points"
-                + "\n" + nextStar;
-        }
-    }
+        if (storeReputationBreakdown == null) return;
 
-    static int GetStoreReputationStars(int score)
-    {
-        int stars = 0;
-        int cappedScore = Mathf.Clamp(score, 0, StoreReputationMaxPoints);
-        for (int i = 0; i < StoreReputationStarThresholds.Length; i++)
-        {
-            if (cappedScore < StoreReputationStarThresholds[i]) break;
-            stars++;
-        }
-        return stars;
+        int milestoneCount = milestones != null ? milestones.GetNumberedMilestoneCount() : 0;
+        MilestoneDefinition activeMilestone = milestones != null
+            ? milestones.GetActiveMilestone() : null;
+        string milestoneName = activeMilestone != null && milestones != null
+            ? milestones.GetMilestoneDisplayLabel(activeMilestone)
+            : reachedStage > 0 ? "All milestones complete" : "Tutorial";
+        string milestoneProgress = milestoneCount > 0
+            ? Mathf.Min(reachedStage, milestoneCount) + "/" + milestoneCount
+            : "0/0";
+        string customerForecast = scheduledCustomers > 0
+            ? "Full-shift customer forecast: " + scheduledCustomers
+                + "\n" + customersPerMinute + "/min x " + shiftMinutes.ToString("0.#") + " minutes"
+            : "Full-shift customer forecast: 0"
+                + "\nSelect menu items during Plan to schedule arrivals.";
+        storeReputationBreakdown.text = "Milestone: " + milestoneName
+            + "\nProgress: " + milestoneProgress
+            + "\nStore stars: " + starsEarned + "/" + StoreReputationMaxStars
+            + "\n\n" + customerForecast;
     }
-
     RectTransform FindHudActions()
     {
         Transform host = transform.parent != null ? transform.parent : transform;

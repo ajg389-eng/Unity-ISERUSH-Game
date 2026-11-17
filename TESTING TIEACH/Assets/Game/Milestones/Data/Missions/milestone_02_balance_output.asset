@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: milestone_02_balance_output
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_02_serve_cheeseburgers
-  title: Serve 30 Cheeseburgers
-  description: Have customers pick up at least 30 Cheeseburgers this shift.
+  title: Serve 108 Cheeseburgers
+  description: Serve at least 108 Cheeseburgers this shift, 90% of the 120-item daily demand.
   completionEventId:
-  requiredCount: 30
+  requiredCount: 108
   producedItem: {fileID: 0}
   deliveredItem: {fileID: 11400000, guid: b2d5f79064124d02a7c28e0ee3293bca, type: 2}
   countAnyUnlockedMenuProduct: 0

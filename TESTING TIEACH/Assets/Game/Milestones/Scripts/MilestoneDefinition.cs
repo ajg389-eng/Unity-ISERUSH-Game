@@ -8,6 +8,23 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "MilestoneDefinition", menuName = "ISE/Milestone Definition")]
 public class MilestoneDefinition : ScriptableObject
 {
+    public enum ShiftLessonTarget
+    {
+        Analytics,
+        Business,
+        Objectives,
+        Recipes
+    }
+
+    [System.Serializable]
+    public sealed class ShiftLesson
+    {
+        public string lessonId;
+        public string title;
+        [TextArea(1, 3)] public string explanation;
+        public ShiftLessonTarget target = ShiftLessonTarget.Analytics;
+    }
+
     [System.Serializable]
     public sealed class ShiftQuestion
     {
@@ -45,8 +62,11 @@ public class MilestoneDefinition : ScriptableObject
     [Tooltip("Optional shared mission list asset. Used when missions list is empty.")]
     public MissionDatabase missionDatabase;
 
-    [Tooltip("Gus can ask one randomly selected question from this list during each shift in this milestone.")]
+    [Tooltip("Three milestone-specific questions Gus asks during the second half of each shift. Each questionId must match its lessonId at the same list position.")]
     public List<ShiftQuestion> shiftQuestions = new List<ShiftQuestion>();
+
+    [Tooltip("Three short ISE concepts Gus explains early in each shift, in order. Each lessonId must match the questionId at the same list position.")]
+    public List<ShiftLesson> shiftLessons = new List<ShiftLesson>();
 
     // Legacy serialized field kept to read existing project assets. Progression ignores it.
     [HideInInspector]

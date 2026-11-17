@@ -264,14 +264,18 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         Stretch(name.rectTransform);
         name.characterSpacing = 1.5f;
 
-        dialogue = CreateText(panel.transform, "Dialogue", string.Empty, 24f,
+        dialogue = CreateText(panel.transform, "Dialogue", string.Empty, 30f,
             TextAlignmentOptions.TopLeft, FontStyles.Normal, GameUITheme.TextPrimary);
         dialogue.rectTransform.anchorMin = new Vector2(0f, 0f);
         dialogue.rectTransform.anchorMax = new Vector2(1f, 1f);
-        dialogue.rectTransform.offsetMin = new Vector2(34f, 58f);
-        dialogue.rectTransform.offsetMax = new Vector2(-260f, -38f);
+        dialogue.rectTransform.offsetMin = new Vector2(34f, 80f);
+        dialogue.rectTransform.offsetMax = new Vector2(-34f, -32f);
         dialogue.textWrappingMode = TextWrappingModes.Normal;
-        dialogue.lineSpacing = 8f;
+        dialogue.enableAutoSizing = true;
+        dialogue.fontSizeMin = 22f;
+        dialogue.fontSizeMax = 30f;
+        dialogue.overflowMode = TextOverflowModes.Truncate;
+        dialogue.lineSpacing = 4f;
         ISEGlossaryLinkHandler.Attach(dialogue);
 
         progress = CreateText(panel.transform, "Progress", string.Empty, 14f,

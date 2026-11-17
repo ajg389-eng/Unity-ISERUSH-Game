@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 50;
+    public const int CurrentVersion = 53;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int supplierCapacityTierIndex;
     public int totalWorkersHired;
@@ -43,6 +43,10 @@ public class KitchenSaveSnapshot
     public float[] gusQuestionScheduledMinutes = Array.Empty<float>();
     public int[] gusQuestionOrder = Array.Empty<int>();
     public int gusQuestionCursor, gusQuestionPendingIndex = -1;
+    public bool gusShiftLegacyQuestionSchedule;
+    public float[] gusShiftEventMinutes = Array.Empty<float>();
+    public int[] gusShiftQuestionOrder = Array.Empty<int>();
+    public int gusShiftEventCursor, gusShiftPendingEvent = -1;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
@@ -54,7 +58,6 @@ public class KitchenSaveSnapshot
     public List<string> completedMilestoneIds = new List<string>();
     public List<string> completedResearchIds = new List<string>();
     public List<string> enabledMenuItemNames = new List<string>();
-    public List<CustomerOrderConfig.SavedItemReputation> itemReputation = new List<CustomerOrderConfig.SavedItemReputation>();
     public string activeResearchId;
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
@@ -94,6 +97,11 @@ public class KitchenSaveSnapshot
             s.gusQuestionOrder = questionManager.QuestionOrderForSave;
             s.gusQuestionCursor = questionManager.QuestionCursorForSave;
             s.gusQuestionPendingIndex = questionManager.QuestionIndexForSave;
+            s.gusShiftLegacyQuestionSchedule = questionManager.LegacyScheduleForSave;
+            s.gusShiftEventMinutes = questionManager.ScheduledMinutesForSave;
+            s.gusShiftQuestionOrder = questionManager.QuestionOrderForSave;
+            s.gusShiftEventCursor = questionManager.QuestionCursorForSave;
+            s.gusShiftPendingEvent = questionManager.PendingEventTokenForSave;
         }
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
         var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
@@ -158,7 +166,6 @@ public class KitchenSaveSnapshot
         if (productionForMenu != null && productionForMenu.orderConfig != null)
         {
             s.enabledMenuItemNames.AddRange(productionForMenu.orderConfig.CaptureEnabledMenuItemNames());
-            s.itemReputation.AddRange(productionForMenu.orderConfig.CaptureItemReputation());
         }
         s.customers = CustomerAI.CaptureAllForSave();
         var appearance = StoreAppearanceController.Instance;
@@ -344,8 +351,7 @@ public class KitchenSaveSnapshot
         if (customers != null)
             foreach (CustomerAI.SavedState customer in customers)
                 if (customer != null && (!AreSavedOrderItemsAvailable(customer.order, definitions)
-                    || !AreSavedOrderItemsAvailable(customer.originalOrder, definitions)
-                    || !AreSavedDeliveredItemsAvailable(customer.deliveredItems, definitions))) return false;
+                    || !AreSavedOrderItemsAvailable(customer.originalOrder, definitions))) return false;
         customerSpawner?.ResetArrivalScheduleForSaveRestore();
         CustomerAI.DespawnAllCustomers();
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
@@ -675,6 +681,12 @@ public class KitchenSaveSnapshot
         // Version 47 merges the non-interactive kitchen intro into the movement step.
         if (version < 47 && !tutorialComplete && restoredTutorialStep >= 1)
             restoredTutorialStep--;
+        // Version 52 adds the Production Flows lesson after the Business overview.
+        if (version < 52 && !tutorialComplete && restoredTutorialStep >= 2)
+            restoredTutorialStep++;
+        // Version 53 adds the Build overview before the Business and Flow lessons.
+        if (version < 53 && !tutorialComplete && restoredTutorialStep >= 1)
+            restoredTutorialStep++;
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
@@ -708,7 +720,6 @@ public class KitchenSaveSnapshot
         if (pm.orderConfig != null)
         {
             pm.orderConfig.RestoreEnabledMenuItems(enabledMenuItemNames);
-            pm.orderConfig.RestoreItemReputation(version >= 17 ? itemReputation : null);
         }
         if(grid!=null) grid.ResyncOccupancyFromScene();
         var appearance = StoreAppearanceController.Ensure();
@@ -748,8 +759,13 @@ public class KitchenSaveSnapshot
         // Restoring a checkpoint at the shift end raises OnDayEnded immediately.
         // Apply all saved report values first so the EOD panel reads the checkpoint,
         // not whatever statistics happened to be in memory before this load.
-        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
-        if (version >= 49)
+        if (version >= 51 && !gusShiftLegacyQuestionSchedule)
+            GusShiftQuestionManager.RestoreShiftEventsState(gusQuestionScheduledDay,
+                gusShiftEventMinutes, gusShiftQuestionOrder, gusShiftEventCursor, gusShiftPendingEvent);
+        else if (version >= 51)
+            GusShiftQuestionManager.RestoreState(gusQuestionScheduledDay,
+                gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex);
+        else if (version >= 49)
             GusShiftQuestionManager.RestoreState(gusQuestionScheduledDay,
                 gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex);
         else if (version >= 48)
@@ -757,6 +773,7 @@ public class KitchenSaveSnapshot
                 gusQuestionIndex, gusQuestionAskedThisShift, gusQuestionPending);
         else
             GusShiftQuestionManager.RestoreState(0, null, null, 0, -1);
+        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
         if (placer != null)
@@ -868,15 +885,6 @@ public class KitchenSaveSnapshot
         foreach (CustomerAI.SavedOrderLine line in lines)
             if (line != null && line.quantity > 0
                 && (string.IsNullOrEmpty(line.item) || !definitions.ContainsKey(line.item))) return false;
-        return true;
-    }
-
-    static bool AreSavedDeliveredItemsAvailable(List<CustomerAI.SavedDeliveredItem> items,
-        Dictionary<string, ItemDefinition> definitions)
-    {
-        if (items == null) return true;
-        foreach (CustomerAI.SavedDeliveredItem item in items)
-            if (item != null && (string.IsNullOrEmpty(item.item) || !definitions.ContainsKey(item.item))) return false;
         return true;
     }
 

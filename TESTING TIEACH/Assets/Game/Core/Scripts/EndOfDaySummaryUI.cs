@@ -32,6 +32,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
     GameTimeManager timeManager;
     bool visible;
+    bool waitingForGusPrompt;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -71,6 +72,7 @@ public class EndOfDaySummaryUI : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        GusShiftQuestionManager.PromptStateChanged -= OnGusPromptStateChanged;
         if (timeManager != null)
         {
             timeManager.OnDayEnded -= Show;
@@ -87,6 +89,16 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
     public void Show()
     {
+        if (GusShiftQuestionManager.ShouldDeferEndOfDay)
+        {
+            waitingForGusPrompt = true;
+            GusShiftQuestionManager.PromptStateChanged -= OnGusPromptStateChanged;
+            GusShiftQuestionManager.PromptStateChanged += OnGusPromptStateChanged;
+            return;
+        }
+
+        waitingForGusPrompt = false;
+        GusShiftQuestionManager.PromptStateChanged -= OnGusPromptStateChanged;
         EnsurePanel();
         WireContinue();
         RefreshSummary();
@@ -103,6 +115,8 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
     public void Hide()
     {
+        waitingForGusPrompt = false;
+        GusShiftQuestionManager.PromptStateChanged -= OnGusPromptStateChanged;
         visible = false;
         if (panelRoot != null)
             panelRoot.SetActive(false);
@@ -112,6 +126,13 @@ public class EndOfDaySummaryUI : MonoBehaviour
     }
 
     public bool IsVisible => visible;
+
+    void OnGusPromptStateChanged()
+    {
+        if (!waitingForGusPrompt || GusShiftQuestionManager.ShouldDeferEndOfDay)
+            return;
+        Show();
+    }
 
     public void ContinueToNextDay()
     {

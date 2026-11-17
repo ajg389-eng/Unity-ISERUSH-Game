@@ -54,6 +54,19 @@ MonoBehaviour:
     - Lost margin and service costs caused by a stockout
     correctAnswerIndex: 0
     explanation: Holding cost captures resources tied up in inventory over time.
+  shiftLessons:
+  - lessonId: inventory_reorder
+    title: Set the reorder point
+    explanation: Set the inventory reorder point to cover expected use during lead time plus a safety stock buffer.
+    target: 1
+  - lessonId: inventory_safety
+    title: Set a safety buffer
+    explanation: Safety stock protects service when demand or delivery time varies from the forecast.
+    target: 1
+  - lessonId: inventory_holding
+    title: Watch holding cost
+    explanation: Excess stock ties up cash and can expire. Balance shortage risk against storage cost.
+    target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

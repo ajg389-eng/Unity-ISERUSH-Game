@@ -710,6 +710,520 @@ public class IngredientsOrderUI : MonoBehaviour
     void BuildRecipesOverlay(CustomerOrderConfig menu)
     {
         Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
+        Transform parent = canvas != null ? canvas.transform : transform.root;
+        recipesOverlay = new GameObject("RecipesOverlay", typeof(RectTransform), typeof(Image));
+        recipesOverlay.transform.SetParent(parent, false);
+        RectTransform overlay = (RectTransform)recipesOverlay.transform;
+        overlay.anchorMin = Vector2.zero;
+        overlay.anchorMax = Vector2.one;
+        overlay.offsetMin = overlay.offsetMax = Vector2.zero;
+        Color backdrop = GameUITheme.Backdrop;
+        backdrop.a = 0.78f;
+        recipesOverlay.GetComponent<Image>().color = backdrop;
+
+        GameObject panel = new GameObject("RecipeBook", typeof(RectTransform), typeof(Image));
+        panel.transform.SetParent(recipesOverlay.transform, false);
+        RectTransform panelRect = (RectTransform)panel.transform;
+        HudTabColors.SizeOverlayPanel(panelRect, parent as RectTransform);
+        panel.GetComponent<Image>().color = GameUITheme.Panel;
+        TextMeshProUGUI title = CreateAbsoluteText(panel.transform, "Title", "Recipes",
+            21f, FontStyles.Bold, new Vector2(22f, -58f), new Vector2(-180f, -12f),
+            TextAlignmentOptions.Left);
+        title.color = GameUITheme.TextPrimary;
+        TextMeshProUGUI closeLabel;
+        Button close = CreateAbsoluteButton(panel.transform, "Close", "X",
+            new Vector2(-58f, -54f), new Vector2(-14f, -14f), GameUITheme.Danger, out closeLabel);
+        close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
+
+        GameObject tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        tabs.transform.SetParent(panel.transform, false);
+        RectTransform tabsRect = (RectTransform)tabs.transform;
+        tabsRect.anchorMin = new Vector2(0f, 1f);
+        tabsRect.anchorMax = new Vector2(1f, 1f);
+        tabsRect.pivot = new Vector2(0.5f, 1f);
+        tabsRect.offsetMin = new Vector2(20f, -108f);
+        tabsRect.offsetMax = new Vector2(-20f, -64f);
+        HorizontalLayoutGroup tabsLayout = tabs.GetComponent<HorizontalLayoutGroup>();
+        tabsLayout.spacing = 8f;
+        tabsLayout.childControlWidth = true;
+        tabsLayout.childControlHeight = true;
+        tabsLayout.childForceExpandWidth = true;
+        tabsLayout.childForceExpandHeight = true;
+
+        string[] names = { "BURGERS", "FRIES", "SHAKES" };
+        recipeTabButtons.Clear();
+        for (int i = 0; i < names.Length; i++)
+        {
+            int captured = i;
+            TextMeshProUGUI label;
+            Button tab = CreateCartButton(tabs.transform, "RecipeTab_" + names[i], names[i],
+                120f, GameUITheme.Surface, out label);
+            label.fontSize = 14f;
+            tab.onClick.AddListener(() => { ShowRecipeTab(menu, captured); Sfx.Play(SfxId.UiClick); });
+            recipeTabButtons.Add(tab);
+        }
+
+        GameObject viewport = new GameObject("RecipeListViewport", typeof(RectTransform),
+            typeof(Image), typeof(Mask), typeof(ScrollRect));
+        viewport.transform.SetParent(panel.transform, false);
+        RectTransform viewportRect = (RectTransform)viewport.transform;
+        viewportRect.anchorMin = Vector2.zero;
+        viewportRect.anchorMax = Vector2.one;
+        viewportRect.offsetMin = new Vector2(20f, 20f);
+        viewportRect.offsetMax = new Vector2(-20f, -116f);
+        viewport.GetComponent<Image>().color = GameUITheme.Charcoal;
+        viewport.GetComponent<Mask>().showMaskGraphic = true;
+
+        GameObject content = new GameObject("RecipeList", typeof(RectTransform),
+            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        content.transform.SetParent(viewport.transform, false);
+        RectTransform contentRect = (RectTransform)content.transform;
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = new Vector2(0f, 0f);
+        VerticalLayoutGroup contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(12, 12, 12, 12);
+        contentLayout.spacing = 8f;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        ContentSizeFitter fitter = content.GetComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        ScrollRect scroll = viewport.GetComponent<ScrollRect>();
+        scroll.viewport = viewportRect;
+        scroll.content = contentRect;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        recipeChartViewport = viewportRect;
+        recipeChartContainer = content.transform;
+        recipeGraphDrag = null;
+        GameUITheme.ApplyTo(recipesOverlay.transform);
+    }
+
+    void ShowRecipeTab(CustomerOrderConfig menu, int tab)
+    {
+        if (recipeChartContainer == null || menu == null) return;
+        activeRecipeTab = Mathf.Clamp(tab, 0, 2);
+        recipeChartMenu = menu;
+        for (int i = recipeChartContainer.childCount - 1; i >= 0; i--)
+        {
+            Transform child = recipeChartContainer.GetChild(i);
+            child.SetParent(null, false);
+            Destroy(child.gameObject);
+        }
+        for (int i = 0; i < recipeTabButtons.Count; i++)
+            GameUITheme.ApplyTabButton(recipeTabButtons[i], i == activeRecipeTab);
+        ScrollRect scroll = recipeChartViewport.GetComponent<ScrollRect>();
+        if (scroll != null) scroll.verticalNormalizedPosition = 1f;
+
+        List<ItemDefinition> products = GetRecipeProducts(menu, activeRecipeTab);
+        if (products.Count == 0)
+        {
+            AddRecipeListMessage("No recipes are available in this category yet.");
+            return;
+        }
+        foreach (ItemDefinition product in products)
+            if (FindRecipeForOutput(menu, product) != null)
+                CreateRecipeCard(menu, product);
+        Canvas.ForceUpdateCanvases();
+    }
+
+    List<ItemDefinition> GetRecipeProducts(CustomerOrderConfig menu, int tab)
+    {
+        var products = new List<ItemDefinition>();
+        ItemDefinition[] candidates = tab == 0
+            ? new[] { menu.burgerBase, menu.cheeseburgerItem, menu.clBurgerItem, menu.cltBurgerItem,
+                menu.cheeseBaconBurgerItem, menu.superBurgerItem, menu.cheeseBaconLettuceBurgerItem,
+                menu.cheeseBaconLettuceOnionBurgerItem, menu.cheeseBaconLettuceOnionTomatoBurgerItem,
+                menu.cheeseBaconLettuceOnionTomatoEggBurgerItem }
+            : tab == 1
+                ? new[] { menu.friesItem, menu.cheeseFriesItem, menu.cheeseBaconFriesItem }
+                : new[] { menu.drinkItem, menu.whippedCreamShakeItem, menu.whippedCreamSprinkleShakeItem };
+        foreach (ItemDefinition item in candidates)
+            if (item != null && !products.Contains(item)) products.Add(item);
+        return products;
+    }
+
+    static RecipeGraphNodeDefinition FindRecipeForOutput(CustomerOrderConfig menu, ItemDefinition output)
+    {
+        if (menu == null || output == null) return null;
+        IReadOnlyList<RecipeGraphNodeDefinition> recipes = menu.GetProductionRecipes();
+        for (int i = 0; i < recipes.Count; i++)
+            if (recipes[i] != null && recipes[i].output == output) return recipes[i];
+        return null;
+    }
+
+    void CreateRecipeCard(CustomerOrderConfig menu, ItemDefinition product)
+    {
+        RecipeGraphNodeDefinition recipe = FindRecipeForOutput(menu, product);
+        if (recipe == null) return;
+        bool locked = !IsRecipeUnlocked(menu, product, new HashSet<ItemDefinition>());
+        GameObject card = new GameObject("RecipeCard_" + product.name, typeof(RectTransform),
+            typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(ContentSizeFitter));
+        card.transform.SetParent(recipeChartContainer, false);
+        card.GetComponent<Image>().color = GameUITheme.Surface;
+        LayoutElement cardLayout = card.GetComponent<LayoutElement>();
+        cardLayout.minHeight = 78f;
+        cardLayout.flexibleWidth = 1f;
+        VerticalLayoutGroup cardGroup = card.GetComponent<VerticalLayoutGroup>();
+        cardGroup.padding = new RectOffset(8, 8, 8, 8);
+        cardGroup.spacing = 6f;
+        cardGroup.childControlWidth = true;
+        cardGroup.childControlHeight = true;
+        cardGroup.childForceExpandWidth = true;
+        cardGroup.childForceExpandHeight = false;
+        card.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        GameObject header = new GameObject("RecipeHeader", typeof(RectTransform), typeof(Image),
+            typeof(Button), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.transform.SetParent(card.transform, false);
+        header.GetComponent<Image>().color = locked ? GameUITheme.Backdrop : GameUITheme.PanelSlate;
+        header.GetComponent<LayoutElement>().minHeight = 64f;
+        HorizontalLayoutGroup headerLayout = header.GetComponent<HorizontalLayoutGroup>();
+        headerLayout.padding = new RectOffset(10, 10, 6, 6);
+        headerLayout.spacing = 12f;
+        headerLayout.childAlignment = TextAnchor.MiddleLeft;
+        headerLayout.childControlWidth = true;
+        headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandWidth = false;
+        RawImage preview = CreateRecipePreview(header.transform, product, 52f);
+        if (locked) preview.color = new Color(0.38f, 0.40f, 0.43f, 1f);
+        TextMeshProUGUI label = CreateRecipeLabel(header.transform,
+            "<b>" + GetRecipeItemName(product) + "</b>\n<color=#B7BEC5>"
+            + (string.IsNullOrWhiteSpace(recipe.recipeName) ? product.itemName : recipe.recipeName)
+            + "</color>", 18f);
+        if (locked) label.color = GameUITheme.TextSecondary;
+        LayoutElement labelLayout = label.gameObject.AddComponent<LayoutElement>();
+        labelLayout.flexibleWidth = 1f;
+        if (locked)
+        {
+            CreateRecipeLockIcon(header.transform);
+            int milestone = menu.GetMenuItemUnlockMilestone(product);
+            string unlock = milestone > 0 ? CustomerOrderConfig.RecipeResearchTitleForStage(milestone) : "a later milestone";
+            TextMeshProUGUI lockedLabel = CreateRecipeLabel(header.transform, "LOCKED  ·  " + unlock, 12f);
+            lockedLabel.color = GameUITheme.TextSecondary;
+        }
+        else
+        {
+            TextMeshProUGUI chevron = CreateRecipeLabel(header.transform, "DETAILS  ▼", 13f);
+            chevron.color = GameUITheme.Accent;
+            header.GetComponent<Button>().onClick.AddListener(() => ToggleRecipeDetails(menu, product, card.transform, chevron));
+        }
+        CreateRecipeDetails(menu, product, card.transform, false);
+    }
+
+    bool IsRecipeUnlocked(CustomerOrderConfig menu, ItemDefinition output, HashSet<ItemDefinition> visited)
+    {
+        if (output == null || !visited.Add(output)) return output != null;
+        if (!menu.IsMenuItemUnlocked(output) || !menu.IsIngredientUnlocked(output)) return false;
+        RecipeGraphNodeDefinition recipe = FindRecipeForOutput(menu, output);
+        if (recipe?.inputs == null) return true;
+        foreach (RecipeGraphInputDefinition input in recipe.inputs)
+        {
+            if (input == null || input.item == null) continue;
+            if (!menu.IsIngredientUnlocked(input.item)) return false;
+            if (FindRecipeForOutput(menu, input.item) != null
+                && !IsRecipeUnlocked(menu, input.item, visited)) return false;
+        }
+        return true;
+    }
+
+    void CreateRecipeLockIcon(Transform parent)
+    {
+        GameObject iconObject = new GameObject("LockedIcon", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement));
+        iconObject.transform.SetParent(parent, false);
+        LayoutElement layout = iconObject.GetComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = 22f;
+        layout.minHeight = layout.preferredHeight = 22f;
+        Image icon = iconObject.GetComponent<Image>();
+        icon.sprite = GameIconLibrary.GetSprite(GameIconId.Locked);
+        icon.color = GameUITheme.Accent;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+    }
+
+    void ToggleRecipeDetails(CustomerOrderConfig menu, ItemDefinition product, Transform card,
+        TextMeshProUGUI chevron)
+    {
+        Transform details = card.Find("RecipeDetails");
+        if (details == null) return;
+        bool open = !details.gameObject.activeSelf;
+        details.gameObject.SetActive(open);
+        if (chevron != null) chevron.text = open ? "HIDE  ▲" : "DETAILS  ▼";
+        LayoutRebuilder.MarkLayoutForRebuild(recipeChartContainer as RectTransform);
+        Sfx.Play(SfxId.UiClick);
+    }
+
+    void CreateRecipeDetails(CustomerOrderConfig menu, ItemDefinition product, Transform card, bool open)
+    {
+        GameObject details = new GameObject("RecipeDetails", typeof(RectTransform), typeof(Image),
+            typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        details.transform.SetParent(card, false);
+        details.GetComponent<Image>().color = GameUITheme.Charcoal;
+        details.SetActive(open);
+        VerticalLayoutGroup detailsLayout = details.GetComponent<VerticalLayoutGroup>();
+        detailsLayout.padding = new RectOffset(12, 12, 10, 10);
+        detailsLayout.spacing = 8f;
+        detailsLayout.childControlWidth = true;
+        detailsLayout.childControlHeight = true;
+        detailsLayout.childForceExpandWidth = true;
+        detailsLayout.childForceExpandHeight = false;
+
+        var stations = new List<StationType>();
+        var amounts = new Dictionary<ItemDefinition, int>();
+        var path = new HashSet<ItemDefinition>();
+        CollectRecipeNeeds(menu, product, 1, stations, amounts, path);
+        AddRecipeSectionTitle(details.transform, "WORKSTATIONS");
+        if (stations.Count == 0)
+            CreateRecipeLabel(details.transform, "No workstation listed", 14f);
+        else
+        {
+            GameObject stationRow = new GameObject("WorkstationIcons", typeof(RectTransform),
+                typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            stationRow.transform.SetParent(details.transform, false);
+            VerticalLayoutGroup rowLayout = stationRow.GetComponent<VerticalLayoutGroup>();
+            rowLayout.spacing = 5f;
+            rowLayout.childControlWidth = true;
+            rowLayout.childControlHeight = true;
+            rowLayout.childForceExpandWidth = true;
+            rowLayout.childForceExpandHeight = false;
+            foreach (StationType station in stations)
+                CreateStationNeed(stationRow.transform, station);
+        }
+        AddRecipeSectionTitle(details.transform, "INGREDIENTS");
+        if (amounts.Count == 0)
+            CreateRecipeLabel(details.transform, "No ingredients listed", 14f);
+        else
+            foreach (var entry in amounts)
+                CreateIngredientNeed(details.transform, entry.Key, entry.Value);
+    }
+
+    void CollectRecipeNeeds(CustomerOrderConfig menu, ItemDefinition output, int multiplier,
+        List<StationType> stations, Dictionary<ItemDefinition, int> ingredients, HashSet<ItemDefinition> path)
+    {
+        if (output == null) return;
+        RecipeGraphNodeDefinition recipe = FindRecipeForOutput(menu, output);
+        if (recipe == null || recipe.inputs == null || recipe.inputs.Count == 0)
+        {
+            ingredients[output] = ingredients.TryGetValue(output, out int old) ? old + multiplier : multiplier;
+            return;
+        }
+        if (!path.Add(output)) return;
+        if (!stations.Contains(recipe.stationType)) stations.Add(recipe.stationType);
+        foreach (RecipeGraphInputDefinition input in recipe.inputs)
+        {
+            if (input == null || input.item == null) continue;
+            int amount = Mathf.Max(1, input.amount) * multiplier;
+            if (FindRecipeForOutput(menu, input.item) != null)
+                CollectRecipeNeeds(menu, input.item, amount, stations, ingredients, path);
+            else
+                ingredients[input.item] = ingredients.TryGetValue(input.item, out int old)
+                    ? old + amount : amount;
+        }
+        path.Remove(output);
+    }
+
+    void CreateStationNeed(Transform parent, StationType station)
+    {
+        string stationName = StationDisplayName(station);
+        GameObject chip = new GameObject("Station_" + station, typeof(RectTransform), typeof(Image),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        chip.transform.SetParent(parent, false);
+        chip.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.035f);
+        LayoutElement chipLayout = chip.GetComponent<LayoutElement>();
+        chipLayout.minHeight = 50f;
+        HorizontalLayoutGroup layout = chip.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(6, 8, 5, 5);
+        layout.spacing = 10f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        ItemDefinition stationItem = FindStationItem(station);
+        if (stationItem != null)
+            CreateStationPreview(chip.transform, stationItem);
+        else
+        {
+            TextMeshProUGUI fallback = CreateRecipeLabel(chip.transform, StationInitial(station), 14f);
+            fallback.alignment = TextAlignmentOptions.Center;
+            fallback.color = GameUITheme.Accent;
+            fallback.gameObject.AddComponent<LayoutElement>().preferredWidth = 30f;
+        }
+        TextMeshProUGUI label = CreateRecipeLabel(chip.transform, stationName, 14f);
+        label.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+    }
+
+    void CreateStationPreview(Transform parent, ItemDefinition item)
+    {
+        GameObject tile = new GameObject("StationImageTile", typeof(RectTransform), typeof(Image),
+            typeof(Outline), typeof(LayoutElement));
+        tile.transform.SetParent(parent, false);
+        LayoutElement layout = tile.GetComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = 52f;
+        layout.minHeight = layout.preferredHeight = 52f;
+        tile.GetComponent<Image>().color = new Color(0.09f, 0.11f, 0.14f, 1f);
+        Outline outline = tile.GetComponent<Outline>();
+        outline.effectColor = Color.black;
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
+        outline.useGraphicAlpha = false;
+        GameObject imageObject = new GameObject("StationPreview", typeof(RectTransform),
+            typeof(RawImage), typeof(AspectRatioFitter));
+        imageObject.transform.SetParent(tile.transform, false);
+        RectTransform imageRect = imageObject.GetComponent<RectTransform>();
+        imageRect.anchorMin = Vector2.zero;
+        imageRect.anchorMax = Vector2.one;
+        imageRect.offsetMin = new Vector2(3f, 3f);
+        imageRect.offsetMax = new Vector2(-3f, -3f);
+        RawImage image = imageObject.GetComponent<RawImage>();
+        image.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
+        if (image.texture == null && item.previewIcon != null)
+            image.texture = item.previewIcon.texture;
+        image.color = image.texture != null ? Color.white : Color.clear;
+        image.raycastTarget = false;
+        AspectRatioFitter fit = imageObject.GetComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fit.aspectRatio = image.texture != null && image.texture.height > 0
+            ? (float)image.texture.width / image.texture.height : 1f;
+    }
+
+    ItemDefinition FindStationItem(StationType station)
+    {
+        InventoryManager[] inventories = FindObjectsByType<InventoryManager>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (InventoryManager inventoryManager in inventories)
+        {
+            if (inventoryManager == null || inventoryManager.allItems == null) continue;
+            foreach (ItemDefinition item in inventoryManager.allItems)
+            {
+                if (item == null || item.prefab == null) continue;
+                Component component = station switch
+                {
+                    StationType.Freezer => item.prefab.GetComponentInChildren<FreezerStation>(true),
+                    StationType.Grill => item.prefab.GetComponentInChildren<GrillStation>(true),
+                    StationType.Pantry => item.prefab.GetComponentInChildren<PantryStation>(true),
+                    StationType.Assembly => item.prefab.GetComponentInChildren<AssemblyStation>(true),
+                    StationType.Cutting => item.prefab.GetComponentInChildren<CuttingStation>(true),
+                    StationType.Fryer => item.prefab.GetComponentInChildren<FryerStation>(true),
+                    StationType.Drink => item.prefab.GetComponentInChildren<DrinkStation>(true),
+                    _ => null
+                };
+                if (component != null) return item;
+            }
+        }
+        return null;
+    }
+
+    static string StationDisplayName(StationType station)
+    {
+        return station switch
+        {
+            StationType.Freezer => "Freezer",
+            StationType.Grill => "Grill",
+            StationType.Pantry => "Pantry",
+            StationType.Assembly => "Assembly",
+            StationType.Cutting => "Cutting",
+            StationType.Fryer => "Fryer",
+            StationType.Drink => "Shake Station",
+            _ => station.ToString()
+        };
+    }
+
+    static string StationInitial(StationType station)
+    {
+        return station switch
+        {
+            StationType.Freezer => "F",
+            StationType.Grill => "G",
+            StationType.Pantry => "P",
+            StationType.Assembly => "A",
+            StationType.Cutting => "C",
+            StationType.Fryer => "F",
+            StationType.Drink => "S",
+            _ => "?"
+        };
+    }
+
+    void CreateIngredientNeed(Transform parent, ItemDefinition item, int amount)
+    {
+        GameObject row = new GameObject("Ingredient_" + item.name, typeof(RectTransform),
+            typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        row.transform.SetParent(parent, false);
+        row.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.035f);
+        row.GetComponent<LayoutElement>().minHeight = 48f;
+        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(6, 8, 4, 4);
+        layout.spacing = 10f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        CreateRecipePreview(row.transform, item, 38f);
+        TextMeshProUGUI label = CreateRecipeLabel(row.transform,
+            "<b>" + amount + "×</b>  " + GetRecipeItemName(item), 14f);
+        label.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+    }
+
+    RawImage CreateRecipePreview(Transform parent, ItemDefinition item, float side)
+    {
+        GameObject imageObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage),
+            typeof(LayoutElement));
+        imageObject.transform.SetParent(parent, false);
+        LayoutElement layout = imageObject.GetComponent<LayoutElement>();
+        layout.minWidth = layout.preferredWidth = side;
+        layout.minHeight = layout.preferredHeight = side;
+        RawImage image = imageObject.GetComponent<RawImage>();
+        image.texture = item != null ? ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName) : null;
+        image.color = image.texture != null ? Color.white : Color.clear;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    TextMeshProUGUI CreateRecipeLabel(Transform parent, string value, float size)
+    {
+        GameObject go = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        go.transform.SetParent(parent, false);
+        TextMeshProUGUI label = go.GetComponent<TextMeshProUGUI>();
+        label.text = value;
+        label.fontSize = size;
+        label.color = GameUITheme.TextPrimary;
+        label.textWrappingMode = TextWrappingModes.Normal;
+        label.overflowMode = TextOverflowModes.Truncate;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.raycastTarget = false;
+        if (TMP_Settings.defaultFontAsset != null) label.font = TMP_Settings.defaultFontAsset;
+        return label;
+    }
+
+    void AddRecipeSectionTitle(Transform parent, string value)
+    {
+        TextMeshProUGUI label = CreateRecipeLabel(parent, value, 12f);
+        label.fontStyle = FontStyles.Bold;
+        label.color = GameUITheme.Accent;
+    }
+
+    void AddRecipeListMessage(string value)
+    {
+        TextMeshProUGUI label = CreateRecipeLabel(recipeChartContainer, value, 16f);
+        label.alignment = TextAlignmentOptions.Center;
+        label.gameObject.AddComponent<LayoutElement>().minHeight = 80f;
+    }
+
+    static string GetRecipeItemName(ItemDefinition item)
+    {
+        return item != null && !string.IsNullOrWhiteSpace(item.itemName) ? item.itemName
+            : item != null ? item.name : "Unknown item";
+    }
+
+    void BuildLegacyRecipesOverlay(CustomerOrderConfig menu)
+    {
+        Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas == null)
             canvas = FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
         Transform parent = canvas != null ? canvas.transform : transform.root;
@@ -826,7 +1340,7 @@ public class IngredientsOrderUI : MonoBehaviour
         GameUITheme.ApplyTo(recipesOverlay.transform);
     }
 
-    void ShowRecipeTab(CustomerOrderConfig menu, int tab)
+    void ShowLegacyRecipeTab(CustomerOrderConfig menu, int tab)
     {
         if (recipeChartContainer == null || recipeGraphDrag == null) return;
         tab = Mathf.Clamp(tab, 0, recipeTabRoots.Length - 1);
@@ -2509,7 +3023,7 @@ public class IngredientsOrderUI : MonoBehaviour
                 || (deliveryActive && countdown != displayedDeliveryCountdown))
             {
                 deliveryStatusText.text = planning
-                    ? "Rows show today / next shift / later. Next includes pending reputation; later holds steady. Shortfall counts stock, cart and supply rate."
+                    ? "Rows show today / next shift / later. Demand follows milestone level; later holds the current level. Shortfall counts stock, cart and supply rate."
                     : deliveryActive
                         ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
                         : "Supplier order  |  Standard lead time "

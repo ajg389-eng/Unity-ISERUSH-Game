@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: milestone_05_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_05_serve_super_burgers
-  title: Deliver 45 Super Burgers
-  description: Deliver at least 45 Super Burgers to a Pickup Station this shift.
+  title: Serve 270 Super Burgers
+  description: Serve at least 270 Super Burgers this shift, 90% of the 300-item daily demand.
   completionEventId:
-  requiredCount: 45
+  requiredCount: 270
   producedItem: {fileID: 0}
   deliveredItem: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
   countAnyUnlockedMenuProduct: 0

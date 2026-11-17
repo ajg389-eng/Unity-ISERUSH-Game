@@ -50,13 +50,26 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: When work arrives faster than it can be processed, work in process accumulates in the queue.
   - questionId: process_layout
-    prompt: Which facility-layout choice usually reduces material-handling distance?
+    prompt: Which facility layout choice usually reduces material-handling distance?
     answers:
     - Place sequential, high-flow operations near each other
     - Group every resource by function even if travel increases
     - Space operations evenly without considering process flow
     correctAnswerIndex: 0
     explanation: A product-focused layout can shorten travel between operations with frequent transfers.
+  shiftLessons:
+  - lessonId: process_bottleneck
+    title: Spot the bottleneck
+    explanation: In process analysis, the bottleneck sets the maximum sustainable throughput. Compare its capacity with demand; improving a non-constraint step will not raise whole-line output.
+    target: 0
+  - lessonId: process_queue
+    title: Read the queue
+    explanation: A growing queue means work arrives faster than that step can process it.
+    target: 0
+  - lessonId: process_layout
+    title: Reduce travel
+    explanation: Facility layout places frequently linked stations close together, reducing material handling and worker travel.
+    target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

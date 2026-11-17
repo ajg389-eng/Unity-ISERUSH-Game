@@ -554,8 +554,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         title.alignment = TextAlignmentOptions.Center;
 
         TextMeshProUGUI message = CreateText(card.transform, "WarningMessage",
-            "A shortfall means expected demand is higher than predicted production or available ingredient stock. Add or configure stations, recipes, workers, and flow links, raise output targets, or order the listed ingredients before starting.",
-            17f, FontStyles.Normal, 92f, GameUITheme.TextPrimary);
+            "Predicted output is below scheduled demand for one or more menu items. Check each item's demand and predicted rate, then adjust station targets, recipes, workers, or flow links before starting.",
+            17f, FontStyles.Normal, 76f, GameUITheme.TextPrimary);
         message.textWrappingMode = TextWrappingModes.Normal;
         message.text = ISEVocabularyHighlighter.Highlight(message.text);
         ISEGlossaryLinkHandler.Attach(message);
@@ -1178,14 +1178,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         CustomerOrderConfig config = Instance.ResolveOrderConfig();
         if (config == null) return requirements;
 
-        futureShiftOffset = Mathf.Max(0, futureShiftOffset);
         float shiftMinutes = Instance.GetShiftDurationMinutes();
         foreach (ItemDefinition item in config.GetEnabledMenuItems())
         {
             if (item == null) continue;
             float rate = config.GetCustomerDemandPerMinute(item);
-            if (futureShiftOffset > 0)
-                rate += config.GetPendingItemDemandChangePerMinute(item);
             float shiftDemand = Mathf.Max(0f, rate) * shiftMinutes;
             AccumulateVendorIngredientNeeds(config, item, shiftDemand,
                 requirements, new HashSet<ItemDefinition>());
@@ -1294,8 +1291,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         ProductionManager production = ProductionManager.Instance;
         if (config == null) return false;
 
-        float shiftMinutes = GetShiftDurationMinutes();
-        var requiredIngredients = new Dictionary<ItemDefinition, float>();
         foreach (ItemDefinition item in config.GetEnabledMenuItems())
         {
             if (item == null) continue;
@@ -1309,38 +1304,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                     : predicted.ToString("0.#") + "/min predicted";
                 warnings.Add("OUTPUT SHORTFALL: " + item.itemName + ": " + predictedText
                     + "; " + demand.ToString("0.#") + "/min demand");
-            }
-
-            float shiftDemand = demand * shiftMinutes;
-            AccumulateVendorIngredientNeeds(config, item, shiftDemand,
-                requiredIngredients, new HashSet<ItemDefinition>());
-        }
-
-        KitchenInventory inventory = KitchenInventory.Instance;
-        if (inventory != null)
-        {
-            foreach (KeyValuePair<ItemDefinition, float> requirement in requiredIngredients)
-            {
-                ItemDefinition ingredient = requirement.Key;
-                if (ingredient == null) continue;
-                int needed = Mathf.CeilToInt(requirement.Value);
-                int onHand = inventory.GetCount(ingredient);
-                int supplyRate = inventory.GetSupplyRatePerMinute(ingredient);
-                float expectedSupply = supplyRate * shiftMinutes;
-                // Cap cumulative receipts by free storage plus items consumed during the shift.
-                expectedSupply = Mathf.Min(expectedSupply,
-                    Mathf.Max(0, KitchenInventory.MaxIngredientStock - onHand + needed));
-
-                bool noStock = onHand <= 0;
-                bool lowForShift = onHand < needed;
-                if (!noStock && !lowForShift) continue;
-
-                string stockState = noStock ? "NO STOCK" : "LOW STOCK";
-                string line = stockState + ": " + ingredient.itemName + " "
-                    + onHand.ToString("N0") + "/" + needed.ToString("N0") + " needed for shift";
-                if (expectedSupply > 0.01f)
-                    line += "; +" + expectedSupply.ToString("0.#") + " scheduled supply";
-                warnings.Add(line);
             }
         }
 
