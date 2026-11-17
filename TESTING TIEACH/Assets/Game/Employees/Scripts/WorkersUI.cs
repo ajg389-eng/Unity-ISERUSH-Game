@@ -20,6 +20,9 @@ public class WorkersUI : MonoBehaviour
     public Transform cardContainer;
     public ScrollRect workerCardsScroll;
     public Component TutorialFlowHeaderTarget => flowHeaderLabel;
+    public Component TutorialFlowTabsTarget => flowTabsScroll != null ? flowTabsScroll : flowListRow as Component;
+    public Component TutorialCreateFlowTarget => createFlowButton;
+    public Component TutorialEditFlowTarget => editFlowButton;
     public Component TutorialWorkerCardsTarget
     {
         get
@@ -48,6 +51,7 @@ public class WorkersUI : MonoBehaviour
     bool flowNameEditStarted;
     string flowNameAtEditStart;
     Button createFlowButton;
+    Button editFlowButton;
     TextMeshProUGUI flowStatus;
     TextMeshProUGUI workerAssignmentSummary;
     Transform systemEfficiencyRoot;
@@ -1316,7 +1320,7 @@ public class WorkersUI : MonoBehaviour
             createFlowButton.onClick.AddListener(CreateFlow);
         }
 
-        Button editFlowButton = null;
+        editFlowButton = null;
         if (flowPanel != null)
             editFlowButton = flowPanel.Find("ProductionFlowsPanel/FlowActionRow/EditFlow")?.GetComponent<Button>()
                 ?? flowPanel.Find("FlowActionRow/EditFlow")?.GetComponent<Button>()

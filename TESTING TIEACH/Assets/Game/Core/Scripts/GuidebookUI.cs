@@ -43,7 +43,6 @@ public class GuidebookUI : MonoBehaviour
     readonly List<Button> categoryButtons = new List<Button>();
     readonly List<int> categoryPageIndexes = new List<int>();
     int spreadIndex;
-    int selectedBookmarkPageIndex = -1;
     int focusedTermPageIndex = -1;
     string focusedTerm;
     bool visible;
@@ -157,7 +156,6 @@ public class GuidebookUI : MonoBehaviour
         root.SetActive(true);
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
         spreadIndex = Mathf.Clamp(PlayerPrefs.GetInt(PrefSpreadIndex, 0), 0, maxSpread);
-        selectedBookmarkPageIndex = -1;
         Refresh();
     }
 
@@ -173,7 +171,6 @@ public class GuidebookUI : MonoBehaviour
                 continue;
 
             spreadIndex = Mathf.Clamp(i / 2, 0, Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1));
-            selectedBookmarkPageIndex = i;
             SaveCurrentSpread();
             Refresh();
             return;
@@ -420,7 +417,6 @@ public class GuidebookUI : MonoBehaviour
         int next = Mathf.Clamp(spreadIndex + delta, 0, Mathf.Max(0, maxSpread));
         if (next == spreadIndex) return;
         spreadIndex = next;
-        selectedBookmarkPageIndex = -1;
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
         Refresh();
@@ -429,7 +425,6 @@ public class GuidebookUI : MonoBehaviour
     void JumpToPage(int pageIndex)
     {
         int maxSpread = Mathf.Max(0, (GuidebookPages.All.Length + 1) / 2 - 1);
-        selectedBookmarkPageIndex = Mathf.Clamp(pageIndex, 0, GuidebookPages.All.Length - 1);
         spreadIndex = Mathf.Clamp(pageIndex / 2, 0, maxSpread);
         SaveCurrentSpread();
         Sfx.Play(SfxId.UiClick);
@@ -549,21 +544,14 @@ public class GuidebookUI : MonoBehaviour
     void RefreshCategoryBookmarks(int visibleRightPage)
     {
         int visibleLeftPage = Mathf.Max(0, visibleRightPage - 1);
-        int focusPage = selectedBookmarkPageIndex >= visibleLeftPage && selectedBookmarkPageIndex <= visibleRightPage
-            ? selectedBookmarkPageIndex
-            : visibleRightPage;
-        int active = 0;
-        for (int i = 0; i < categoryPageIndexes.Count; i++)
-        {
-            if (categoryPageIndexes[i] <= focusPage)
-                active = i;
-        }
-
         for (int i = 0; i < categoryButtons.Count; i++)
         {
             Button button = categoryButtons[i];
             if (button == null) continue;
-            bool selected = i == active;
+            int chapterStart = categoryPageIndexes[i];
+            int chapterEnd = i + 1 < categoryPageIndexes.Count
+                ? categoryPageIndexes[i + 1] - 1 : GuidebookPages.All.Length - 1;
+            bool selected = chapterStart <= visibleRightPage && chapterEnd >= visibleLeftPage;
             if (button.targetGraphic != null)
                 button.targetGraphic.color = GameUITheme.Surface;
             // Keep button state tint neutral so Unity's transition colors cannot

@@ -49,6 +49,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     KitchenEmployee focusedWorker;
     StationNode focusedStation;
     ProductionFlowPlan focusedFlow;
+    ProductionFlowPlan tutorialFlow;
+    int tutorialFlowConnectionCount;
+    bool tutorialFlowActive;
 
     public static bool HasFocusedWorker => Instance != null && Instance.focusedWorker != null;
     public static ProductionFlowPlan FocusedFlow => Instance != null ? Instance.focusedFlow : null;
@@ -144,6 +147,24 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         Instance.ApplyFocus();
     }
 
+    public static void ShowTutorialFlowProgress(ProductionFlowPlan flow, int revealedConnections)
+    {
+        if (Instance == null) return;
+        Instance.tutorialFlow = flow;
+        Instance.tutorialFlowConnectionCount = Mathf.Max(0, revealedConnections);
+        Instance.tutorialFlowActive = flow != null;
+        Instance.ApplyFocus();
+    }
+
+    public static void ClearTutorialFlowProgress()
+    {
+        if (Instance == null || !Instance.tutorialFlowActive) return;
+        Instance.tutorialFlow = null;
+        Instance.tutorialFlowConnectionCount = 0;
+        Instance.tutorialFlowActive = false;
+        Instance.ApplyFocus();
+    }
+
     public static void ClearFocus()
     {
         if (Instance == null) return;
@@ -199,6 +220,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         }
 
         DrawAllStationPreviews();
+
+        if (tutorialFlowActive && tutorialFlow != null)
+        {
+            DrawTutorialFlowProgress(tutorialFlow, tutorialFlowConnectionCount);
+            return;
+        }
 
         // A highlighted station narrows the grid overlay to its direct
         // incoming and outgoing connections, even when a flow is selected.
@@ -409,6 +436,43 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 + "_Branch_" + edgeIndex, routeSegmentsInFlow, showMarkers, sourceColor);
             edgeIndex++;
         }
+    }
+
+    void DrawTutorialFlowProgress(ProductionFlowPlan source, int revealedConnections)
+    {
+        if (source == null) return;
+        source.EnsureLegacyConnections();
+        if (source.stations == null || source.stations.Count == 0) return;
+
+        int revealedCount = Mathf.Clamp(revealedConnections, 0,
+            source.connections != null ? source.connections.Count : 0);
+        var revealedStations = new HashSet<GameObject>();
+        var revealedEdges = new List<ProductionFlowConnection>();
+        if (source.connections != null)
+            for (int i = 0; i < revealedCount; i++)
+            {
+                ProductionFlowConnection connection = source.connections[i];
+                if (connection == null || connection.from == null || connection.to == null) continue;
+                revealedEdges.Add(connection);
+                revealedStations.Add(connection.from);
+                revealedStations.Add(connection.to);
+            }
+        if (revealedStations.Count == 0 && source.stations[0] != null)
+            revealedStations.Add(source.stations[0]);
+
+        var visibleStations = new List<GameObject>();
+        foreach (GameObject station in source.stations)
+            if (station != null && revealedStations.Contains(station))
+                visibleStations.Add(station);
+
+        ProductionFlowPlan preview = new ProductionFlowPlan
+        {
+            flowName = source.flowName,
+            graphInitialized = true,
+            stations = visibleStations,
+            connections = revealedEdges
+        };
+        DrawDraftFlow(preview, true);
     }
 
     static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)

@@ -129,6 +129,7 @@ public class InventoryManager : MonoBehaviour
         var undo = PurchaseUndoManager.Ensure();
         if (undo != null)
             undo.RecordStationPurchase(item, paid);
+        OnboardingTutorial.NotifyTutorialStationPurchased(item);
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.StationPurchased);
         if (item.IsTieredStation && item.stationMark >= 2)
             TutorialVoiceEvents.Raise(TutorialVoiceEventId.Mk2StationPurchased);

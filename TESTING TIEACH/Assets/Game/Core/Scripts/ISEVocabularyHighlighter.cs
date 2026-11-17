@@ -3,8 +3,7 @@ using System.Text.RegularExpressions;
 /// <summary>Formats common Industrial and Systems Engineering terms in learning text.</summary>
 public static class ISEVocabularyHighlighter
 {
-    const string ReadTextColor = "#70CDBD";
-    const string UnreadTextColor = "#FFD45A";
+    const string HighlightTextColor = "#FFD45A";
     static readonly Regex InjectedHighlight = new Regex(
         @"<link=""ise:[^""]+"">(?:<mark=[^>]+>)?<b>(?:<u>)?<color=[^>]+>(?<term>.*?)</color>(?:</u>)?</b>(?:</mark>)?</link>",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
@@ -30,15 +29,12 @@ public static class ISEVocabularyHighlighter
     public static string Highlight(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
+        text = RemoveHighlightMarkup(text);
         return Vocabulary.Replace(text, match =>
         {
-            bool unread = !GuidebookUI.IsGlossaryTermDiscovered(match.Value);
-            string textColor = unread ? UnreadTextColor : ReadTextColor;
-            string underlineOpen = unread ? "<u>" : string.Empty;
-            string underlineClose = unread ? "</u>" : string.Empty;
-            return "<link=\"ise:" + match.Value + "\"><b>" + underlineOpen
-                + "<color=" + textColor + ">" + match.Value + "</color>"
-                + underlineClose + "</b></link>";
+            return "<link=\"ise:" + match.Value + "\"><b><u>"
+                + "<color=" + HighlightTextColor + ">" + match.Value + "</color>"
+                + "</u></b></link>";
         });
     }
 

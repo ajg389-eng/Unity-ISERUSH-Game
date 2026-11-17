@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 51;
+    public const int CurrentVersion = 53;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int supplierCapacityTierIndex;
     public int totalWorkersHired;
@@ -681,6 +681,12 @@ public class KitchenSaveSnapshot
         // Version 47 merges the non-interactive kitchen intro into the movement step.
         if (version < 47 && !tutorialComplete && restoredTutorialStep >= 1)
             restoredTutorialStep--;
+        // Version 52 adds the Production Flows lesson after the Business overview.
+        if (version < 52 && !tutorialComplete && restoredTutorialStep >= 2)
+            restoredTutorialStep++;
+        // Version 53 adds the Build overview before the Business and Flow lessons.
+        if (version < 53 && !tutorialComplete && restoredTutorialStep >= 1)
+            restoredTutorialStep++;
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
