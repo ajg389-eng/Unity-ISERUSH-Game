@@ -41,7 +41,7 @@ public class GuidebookUI : MonoBehaviour
     Button leftRewardButton;
     Button rightRewardButton;
     readonly List<Button> categoryButtons = new List<Button>();
-    readonly List<int> categoryPageIndexes = new List<int>();
+    readonly List<int> categorySpreadIndexes = new List<int>();
     int spreadIndex;
     int focusedTermPageIndex = -1;
     string focusedTerm;
@@ -233,7 +233,8 @@ public class GuidebookUI : MonoBehaviour
 
         var inner = new GameObject("Inner", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         inner.transform.SetParent(book.transform, false);
-        Stretch((RectTransform)inner.transform, 22f, 70f, 22f, 22f);
+        // Reserve a footer strip for page navigation so it does not cover text.
+        Stretch((RectTransform)inner.transform, 22f, 70f, 22f, 60f);
         var hlg = inner.GetComponent<HorizontalLayoutGroup>();
         hlg.spacing = 0f;
         hlg.childAlignment = TextAnchor.MiddleCenter;
@@ -258,12 +259,10 @@ public class GuidebookUI : MonoBehaviour
         leftRewardButton.onClick.AddListener(ClaimFocusedTermReward);
         rightRewardButton.onClick.AddListener(ClaimFocusedTermReward);
 
-        prevButton = CreateNavButton(book.transform, "PrevButton", "‹", new Vector2(0f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-14f, 0f));
+        prevButton = CreateTextButton(book.transform, "PrevButton", "PREVIOUS PAGE", new Vector2(0.5f, 0f), new Vector2(-170f, 12f), 190f, 38f);
         prevButton.onClick.AddListener(() => Turn(-1));
-        nextButton = CreateNavButton(book.transform, "NextButton", "›", new Vector2(1f, 0.5f), new Vector2(0f, 0.5f), new Vector2(14f, 0f));
+        nextButton = CreateTextButton(book.transform, "NextButton", "NEXT PAGE", new Vector2(0.5f, 0f), new Vector2(170f, 12f), 190f, 38f);
         nextButton.onClick.AddListener(() => Turn(1));
-        ((RectTransform)prevButton.transform).anchoredPosition = new Vector2(-14f, -300f);
-        ((RectTransform)nextButton.transform).anchoredPosition = new Vector2(146f, -300f);
         BuildCategoryBookmarks(book.transform);
 
         var close = CreateTextButton(book.transform, "CloseButton", "Close", new Vector2(1f, 1f), new Vector2(-18f, -12f), 120f, 36f);
@@ -279,8 +278,8 @@ public class GuidebookUI : MonoBehaviour
         folioRt.anchorMin = new Vector2(0.5f, 0f);
         folioRt.anchorMax = new Vector2(0.5f, 0f);
         folioRt.pivot = new Vector2(0.5f, 0f);
-        folioRt.anchoredPosition = new Vector2(0f, 8f);
-        folioRt.sizeDelta = new Vector2(400f, 28f);
+        folioRt.anchoredPosition = new Vector2(0f, 16f);
+        folioRt.sizeDelta = new Vector2(120f, 24f);
     }
 
     void BuildPage(Transform parent, string name, out TextMeshProUGUI chapter, out TextMeshProUGUI title,
@@ -440,22 +439,38 @@ public class GuidebookUI : MonoBehaviour
     void BuildCategoryBookmarks(Transform book)
     {
         categoryButtons.Clear();
-        categoryPageIndexes.Clear();
+        categorySpreadIndexes.Clear();
 
-        string previousChapter = null;
-        int bookmarkIndex = 0;
-        for (int pageIndex = 0; pageIndex < GuidebookPages.All.Length; pageIndex++)
+        int spreadCount = (GuidebookPages.All.Length + 1) / 2;
+        for (int spread = 0; spread < spreadCount; spread++)
         {
-            string chapter = GuidebookPages.All[pageIndex].chapter ?? "Guide";
-            if (chapter == previousChapter) continue;
-            previousChapter = chapter;
-
-            int targetPage = pageIndex;
-            Button button = CreateBookmarkButton(book, chapter, bookmarkIndex,
-                () => JumpToPage(targetPage));
+            int targetSpread = spread;
+            Button button = CreateBookmarkButton(book, GetBookmarkLabel(spread * 2), spread,
+                () => JumpToPage(targetSpread * 2));
             categoryButtons.Add(button);
-            categoryPageIndexes.Add(targetPage);
-            bookmarkIndex++;
+            categorySpreadIndexes.Add(targetSpread);
+        }
+    }
+
+    static string GetBookmarkLabel(int firstPageIndex)
+    {
+        // Each tab targets one visible two-page spread. The glossary therefore
+        // has direct bookmarks for each topic instead of one tab for 18 pages.
+        switch (firstPageIndex / 2)
+        {
+            case 0: return "ISE Loop + Plan";
+            case 1: return "Diagnose + Flow";
+            case 2: return "Design + Improve";
+            case 3: return "Glossary: Systems";
+            case 4: return "Glossary: Analysis";
+            case 5: return "Glossary: Demand";
+            case 6: return "Glossary: Inventory";
+            case 7: return "Glossary: Supply";
+            case 8: return "Glossary: Production";
+            case 9: return "Glossary: Queues";
+            case 10: return "Glossary: Economics";
+            case 11: return "Glossary: Staffing";
+            default: return "GUIDE";
         }
     }
 
@@ -477,9 +492,13 @@ public class GuidebookUI : MonoBehaviour
         button.onClick.AddListener(action);
         ApplyButtonColors(button);
 
-        var text = CreateLabel(go.transform, "Label", label, 15f, TextAlignmentOptions.MidlineLeft, NavText);
+        var text = CreateLabel(go.transform, "Label", label, 13f, TextAlignmentOptions.Center, NavText);
         Stretch(text.rectTransform, 14f, 0f, 8f, 0f);
         text.fontStyle = FontStyles.Bold;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = 10f;
+        text.fontSizeMax = 13f;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
         text.raycastTarget = false;
         return button;
     }
@@ -498,12 +517,12 @@ public class GuidebookUI : MonoBehaviour
 
         int shownLeft = leftIndex + 1;
         int shownRight = Mathf.Min(rightIndex + 1, pages.Length);
-        folioText.text = shownLeft + "–" + shownRight + "  /  " + pages.Length;
+        folioText.text = shownLeft + "-" + shownRight + "  /  " + pages.Length;
 
         int maxSpread = (pages.Length + 1) / 2 - 1;
         prevButton.interactable = spreadIndex > 0;
         nextButton.interactable = spreadIndex < maxSpread;
-        RefreshCategoryBookmarks(rightIndex);
+        RefreshCategoryBookmarks(spreadIndex);
     }
 
     void RefreshGlossaryRewardButton(Button button, int pageIndex)
@@ -541,17 +560,13 @@ public class GuidebookUI : MonoBehaviour
         Refresh();
     }
 
-    void RefreshCategoryBookmarks(int visibleRightPage)
+    void RefreshCategoryBookmarks(int visibleSpread)
     {
-        int visibleLeftPage = Mathf.Max(0, visibleRightPage - 1);
         for (int i = 0; i < categoryButtons.Count; i++)
         {
             Button button = categoryButtons[i];
             if (button == null) continue;
-            int chapterStart = categoryPageIndexes[i];
-            int chapterEnd = i + 1 < categoryPageIndexes.Count
-                ? categoryPageIndexes[i + 1] - 1 : GuidebookPages.All.Length - 1;
-            bool selected = chapterStart <= visibleRightPage && chapterEnd >= visibleLeftPage;
+            bool selected = categorySpreadIndexes[i] == visibleSpread;
             if (button.targetGraphic != null)
                 button.targetGraphic.color = GameUITheme.Surface;
             // Keep button state tint neutral so Unity's transition colors cannot
