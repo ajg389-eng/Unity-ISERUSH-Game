@@ -2509,7 +2509,7 @@ public class IngredientsOrderUI : MonoBehaviour
                 || (deliveryActive && countdown != displayedDeliveryCountdown))
             {
                 deliveryStatusText.text = planning
-                    ? "Rows show today / next shift / later. Next includes pending reputation; later holds steady. Shortfall counts stock, cart and supply rate."
+                    ? "Rows show today / next shift / later. Demand follows milestone level; later holds the current level. Shortfall counts stock, cart and supply rate."
                     : deliveryActive
                         ? "Delivering  |  Arrives " + IngredientDeliveryService.FormatCountdown(countdown)
                         : "Supplier order  |  Standard lead time "

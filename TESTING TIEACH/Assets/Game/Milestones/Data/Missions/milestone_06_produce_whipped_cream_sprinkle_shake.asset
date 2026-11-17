@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: milestone_06_produce_whipped_cream_sprinkle_shake
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_serve_whipped_cream_sprinkle_shakes
-  title: Deliver 35 Whipped Cream Sprinkle Shakes
-  description: Deliver at least 35 Whipped Cream Sprinkle Shakes to a Pickup Station this shift.
+  title: Serve 324 Whipped Cream Sprinkle Shakes
+  description: Serve at least 324 Whipped Cream Sprinkle Shakes this shift, 90% of the 360-item daily demand.
   completionEventId:
-  requiredCount: 35
+  requiredCount: 324
   producedItem: {fileID: 0}
   deliveredItem: {fileID: 11400000, guid: a3bdaf8885c359245a823625c462ad68, type: 2}
   countAnyUnlockedMenuProduct: 0

@@ -57,6 +57,19 @@ MonoBehaviour:
     - The resource's utilization target in isolation
     correctAnswerIndex: 0
     explanation: Starvation occurs when a resource is ready to work but required input is unavailable.
+  shiftLessons:
+  - lessonId: capacity_utilization
+    title: Read utilization
+    explanation: Working time divided by available time is utilization. High utilization leaves little spare capacity.
+    target: 1
+  - lessonId: capacity_balance
+    title: Balance the line
+    explanation: Mismatched station rates create queues upstream or idle time downstream.
+    target: 1
+  - lessonId: capacity_workers
+    title: Check starvation
+    explanation: Starvation means a station is ready to work but lacks inputs. Trace upstream supply and worker coverage to find the cause.
+    target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

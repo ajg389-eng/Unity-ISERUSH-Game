@@ -47,13 +47,26 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: Throughput is governed by the connected process, so a local gain may not change its limiting constraint.
   - questionId: integration_measure
-    prompt: Which result best indicates an integrated process improvement?
+    prompt: Which result best indicates an improvement in end-to-end throughput from systems integration?
     answers:
     - Higher end-to-end throughput while controlling work in process and total cost
     - Higher utilization at one operation while queues grow elsewhere
     - Shorter cycle time at one step with unchanged system throughput
     correctAnswerIndex: 0
     explanation: Evaluate system-level outcomes and tradeoffs rather than a single local metric.
+  shiftLessons:
+  - lessonId: integration_system
+    title: Use systems thinking
+    explanation: Systems thinking considers how stations, workers, supply, and demand interact to shape whole-kitchen performance.
+    target: 0
+  - lessonId: integration_bottleneck
+    title: Avoid local fixes
+    explanation: Improving one step may only move the constraint. Check whether total output changed.
+    target: 0
+  - lessonId: integration_measure
+    title: Validate systems integration
+    explanation: Measure end-to-end throughput, work in process, and cost across the full operation.
+    target: 0
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

@@ -86,7 +86,7 @@ public static class GameSaveSlots
     public static void WipeSlot(int slotIndex)
     {
         slotIndex = Mathf.Clamp(slotIndex, 1, SlotCount);
-        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "MenuItems", "IntroSeen", "InvestorLetterSent" };
+        string[] fields = { "Exists", "Day", "Cash", "LastPlayedUtc", "Kitchen", "MenuItems", "IntroSeen", "InvestorLetterSent", "GlossaryDiscovered", "GlossaryClaimed" };
         foreach (string field in fields)
             PlayerPrefs.DeleteKey(Key(slotIndex, field));
 
@@ -94,6 +94,7 @@ public static class GameSaveSlots
         {
             PlayerPrefs.DeleteKey(ActiveSlotKey);
             slotSelectedThisSession = false;
+            GuidebookUI.RestoreGlossaryProgress(null, null);
         }
         PlayerPrefs.Save();
     }
@@ -108,6 +109,7 @@ public static class GameSaveSlots
         bool previousSessionSelection = slotSelectedThisSession;
         PlayerPrefs.SetInt(ActiveSlotKey, slotIndex);
         slotSelectedThisSession = true;
+        RestoreGlossaryProgress(slotIndex);
         NotificationCenter.Clear(true);
 
         var time = GameTimeManager.Instance ?? UnityEngine.Object.FindFirstObjectByType<GameTimeManager>();
@@ -124,9 +126,15 @@ public static class GameSaveSlots
                 if (checkpoint == null || !checkpoint.Restore())
                 {
                     if (hadPreviousActiveSlot)
+                    {
                         PlayerPrefs.SetInt(ActiveSlotKey, previousActiveSlot);
+                        RestoreGlossaryProgress(previousActiveSlot);
+                    }
                     else
+                    {
                         PlayerPrefs.DeleteKey(ActiveSlotKey);
+                        GuidebookUI.RestoreGlossaryProgress(null, null);
+                    }
                     slotSelectedThisSession = previousSessionSelection;
                     Debug.LogError("Kitchen save could not be restored. The saved checkpoint has been preserved.");
                     return false;
@@ -224,6 +232,25 @@ public static class GameSaveSlots
         int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
         if (slotIndex < 1 || slotIndex > SlotCount) return;
         PlayerPrefs.SetString(Key(slotIndex, "MenuItems"), JoinNames(config.CaptureEnabledMenuItemNames()));
+    }
+
+    public static void SaveGlossaryProgress(IEnumerable<string> discovered, IEnumerable<string> claimed)
+    {
+        if (!slotSelectedThisSession) return;
+        int slotIndex = PlayerPrefs.GetInt(ActiveSlotKey, 0);
+        if (slotIndex < 1 || slotIndex > SlotCount) return;
+        PlayerPrefs.SetString(Key(slotIndex, "GlossaryDiscovered"), JoinNames(discovered));
+        PlayerPrefs.SetString(Key(slotIndex, "GlossaryClaimed"), JoinNames(claimed));
+        PlayerPrefs.Save();
+    }
+
+    static void RestoreGlossaryProgress(int slotIndex)
+    {
+        string discovered = PlayerPrefs.GetString(Key(slotIndex, "GlossaryDiscovered"), string.Empty);
+        string claimed = PlayerPrefs.GetString(Key(slotIndex, "GlossaryClaimed"), string.Empty);
+        GuidebookUI.RestoreGlossaryProgress(
+            discovered.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries),
+            claimed.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
     }
 
     static void RestoreMenuSelection(int slotIndex)

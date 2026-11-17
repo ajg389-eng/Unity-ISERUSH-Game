@@ -55,6 +55,19 @@ MonoBehaviour:
     - The demand rate automatically matches the new capacity
     correctAnswerIndex: 0
     explanation: A local capacity gain can expose another constraint that now limits system throughput.
+  shiftLessons:
+  - lessonId: economy_payback
+    title: Check payback
+    explanation: The payback period estimates how long recurring net gains take to recover an upfront investment.
+    target: 0
+  - lessonId: economy_measure
+    title: Compare alternatives
+    explanation: Engineering economy compares added output and expected sales with purchase and operating costs before choosing an investment.
+    target: 0
+  - lessonId: economy_bottleneck
+    title: Recheck the system
+    explanation: More capacity at one station can move the bottleneck to another step.
+    target: 0
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

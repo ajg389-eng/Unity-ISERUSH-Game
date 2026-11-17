@@ -52,6 +52,19 @@ MonoBehaviour:
     - Guarantee zero stockouts regardless of supplier variability
     correctAnswerIndex: 0
     explanation: Automation executes a policy; the policy still needs sound demand, lead-time, and buffer assumptions.
+  shiftLessons:
+  - lessonId: supply_rate
+    title: Match supply to use
+    explanation: Set replenishment against forecast consumption, not the supplier's maximum rate.
+    target: 1
+  - lessonId: supply_stockout
+    title: Watch inventory position
+    explanation: Inventory position is on-hand stock plus incoming supply. Replenish when it reaches the reorder point to prevent a stockout.
+    target: 1
+  - lessonId: supply_automation
+    title: Automate a sound policy
+    explanation: Supply chain automation follows your replenishment rules. It cannot replace sound demand and lead-time assumptions.
+    target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

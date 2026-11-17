@@ -12,7 +12,7 @@ public class OnboardingTutorial : MonoBehaviour
     public const string PrefsCompleteKey = "TIEACH_OnboardingComplete";
     public const string PauseSource = "OnboardingTutorial";
     const string CustomerJourneyPauseSource = "OnboardingTutorial.CustomerJourney";
-    const int AnalyticsTourCloseStage = 12;
+    const int AnalyticsTourCloseStage = 11;
     const int OnboardingStepCount = 6;
     const int MilestoneOneBottleneckStep = 6;
     const int MilestoneOneAnalyticsStep = 7;
@@ -631,7 +631,7 @@ public class OnboardingTutorial : MonoBehaviour
             "It is noon. Open <b>Business</b> and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
         new Step("Review Analytics",
-            "It is 6 PM. Open <b>Analytics</b> and review how demand, orders, production, and reputation are performing.",
+            "It is 6 PM. Open <b>Analytics</b> and review demand, orders, production, and service performance.",
             "Finish", Highlight.None, requireAnalyticsScreen: true)
     };
 
@@ -2239,7 +2239,6 @@ public class OnboardingTutorial : MonoBehaviour
             case 8: return "<b>Demand / Min</b> is the forecast rate of customer demand for this item.";
             case 9: return "<b>Produced / Min</b> counts units delivered to Pickup Stations in the last 60 seconds.";
             case 10: return "<b>Predicted / Min</b> estimates steady flow output using timing, supply, and pickup space.";
-            case 11: return "<b>Reputation / Next Shift</b> shows item reputation and the demand change applied next shift.";
             default: return analyticsScreenOpened && !analyticsScreenClosed && AnalyticsPopupUI.IsOpen
                 ? "Close Analytics. Then click <b>Finish</b> to complete the tutorial."
                 : "Open Analytics again to close it and finish the walkthrough.";
@@ -3578,8 +3577,6 @@ public class OnboardingTutorial : MonoBehaviour
             SetFastForwardHelpVisible(false);
             if (pendingStart && !IsComplete)
                 TryBegin();
-            else
-                UpdateMilestoneOneLessonSchedule();
             return;
         }
         TrackCameraTutorialInputs();

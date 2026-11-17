@@ -24,11 +24,10 @@ public class CustomersUI : MonoBehaviour
     ScrollRect demandScroll;
     readonly List<TextMeshProUGUI[]> demandRows = new List<TextMeshProUGUI[]>();
     readonly List<RawImage> demandImages = new List<RawImage>();
-    readonly List<Image[]> demandReputationStars = new List<Image[]>();
     GameObject columnHelpPopup;
     TextMeshProUGUI columnHelpText;
     int openHelpColumn = -1;
-    static readonly float[] demandColumnMinimumWidths = { 190f, 85f, 95f, 90f, 95f, 95f, 160f };
+    static readonly float[] demandColumnMinimumWidths = { 190f, 85f, 95f, 90f, 95f, 95f };
     readonly float[] demandColumnWidths = (float[])demandColumnMinimumWidths.Clone();
     static readonly string[] demandColumnHelp =
     {
@@ -37,8 +36,7 @@ public class CustomersUI : MonoBehaviour
         "The recent rate of customer orders accepted at the register for this item.",
         "Forecast customer demand for this item, in items per minute.",
         "Item units delivered to a Pickup Station during the last 60 seconds.",
-        "Estimated steady output from active flows, considering supply, station and worker timing, and pickup space.",
-        "Current item reputation and the demand change that takes effect next shift."
+        "Estimated steady output from active flows, considering supply, station and worker timing, and pickup space."
     };
 
     public Component TutorialMetricTarget(int index) =>
@@ -234,7 +232,7 @@ public class CustomersUI : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         demandHeader = CreateDemandTableRow("Header", 42f, out _);
-        string[] headings = { "Item", "Open\nOrders", "Ordered\n/min", "Demand\n/min", "Produced\n/min", "Predicted\n/min", "Reputation /\nNext Shift" };
+        string[] headings = { "Item", "Open\nOrders", "Ordered\n/min", "Demand\n/min", "Produced\n/min", "Predicted\n/min" };
         for (int i = 0; i < headings.Length; i++)
         {
             demandHeader[i].text = headings[i];
@@ -579,8 +577,6 @@ public class CustomersUI : MonoBehaviour
         {
             for (int column = 0; column < demandRows[0].Length; column++)
                 demandRows[0][column].text = column == 0 ? "No cookable menu items yet." : "";
-            foreach (Image star in demandReputationStars[0])
-                if (star != null) star.enabled = false;
             if (demandImages.Count > 0 && demandImages[0] != null)
             {
                 demandImages[0].texture = null;
@@ -615,26 +611,6 @@ public class CustomersUI : MonoBehaviour
             cells[5].text = pm != null
                 ? pm.GetPredictedOutputPerMinute(row.item).ToString("F1")
                 : "0.0";
-            CustomerOrderConfig config = pm != null ? pm.orderConfig : null;
-            int reputation = config != null ? config.GetItemReputation(row.item) : 0;
-            int pendingChange = config != null ? config.GetPendingItemDemandChangePerMinute(row.item) : 0;
-            int starsEarned = CustomerOrderConfig.GetItemReputationStars(reputation);
-            foreach (Image star in demandReputationStars[i])
-                if (star != null) star.enabled = true;
-            SetReputationStars(i, starsEarned);
-            int progressToNextStar = CustomerOrderConfig.GetServedCountProgressToNextStar(reputation);
-            int servedForNextStar = CustomerOrderConfig.GetServedCountNeededForNextStar(reputation);
-            string reputationDetail = pendingChange > 0
-                ? $"+{pendingChange}/min next shift"
-                : pendingChange < 0
-                    ? $"{pendingChange}/min next shift"
-                    : starsEarned >= CustomerOrderConfig.MaxReputationStars
-                        ? "MAX DEMAND"
-                        : "+5/min at next star";
-            string reputationProgress = starsEarned >= CustomerOrderConfig.MaxReputationStars
-                ? $"{reputation} reputation points"
-                : $"{progressToNextStar}/{servedForNextStar} points to next star";
-            cells[6].text = $"{reputationProgress}\n{reputationDetail}";
             var rowImage = cells[0].transform.parent.parent.GetComponent<Image>();
             if (rowImage != null)
                 rowImage.color = Color.clear;
@@ -648,52 +624,6 @@ public class CustomersUI : MonoBehaviour
             TextMeshProUGUI[] row = CreateDemandTableRow("DemandRow", 60f, out var preview);
             demandRows.Add(row);
             demandImages.Add(preview);
-            demandReputationStars.Add(CreateReputationStars(row[6]));
-        }
-    }
-
-    Image[] CreateReputationStars(TextMeshProUGUI label)
-    {
-        int count = CustomerOrderConfig.MaxReputationStars;
-        var stars = new Image[count];
-        Sprite sprite = GameIconLibrary.GetSprite(GameIconId.Star);
-        for (int i = 0; i < count; i++)
-        {
-            var starObject = new GameObject($"ReputationStar{i + 1}",
-                typeof(RectTransform), typeof(Image));
-            starObject.transform.SetParent(label.transform.parent, false);
-
-            RectTransform rect = (RectTransform)starObject.transform;
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = new Vector2((i - (count - 1) * 0.5f) * 18f, 15f);
-            rect.sizeDelta = new Vector2(16f, 16f);
-
-            Image image = starObject.GetComponent<Image>();
-            image.sprite = sprite;
-            image.preserveAspect = true;
-            image.raycastTarget = false;
-            stars[i] = image;
-        }
-
-        RectTransform labelRect = label.rectTransform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = new Vector2(1f, 0.55f);
-        labelRect.offsetMin = new Vector2(2f, 1f);
-        labelRect.offsetMax = new Vector2(-2f, -1f);
-        return stars;
-    }
-
-    void SetReputationStars(int rowIndex, int earned)
-    {
-        if (rowIndex < 0 || rowIndex >= demandReputationStars.Count) return;
-        Image[] stars = demandReputationStars[rowIndex];
-        for (int i = 0; i < stars.Length; i++)
-        {
-            if (stars[i] == null) continue;
-            stars[i].color = i < earned
-                ? new Color(1f, 0.78f, 0.30f, 1f)
-                : new Color(0.31f, 0.37f, 0.44f, 0.8f);
         }
     }
 

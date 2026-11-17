@@ -86,17 +86,19 @@ public static class GuidebookPages
             "ISE Glossary",
             "Systems and performance",
             "<b>Systems thinking</b>: Looking at how parts interact, including effects that move to other parts of the operation.\n\n" +
+            "<b>Systems integration</b>: Coordinating connected resources and processes so the whole operation meets its performance goals.\n\n" +
             "<b>Component interdependence</b>: How a change to one resource or process step affects the connected steps that rely on it.\n\n" +
             "<b>Holistic performance evaluation</b>: Judging the whole operation using connected measures such as output, service, cost, and waste.",
-            "system thinking", "systems thinking", "component interdependence", "holistic performance evaluation"),
+            "system thinking", "systems thinking", "systems integration", "system integration", "component interdependence", "holistic performance evaluation"),
         new Page(
             "ISE Glossary",
             "Analysis and improvement",
             "<b>Onboarding</b>: A guided introduction to the tools, goals, and first tasks needed to begin work.\n\n" +
+            "<b>Process analysis</b>: Examining how inputs, steps, queues, and outputs interact to find what limits performance.\n\n" +
             "<b>Systems analysis</b>: Measuring how a system works to understand its performance and limits.\n\n" +
             "<b>Systems design</b>: Choosing and arranging people, equipment, materials, and rules to meet a goal.\n\n" +
             "<b>Operations research</b>: Using models and data to compare choices and make better decisions.",
-            "onboarding", "system analysis", "systems analysis", "system design", "systems design", "operations research"),
+            "onboarding", "process analysis", "system analysis", "systems analysis", "system design", "systems design", "operations research"),
         new Page(
             "ISE Glossary",
             "Improvement methods",
@@ -115,23 +117,27 @@ public static class GuidebookPages
             "ISE Glossary",
             "Layout and capacity",
             "<b>Facility layout and design</b>: Arranging workspaces, stations, and routes to support clear, direct work.\n\n" +
+            "<b>Material handling</b>: Moving materials between storage, work steps, and finished output. Shorter, clearer routes reduce handling effort.\n\n" +
             "<b>Capacity / capacity planning</b>: The maximum work a resource can complete, and the process of matching that capacity to expected demand.\n\n" +
             "<b>Resource allocation</b>: Deciding where to assign limited resources such as workers, stock, or equipment.",
-            "facility layout", "facility layout and design", "capacity", "capacity planning", "resource allocation"),
+            "facility layout", "facility layout and design", "material handling", "capacity", "capacity planning", "resource allocation"),
         new Page(
             "ISE Glossary",
             "Supply and inventory",
             "<b>Inventory holding cost</b>: The cost of keeping stock available, including cash tied up, storage, handling, and spoilage.\n\n" +
+            "<b>Inventory position</b>: On-hand stock plus replenishment already on order or in transit.\n\n" +
+            "<b>Reorder point</b>: The inventory position that triggers replenishment so stock covers expected use during lead time and a safety buffer.\n\n" +
             "<b>Inventory</b>: Materials or products held for future use. The stock cap is storage capacity; daily use can exceed it when replenishment arrives.\n\n" +
             "<b>Supply chain</b>: The suppliers, deliveries, storage, and processes that move materials where they are needed.",
-            "inventory holding cost", "inventory", "supply chain"),
+            "inventory holding cost", "holding cost", "inventory position", "reorder point", "inventory", "supply chain"),
         new Page(
             "ISE Glossary",
             "Replenishment planning",
             "<b>Purchase lead time</b>: The delay between placing an ingredient order and receiving the delivery. Stock planning must cover expected use during this wait.\n\n" +
             "<b>Safety stock</b>: Extra inventory kept as a buffer against uncertain demand, usage, or delivery timing.\n\n" +
+            "<b>Replenishment</b>: Replacing stock as it is used so ingredients are available when production needs them.\n\n" +
             "<b>Automatic replenishment</b>: A repeating supply rule that orders or restores ingredients as stock is consumed, reducing manual ordering.",
-            "purchase lead time", "lead time", "safety stock", "automatic replenishment"),
+            "purchase lead time", "lead time", "safety stock", "replenishment", "automatic replenishment"),
         new Page(
             "ISE Glossary",
             "Supply and inventory (continued)",
@@ -178,16 +184,18 @@ public static class GuidebookPages
             "Queues and work balance",
             "<b>Queue analysis</b>: Studying where and why work waits by comparing queue location, size, and growth.\n\n" +
             "<b>Queueing</b>: Work or customers waiting for a resource to become available. Queueing analysis compares arrival and service rates to understand how waits grow.\n\n" +
+            "<b>Starvation</b>: A resource is ready to work but cannot continue because required input is missing.\n\n" +
             "<b>Workload balancing</b>: Distributing work across steps and workers to reduce overload, starvation, and avoidable waiting.\n\n" +
             "<b>Batch processing</b>: Processing several units together in one operation or production run.",
-            "queue analysis", "queueing", "queuing", "workload balancing", "batch processing"),
+            "queue analysis", "queueing", "queuing", "starvation", "starved", "workload balancing", "batch processing"),
         new Page(
             "ISE Glossary",
             "Production planning and economics",
             "<b>Production scheduling</b>: Choosing what to produce, in what order, and when, so available capacity and materials meet demand.\n\n" +
-            "<b>Simple payback</b>: The time an investment takes to recover its initial cost through benefits or savings.\n\n" +
+            "<b>Engineering economy</b>: Comparing the costs, benefits, and timing of alternatives to make a sound investment decision.\n\n" +
+            "<b>Simple payback period</b>: The time an investment takes to recover its initial cost through benefits or savings.\n\n" +
             "<b>Profit analysis</b>: Comparing sales revenue with ingredient, labor, operating, and upgrade costs to understand profitability.",
-            "production scheduling", "simple payback", "profit analysis"),
+            "production scheduling", "engineering economy", "payback", "payback period", "simple payback", "profit analysis"),
         new Page(
             "ISE Glossary",
             "People and work",
@@ -304,6 +312,7 @@ public static class GuidebookPages
             if (token == "forecasting") token = "forecast";
             else if (token == "min") token = "rate";
             else if (token == "queuing") token = "queueing";
+            else if (token == "starved") token = "starvation";
             else if (token == "optimization" || token == "optimisation"
                 || token == "optimize" || token == "optimise") token = "optimization";
             else if (token.EndsWith("ies", StringComparison.Ordinal) && token.Length > 4)
