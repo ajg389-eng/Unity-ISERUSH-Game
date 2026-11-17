@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Shows a selected worker's assigned production flow on the floor grid.
+/// Draws production flow routes on the floor in Business and Build.
 /// </summary>
 public class WorkerAssignmentLinkVisuals : MonoBehaviour
 {
@@ -32,6 +32,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     readonly List<Transform> recipePreviewBadges = new List<Transform>();
     readonly List<Mesh> generatedMeshes = new List<Mesh>();
     readonly List<WorkerHoverHighlight> flowWorkerHighlights = new List<WorkerHoverHighlight>();
+    readonly List<GameObject> movingObjects = new List<GameObject>();
+    readonly List<(GameObject target, Vector3 position, Quaternion rotation)> movePreviewPoses
+        = new List<(GameObject, Vector3, Quaternion)>();
+    readonly List<RectInt> previewFootprints = new List<RectInt>();
     Material lineMaterial;
     Material markerCenterMaterial;
     Material arrowMaterial;
@@ -41,7 +45,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     Texture2D circleTexture;
     Sprite circleSprite;
     Transform visualsRoot;
-    bool visible;
+    Transform linesRoot;
+    int activeLineCount;
+    GameModeManager.Mode renderedMode = GameModeManager.Mode.Play;
+    BuildPlacer buildPlacer;
+    GridManager observedBuildGrid;
+    bool buildRoutesDirty;
     bool billboardPoseCached;
     Transform billboardCamera;
     Vector3 billboardCameraPosition;
@@ -62,8 +71,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void OnDestroy()
     {
+        ObserveBuildGrid(null);
         focusedFlow = null;
-        RefreshFlowWorkerHighlights();
+        RefreshFlowWorkerHighlights(false);
         if (Instance == this) Instance = null;
         DestroyMaterial(lineMaterial);
         DestroyMaterial(markerCenterMaterial);
@@ -75,21 +85,25 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         if (circleTexture != null) Destroy(circleTexture);
     }
 
-    void Update()
-    {
-        bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        // Recipe badges belong to Business mode itself. Flow focus only controls
-        // route lines, markers, and worker highlighting.
-        bool show = manage;
+    GameModeManager.Mode CurrentMode => modeManager != null
+        ? modeManager.CurrentMode : GameModeManager.Mode.Play;
 
-        if (show != visible)
+    void LateUpdate()
+    {
+        // BuildPlacer moves the real objects in Update. Read their final preview
+        // poses here so route endpoints match the station on the same frame.
+        GameModeManager.Mode mode = CurrentMode;
+        ObserveBuildGrid(mode == GameModeManager.Mode.Build ? GridManager.Instance : null);
+        if (mode == GameModeManager.Mode.Build)
         {
-            visible = show;
-            if (visible) Refresh();
-            else ClearVisuals();
+            UpdateMovePreview();
+            if (mode != renderedMode || buildRoutesDirty)
+                RebuildVisuals(mode);
+            return;
         }
 
-        if (!visible) return;
+        if (mode != renderedMode) RebuildVisuals(mode);
+        if (mode != GameModeManager.Mode.Manage) return;
         Camera cam = Camera.main;
         if (cam == null) return;
         Transform cameraTransform = cam.transform;
@@ -102,6 +116,45 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         billboardCameraPosition = cameraTransform.position;
         billboardCameraRotation = cameraTransform.rotation;
         billboardPoseCached = true;
+    }
+
+    void ObserveBuildGrid(GridManager grid)
+    {
+        if (ReferenceEquals(observedBuildGrid, grid)) return;
+        if (observedBuildGrid != null) observedBuildGrid.GridChanged -= MarkBuildRoutesDirty;
+        observedBuildGrid = grid;
+        if (observedBuildGrid != null) observedBuildGrid.GridChanged += MarkBuildRoutesDirty;
+        MarkBuildRoutesDirty();
+    }
+
+    void MarkBuildRoutesDirty() => buildRoutesDirty = true;
+
+    void UpdateMovePreview()
+    {
+        if (buildPlacer == null) buildPlacer = FindFirstObjectByType<BuildPlacer>();
+        if (buildPlacer != null) buildPlacer.CollectMovingObjects(movingObjects);
+        else movingObjects.Clear();
+
+        bool changed = movingObjects.Count != movePreviewPoses.Count;
+        for (int i = 0; !changed && i < movingObjects.Count; i++)
+        {
+            GameObject target = movingObjects[i];
+            var previous = movePreviewPoses[i];
+            changed = target != previous.target || target.transform.position != previous.position
+                || target.transform.rotation != previous.rotation;
+        }
+        if (!changed && !buildRoutesDirty) return;
+
+        movePreviewPoses.Clear();
+        previewFootprints.Clear();
+        foreach (GameObject target in movingObjects)
+        {
+            Transform pose = target.transform;
+            movePreviewPoses.Add((target, pose.position, pose.rotation));
+            if (buildPlacer.TryGetMovePreviewFootprint(target, out RectInt footprint))
+                previewFootprints.Add(footprint);
+        }
+        buildRoutesDirty = true;
     }
 
     public static void NotifyLinksChanged()
@@ -175,28 +228,39 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
     void ApplyFocus()
     {
-        bool manage = modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
-        visible = manage;
-        if (visible) Refresh();
-        else
-        {
-            RefreshFlowWorkerHighlights();
-            ClearVisuals();
-        }
+        if (CurrentMode != GameModeManager.Mode.Build) Refresh();
     }
 
     public void Refresh()
     {
+        GameModeManager.Mode mode = CurrentMode;
+        if (mode == GameModeManager.Mode.Build || renderedMode == GameModeManager.Mode.Build)
+        {
+            // Coalesce layout and link changes until the placement input has run.
+            MarkBuildRoutesDirty();
+            return;
+        }
+        RebuildVisuals(mode);
+    }
+
+    void RebuildVisuals(GameModeManager.Mode mode)
+    {
+        renderedMode = mode;
+        buildRoutesDirty = false;
         billboardPoseCached = false;
-        RefreshFlowWorkerHighlights();
+        RefreshFlowWorkerHighlights(mode == GameModeManager.Mode.Manage);
         EnsureRoot();
         ClearVisuals();
 
-        if (modeManager == null || modeManager.CurrentMode != GameModeManager.Mode.Manage)
+        if (mode == GameModeManager.Mode.Build)
         {
-            visible = false;
+            DrawAllFlows(includeBusinessFocus: false);
             return;
         }
+        movePreviewPoses.Clear();
+        movingObjects.Clear();
+        previewFootprints.Clear();
+        if (mode != GameModeManager.Mode.Manage) return;
 
         DrawAllStationPreviews();
 
@@ -214,10 +278,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             return;
         }
 
-        DrawAllFlows();
+        DrawAllFlows(includeBusinessFocus: true);
     }
 
-    void DrawAllFlows()
+    void DrawAllFlows(bool includeBusinessFocus)
     {
         ProductionManager production = ProductionManager.Instance;
         bool focusedFlowDrawn = false;
@@ -226,7 +290,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             foreach (ProductionFlowPlan flow in production.productionFlows)
             {
                 if (flow == null) continue;
-                bool focused = flow == focusedFlow;
+                bool focused = includeBusinessFocus && flow == focusedFlow;
                 DrawDraftFlow(flow, focused);
                 focusedFlowDrawn |= focused;
             }
@@ -234,7 +298,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
 
         // A new flow being captured is not added to the production list until
         // it is finished, but its route should still appear while editing.
-        if (focusedFlow != null && !focusedFlowDrawn)
+        if (includeBusinessFocus && focusedFlow != null && !focusedFlowDrawn)
             DrawDraftFlow(focusedFlow, true);
     }
 
@@ -331,14 +395,14 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         CreateMarker(position, role, GetDisplayName(station), color, grid.cellSize);
     }
 
-    void RefreshFlowWorkerHighlights()
+    void RefreshFlowWorkerHighlights(bool show)
     {
         for (int i = 0; i < flowWorkerHighlights.Count; i++)
             if (flowWorkerHighlights[i] != null)
                 flowWorkerHighlights[i].SetFlowHighlighted(false);
         flowWorkerHighlights.Clear();
 
-        if (focusedFlow?.workers == null) return;
+        if (!show || focusedFlow?.workers == null) return;
         foreach (KitchenEmployee worker in focusedFlow.workers)
         {
             if (worker == null) continue;
@@ -529,7 +593,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         to.y = grid.Origin.y + floorOffset;
         AddPointIfDistinct(points, from);
 
-        List<Vector3> path = grid.GetPath(from, grid.GetCellCenter(to));
+        List<Vector3> path = previewFootprints.Count > 0
+            ? grid.GetPreviewPath(from, to, previewFootprints)
+            : grid.GetPath(from, to);
         if (path != null && path.Count > 0)
         {
             for (int i = 0; i < path.Count; i++)
@@ -539,11 +605,16 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 AddPointIfDistinct(points, point);
             }
         }
-        else
+        else if (previewFootprints.Count == 0)
         {
             // Fallback: Manhattan corridor so the draft still shows if pathing fails mid-capture.
             Vector3 mid = new Vector3(to.x, from.y, from.z);
             AddPointIfDistinct(points, mid);
+        }
+        else
+        {
+            // A preview that cuts off access should not show a shortcut through it.
+            return;
         }
 
         AddPointIfDistinct(points, to);
@@ -560,12 +631,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     {
         CreateRouteBackground(points, routeName);
 
-        var go = new GameObject(routeName);
-        go.transform.SetParent(visualsRoot, false);
-        var lr = go.AddComponent<LineRenderer>();
+        LineRenderer lr = GetRouteLine(routeName);
         ConfigureLine(lr, points, lineWidth, GetLineMaterial(), color);
         lr.sortingOrder = 3;
-        lines.Add(lr);
 
         if (showDirection)
             CreateDirectionArrow(points, routeName + "_Direction", directionColor ?? color);
@@ -616,13 +684,10 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         for (int i = 0; i < points.Count; i++)
             backgroundPoints.Add(points[i] - Vector3.up * 0.005f);
 
-        var go = new GameObject(routeName + "_Background_" + runIndex);
-        go.transform.SetParent(visualsRoot, false);
-        var line = go.AddComponent<LineRenderer>();
+        LineRenderer line = GetRouteLine(routeName + "_Background_" + runIndex);
         ConfigureLine(line, backgroundPoints, lineWidth + routeBackgroundPadding,
             GetLineMaterial(), routeBackgroundColor);
         line.sortingOrder = 2;
-        lines.Add(line);
     }
 
     // Each flow draws a shared grid edge once. Separate flows still draw their
@@ -1107,11 +1172,30 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         var go = new GameObject("WorkerFlowVisuals");
         go.transform.SetParent(transform, false);
         visualsRoot = go.transform;
+        linesRoot = new GameObject("Routes").transform;
+        linesRoot.SetParent(visualsRoot, false);
+    }
+
+    LineRenderer GetRouteLine(string routeName)
+    {
+        // A move can redraw the overlay on every new tile. Reuse the renderers
+        // so that updating a route does not create and destroy their objects.
+        if (activeLineCount == lines.Count)
+        {
+            var go = new GameObject(routeName);
+            go.transform.SetParent(linesRoot, false);
+            lines.Add(go.AddComponent<LineRenderer>());
+        }
+        LineRenderer line = lines[activeLineCount++];
+        line.gameObject.name = routeName;
+        line.enabled = true;
+        return line;
     }
 
     void ClearVisuals()
     {
-        lines.Clear();
+        for (int i = 0; i < activeLineCount; i++) lines[i].enabled = false;
+        activeLineCount = 0;
         backgroundSegments.Clear();
         recipePreviewBadges.Clear();
         for (int i = 0; i < generatedMeshes.Count; i++)
@@ -1119,7 +1203,12 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         generatedMeshes.Clear();
         if (visualsRoot == null) return;
         for (int i = visualsRoot.childCount - 1; i >= 0; i--)
-            Destroy(visualsRoot.GetChild(i).gameObject);
+        {
+            Transform child = visualsRoot.GetChild(i);
+            if (child == linesRoot) continue;
+            child.gameObject.SetActive(false);
+            Destroy(child.gameObject);
+        }
     }
 
     static void DestroyMaterial(Material material)

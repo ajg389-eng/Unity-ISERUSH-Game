@@ -13,6 +13,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 {
     const string PauseSource = "ShiftPlanning";
     const float LiveRefreshSeconds = 1f;
+    const float DemandHeaderFontSize = 15f;
+    const float DemandHeaderHeight = 36f;
+    const float DemandRateColumnWidth = 78f;
+    const float PredictedRateColumnWidth = 104f;
 
     [System.Serializable]
     public sealed class ShiftResult
@@ -661,19 +665,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     GameObject CreateDemandHeader(Transform parent)
     {
-        GameObject row = CreateDemandColumnRow(parent, "DemandColumnHeader", 26f);
+        GameObject row = CreateDemandColumnRow(parent, "DemandColumnHeader", DemandHeaderHeight);
         CreateDemandSpacer(row.transform, "PreviewHeaderSpacer", 44f);
         CreateDemandCell(row.transform, "ItemHeader", "ITEM", 0f, true,
-            12f, TextAlignmentOptions.MidlineLeft, GameUITheme.TextSecondary);
+            DemandHeaderFontSize, TextAlignmentOptions.MidlineLeft, GameUITheme.TextSecondary);
         CreateDemandSpacer(row.transform, "ChangeHeaderSpacer", 36f);
         CreateDemandSpacer(row.transform, "ButtonGapHeaderSpacer", 12f);
         CreateDemandSpacer(row.transform, "RemoveHeaderSpacer", 36f);
-        CreateDemandCell(row.transform, "RateHeader", "DEMAND\n/MIN", 68f, false,
-            10f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
-        CreateDemandCell(row.transform, "PredictedHeader", "PREDICTED\n/MIN", 82f, false,
-            9f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+        CreateDemandCell(row.transform, "RateHeader", "DEMAND\n/MIN", DemandRateColumnWidth, false,
+            DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+        CreateDemandCell(row.transform, "PredictedHeader", "PREDICTED\n/MIN", PredictedRateColumnWidth, false,
+            DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
         CreateDemandCell(row.transform, "TotalHeader", "SHIFT\nTOTAL", 68f, false,
-            9f, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
+            DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, GameUITheme.TextSecondary);
         return row;
     }
 
@@ -747,9 +751,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 GameUITheme.Surface),
             removeButton = CreateCompactButton(rowRoot.transform, "RemoveItem", "REMOVE", 36f, 11f,
                 GameUITheme.Danger),
-            rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, 68f, false,
+            rate = CreateDemandCell(rowRoot.transform, "Rate", string.Empty, DemandRateColumnWidth, false,
                 15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
-            predictedRate = CreateDemandCell(rowRoot.transform, "PredictedRate", string.Empty, 82f, false,
+            predictedRate = CreateDemandCell(rowRoot.transform, "PredictedRate", string.Empty, PredictedRateColumnWidth, false,
                 15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary),
             shiftTotal = CreateDemandCell(rowRoot.transform, "ShiftTotal", string.Empty, 68f, false,
                 15f, TextAlignmentOptions.MidlineRight, GameUITheme.TextPrimary)
@@ -928,8 +932,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     static TextMeshProUGUI CreateDemandCell(Transform parent, string name, string value,
         float width, bool flexible, float fontSize, TextAlignmentOptions alignment, Color color)
     {
+        bool isHeader = name.EndsWith("Header");
         TextMeshProUGUI text = CreateText(parent, name, value, fontSize,
-            name.EndsWith("Header") ? FontStyles.Bold : FontStyles.Normal, 22f, color);
+            isHeader ? FontStyles.Bold : FontStyles.Normal, isHeader ? DemandHeaderHeight : 22f, color);
         text.alignment = alignment;
         text.textWrappingMode = TextWrappingModes.NoWrap;
         text.overflowMode = TextOverflowModes.Truncate;

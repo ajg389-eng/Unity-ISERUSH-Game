@@ -77,6 +77,33 @@ public class BuildPlacer : MonoBehaviour
     public bool IsPlacing => placingItem != null;
     public ItemDefinition CurrentPlacementItem => placingItem;
     public bool IsDragging => draggingObject != null || groupMoveMembers.Count > 0;
+
+    internal void CollectMovingObjects(List<GameObject> results)
+    {
+        results.Clear();
+        if (draggingObject != null) results.Add(draggingObject);
+        foreach (GroupMoveMember member in groupMoveMembers)
+            if (member.root != null) results.Add(member.root);
+    }
+
+    internal bool TryGetMovePreviewFootprint(GameObject target, out RectInt footprint)
+    {
+        footprint = default;
+        // Mounted items use the counter's existing footprint; wall fixtures do
+        // not occupy kitchen tiles.
+        if (target == draggingObject && (draggingMountedItem != null || draggingWallDoor != null))
+            return false;
+
+        BuildFootprint buildFootprint = target == draggingObject
+            ? dragFootprint : target.GetComponent<BuildFootprint>();
+        if (buildFootprint == null) return false;
+        GetFootprintAtCurrentPose(target, buildFootprint, out int x, out int y,
+            out int sizeX, out int sizeY, out _);
+        if (x < 0 || y < 0) return false;
+        footprint = new RectInt(x, y, sizeX, sizeY);
+        return true;
+    }
+
     public IReadOnlyList<GameObject> SelectedObjects => selectedObjects;
     public int SelectedStationCount
     {
@@ -1288,6 +1315,12 @@ public class BuildPlacer : MonoBehaviour
         out int sizeX, out int sizeY, out int rotation)
     {
         if (fp != null) fp.EnsureMatchesPlacedItem();
+        GetFootprintAtCurrentPose(root, fp, out x, out y, out sizeX, out sizeY, out rotation);
+    }
+
+    void GetFootprintAtCurrentPose(GameObject root, BuildFootprint fp, out int x, out int y,
+        out int sizeX, out int sizeY, out int rotation)
+    {
         rotation = (Mathf.RoundToInt(root.transform.eulerAngles.y / 90f) % 4 + 4) % 4;
         sizeX = Mathf.Max(1, fp.sizeX);
         sizeY = Mathf.Max(1, fp.sizeY);

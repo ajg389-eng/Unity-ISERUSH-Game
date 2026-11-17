@@ -871,14 +871,15 @@ public class GridManager : MonoBehaviour
         return FindNearestWalkable(cx, cy, 0f, out outX, out outY);
     }
 
-    bool FindNearestWalkable(int cx, int cy, float clearanceRadius, out int outX, out int outY)
+    bool FindNearestWalkable(int cx, int cy, float clearanceRadius, out int outX, out int outY,
+        IReadOnlyList<RectInt> previewFootprints = null)
     {
         outX = cx;
         outY = cy;
         if (Nodes == null || Width == 0 || Height == 0) return false;
         int px = Mathf.Clamp(cx, 0, Width - 1);
         int py = Mathf.Clamp(cy, 0, Height - 1);
-        if (IsWalkableForRadius(px, py, clearanceRadius)) { outX = px; outY = py; return true; }
+        if (IsWalkableForRadius(px, py, clearanceRadius, previewFootprints)) { outX = px; outY = py; return true; }
         for (int r = 1; r <= Mathf.Max(Width, Height); r++)
         {
             for (int dx = -r; dx <= r; dx++)
@@ -887,7 +888,7 @@ public class GridManager : MonoBehaviour
                     if (dx != 0 && dy != 0) continue;
                     int nx = px + dx, ny = py + dy;
                     if (nx >= 0 && nx < Width && ny >= 0 && ny < Height
-                        && IsWalkableForRadius(nx, ny, clearanceRadius))
+                        && IsWalkableForRadius(nx, ny, clearanceRadius, previewFootprints))
                     {
                         outX = nx; outY = ny;
                         return true;
@@ -897,9 +898,15 @@ public class GridManager : MonoBehaviour
         return false;
     }
 
-    bool IsWalkableForRadius(int x, int y, float clearanceRadius)
+    bool IsWalkableForRadius(int x, int y, float clearanceRadius, IReadOnlyList<RectInt> previewFootprints)
     {
         if (!IsWalkable(x, y)) return false;
+        if (previewFootprints != null)
+        {
+            var cell = new Vector2Int(x, y);
+            for (int i = 0; i < previewFootprints.Count; i++)
+                if (previewFootprints[i].Contains(cell)) return false;
+        }
         if (clearanceRadius <= 0f) return true;
         return MeasureOccupiedCellPenetration(CellToWorld(x, y), clearanceRadius) <= 0.001f;
     }
@@ -910,10 +917,20 @@ public class GridManager : MonoBehaviour
     /// at every route cell. Returns cell-center world positions.
     /// </summary>
     public List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius = 0f)
+        => GetPath(fromWorld, toWorld, clearanceRadius, null);
+
+    // Build releases the old footprint during a move. Treat its new cells as
+    // blocked for this overlay only, without changing occupancy or simulation.
+    internal List<Vector3> GetPreviewPath(Vector3 fromWorld, Vector3 toWorld,
+        IReadOnlyList<RectInt> previewFootprints)
+        => GetPath(fromWorld, toWorld, 0f, previewFootprints);
+
+    List<Vector3> GetPath(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius,
+        IReadOnlyList<RectInt> previewFootprints)
     {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        try { return GetPathInternal(fromWorld, toWorld, clearanceRadius); }
+        try { return GetPathInternal(fromWorld, toWorld, clearanceRadius, previewFootprints); }
         finally
         {
             if (pathTimingFrame != Time.frameCount)
@@ -932,7 +949,7 @@ public class GridManager : MonoBehaviour
             }
         }
 #else
-        return GetPathInternal(fromWorld, toWorld, clearanceRadius);
+        return GetPathInternal(fromWorld, toWorld, clearanceRadius, previewFootprints);
 #endif
     }
 
@@ -942,7 +959,8 @@ public class GridManager : MonoBehaviour
     static float nextPathTimingReport;
 #endif
 
-    List<Vector3> GetPathInternal(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius)
+    List<Vector3> GetPathInternal(Vector3 fromWorld, Vector3 toWorld, float clearanceRadius,
+        IReadOnlyList<RectInt> previewFootprints)
     {
         var result = new List<Vector3>();
         if (Nodes == null || Width == 0 || Height == 0) return result;
@@ -951,9 +969,11 @@ public class GridManager : MonoBehaviour
         WorldToCell(toWorld, out int tx, out int ty);
         sx = Mathf.Clamp(sx, 0, Width - 1);
         sy = Mathf.Clamp(sy, 0, Height - 1);
-        if (!FindNearestWalkable(tx, ty, clearanceRadius, out int gx, out int gy)) return result;
-        if (!IsWalkableForRadius(sx, sy, clearanceRadius)
-            && !FindNearestWalkable(sx, sy, clearanceRadius, out sx, out sy)) return result;
+        if (!FindNearestWalkable(tx, ty, clearanceRadius, out int gx, out int gy,
+            previewFootprints)) return result;
+        if (!IsWalkableForRadius(sx, sy, clearanceRadius, previewFootprints)
+            && !FindNearestWalkable(sx, sy, clearanceRadius, out sx, out sy,
+                previewFootprints)) return result;
 
         // Already on the goal cell — still return that cell center so the worker can snap to it
         if (sx == gx && sy == gy)
@@ -1017,7 +1037,8 @@ public class GridManager : MonoBehaviour
                 int nx = cur.x + dx;
                 int ny = cur.y + dy;
                 if (nx < 0 || nx >= Width || ny < 0 || ny >= Height) continue;
-                if (!IsWalkableForRadius(nx, ny, clearanceRadius) || closed.Contains((nx, ny))) continue;
+                if (!IsWalkableForRadius(nx, ny, clearanceRadius, previewFootprints)
+                    || closed.Contains((nx, ny))) continue;
                 float g = cur.g + 1f;
                 if (bestG.TryGetValue((nx, ny), out float priorG) && g >= priorG - 0.0001f)
                     continue;

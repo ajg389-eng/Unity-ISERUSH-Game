@@ -610,7 +610,7 @@ public class OnboardingTutorial : MonoBehaviour
     static readonly Step[] Steps =
     {
         new Step("Move around the kitchen",
-            "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
+            "You are the restaurant's <nobr><b>industrial and systems engineer</b></nobr>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
             "Next", Highlight.None, requireCameraControls: true),
         new Step("Explore Business",
             "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
@@ -638,7 +638,7 @@ public class OnboardingTutorial : MonoBehaviour
     // Gus speaks the tutorial while the Step data continues to define gameplay gates.
     static readonly string[] CompactTutorialText =
     {
-        "You are the restaurant's <b>industrial and systems engineer</b>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
+        "You are the restaurant's <nobr><b>industrial and systems engineer</b></nobr>. A hamburger line is ready. Move with <b>WASD</b>, right-drag to turn the camera, and scroll to zoom. Try each input to continue.",
         "Open <b>Business</b>. Production Flows show how stations connect; worker cards show your staff and assignments. We will build a flow later.",
         "The Plan card shows hamburger demand for this shift. Take a quick look, then click <b>Start Shift</b> to see the line in action.",
         "Follow the worker through the process. Watch the burger arrive at Pickup.",
@@ -945,6 +945,29 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (!StepRequirementMet())
         {
+            if (stepIndex >= 0 && stepIndex < Steps.Length
+                && Steps[stepIndex].requireBusinessOverview && !IsBusinessOverviewOpen())
+            {
+                Sfx.Play(SfxId.UiClick);
+                MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+                if (tabs != null)
+                    tabs.OpenBusinessPage();
+                else
+                {
+                    ManagementScreenController management = FindFirstObjectByType<ManagementScreenController>(
+                        FindObjectsInactive.Include);
+                    if (management != null)
+                    {
+                        management.SetUnifiedPrimaryPage(true);
+                        management.OpenWorkersTab();
+                    }
+                }
+                nextControlHighlightRefresh = 0f;
+                RefreshAdvanceGate();
+                RefreshControlHighlights();
+                UpdateContextualCallout();
+                return;
+            }
             if (stepIndex >= 0 && stepIndex < Steps.Length
                 && Steps[stepIndex].requireRecipeScreen)
             {
@@ -1905,7 +1928,9 @@ public class OnboardingTutorial : MonoBehaviour
             && Steps[stepIndex].requireRecipeScreen;
         bool canOpenObjectives = !ready && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireObjectivesScreen && !objectivesScreenOpened;
-        bool canOpenRequiredScreen = canOpenRecipes || canOpenObjectives;
+        bool canOpenBusiness = !ready && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireBusinessOverview && !IsBusinessOverviewOpen();
+        bool canOpenRequiredScreen = canOpenRecipes || canOpenObjectives || canOpenBusiness;
         nextButton.interactable = ready || canOpenRequiredScreen;
         var img = nextButton.GetComponent<Image>();
         if (img != null)
