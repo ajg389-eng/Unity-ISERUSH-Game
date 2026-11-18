@@ -801,7 +801,7 @@ public class InventoryUI : MonoBehaviour
             bool mk2Locked = mk2 != null && !mk2Unlocked;
             bool lockedMk2Selected = active.stationMark == 2 && mk2Locked;
             card.SetUnlockRequirement(lockedMk2Selected
-                ? "Unlocks at Milestone 3: Engineering Economy"
+                ? "Unlocks at Milestone 3: Supply Planning"
                 : null);
             card.SetOwnedCount(inventory.GetStationFamilyAcquiredCount(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),

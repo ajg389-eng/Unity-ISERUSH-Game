@@ -549,7 +549,7 @@ public sealed class GusButtonHelpMode : MonoBehaviour, IPointerClickHandler
         if (ContainsAny(identity, "milestone"))
             return "Opens milestone progression and shows the service goals for the next stage.";
         if (ContainsAny(identity, "taskstab", "objectives", "dailytask"))
-            return "Shows daily tasks and milestone service goals with their progress.";
+            return "Shows current milestone tasks and the progression stages they unlock.";
         if (ContainsAny(identity, "analytics", "report", "performance"))
             return "Opens Analytics to review customer orders, food delivered to pickup, forecast demand, and predicted production.";
 

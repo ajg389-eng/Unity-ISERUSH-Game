@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0e16b47b5f3fde40a97f00275c33dac, type: 3}
   m_Name: milestone_05_finish_shift
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
-  missionId: milestone_05_serve_super_burgers
-  title: Serve 270 Super Burgers
-  description: Serve at least 270 Super Burgers this shift, 90% of the 300-item daily demand.
+  missionId: milestone_04_serve_super_burgers
+  title: Serve 216 Super Burgers
+  description: Serve at least 216 Super Burgers this shift, 90% of the 240-item daily demand.
   completionEventId:
-  requiredCount: 270
+  requiredCount: 216
   producedItem: {fileID: 0}
   deliveredItem: {fileID: 11400000, guid: 8eac3225b76f4c08a879c756e216cab1, type: 2}
   countAnyUnlockedMenuProduct: 0

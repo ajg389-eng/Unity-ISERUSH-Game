@@ -6,8 +6,9 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 53;
+    public const int CurrentVersion = 54;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
+    public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
     public int totalWorkersHired;
     public string activeMilestoneId;
@@ -122,6 +123,7 @@ public class KitchenSaveSnapshot
         s.milestoneOneAnalyticsLessonDone = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
+        s.milestoneProgressionVersion = 2;
         if (MilestoneProgressManager.Instance != null)
         {
             s.activeMilestoneId = MilestoneProgressManager.Instance.ActiveMilestoneId;
@@ -409,10 +411,11 @@ public class KitchenSaveSnapshot
         {
             if (version >= 10 && (completedMilestoneIds != null && completedMilestoneIds.Count > 0
                 || !string.IsNullOrEmpty(activeMilestoneId)))
-                milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds);
+                milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds,
+                    milestoneProgressionVersion);
             else if (milestone > 0)
                 milestoneProgress.DebugJumpToNumberedMilestone(
-                    Mathf.Clamp(milestone, 1, Mathf.Max(1, milestoneProgress.GetNumberedMilestoneCount())), out _);
+                    MapLegacyMilestoneNumber(milestone), out _);
         }
         for(int i=0;i<equipment.Count;i++) {
             var e=equipment[i]; var go=objects[i]; var item=definitions[e.item];
@@ -694,7 +697,11 @@ public class KitchenSaveSnapshot
         if (MissionProgressManager.Instance != null)
         {
             if (version >= 35 || !tutorialComplete)
+            {
+                if (milestoneProgressionVersion < 2)
+                    MigrateLegacyMilestoneMissionProgress();
                 MissionProgressManager.Instance.RestoreProgress(missionProgress);
+            }
             else
                 MissionProgressManager.Instance.ResetProgress();
         }
@@ -886,6 +893,46 @@ public class KitchenSaveSnapshot
             if (line != null && line.quantity > 0
                 && (string.IsNullOrEmpty(line.item) || !definitions.ContainsKey(line.item))) return false;
         return true;
+    }
+
+    static int MapLegacyMilestoneNumber(int oldNumber)
+    {
+        int legacyStage = Mathf.Clamp(oldNumber, 1, 6);
+        if (legacyStage <= 2) return legacyStage;
+        return legacyStage <= 4 ? 3 : 4;
+    }
+
+    void MigrateLegacyMilestoneMissionProgress()
+    {
+        if (missionProgress == null) return;
+
+        const string newSuperBurgerMissionId = "milestone_04_serve_super_burgers";
+        const int newSuperBurgerTarget = 216;
+        int progress = 0;
+        bool found = false;
+
+        for (int i = 0; i < missionProgress.Count; i++)
+        {
+            MissionProgressManager.SavedMissionProgress entry = missionProgress[i];
+            if (entry == null || (entry.missionId != "milestone_05_serve_super_burgers"
+                && entry.missionId != "milestone_06_serve_super_burgers"
+                && entry.missionId != newSuperBurgerMissionId)) continue;
+
+            found = true;
+            progress = Mathf.Max(progress, entry.complete ? newSuperBurgerTarget : entry.progress);
+        }
+
+        if (!found) return;
+        missionProgress.RemoveAll(entry => entry != null
+            && (entry.missionId == "milestone_05_serve_super_burgers"
+                || entry.missionId == "milestone_06_serve_super_burgers"
+                || entry.missionId == newSuperBurgerMissionId));
+        missionProgress.Add(new MissionProgressManager.SavedMissionProgress
+        {
+            missionId = newSuperBurgerMissionId,
+            progress = progress,
+            complete = progress >= newSuperBurgerTarget
+        });
     }
 
     static void AlignObjectBottomToFloor(GameObject obj, float floorY)

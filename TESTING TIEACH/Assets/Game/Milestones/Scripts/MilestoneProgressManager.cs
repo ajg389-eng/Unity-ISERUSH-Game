@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Progression frame: Tutorial + the numbered milestones in the active database.
+/// Progression frame: Tutorial + the four numbered milestones in the active database.
 /// Flow: complete all milestone missions → next milestone and its research projects.
 /// </summary>
 public class MilestoneProgressManager : MonoBehaviour
@@ -360,12 +360,31 @@ public class MilestoneProgressManager : MonoBehaviour
         activeMilestoneId = null;
     }
 
-    public void RestoreCheckpoint(string savedActiveMilestoneId, IReadOnlyList<string> savedCompletedMilestoneIds)
+    public void RestoreCheckpoint(string savedActiveMilestoneId,
+        IReadOnlyList<string> savedCompletedMilestoneIds, int progressionVersion = 0)
     {
         activeShiftObjectives = false;
         completedMilestoneIds.Clear();
 
-        if (database?.milestones != null && savedCompletedMilestoneIds != null)
+        if (database?.milestones != null && progressionVersion < 2)
+        {
+            bool OldCompleted(string id)
+            {
+                if (savedCompletedMilestoneIds == null) return false;
+                for (int i = 0; i < savedCompletedMilestoneIds.Count; i++)
+                    if (savedCompletedMilestoneIds[i] == id) return true;
+                return false;
+            }
+
+            if (OldCompleted("tutorial")) completedMilestoneIds.Add("tutorial");
+            if (OldCompleted("milestone_01")) completedMilestoneIds.Add("milestone_01");
+            if (OldCompleted("milestone_02")) completedMilestoneIds.Add("milestone_02");
+            if (OldCompleted("milestone_03") && OldCompleted("milestone_04"))
+                completedMilestoneIds.Add("milestone_03");
+            if (OldCompleted("milestone_05") && OldCompleted("milestone_06"))
+                completedMilestoneIds.Add("milestone_04");
+        }
+        else if (database?.milestones != null && savedCompletedMilestoneIds != null)
         {
             foreach (string id in savedCompletedMilestoneIds)
             {
@@ -375,7 +394,10 @@ public class MilestoneProgressManager : MonoBehaviour
             }
         }
 
-        MilestoneDefinition active = database != null ? database.GetById(savedActiveMilestoneId) : null;
+        string mappedActiveId = progressionVersion < 2
+            ? MapLegacyMilestoneId(savedActiveMilestoneId)
+            : savedActiveMilestoneId;
+        MilestoneDefinition active = database != null ? database.GetById(mappedActiveId) : null;
         activeMilestoneId = active != null && !completedMilestoneIds.Contains(active.milestoneId)
             ? active.milestoneId : null;
         if (activeMilestoneId == null && !AreAllMilestonesComplete())
@@ -384,6 +406,21 @@ public class MilestoneProgressManager : MonoBehaviour
         ApplyActiveMissions(reset: true);
         EvaluateActiveMilestone();
         OnMilestonesChanged?.Invoke();
+    }
+
+    static string MapLegacyMilestoneId(string milestoneId)
+    {
+        switch (milestoneId)
+        {
+            case "milestone_03":
+            case "milestone_04":
+                return "milestone_03";
+            case "milestone_05":
+            case "milestone_06":
+                return "milestone_04";
+            default:
+                return milestoneId;
+        }
     }
 
     bool AreAllMilestonesComplete()

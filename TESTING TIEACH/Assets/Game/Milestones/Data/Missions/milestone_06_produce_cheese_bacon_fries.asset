@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: milestone_06_produce_cheese_bacon_fries
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: milestone_06_serve_cheese_bacon_fries
-  title: Serve 324 Cheese Bacon Fries
-  description: Serve at least 324 Cheese Bacon Fries this shift, 90% of the 360-item daily demand.
+  title: Serve 216 Cheese Bacon Fries
+  description: Serve at least 216 Cheese Bacon Fries this shift, 90% of the 240-item daily demand.
   completionEventId:
-  requiredCount: 324
+  requiredCount: 216
   producedItem: {fileID: 0}
   deliveredItem: {fileID: 11400000, guid: 8ff4b007de730b947a71007696e5897b, type: 2}
   countAnyUnlockedMenuProduct: 0

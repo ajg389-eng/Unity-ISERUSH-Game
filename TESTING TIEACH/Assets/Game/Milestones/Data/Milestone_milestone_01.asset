@@ -13,13 +13,8 @@ MonoBehaviour:
   m_Name: Milestone_milestone_01
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_01
-  displayName: Process Analysis
-  description: 'Study production flow as new menu items and a Shake Station expand
-    the operation.
-
-
-    Topics:
-    Bottleneck identification, facility layout, queue analysis'
+  displayName: Process Flow
+  description: Connect stations and observe how work moves from ingredients to finished items.
   completionDialogue:
   - You mapped how work moves through the kitchen and found where it waits. That
     is process analysis.
@@ -33,42 +28,42 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   shiftQuestions:
-  - questionId: process_bottleneck
-    prompt: In process analysis, what does a bottleneck determine?
+  - questionId: core_process
+    prompt: "What is a process?"
     answers:
-    - The value-added percentage of each unit
-    - The maximum sustainable throughput of the process
-    - The processing time of the fastest operation
-    correctAnswerIndex: 1
-    explanation: The constraint caps process flow until its capacity or the system design changes.
-  - questionId: process_queue
-    prompt: A queue keeps growing before one operation. Which relationship best explains it?
-    answers:
-    - The arrival rate exceeds that operation's effective capacity
-    - The operation's effective capacity exceeds the arrival rate
-    - The workload is evenly balanced across all operations
+    - "Connected steps that turn ingredients into a finished item"
+    - "A single station working by itself"
+    - "A list of menu prices"
     correctAnswerIndex: 0
-    explanation: When work arrives faster than it can be processed, work in process accumulates in the queue.
-  - questionId: process_layout
-    prompt: Which facility layout choice usually reduces material-handling distance?
+    explanation: "A process connects work steps from inputs to finished output."
+  - questionId: core_bottleneck
+    prompt: "What does a bottleneck limit?"
     answers:
-    - Place sequential, high-flow operations near each other
-    - Group every resource by function even if travel increases
-    - Space operations evenly without considering process flow
+    - "The finished output of the whole process"
+    - "The price of each recipe"
+    - "The number of stations in the restaurant"
     correctAnswerIndex: 0
-    explanation: A product-focused layout can shorten travel between operations with frequent transfers.
+    explanation: "The bottleneck is the step that limits how quickly the process can finish items."
+  - questionId: core_queue
+    prompt: "What can a growing queue tell you?"
+    answers:
+    - "The next step cannot keep up with incoming work"
+    - "The whole process has extra capacity"
+    - "The item is already ready for pickup"
+    correctAnswerIndex: 0
+    explanation: "A queue grows when work arrives faster than the next process step can handle it."
   shiftLessons:
-  - lessonId: process_bottleneck
-    title: Spot the bottleneck
-    explanation: In process analysis, the bottleneck sets the maximum sustainable throughput. Compare its capacity with demand; improving a non-constraint step will not raise whole-line output.
+  - lessonId: core_process
+    title: "Follow the process"
+    explanation: "A process is connected steps that turn ingredients into finished items. Check how each step links to the next."
+    target: 1
+  - lessonId: core_bottleneck
+    title: "Find the bottleneck"
+    explanation: "The bottleneck is the step that limits finished output. Improving another step may not increase the whole process output."
     target: 0
-  - lessonId: process_queue
-    title: Read the queue
-    explanation: A growing queue means work arrives faster than that step can process it.
-    target: 0
-  - lessonId: process_layout
-    title: Reduce travel
-    explanation: Facility layout places frequently linked stations close together, reducing material handling and worker travel.
+  - lessonId: core_queue
+    title: "Read the queue"
+    explanation: "A growing queue means work is arriving faster than the next step can handle it."
     target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

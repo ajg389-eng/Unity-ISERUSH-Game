@@ -843,8 +843,7 @@ public class CustomerOrderConfig : ScriptableObject
             <= 1 => "recipe_upgrades_1",
             2 => "recipe_upgrades_2",
             3 => "recipe_upgrades_3",
-            4 => "recipe_upgrades_4",
-            _ => "recipe_upgrades_5",
+            _ => "recipe_upgrades_4",
         };
     }
 
@@ -854,12 +853,10 @@ public class CustomerOrderConfig : ScriptableObject
         switch (stage)
         {
             case <= 0: return "Restaurant Basics";
-            case 1: return "Milestone 1: Process Analysis";
-            case 2: return "Milestone 2: Capacity Planning";
-            case 3: return "Milestone 3: Engineering Economy";
-            case 4: return "Milestone 4: Inventory Control";
-            case 5: return "Milestone 5: Quality & Reliability";
-            default: return "Milestone 6: Systems Integration";
+            case 1: return "Milestone 1: Process Flow";
+            case 2: return "Milestone 2: Demand and Capacity";
+            case 3: return "Milestone 3: Supply Planning";
+            default: return "Milestone 4: Measure and Improve";
         }
     }
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
@@ -872,8 +869,8 @@ public class CustomerOrderConfig : ScriptableObject
         if (item == burgerBase || item == friesItem || item == drinkItem) return 1;
         if (item == cheeseburgerItem || item == cheeseFriesItem || item == whippedCreamShakeItem) return 2;
         if (item == cheeseBaconBurgerItem || item == clBurgerItem) return 3;
-        if (item == cheeseBaconFriesItem || item == whippedCreamSprinkleShakeItem) return 4;
-        if (item == superBurgerItem) return 5;
+        if (item == cheeseBaconFriesItem || item == whippedCreamSprinkleShakeItem
+            || item == superBurgerItem) return 4;
         return 0;
     }
 

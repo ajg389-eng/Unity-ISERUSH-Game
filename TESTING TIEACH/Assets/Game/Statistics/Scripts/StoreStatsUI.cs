@@ -39,48 +39,48 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine("<b>Core Metrics</b>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Customers in system (WIP)</b>");
-        sb.AppendLine("  " + s.CustomersInSystem + "  <i><size=80%>Little's Law / congestion</size></i>");
+        sb.AppendLine("<b>Customers in the store</b>");
+        sb.AppendLine("  " + s.CustomersInSystem + "  <i><size=80%>In line, ordering, or waiting for pickup</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Queue length per station</b>");
+        sb.AppendLine("<b>Customers waiting to order</b>");
         var queues = s.QueueLengthPerStation;
         if (queues.Count == 0)
             sb.AppendLine("  No registers");
         else
             foreach (var kv in queues)
                 sb.AppendLine("  " + kv.Key + ": " + kv.Value);
-        sb.AppendLine("  <i><size=80%>Customers waiting to order</size></i>");
+        sb.AppendLine("  <i><size=80%>By register</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Average wait time</b>");
-        sb.AppendLine("  " + s.AverageWaitTimeSeconds.ToString("F1") + " s  <i><size=80%>Service performance</size></i>");
+        sb.AppendLine("  " + s.AverageWaitTimeSeconds.ToString("F1") + " s  <i><size=80%>Average customer wait</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Throughput</b>");
-        sb.AppendLine("  " + s.ThroughputOrdersPerMinute.ToString("F2") + " orders/min  <i><size=80%>System output</size></i>");
+        sb.AppendLine("<b>Orders served per minute</b>");
+        sb.AppendLine("  " + s.ThroughputOrdersPerMinute.ToString("F2") + " orders/min  <i><size=80%>Finished orders</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Station utilization (%)</b>");
+        sb.AppendLine("<b>Station working time</b>");
         var util = s.StationUtilizationPercent;
         if (util.Count == 0)
             sb.AppendLine("  —");
         else
             foreach (var kv in util)
                 sb.AppendLine("  " + kv.Key + ": " + kv.Value.ToString("F0") + "%");
-        sb.AppendLine("  <i><size=80%>Capacity usage</size></i>");
+        sb.AppendLine("  <i><size=80%>Share of time each station was working</size></i>");
         sb.AppendLine();
 
-        sb.AppendLine("<b>Worker utilization</b>");
-        sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Labor efficiency</size></i>");
+        sb.AppendLine("<b>Worker working time</b>");
+        sb.AppendLine("  " + s.WorkerUtilizationPercent.ToString("F0") + "%  <i><size=80%>Share of time workers were transferring items</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Pickup Station stock</b>");
-        sb.AppendLine("  " + s.HeatLampStock + " / " + s.HeatLampCapacity + "  <i><size=80%>Make-to-stock buffer</size></i>");
+        sb.AppendLine("  " + s.HeatLampStock + " / " + s.HeatLampCapacity + "  <i><size=80%>Items waiting for customers</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Food wasted</b>");
-        sb.AppendLine("  " + s.MealsWasted + "  <i><size=80%>Overproduction cost</size></i>");
+        sb.AppendLine("  " + s.MealsWasted + "  <i><size=80%>Items that expired before pickup</size></i>");
         sb.AppendLine();
 
         sb.AppendLine("<b>Revenue earned</b>");
@@ -88,7 +88,7 @@ public class StoreStatsUI : MonoBehaviour
         sb.AppendLine();
 
         sb.AppendLine("<b>Order completion time</b>");
-        sb.AppendLine("  " + s.OrderCompletionTimeSeconds.ToString("F1") + " s  <i><size=80%>Cycle time</size></i>");
+        sb.AppendLine("  " + s.OrderCompletionTimeSeconds.ToString("F1") + " s  <i><size=80%>Time from order to pickup</size></i>");
 
         return sb.ToString();
     }

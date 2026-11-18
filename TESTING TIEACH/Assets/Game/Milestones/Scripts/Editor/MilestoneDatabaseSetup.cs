@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Creates Tutorial + six numbered milestones with tasks.
+/// Creates Tutorial + four numbered milestones with tasks.
 /// Menu: Game / Setup Milestone Database
 /// </summary>
 public static class MilestoneDatabaseSetup
@@ -101,7 +101,7 @@ public static class MilestoneDatabaseSetup
         if (showDialog)
             EditorUtility.DisplayDialog(
                 "Milestone Database",
-                "Created Tutorial + 6 milestones with tasks at:\n" + DatabasePath,
+                "Created Tutorial + 4 milestones with tasks at:\n" + DatabasePath,
                 "OK");
     }
 
@@ -246,67 +246,61 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_01",
-                name = "Process Analysis",
-                description = "Study production flow as new menu items and a Shake Station expand the operation.",
-                topics = "Bottleneck identification, facility layout, queue analysis",
+                name = "Process Flow",
+                description = "Connect stations and observe how work moves from ingredients to finished items.",
+                topics = "Process, flow, bottleneck",
                 missions = new[]
                 {
-                    M("observe_queue", "Serve 50 Fries",
-                        "Serve 50 Fries to customers.", ServedItemEvent("Fries"), 50,
-                        missionIdOverride: "milestone_01_serve_fries"),
-                    M("serve_orders", "Serve 50 Hamburgers",
-                        "Serve 50 Hamburgers to customers.", ServedItemEvent("Hamburger"), 50,
-                        missionIdOverride: "milestone_01_serve_hamburgers"),
-                    M("finish_shift", "Serve 50 Shakes",
-                        "Serve 50 Shakes to customers.", ServedItemEvent("Shake"), 50,
-                        missionIdOverride: "milestone_01_serve_shakes")
+                    M("observe_queue", "Serve 54 Fries",
+                        "Serve at least 54 Fries this shift, 90% of the 60-item daily demand.", null, 54,
+                        missionIdOverride: "milestone_01_serve_fries", deliveredItemName: "Fries"),
+                    M("serve_orders", "Serve 54 Hamburgers",
+                        "Serve at least 54 Hamburgers this shift, 90% of the 60-item daily demand.", null, 54,
+                        missionIdOverride: "milestone_01_serve_hamburgers", deliveredItemName: "Hamburger"),
+                    M("finish_shift", "Serve 54 Shakes",
+                        "Serve at least 54 Shakes this shift, 90% of the 60-item daily demand.", null, 54,
+                        missionIdOverride: "milestone_01_serve_shakes", deliveredItemName: "Shake")
                 },
                 questions = new[]
                 {
-                    Q("Customers are waiting for burgers while the assembly station is frequently idle. What is the most likely problem?",
-                        "Too much assembly capacity",
-                        "A bottleneck earlier in the process",
-                        "Too much finished inventory",
-                        "Customer demand is too low",
-                        'B'),
-                    Q("A worker repeatedly walks across the entire kitchen between the freezer and stove. What would an industrial engineer most likely investigate?",
-                        "Increasing menu prices",
-                        "Moving the stations closer together",
-                        "Increasing customer demand",
-                        "Buying more inventory",
-                        'B'),
-                    Q("The restaurant serves 20 customers per hour, and customers spend an average of 0.25 hours in the system. Using Little's Law, approximately how many customers are in the system on average?",
-                        "4",
-                        "5",
-                        "10",
-                        "80",
-                        'B'),
-                    Q("Which metric is most useful for identifying where work is accumulating?",
-                        "Restaurant revenue",
-                        "Queue length by station",
-                        "Ingredient purchase price",
-                        "Menu size",
-                        'B')
+                    Q("What does a bottleneck limit?",
+                        "The finished output of the whole process",
+                        "The price of each recipe",
+                        "The number of stations in the restaurant",
+                        "The restaurant's opening hours",
+                        'A'),
+                    Q("What can a growing queue tell you?",
+                        "The next step may not keep up with incoming work",
+                        "The whole process has extra capacity",
+                        "The item is ready for pickup",
+                        "Customer demand has stopped",
+                        'A'),
+                    Q("What is a process?",
+                        "Connected steps that turn inputs into finished items",
+                        "A single station working by itself",
+                        "A list of menu prices",
+                        "The number of customers in line",
+                        'A')
                 }
             },
             new MilestoneContent
             {
                 id = "milestone_02",
-                name = "Capacity Planning",
-                description = "Plan product mix and expedited replenishment as production capacity expands.",
-                topics = "Station utilization, workload balancing, labor allocation",
+                name = "Demand and Capacity",
+                description = "Compare how quickly customers order with how quickly the process can produce items.",
+                topics = "Demand, capacity, throughput",
                 missions = new[]
                 {
-                    M("balance_output", "Serve 50 Cheeseburgers",
-                        "Have customers pick up 50 Cheeseburgers during this shift.", null, 50,
+                    M("balance_output", "Serve 108 Cheeseburgers",
+                        "Serve at least 108 Cheeseburgers this shift, 90% of the 120-item daily demand.", null, 108,
                         missionIdOverride: "milestone_02_serve_cheeseburgers",
                         deliveredItemName: "Cheeseburger"),
-                    M("finish_shift", "Serve 50 Cheese Fries",
-                        "Have customers pick up 50 Cheese Fries during this shift.", null, 50,
+                    M("finish_shift", "Serve 108 Cheese Fries",
+                        "Serve at least 108 Cheese Fries this shift, 90% of the 120-item daily demand.", null, 108,
                         missionIdOverride: "milestone_02_serve_cheese_fries",
                         deliveredItemName: "Cheese Fries"),
-                    M("produce_whipped_cream_shake", "Serve 50 Whipped Cream Shakes",
-                        "Have customers pick up 50 Whipped Cream Shakes during this shift.", null, 50,
+                    M("produce_whipped_cream_shake", "Serve 108 Whipped Cream Shakes",
+                        "Serve at least 108 Whipped Cream Shakes this shift, 90% of the 120-item daily demand.", null, 108,
                         missionIdOverride: "milestone_02_serve_whipped_cream_shakes",
                         deliveredItemName: "Whipped Cream Shake")
                 },
@@ -341,121 +335,84 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_03",
-                name = "Engineering Economy",
-                description = "Evaluate advanced recipes and MK2 station upgrades as investments in production capability.",
-                topics = "Simple payback, batch processing, profit analysis, production scheduling",
+                name = "Supply Planning",
+                description = "Estimate ingredient use and set supply rates to support production.",
+                topics = "Stock, supply, demand",
                 missions = new[]
                 {
-                    M("finish_shift", "Serve 50 Bacon Cheeseburgers",
-                        "Serve 50 Bacon Cheeseburgers to customers.", ServedItemEvent("Bacon Cheeseburger"), 50,
-                        missionIdOverride: "milestone_03_serve_bacon_cheeseburgers"),
-                    M("produce_classic_burger", "Serve 50 Classic Burgers",
-                        "Serve 50 Classic Burgers to customers.", ServedItemEvent("Classic Burger"), 50,
-                        missionIdOverride: "milestone_03_serve_classic_burgers")
+                    M("finish_shift", "Serve 162 Bacon Cheeseburgers",
+                        "Serve at least 162 Bacon Cheeseburgers this shift, 90% of the 180-item daily demand.", null, 162,
+                        missionIdOverride: "milestone_03_serve_bacon_cheeseburgers",
+                        deliveredItemName: "Bacon Cheeseburger"),
+                    M("produce_classic_burger", "Serve 162 Classic Burgers",
+                        "Serve at least 162 Classic Burgers this shift, 90% of the 180-item daily demand.", null, 162,
+                        missionIdOverride: "milestone_03_serve_classic_burgers",
+                        deliveredItemName: "Classic Burger")
                 },
                 questions = new[]
                 {
-                    Q("A $1,000 equipment upgrade is expected to increase profit by $250 per day. What is its simple payback period?",
-                        "2 days",
-                        "4 days",
-                        "5 days",
-                        "10 days",
-                        'B'),
-                    Q("Why can batch cooking improve production efficiency?",
-                        "It eliminates all inventory",
-                        "Multiple items can be processed together using available capacity",
-                        "It guarantees perfect quality",
-                        "It eliminates customer variability",
-                        'B'),
-                    Q("Which option is better evidence that an expansion was successful?",
-                        "Revenue increased",
-                        "Profit increased after accounting for the expansion's additional costs",
-                        "More equipment was purchased",
-                        "More employees were hired",
-                        'B'),
-                    Q("Several large orders are waiting while restaurant capacity is limited. Deciding which jobs should be processed and when is primarily what type of problem?",
-                        "Production scheduling",
-                        "Facility decoration",
-                        "Market research",
-                        "Reliability testing",
+                    Q("What should guide an ingredient's supply rate?",
+                        "How quickly the process is expected to use it",
+                        "The highest rate the supplier allows, regardless of need",
+                        "The number of stations placed in the kitchen",
+                        "The menu's selling price",
+                        'A'),
+                    Q("What can happen if ingredients arrive slower than production uses them?",
+                        "A process step may run out and become starved",
+                        "Finished output must increase",
+                        "Customer demand is automatically reduced",
+                        "The queue disappears",
+                        'A'),
+                    Q("Why avoid carrying much more stock than the forecast calls for?",
+                        "It ties up money in ingredients that may go unused",
+                        "It always lowers station capacity",
+                        "It makes demand unpredictable",
+                        "It prevents workers from moving items",
                         'A')
                 }
             },
             new MilestoneContent
             {
                 id = "milestone_04",
-                name = "Inventory Planning",
-                description = "Use demand forecasts, supplier lead times, and stock levels to plan ingredient orders.",
-                topics = "Purchase lead time, safety stock, inventory holding cost, demand forecasting",
+                name = "Measure and Improve",
+                description = "Use delivered output to see whether a focused change improves the whole process.",
+                topics = "Throughput, continuous improvement",
                 missions = new[]
                 {
-                    M("configure_recipe", "Serve 50 Cheese Bacon Fries",
-                        "Serve 50 Cheese Bacon Fries to customers.", ServedItemEvent("Cheese Bacon Fries"), 50,
-                        missionIdOverride: "milestone_04_serve_cheese_bacon_fries"),
-                    M("produce_whipped_cream_sprinkle_shake", "Serve 50 Whipped Cream Sprinkle Shakes",
-                        "Serve 50 Whipped Cream Sprinkle Shakes to customers.",
-                        ServedItemEvent("Whipped Cream Sprinkle Shake"), 50,
-                        missionIdOverride: "milestone_04_serve_whipped_cream_sprinkle_shakes")
+                    M("serve_super_burgers", "Serve 216 Super Burgers",
+                        "Serve at least 216 Super Burgers this shift, 90% of the 240-item daily demand.", null, 216,
+                        missionIdOverride: "milestone_04_serve_super_burgers",
+                        deliveredItemName: "Super Burger"),
+                    M("serve_cheese_bacon_fries", "Serve 216 Cheese Bacon Fries",
+                        "Serve at least 216 Cheese Bacon Fries this shift, 90% of the 240-item daily demand.", null, 216,
+                        missionIdOverride: "milestone_06_serve_cheese_bacon_fries",
+                        deliveredItemName: "Cheese Bacon Fries"),
+                    M("serve_whipped_cream_sprinkle_shakes", "Serve 216 Whipped Cream Sprinkle Shakes",
+                        "Serve at least 216 Whipped Cream Sprinkle Shakes this shift, 90% of the 240-item daily demand.",
+                        null, 216,
+                        missionIdOverride: "milestone_06_serve_whipped_cream_sprinkle_shakes",
+                        deliveredItemName: "Whipped Cream Sprinkle Shake")
                 },
                 questions = new[]
                 {
-                    Q("Supplier A is cheaper but frequently delivers late. Supplier B costs more but is highly reliable. What type of decision is this?",
-                        "Cost versus reliability trade-off",
-                        "Queue discipline decision",
-                        "Facility layout problem",
-                        "Worker ergonomics problem",
+                    Q("What should you compare after changing a process step?",
+                        "Finished output from the whole process",
+                        "Only the fastest station rate",
+                        "The color of the station card",
+                        "The number of recipes in the menu",
                         'A'),
-                    Q("What is the main purpose of safety stock?",
-                        "Guarantee maximum profit",
-                        "Protect against uncertainty in demand or replenishment",
-                        "Eliminate holding costs",
-                        "Increase cooking speed",
-                        'B'),
-                    Q("Ordering extremely large quantities of ingredients lowers purchase cost per unit but increases which cost?",
-                        "Waiting cost",
-                        "Inventory holding cost",
-                        "Employee training cost",
-                        "Equipment maintenance cost",
-                        'B'),
-                    Q("Historical data shows that burger demand consistently increases between noon and 1 PM. How should this information be used?",
-                        "Ignore it because future demand is always random",
-                        "Forecast higher lunch demand and plan inventory/capacity accordingly",
-                        "Reduce inventory before noon",
-                        "Close a cooking station during lunch",
-                        'B')
-                }
-            },
-            new MilestoneContent
-            {
-                id = "milestone_05",
-                name = "Supply Automation",
-                description = "Set automatic ingredient replenishment rates and monitor stock to keep ingredients available as demand changes.",
-                topics = "Automatic replenishment, supply rate control, stockout risk",
-                missions = new[]
-                {
-                    M("finish_shift", "Serve 50 Super Burgers",
-                        "Serve 50 Super Burgers to customers.", ServedItemEvent("Super Burger"), 50,
-                        missionIdOverride: "milestone_05_serve_super_burgers")
-                }
-            },
-            new MilestoneContent
-            {
-                id = "milestone_06",
-                name = "Systems Integration",
-                description = "Use integrated supply planning and system-level measures to evaluate how changes affect the whole operation.",
-                topics = "Systems thinking, component interdependence, holistic performance evaluation",
-                missions = new[]
-                {
-                    M("system_output", "Serve 100 Super Burgers",
-                        "Serve 100 Super Burgers to customers.", ServedItemEvent("Super Burger"), 100,
-                        missionIdOverride: "milestone_06_serve_super_burgers"),
-                    M("produce_cheese_bacon_fries", "Serve 100 Cheese Bacon Fries",
-                        "Serve 100 Cheese Bacon Fries to customers.", ServedItemEvent("Cheese Bacon Fries"), 100,
-                        missionIdOverride: "milestone_06_serve_cheese_bacon_fries"),
-                    M("produce_whipped_cream_sprinkle_shake", "Serve 100 Whipped Cream Sprinkle Shakes",
-                        "Serve 100 Whipped Cream Sprinkle Shakes to customers.",
-                        ServedItemEvent("Whipped Cream Sprinkle Shake"), 100,
-                        missionIdOverride: "milestone_06_serve_whipped_cream_sprinkle_shakes")
+                    Q("Why change one likely cause at a time?",
+                        "It helps show which change affected process output",
+                        "It guarantees every station reaches maximum capacity",
+                        "It makes customer demand stop changing",
+                        "It removes the need to measure throughput",
+                        'A'),
+                    Q("If one station's output rises but delivered throughput stays flat, what should you check?",
+                        "Another step may now limit the whole process",
+                        "Only the upgraded station's target rate",
+                        "Whether the menu has enough categories",
+                        "Whether the station looks different",
+                        'A')
                 }
             },
         };

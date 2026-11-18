@@ -56,11 +56,8 @@ public class WorkersUI : MonoBehaviour
     TextMeshProUGUI workerAssignmentSummary;
     Transform systemEfficiencyRoot;
     TextMeshProUGUI systemEfficiencyHeading;
-    TextMeshProUGUI systemEfficiencySummary;
     TextMeshProUGUI systemEfficiencyExplanation;
     Transform systemEfficiencyDetailsRow;
-    Button systemEfficiencyDetailsButton;
-    bool systemEfficiencyDetailsExpanded;
     readonly Button[] systemEfficiencyButtons = new Button[4];
     readonly TextMeshProUGUI[] systemEfficiencyButtonLabels = new TextMeshProUGUI[4];
     int expandedSystemEfficiencyState = -1;
@@ -80,6 +77,7 @@ public class WorkersUI : MonoBehaviour
     readonly int[] efficiencyPercents = new int[4];
     readonly int[] displayedEfficiencyPercents = { -1, -1, -1, -1 };
     static readonly string[] EfficiencyNames = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
+    static readonly string[] EfficiencyColorHex = { "#55C9A5", "#E27676", "#E2B455", "#B7BEC5" };
     string displayedEfficiencyFlowName;
     int displayedEfficiencyStationCount = -1;
     readonly List<ProductionFlowPlan> displayedTabFlows = new List<ProductionFlowPlan>();
@@ -839,17 +837,8 @@ public class WorkersUI : MonoBehaviour
         systemEfficiencyHeading.gameObject.name = "StationHealth";
         systemEfficiencyHeading.fontStyle = FontStyles.Bold;
         LayoutElement headingLayout = systemEfficiencyHeading.GetComponent<LayoutElement>();
-        headingLayout.minWidth = 110f;
+        headingLayout.minWidth = 0f;
         headingLayout.flexibleWidth = 1f;
-        systemEfficiencyDetailsButton = MakeChip(headingRow, "Details", 72f);
-        systemEfficiencyDetailsButton.gameObject.name = "DetailsButton";
-        systemEfficiencyDetailsButton.onClick.AddListener(ToggleSystemEfficiencyDetails);
-
-        systemEfficiencySummary = MakeLabel(root.transform, "", 13f,
-            new Color(0.82f, 0.87f, 0.94f, 1f), 22f);
-        systemEfficiencySummary.gameObject.name = "Summary";
-        systemEfficiencySummary.textWrappingMode = TextWrappingModes.NoWrap;
-        systemEfficiencySummary.overflowMode = TextOverflowModes.Truncate;
 
         var row = new GameObject("StateButtons", typeof(RectTransform),
             typeof(HorizontalLayoutGroup), typeof(LayoutElement));
@@ -865,10 +854,8 @@ public class WorkersUI : MonoBehaviour
         rowLayout.childControlHeight = true;
         rowLayout.childForceExpandWidth = true;
         rowLayout.childForceExpandHeight = false;
-        row.SetActive(false);
+        row.SetActive(true);
 
-        string[] labels = { "WORKING", "BLOCKED", "STARVED", "IDLE" };
-        string[] colors = { "#55C9A5", "#E27676", "#E2B455", "#B7BEC5" };
         for (int i = 0; i < systemEfficiencyButtons.Length; i++)
         {
             int category = i;
@@ -898,8 +885,9 @@ public class WorkersUI : MonoBehaviour
             label.enableAutoSizing = true;
             label.fontSizeMin = 10f;
             label.fontSizeMax = 13f;
-            label.text = labels[i] + "  0%";
-            label.color = ColorUtility.TryParseHtmlString(colors[i], out Color parsed)
+            label.text = EfficiencyNames[i] + "  0%";
+            label.gameObject.AddComponent<GameUIThemeStyled>();
+            label.color = ColorUtility.TryParseHtmlString(EfficiencyColorHex[i], out Color parsed)
                 ? parsed : Color.white;
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.alignment = TextAlignmentOptions.Center;
@@ -937,18 +925,23 @@ public class WorkersUI : MonoBehaviour
         for (int i = 0; i < displayedEfficiencyPercents.Length; i++)
             displayedEfficiencyPercents[i] = -1;
         systemEfficiencyHeading = root.Find("EfficiencyHeader/StationHealth")?.GetComponent<TextMeshProUGUI>();
-        systemEfficiencySummary = root.Find("Summary")?.GetComponent<TextMeshProUGUI>();
         systemEfficiencyExplanation = root.Find("StateExplanation")?.GetComponent<TextMeshProUGUI>();
         systemEfficiencyDetailsRow = root.Find("StateButtons");
-        systemEfficiencyDetailsExpanded = systemEfficiencyDetailsRow != null
-            && systemEfficiencyDetailsRow.gameObject.activeSelf;
-        systemEfficiencyDetailsButton = root.Find("EfficiencyHeader/DetailsButton")?.GetComponent<Button>();
-        if (systemEfficiencyDetailsButton != null)
+        if (systemEfficiencyDetailsRow != null)
+            systemEfficiencyDetailsRow.gameObject.SetActive(true);
+
+        Transform oldSummary = root.Find("Summary");
+        if (oldSummary != null)
         {
-            systemEfficiencyDetailsButton.onClick.RemoveAllListeners();
-            systemEfficiencyDetailsButton.onClick.AddListener(ToggleSystemEfficiencyDetails);
-            var buttonText = systemEfficiencyDetailsButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (buttonText != null) buttonText.text = systemEfficiencyDetailsExpanded ? "Hide" : "Details";
+            if (Application.isPlaying) Destroy(oldSummary.gameObject);
+            else DestroyImmediate(oldSummary.gameObject);
+        }
+
+        Transform oldDetailsButton = root.Find("EfficiencyHeader/DetailsButton");
+        if (oldDetailsButton != null)
+        {
+            if (Application.isPlaying) Destroy(oldDetailsButton.gameObject);
+            else DestroyImmediate(oldDetailsButton.gameObject);
         }
         Transform row = root.Find("StateButtons");
         for (int i = 0; i < systemEfficiencyButtons.Length; i++)
@@ -958,6 +951,13 @@ public class WorkersUI : MonoBehaviour
                 ? buttonTransform.GetComponent<Button>() : null;
             systemEfficiencyButtonLabels[i] = buttonTransform != null
                 ? buttonTransform.Find("Label")?.GetComponent<TextMeshProUGUI>() : null;
+            if (systemEfficiencyButtonLabels[i] != null)
+            {
+                if (systemEfficiencyButtonLabels[i].GetComponent<GameUIThemeStyled>() == null)
+                    systemEfficiencyButtonLabels[i].gameObject.AddComponent<GameUIThemeStyled>();
+                if (ColorUtility.TryParseHtmlString(EfficiencyColorHex[i], out Color labelColor))
+                    systemEfficiencyButtonLabels[i].color = labelColor;
+            }
             if (systemEfficiencyButtons[i] == null) continue;
             int category = i;
             systemEfficiencyButtons[i].onClick.RemoveAllListeners();
@@ -969,8 +969,6 @@ public class WorkersUI : MonoBehaviour
     void ToggleSystemEfficiencyExplanation(int category)
     {
         if (systemEfficiencyExplanation == null) return;
-        if (!systemEfficiencyDetailsExpanded)
-            ToggleSystemEfficiencyDetails();
         bool show = expandedSystemEfficiencyState != category;
         expandedSystemEfficiencyState = show ? category : -1;
         systemEfficiencyExplanation.gameObject.SetActive(show);
@@ -1000,30 +998,6 @@ public class WorkersUI : MonoBehaviour
             LayoutElement explanationSize = systemEfficiencyExplanation.GetComponent<LayoutElement>();
             if (explanationSize != null)
                 explanationSize.minHeight = explanationSize.preferredHeight = 0f;
-        }
-        LayoutFlowPanel();
-    }
-
-    void ToggleSystemEfficiencyDetails()
-    {
-        systemEfficiencyDetailsExpanded = !systemEfficiencyDetailsExpanded;
-        if (systemEfficiencyDetailsRow != null)
-            systemEfficiencyDetailsRow.gameObject.SetActive(systemEfficiencyDetailsExpanded);
-        if (!systemEfficiencyDetailsExpanded)
-        {
-            expandedSystemEfficiencyState = -1;
-            if (systemEfficiencyExplanation != null)
-            {
-                systemEfficiencyExplanation.gameObject.SetActive(false);
-                LayoutElement explanationSize = systemEfficiencyExplanation.GetComponent<LayoutElement>();
-                if (explanationSize != null)
-                    explanationSize.minHeight = explanationSize.preferredHeight = 0f;
-            }
-        }
-        if (systemEfficiencyDetailsButton != null)
-        {
-            var label = systemEfficiencyDetailsButton.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (label != null) label.text = systemEfficiencyDetailsExpanded ? "Hide" : "Details";
         }
         LayoutFlowPanel();
     }
@@ -1106,13 +1080,6 @@ public class WorkersUI : MonoBehaviour
                 systemEfficiencyButtonLabels[i].text = EfficiencyNames[i] + "  " + percents[i] + "%";
                 displayedEfficiencyPercents[i] = percents[i];
             }
-        if (systemEfficiencySummary != null)
-        {
-            systemEfficiencySummary.text = "<color=#55C9A5>Working " + percents[0]
-                + "%</color>   <color=#E27676>Blocked " + percents[1]
-                + "%</color>   <color=#E2B455>Starved " + percents[2]
-                + "%</color>   <color=#B7BEC5>Idle " + percents[3] + "%</color>";
-        }
     }
 
     void LayoutFlowPanel()
@@ -1562,37 +1529,8 @@ public class WorkersUI : MonoBehaviour
                     if (worker != null) assignedCount++;
             workerAssignmentSummary.text = assignedCount > 0
                 ? "Assigned · " + assignedCount + (assignedCount == 1 ? " worker" : " workers")
-                : "No workers assigned. Drag one here or use Assign below.";
+                : "No workers assigned. Use Assign below.";
         }
-        CreateWorkerDropZone(workerRow, flow);
-    }
-
-    void CreateWorkerDropZone(Transform parent, ProductionFlowPlan flow)
-    {
-        Color idleColor = new Color(0.20f, 0.29f, 0.40f, 1f);
-        Button dropZone = MakeChip(parent, "Drop Worker Here", 142f);
-        dropZone.interactable = true;
-        dropZone.gameObject.name = "WorkerDropZone";
-        var dropLayout = dropZone.GetComponent<LayoutElement>();
-        if (dropLayout != null)
-        {
-            dropLayout.minHeight = 38f;
-            dropLayout.preferredHeight = 38f;
-        }
-        var image = dropZone.GetComponent<Image>();
-        if (image != null) image.color = idleColor;
-        var label = dropZone.GetComponentInChildren<TextMeshProUGUI>();
-        if (label != null)
-        {
-            label.fontSize = 14f;
-            label.fontStyle = FontStyles.Bold;
-            label.color = new Color(0.78f, 0.88f, 1f, 1f);
-            label.fontSizeMin = 11f;
-            label.fontSizeMax = 14f;
-            label.enableAutoSizing = true;
-        }
-        var target = dropZone.gameObject.AddComponent<WorkerFlowDropTarget>();
-        target.Bind(this, flow, idleColor);
     }
 
     void RefreshFlowSection()

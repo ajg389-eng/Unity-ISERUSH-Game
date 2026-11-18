@@ -13,58 +13,54 @@ MonoBehaviour:
   m_Name: Milestone_milestone_05
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_05
-  displayName: Supply Automation
-  description: 'Expand shared supplier capacity and balance replenishment against forecast
-    demand while keeping stock within storage limits.
-
-
-    Topics: Automatic replenishment, supply rate control, stockout risk'
+  displayName: Measure and Improve
+  description: Use delivered output to see whether a focused change improves the process.
   completionDialogue:
-  - Supplier capacity upgrades can now reach 40 items per minute.
-  - Match replenishment to forecast demand and avoid excess stock.
+  - The data shows what improved. Use it to decide the next change.
+  - If one station change does not improve delivered output, check the rest of the process.
   isTutorial: 0
   minimumSystemEfficiencyPercent: 45
   minimumCustomersServedPercent: 70
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   shiftQuestions:
-  - questionId: supply_rate
-    prompt: What should a steady replenishment rate generally be based on?
+  - questionId: core_measure
+    prompt: "What should you compare after changing one process step?"
     answers:
-    - Forecast consumption over the planning horizon
-    - The supplier's maximum available rate regardless of demand
-    - The inventory holding cost without considering usage
+    - "Finished output from the whole process"
+    - "Only the fastest station rate"
+    - "The color of the station card"
     correctAnswerIndex: 0
-    explanation: Aligning replenishment with expected consumption helps maintain stock without persistent excess.
-  - questionId: supply_stockout
-    prompt: Which inventory signal should trigger replenishment to protect service?
+    explanation: "A process change is useful when it improves the result that matters, such as delivered output."
+  - questionId: core_one_change
+    prompt: "Why change one cause at a time when improving a process?"
     answers:
-    - Inventory position reaches or falls below the reorder point
-    - Cycle stock reaches its planned maximum after replenishment
-    - Forecast demand falls below current on-hand inventory
+    - "It helps show which change affected process output"
+    - "It guarantees every station reaches maximum capacity"
+    - "It makes customer demand stop changing"
     correctAnswerIndex: 0
-    explanation: The reorder point covers expected lead-time demand plus safety stock.
-  - questionId: supply_automation
-    prompt: What is the purpose of an automatic replenishment policy?
+    explanation: "One change at a time makes it easier to connect the result to the cause."
+  - questionId: core_system
+    prompt: "Why check the whole system after an improvement?"
     answers:
-    - Apply defined reorder rules consistently as inventory changes
-    - Eliminate the need to forecast demand or lead time
-    - Guarantee zero stockouts regardless of supplier variability
+    - "Another step may become the new bottleneck"
+    - "Every other station automatically becomes faster"
+    - "The process no longer needs ingredients"
     correctAnswerIndex: 0
-    explanation: Automation executes a policy; the policy still needs sound demand, lead-time, and buffer assumptions.
+    explanation: "Improving one part can shift the bottleneck elsewhere in the connected system."
   shiftLessons:
-  - lessonId: supply_rate
-    title: Match supply to use
-    explanation: Set replenishment against forecast consumption, not the supplier's maximum rate.
-    target: 1
-  - lessonId: supply_stockout
-    title: Watch inventory position
-    explanation: Inventory position is on-hand stock plus incoming supply. Replenish when it reaches the reorder point to prevent a stockout.
-    target: 1
-  - lessonId: supply_automation
-    title: Automate a sound policy
-    explanation: Supply chain automation follows your replenishment rules. It cannot replace sound demand and lead-time assumptions.
-    target: 1
+  - lessonId: core_measure
+    title: "Measure finished output"
+    explanation: "Use delivered output to see whether a process change improved the result."
+    target: 0
+  - lessonId: core_one_change
+    title: "Change one thing"
+    explanation: "Changing one likely cause at a time helps you see what affected the process."
+    target: 0
+  - lessonId: core_system
+    title: "Check the whole system"
+    explanation: "A change to one station can affect the rest of the process or move the bottleneck."
+    target: 0
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

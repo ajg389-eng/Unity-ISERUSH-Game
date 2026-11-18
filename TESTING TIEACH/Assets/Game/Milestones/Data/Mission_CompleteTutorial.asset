@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MissionDefinition
   missionId: tutorial_complete
   title: Complete the tutorial
-  description: Finish every guided step to unlock Process Analysis.
+  description: Finish every guided step to unlock Process Flow.
   completionEventId: tutorial_completed
   requiredCount: 1
   producedItem: {fileID: 0}

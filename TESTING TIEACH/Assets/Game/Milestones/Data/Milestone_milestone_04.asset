@@ -13,60 +13,56 @@ MonoBehaviour:
   m_Name: Milestone_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_04
-  displayName: Inventory Planning
-  description: 'Use demand forecasts, supplier lead times, and stock levels to plan
-    ingredient orders.
-
-
-    Topics: Purchase lead time, safety stock, inventory holding cost, demand forecasting'
+  displayName: Measure and Improve
+  description: Use delivered output to see whether a focused change improves the whole process.
   completionDialogue:
-  - Now you are planning stock around demand. Running out stops service; ordering
-    too much ties up cash and creates waste.
-  - 
+  - The data shows whether your change improved the process. Use it to choose what to fix next.
+  - Check the whole system. Improving one station can move the bottleneck somewhere else.
   isTutorial: 0
-  minimumSystemEfficiencyPercent: 40
-  minimumCustomersServedPercent: 65
+  minimumSystemEfficiencyPercent: 50
+  minimumCustomersServedPercent: 75
   missions:
-  - {fileID: 11400000, guid: 55d1f5ab0df7405f9369bd9a3ff90a06, type: 2}
-  - {fileID: 11400000, guid: f2193414de654acebe722bc290248751, type: 2}
+  - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
+  - {fileID: 11400000, guid: 2d6eff8a216647678689348797f51cf0, type: 2}
+  - {fileID: 11400000, guid: f273a94d2ab7449198238e0e6f0bb506, type: 2}
   shiftQuestions:
-  - questionId: inventory_reorder
-    prompt: In a continuous-review inventory policy, what should the reorder point cover?
+  - questionId: core_measure
+    prompt: "What should you compare after changing a process step?"
     answers:
-    - Expected demand during replenishment lead time plus safety stock
-    - The economic order quantity plus average cycle stock
-    - Annual demand divided by the supplier's unit cost
+    - "Finished output from the whole process"
+    - "Only the fastest station rate"
+    - "The color of the station card"
     correctAnswerIndex: 0
-    explanation: The reorder point triggers an order early enough to cover lead-time demand and uncertainty.
-  - questionId: inventory_safety
-    prompt: What inventory risk is safety stock designed to buffer?
+    explanation: "Throughput measures finished output from the complete process."
+  - questionId: core_one_change
+    prompt: "Why change one likely cause at a time?"
     answers:
-    - Variability in demand or replenishment lead time
-    - Predictable demand during a normal replenishment cycle
-    - Fixed ordering costs incurred whenever an order is placed
+    - "It helps show which change affected process output"
+    - "It guarantees every station reaches maximum capacity"
+    - "It makes customer demand stop changing"
     correctAnswerIndex: 0
-    explanation: Safety stock protects service levels when actual demand or lead time differs from its forecast.
-  - questionId: inventory_holding
-    prompt: Which expense is an inventory holding cost?
+    explanation: "A focused change makes it easier to connect the cause to the result."
+  - questionId: core_system
+    prompt: "If one station's output rises but delivered throughput stays flat, what should you check?"
     answers:
-    - Capital, storage, and obsolescence costs while inventory is held
-    - Administrative and setup costs for placing an order
-    - Lost margin and service costs caused by a stockout
+    - "Another step may now limit the whole process"
+    - "Only the upgraded station's target rate"
+    - "Whether the menu has enough categories"
     correctAnswerIndex: 0
-    explanation: Holding cost captures resources tied up in inventory over time.
+    explanation: "Improving one step can move the bottleneck to another part of the system."
   shiftLessons:
-  - lessonId: inventory_reorder
-    title: Set the reorder point
-    explanation: Set the inventory reorder point to cover expected use during lead time plus a safety stock buffer.
-    target: 1
-  - lessonId: inventory_safety
-    title: Set a safety buffer
-    explanation: Safety stock protects service when demand or delivery time varies from the forecast.
-    target: 1
-  - lessonId: inventory_holding
-    title: Watch holding cost
-    explanation: Excess stock ties up cash and can expire. Balance shortage risk against storage cost.
-    target: 1
+  - lessonId: core_measure
+    title: "Measure throughput"
+    explanation: "Compare delivered items before and after a change to see whether the whole process improved."
+    target: 0
+  - lessonId: core_one_change
+    title: "Change one thing"
+    explanation: "Changing one likely cause at a time helps you see what affected throughput."
+    target: 0
+  - lessonId: core_system
+    title: "Check the whole system"
+    explanation: "A change to one station can move the bottleneck elsewhere in the connected process."
+    target: 0
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

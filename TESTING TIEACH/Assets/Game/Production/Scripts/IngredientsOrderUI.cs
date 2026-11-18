@@ -80,6 +80,8 @@ public class IngredientsOrderUI : MonoBehaviour
     readonly List<RecipeGraphNodeView> recipeGraphNodes = new List<RecipeGraphNodeView>();
     readonly List<RecipeGraphEdgeView> recipeGraphEdges = new List<RecipeGraphEdgeView>();
     readonly List<Button> recipeTabButtons = new List<Button>();
+    readonly Dictionary<StationType, ItemDefinition> stationPreviewItems =
+        new Dictionary<StationType, ItemDefinition>();
 
     public Button TutorialSuppliesTab => suppliesTab;
     public Button TutorialMenuTab => menuTab;
@@ -821,6 +823,7 @@ public class IngredientsOrderUI : MonoBehaviour
             GameUITheme.ApplyTabButton(recipeTabButtons[i], i == activeRecipeTab);
         ScrollRect scroll = recipeChartViewport.GetComponent<ScrollRect>();
         if (scroll != null) scroll.verticalNormalizedPosition = 1f;
+        Canvas.ForceUpdateCanvases();
 
         List<ItemDefinition> products = GetRecipeProducts(menu, activeRecipeTab);
         if (products.Count == 0)
@@ -969,132 +972,280 @@ public class IngredientsOrderUI : MonoBehaviour
         details.GetComponent<Image>().color = GameUITheme.Charcoal;
         details.SetActive(open);
         VerticalLayoutGroup detailsLayout = details.GetComponent<VerticalLayoutGroup>();
-        detailsLayout.padding = new RectOffset(12, 12, 10, 10);
-        detailsLayout.spacing = 8f;
+        detailsLayout.padding = new RectOffset(8, 8, 6, 6);
+        detailsLayout.spacing = 5f;
         detailsLayout.childControlWidth = true;
         detailsLayout.childControlHeight = true;
         detailsLayout.childForceExpandWidth = true;
         detailsLayout.childForceExpandHeight = false;
 
-        var stations = new List<StationType>();
-        var amounts = new Dictionary<ItemDefinition, int>();
-        var path = new HashSet<ItemDefinition>();
-        CollectRecipeNeeds(menu, product, 1, stations, amounts, path);
-        AddRecipeSectionTitle(details.transform, "WORKSTATIONS");
-        if (stations.Count == 0)
-            CreateRecipeLabel(details.transform, "No workstation listed", 14f);
-        else
-        {
-            GameObject stationRow = new GameObject("WorkstationIcons", typeof(RectTransform),
-                typeof(VerticalLayoutGroup), typeof(LayoutElement));
-            stationRow.transform.SetParent(details.transform, false);
-            VerticalLayoutGroup rowLayout = stationRow.GetComponent<VerticalLayoutGroup>();
-            rowLayout.spacing = 5f;
-            rowLayout.childControlWidth = true;
-            rowLayout.childControlHeight = true;
-            rowLayout.childForceExpandWidth = true;
-            rowLayout.childForceExpandHeight = false;
-            foreach (StationType station in stations)
-                CreateStationNeed(stationRow.transform, station);
-        }
-        AddRecipeSectionTitle(details.transform, "INGREDIENTS");
-        if (amounts.Count == 0)
-            CreateRecipeLabel(details.transform, "No ingredients listed", 14f);
-        else
-            foreach (var entry in amounts)
-                CreateIngredientNeed(details.transform, entry.Key, entry.Value);
+        AddRecipeSectionTitle(details.transform, "PRODUCTION FLOW");
+        CreateRecipeFlowDiagram(menu, product, details.transform);
     }
 
-    void CollectRecipeNeeds(CustomerOrderConfig menu, ItemDefinition output, int multiplier,
-        List<StationType> stations, Dictionary<ItemDefinition, int> ingredients, HashSet<ItemDefinition> path)
+    sealed class RecipeDiagramNode
     {
-        if (output == null) return;
-        RecipeGraphNodeDefinition recipe = FindRecipeForOutput(menu, output);
-        if (recipe == null || recipe.inputs == null || recipe.inputs.Count == 0)
+        public ItemDefinition item;
+        public RecipeGraphNodeDefinition recipe;
+        public StationType? supplyStation;
+        public readonly List<RecipeDiagramEdge> incoming = new List<RecipeDiagramEdge>();
+        public int depth;
+        public Vector2 position;
+    }
+
+    sealed class RecipeDiagramEdge
+    {
+        public RecipeDiagramNode source;
+        public RecipeDiagramNode destination;
+    }
+
+    void CreateRecipeFlowDiagram(CustomerOrderConfig menu, ItemDefinition output, Transform parent)
+    {
+        Dictionary<ItemDefinition, RecipeDiagramNode> byItem =
+            new Dictionary<ItemDefinition, RecipeDiagramNode>();
+        List<RecipeDiagramNode> nodes = new List<RecipeDiagramNode>();
+        List<RecipeDiagramEdge> edges = new List<RecipeDiagramEdge>();
+        RecipeDiagramNode root = BuildRecipeDiagram(menu, output, byItem, nodes, edges);
+        if (root == null || nodes.Count == 0)
         {
-            ingredients[output] = ingredients.TryGetValue(output, out int old) ? old + multiplier : multiplier;
+            CreateRecipeLabel(parent, "No production steps are listed.", 14f);
             return;
         }
-        if (!path.Add(output)) return;
-        if (!stations.Contains(recipe.stationType)) stations.Add(recipe.stationType);
-        foreach (RecipeGraphInputDefinition input in recipe.inputs)
+
+        int maxDepth = 0;
+        for (int i = 0; i < nodes.Count; i++) maxDepth = Mathf.Max(maxDepth, nodes[i].depth);
+        int columnCount = maxDepth + 1;
+        float viewportWidth = recipeChartViewport != null ? recipeChartViewport.rect.width : 0f;
+        if (viewportWidth < 1f) viewportWidth = Mathf.Clamp(Screen.width * 0.82f, 560f, 960f);
+        float availableWidth = Mathf.Max(520f, viewportWidth - 48f);
+        float columnGap = columnCount > 1 ? 40f : 0f;
+        float nodeWidth = Mathf.Min(176f,
+            (availableWidth - columnGap * (columnCount - 1)) / columnCount);
+        nodeWidth = Mathf.Max(92f, nodeWidth);
+        float diagramWidth = nodeWidth * columnCount + columnGap * (columnCount - 1);
+        const float nodeHeight = 68f;
+        const float rowGap = 28f;
+        float rowStride = nodeHeight + rowGap;
+
+        int maxColumnCount = 1;
+        for (int depth = 0; depth < columnCount; depth++)
         {
-            if (input == null || input.item == null) continue;
-            int amount = Mathf.Max(1, input.amount) * multiplier;
-            if (FindRecipeForOutput(menu, input.item) != null)
-                CollectRecipeNeeds(menu, input.item, amount, stations, ingredients, path);
-            else
-                ingredients[input.item] = ingredients.TryGetValue(input.item, out int old)
-                    ? old + amount : amount;
+            List<RecipeDiagramNode> column = new List<RecipeDiagramNode>();
+            for (int i = 0; i < nodes.Count; i++)
+                if (nodes[i].depth == depth) column.Add(nodes[i]);
+            column.Sort((a, b) =>
+            {
+                int yOrder = GetRecipeDiagramInputY(b).CompareTo(GetRecipeDiagramInputY(a));
+                return yOrder != 0 ? yOrder : string.Compare(
+                    GetRecipeItemName(a.item), GetRecipeItemName(b.item),
+                    System.StringComparison.OrdinalIgnoreCase);
+            });
+            maxColumnCount = Mathf.Max(maxColumnCount, column.Count);
+            float centerX = -diagramWidth * 0.5f + nodeWidth * 0.5f
+                + depth * (nodeWidth + columnGap);
+            for (int i = 0; i < column.Count; i++)
+                column[i].position = new Vector2(centerX,
+                    (column.Count - 1) * rowStride * 0.5f - i * rowStride);
         }
-        path.Remove(output);
+
+        float diagramHeight = maxColumnCount * nodeHeight + (maxColumnCount - 1) * rowGap + 20f;
+        GameObject diagram = new GameObject("RecipeFlowDiagram", typeof(RectTransform),
+            typeof(LayoutElement));
+        diagram.transform.SetParent(parent, false);
+        RectTransform diagramRect = diagram.GetComponent<RectTransform>();
+        diagramRect.anchorMin = diagramRect.anchorMax = diagramRect.pivot = new Vector2(0.5f, 0.5f);
+        diagramRect.sizeDelta = new Vector2(diagramWidth, diagramHeight);
+        LayoutElement diagramSize = diagram.GetComponent<LayoutElement>();
+        diagramSize.minHeight = diagramSize.preferredHeight = diagramHeight;
+        diagramSize.flexibleWidth = 1f;
+
+        for (int i = 0; i < edges.Count; i++)
+            CreateRecipeDiagramEdge(diagram.transform, edges[i], nodeWidth, diagramHeight,
+                columnGap);
+        for (int i = 0; i < nodes.Count; i++)
+            CreateRecipeDiagramNode(diagram.transform, nodes[i], nodeWidth, nodeHeight);
     }
 
-    void CreateStationNeed(Transform parent, StationType station)
+    RecipeDiagramNode BuildRecipeDiagram(CustomerOrderConfig menu, ItemDefinition item,
+        Dictionary<ItemDefinition, RecipeDiagramNode> byItem, List<RecipeDiagramNode> nodes,
+        List<RecipeDiagramEdge> edges)
     {
-        string stationName = StationDisplayName(station);
-        GameObject chip = new GameObject("Station_" + station, typeof(RectTransform), typeof(Image),
-            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        chip.transform.SetParent(parent, false);
-        chip.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.035f);
-        LayoutElement chipLayout = chip.GetComponent<LayoutElement>();
-        chipLayout.minHeight = 50f;
-        HorizontalLayoutGroup layout = chip.GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(6, 8, 5, 5);
-        layout.spacing = 10f;
-        layout.childAlignment = TextAnchor.MiddleLeft;
+        if (item == null) return null;
+        if (byItem.TryGetValue(item, out RecipeDiagramNode existing)) return existing;
+
+        RecipeDiagramNode node = new RecipeDiagramNode
+        {
+            item = item,
+            recipe = FindRecipeForOutput(menu, item)
+        };
+        byItem.Add(item, node);
+        nodes.Add(node);
+        if (node.recipe == null)
+        {
+            node.supplyStation = menu.GetVendorSupplyStation(item);
+            return node;
+        }
+
+        if (node.recipe.inputs == null) return node;
+        foreach (RecipeGraphInputDefinition input in node.recipe.inputs)
+        {
+            if (input == null || input.item == null) continue;
+            RecipeDiagramNode source = BuildRecipeDiagram(menu, input.item, byItem, nodes, edges);
+            if (source == null) continue;
+            RecipeDiagramEdge edge = node.incoming.Find(existingEdge => existingEdge.source == source);
+            if (edge == null)
+            {
+                edge = new RecipeDiagramEdge { source = source, destination = node };
+                node.incoming.Add(edge);
+                edges.Add(edge);
+            }
+            node.depth = Mathf.Max(node.depth, source.depth + 1);
+        }
+        return node;
+    }
+
+    static float GetRecipeDiagramInputY(RecipeDiagramNode node)
+    {
+        if (node == null || node.incoming.Count == 0) return 0f;
+        float total = 0f;
+        for (int i = 0; i < node.incoming.Count; i++) total += node.incoming[i].source.position.y;
+        return total / node.incoming.Count;
+    }
+
+    void CreateRecipeDiagramNode(Transform parent, RecipeDiagramNode node,
+        float width, float height)
+    {
+        bool isSource = node.recipe == null;
+        GameObject card = new GameObject(isSource ? "IngredientNode" : "StationRecipeNode",
+            typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup));
+        card.transform.SetParent(parent, false);
+        RectTransform rect = card.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(width, height);
+        rect.anchoredPosition = node.position;
+        card.GetComponent<Image>().color = isSource ? GameUITheme.RaisedSlate : GameUITheme.Coral;
+
+        HorizontalLayoutGroup layout = card.GetComponent<HorizontalLayoutGroup>();
+        layout.padding = new RectOffset(5, 5, 4, 4);
+        layout.spacing = 4f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childForceExpandWidth = false;
-        ItemDefinition stationItem = FindStationItem(station);
-        if (stationItem != null)
-            CreateStationPreview(chip.transform, stationItem);
-        else
+        layout.childForceExpandHeight = false;
+
+        float iconSize = Mathf.Clamp((width - 78f) * 0.5f, 24f, 36f);
+        if (isSource)
         {
-            TextMeshProUGUI fallback = CreateRecipeLabel(chip.transform, StationInitial(station), 14f);
-            fallback.alignment = TextAlignmentOptions.Center;
-            fallback.color = GameUITheme.Accent;
-            fallback.gameObject.AddComponent<LayoutElement>().preferredWidth = 30f;
+            CreateRecipeDiagramThumbnail(card.transform, node.item, iconSize);
+            TextMeshProUGUI label = CreateRecipeLabel(card.transform,
+                "<b>" + GetRecipeItemName(node.item) + "</b>\n<color=#E4E8ED>"
+                + (node.supplyStation.HasValue ? StationDisplayName(node.supplyStation.Value) : "Ingredient")
+                + "</color>", 11f);
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 8f;
+            label.fontSizeMax = 11f;
+            label.alignment = TextAlignmentOptions.Center;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+            return;
         }
-        TextMeshProUGUI label = CreateRecipeLabel(chip.transform, stationName, 14f);
-        label.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
+        CreateRecipeDiagramThumbnail(card.transform,
+            FindStationItem(node.recipe.stationType), iconSize);
+        string recipeName = !string.IsNullOrWhiteSpace(node.recipe.recipeName)
+            ? node.recipe.recipeName : GetRecipeItemName(node.item);
+        TextMeshProUGUI recipeLabel = CreateRecipeLabel(card.transform,
+            "<b>" + recipeName + "</b>\n<color=#FFF0E7>"
+            + StationDisplayName(node.recipe.stationType) + "</color>", 10f);
+        recipeLabel.enableAutoSizing = true;
+        recipeLabel.fontSizeMin = 8f;
+        recipeLabel.fontSizeMax = 10f;
+        recipeLabel.alignment = TextAlignmentOptions.Center;
+        recipeLabel.overflowMode = TextOverflowModes.Ellipsis;
+        recipeLabel.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        CreateRecipeDiagramThumbnail(card.transform, node.item, iconSize);
     }
 
-    void CreateStationPreview(Transform parent, ItemDefinition item)
+    void CreateRecipeDiagramThumbnail(Transform parent, ItemDefinition item, float side)
     {
-        GameObject tile = new GameObject("StationImageTile", typeof(RectTransform), typeof(Image),
-            typeof(Outline), typeof(LayoutElement));
-        tile.transform.SetParent(parent, false);
-        LayoutElement layout = tile.GetComponent<LayoutElement>();
-        layout.minWidth = layout.preferredWidth = 52f;
-        layout.minHeight = layout.preferredHeight = 52f;
-        tile.GetComponent<Image>().color = new Color(0.09f, 0.11f, 0.14f, 1f);
-        Outline outline = tile.GetComponent<Outline>();
-        outline.effectColor = Color.black;
-        outline.effectDistance = new Vector2(1.5f, -1.5f);
-        outline.useGraphicAlpha = false;
-        GameObject imageObject = new GameObject("StationPreview", typeof(RectTransform),
-            typeof(RawImage), typeof(AspectRatioFitter));
-        imageObject.transform.SetParent(tile.transform, false);
-        RectTransform imageRect = imageObject.GetComponent<RectTransform>();
-        imageRect.anchorMin = Vector2.zero;
-        imageRect.anchorMax = Vector2.one;
-        imageRect.offsetMin = new Vector2(3f, 3f);
-        imageRect.offsetMax = new Vector2(-3f, -3f);
-        RawImage image = imageObject.GetComponent<RawImage>();
-        image.texture = ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName);
-        if (image.texture == null && item.previewIcon != null)
-            image.texture = item.previewIcon.texture;
-        image.color = image.texture != null ? Color.white : Color.clear;
+        GameObject previewObject = new GameObject("Preview", typeof(RectTransform),
+            typeof(RawImage), typeof(LayoutElement));
+        previewObject.transform.SetParent(parent, false);
+        RectTransform previewRect = (RectTransform)previewObject.transform;
+        previewRect.sizeDelta = new Vector2(side, side);
+        LayoutElement size = previewObject.GetComponent<LayoutElement>();
+        size.minWidth = size.preferredWidth = side;
+        size.minHeight = size.preferredHeight = side;
+        RawImage preview = previewObject.GetComponent<RawImage>();
+        preview.texture = item != null ? ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName) : null;
+        if (preview.texture == null && item != null && item.previewIcon != null)
+            preview.texture = item.previewIcon.texture;
+        preview.color = preview.texture != null ? Color.white : Color.clear;
+        preview.raycastTarget = false;
+    }
+
+    void CreateRecipeDiagramEdge(Transform parent, RecipeDiagramEdge edge,
+        float nodeWidth, float diagramHeight, float columnGap)
+    {
+        if (edge?.source == null || edge.destination == null) return;
+        Vector2 start = edge.source.position + new Vector2(nodeWidth * 0.5f, 0f);
+        Vector2 target = edge.destination.position - new Vector2(nodeWidth * 0.5f, 0f);
+        Vector2 arrowTip = target - new Vector2(4f, 0f);
+        int depthDifference = edge.destination.depth - edge.source.depth;
+        if (depthDifference > 1)
+        {
+            float gutterY = diagramHeight * 0.5f - 4f;
+            float gutterX = start.x + Mathf.Max(5f, columnGap * 0.35f);
+            float endGutterX = arrowTip.x - Mathf.Max(5f, columnGap * 0.35f);
+            CreateRecipeDiagramLine(parent, start, new Vector2(gutterX, start.y));
+            CreateRecipeDiagramLine(parent, new Vector2(gutterX, start.y), new Vector2(gutterX, gutterY));
+            CreateRecipeDiagramLine(parent, new Vector2(gutterX, gutterY), new Vector2(endGutterX, gutterY));
+            CreateRecipeDiagramLine(parent, new Vector2(endGutterX, gutterY), new Vector2(endGutterX, arrowTip.y));
+            CreateRecipeDiagramLine(parent, new Vector2(endGutterX, arrowTip.y), arrowTip);
+        }
+        else
+        {
+            float middleX = (start.x + arrowTip.x) * 0.5f;
+            Vector2 bendStart = new Vector2(middleX, start.y);
+            Vector2 bendEnd = new Vector2(middleX, arrowTip.y);
+            CreateRecipeDiagramLine(parent, start, bendStart);
+            CreateRecipeDiagramLine(parent, bendStart, bendEnd);
+            CreateRecipeDiagramLine(parent, bendEnd, arrowTip);
+        }
+        CreateRecipeDiagramArrow(parent, arrowTip);
+    }
+
+    void CreateRecipeDiagramLine(Transform parent, Vector2 start, Vector2 end)
+    {
+        Vector2 delta = end - start;
+        if (delta.sqrMagnitude < 1f) return;
+        GameObject line = new GameObject("FlowConnector", typeof(RectTransform), typeof(Image));
+        line.transform.SetParent(parent, false);
+        RectTransform rect = (RectTransform)line.transform;
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(delta.magnitude, 2.5f);
+        rect.anchoredPosition = (start + end) * 0.5f;
+        rect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+        Image image = line.GetComponent<Image>();
+        image.color = new Color(GameUITheme.TextSecondary.r, GameUITheme.TextSecondary.g,
+            GameUITheme.TextSecondary.b, 0.78f);
         image.raycastTarget = false;
-        AspectRatioFitter fit = imageObject.GetComponent<AspectRatioFitter>();
-        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-        fit.aspectRatio = image.texture != null && image.texture.height > 0
-            ? (float)image.texture.width / image.texture.height : 1f;
+    }
+
+    void CreateRecipeDiagramArrow(Transform parent, Vector2 tip)
+    {
+        const float arrowLength = 8f;
+        const float arrowHalfHeight = 4f;
+        CreateRecipeDiagramLine(parent, tip - new Vector2(arrowLength, arrowHalfHeight), tip);
+        CreateRecipeDiagramLine(parent, tip - new Vector2(arrowLength, -arrowHalfHeight), tip);
     }
 
     ItemDefinition FindStationItem(StationType station)
     {
+        if (stationPreviewItems.TryGetValue(station, out ItemDefinition cachedItem))
+            return cachedItem;
+
         InventoryManager[] inventories = FindObjectsByType<InventoryManager>(
             FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (InventoryManager inventoryManager in inventories)
@@ -1114,9 +1265,14 @@ public class IngredientsOrderUI : MonoBehaviour
                     StationType.Drink => item.prefab.GetComponentInChildren<DrinkStation>(true),
                     _ => null
                 };
-                if (component != null) return item;
+                if (component != null)
+                {
+                    stationPreviewItems[station] = item;
+                    return item;
+                }
             }
         }
+        stationPreviewItems[station] = null;
         return null;
     }
 
@@ -1135,51 +1291,19 @@ public class IngredientsOrderUI : MonoBehaviour
         };
     }
 
-    static string StationInitial(StationType station)
-    {
-        return station switch
-        {
-            StationType.Freezer => "F",
-            StationType.Grill => "G",
-            StationType.Pantry => "P",
-            StationType.Assembly => "A",
-            StationType.Cutting => "C",
-            StationType.Fryer => "F",
-            StationType.Drink => "S",
-            _ => "?"
-        };
-    }
-
-    void CreateIngredientNeed(Transform parent, ItemDefinition item, int amount)
-    {
-        GameObject row = new GameObject("Ingredient_" + item.name, typeof(RectTransform),
-            typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        row.transform.SetParent(parent, false);
-        row.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.035f);
-        row.GetComponent<LayoutElement>().minHeight = 48f;
-        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(6, 8, 4, 4);
-        layout.spacing = 10f;
-        layout.childAlignment = TextAnchor.MiddleLeft;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = false;
-        CreateRecipePreview(row.transform, item, 38f);
-        TextMeshProUGUI label = CreateRecipeLabel(row.transform,
-            "<b>" + amount + "×</b>  " + GetRecipeItemName(item), 14f);
-        label.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
-    }
-
     RawImage CreateRecipePreview(Transform parent, ItemDefinition item, float side)
     {
         GameObject imageObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage),
             typeof(LayoutElement));
         imageObject.transform.SetParent(parent, false);
+        ((RectTransform)imageObject.transform).sizeDelta = new Vector2(side, side);
         LayoutElement layout = imageObject.GetComponent<LayoutElement>();
         layout.minWidth = layout.preferredWidth = side;
         layout.minHeight = layout.preferredHeight = side;
         RawImage image = imageObject.GetComponent<RawImage>();
         image.texture = item != null ? ItemPreviewThumbnails.GetPrefab(item.prefab, item.itemName) : null;
+        if (image.texture == null && item != null && item.previewIcon != null)
+            image.texture = item.previewIcon.texture;
         image.color = image.texture != null ? Color.white : Color.clear;
         image.raycastTarget = false;
         return image;

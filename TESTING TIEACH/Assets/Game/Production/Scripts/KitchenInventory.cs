@@ -367,9 +367,9 @@ public class KitchenInventory : MonoBehaviour
             : nextIndex >= 3 ? MilestoneFeatures.QualityAndReliability : 0;
         if (requiredMilestone > 0 && !MilestoneFeatures.HasReached(requiredMilestone))
         {
-            reason = requiredMilestone == MilestoneFeatures.QualityAndReliability
-                ? "Reach Milestone 5 to expand supplier capacity to 40 items/min."
-                : "Reach Milestone 6 to expand supplier capacity beyond 40 items/min.";
+            reason = nextIndex >= 4
+                ? "Reach Milestone 4 to expand supplier capacity beyond 40 items/min."
+                : "Reach Milestone 4 to expand supplier capacity to 40 items/min.";
             return false;
         }
 

@@ -4,7 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Objectives panel with separate daily tasks, milestone tasks, and milestone status sections.
+/// Objectives panel with current-shift milestone tasks and milestone status.
 /// Place under PlayerUI via Game → Setup Tasks Progression Panel to edit position in the scene.
 /// </summary>
 public class MissionListUI : MonoBehaviour
@@ -79,20 +79,14 @@ public class MissionListUI : MonoBehaviour
     GameObject progressionScrollRoot;
     bool combinedLayoutBuilt;
     bool tasksDirty = true;
-    bool dailyGoalsDirty = true;
     bool progressionDirty = true;
     bool panelHeightDirty = true;
-    bool hasDailyGoalSnapshot;
-    int lastDailyOrders;
-    int lastDailyRevenue;
-    float lastDailyWait;
     float lastCanvasHeight;
     float nextMissingSourceSearchTime;
     float nextMilestoneObjectiveRefreshTime;
     bool topTabVisualInitialized;
     bool lastTopTabOpen;
 
-    readonly List<GameObject> taskRowPool = new List<GameObject>();
     readonly List<GameObject> milestoneTaskRowPool = new List<GameObject>();
     readonly List<GameObject> progressionRowPool = new List<GameObject>();
 
@@ -209,7 +203,6 @@ public class MissionListUI : MonoBehaviour
             if (statistics != null) statistics.OnStatisticsChanged -= OnStatisticsChanged;
             statistics = nextStatistics;
             if (statistics != null) statistics.OnStatisticsChanged += OnStatisticsChanged;
-            hasDailyGoalSnapshot = false;
             OnStatisticsChanged();
             changed = true;
         }
@@ -357,7 +350,6 @@ public class MissionListUI : MonoBehaviour
     void RefreshAll()
     {
         RefreshTasks();
-        dailyGoalsDirty = true;
         RefreshProgression();
     }
 
@@ -369,20 +361,6 @@ public class MissionListUI : MonoBehaviour
     void OnStatisticsChanged()
     {
         tasksDirty = true;
-        int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
-        int revenue = statistics != null ? statistics.RevenueToday : 0;
-        float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
-        // Visits, walkouts, waste and rolling throughput do not change these
-        // goals. In particular, they must not rebuild a hidden objectives panel.
-        if (hasDailyGoalSnapshot && orders == lastDailyOrders
-            && revenue == lastDailyRevenue && wait == lastDailyWait)
-            return;
-
-        hasDailyGoalSnapshot = true;
-        lastDailyOrders = orders;
-        lastDailyRevenue = revenue;
-        lastDailyWait = wait;
-        dailyGoalsDirty = true;
     }
 
     void FlushPendingRefreshes()
@@ -392,13 +370,6 @@ public class MissionListUI : MonoBehaviour
         if (!IsOpen) return;
         EnsureUI();
 
-        if (dailyGoalsDirty)
-        {
-            dailyGoalsDirty = false;
-            ClearPool(taskRowPool);
-            CreateDailyGoalRows();
-            UpdatePanelHeight();
-        }
         if (tasksDirty)
         {
             tasksDirty = false;
@@ -421,7 +392,7 @@ public class MissionListUI : MonoBehaviour
 
     void RebuildTasks()
     {
-        if (tasksListContent == null || milestoneTasksListContent == null) return;
+        if (milestoneTasksListContent == null) return;
 
         ClearPool(milestoneTaskRowPool);
         UpdateMilestoneTaskSubtitle();
@@ -506,27 +477,6 @@ public class MissionListUI : MonoBehaviour
             true, milestoneTasksListContent, milestoneTaskRowPool);
     }
 
-    void CreateDailyGoalRows()
-    {
-        int revenueTarget = StoreStatisticsManager.DailyRevenueTaskTarget;
-        float waitTarget = StoreStatisticsManager.DailyWaitTaskTargetSeconds;
-        int minimumOrders = StoreStatisticsManager.MinimumOrdersForDailyWaitTask;
-        int orders = statistics != null ? statistics.OrdersCompletedToday : 0;
-        int revenue = statistics != null ? statistics.RevenueToday : 0;
-        float wait = statistics != null ? statistics.AverageWaitTimeTodaySeconds : 0f;
-
-        CreateTaskRow("Earn $" + revenueTarget,
-            "$" + Mathf.Min(revenue, revenueTarget) + "/$" + revenueTarget + " revenue",
-            GetTaskColor(TaskType.Finance), false, revenue >= revenueTarget);
-        bool waitComplete = (statistics != null && statistics.DailyWaitTaskAwarded)
-            || (orders >= minimumOrders && wait <= waitTarget);
-        CreateTaskRow("Average wait of " + waitTarget.ToString("0") + "s or less",
-            orders > 0
-                ? wait.ToString("0") + "s average — " + Mathf.Min(orders, minimumOrders) + "/" + minimumOrders + " orders"
-                : "Complete " + minimumOrders + " orders to measure average wait",
-            GetTaskColor(TaskType.Service), false, waitComplete);
-    }
-
     void RefreshProgression()
     {
         progressionDirty = true;
@@ -563,23 +513,13 @@ public class MissionListUI : MonoBehaviour
     {
         var rowGo = new GameObject("TaskRow", typeof(RectTransform), typeof(Image),
             typeof(VerticalLayoutGroup), typeof(LayoutElement));
-        Transform targetParent = rowParent != null ? rowParent : tasksListContent;
+        Transform targetParent = rowParent != null ? rowParent : milestoneTasksListContent;
         rowGo.transform.SetParent(targetParent, false);
-        (rowPool ?? taskRowPool).Add(rowGo);
+        (rowPool ?? milestoneTaskRowPool).Add(rowGo);
 
-        bool dailyTask = targetParent == tasksListContent;
         Image rowImage = rowGo.GetComponent<Image>();
         rowImage.raycastTarget = false;
-        if (dailyTask)
-        {
-            Color tint = Color.Lerp(GameUITheme.Panel, color, 0.22f);
-            tint.a = 0.94f;
-            rowImage.color = tint;
-        }
-        else
-        {
-            rowImage.color = Color.clear;
-        }
+        rowImage.color = Color.clear;
         var rowLe = rowGo.GetComponent<LayoutElement>();
         rowLe.minHeight = string.IsNullOrEmpty(description) ? 28f : 44f;
 
@@ -618,16 +558,13 @@ public class MissionListUI : MonoBehaviour
         textLayout.childForceExpandHeight = false;
 
         // Keep task titles the same size as progress changes; bold marks the current objective.
-        Color taskTextColor = dailyTask ? Color.white : color;
-        AddText(textColumn.transform, "Title", title, 16, taskTextColor,
+        AddText(textColumn.transform, "Title", title, 16, color,
             emphasize ? FontStyles.Bold : FontStyles.Normal);
         if (!string.IsNullOrEmpty(description))
             AddText(textColumn.transform, "Description", description, 14,
-                dailyTask ? new Color(1f, 1f, 1f, 0.85f)
-                    : new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
+                new Color(color.r, color.g, color.b, 0.85f), FontStyles.Normal);
 
-        CreateTaskRowBorder(rowGo.transform,
-            dailyTask ? color : new Color(1f, 1f, 1f, 0.9f), 1.5f);
+        CreateTaskRowBorder(rowGo.transform, new Color(1f, 1f, 1f, 0.9f), 1.5f);
     }
 
     static void CreateTaskRowBorder(Transform parent, Color color, float thickness)
@@ -1038,9 +975,8 @@ public class MissionListUI : MonoBehaviour
             return;
         }
 
-        // Scene versions may still contain the earlier objectives layout.
-        // Keep the scene-authored root and placement, and rebuild its contents
-        // with daily and milestone tasks on the left and milestone progress on the right.
+        // Keep the scene-authored root and placement, with current milestone tasks
+        // on the left and milestone progress on the right.
         ClearChildren(panelRoot.transform);
         progressionDetailText = null;
 
@@ -1065,13 +1001,11 @@ public class MissionListUI : MonoBehaviour
 
         Transform taskColumnContent = CreateColumnScroll(objectivesColumnsRoot.transform,
             "TasksScroll", out tasksScrollRoot);
-        tasksPage = CreatePage(taskColumnContent, "DailyTasksPage");
-        ConfigureSectionPage(tasksPage, "Daily Tasks");
-        tasksListContent = CreateSectionList(tasksPage.transform, "DailyTasksList");
-
         milestoneTasksPage = CreatePage(taskColumnContent, "MilestoneTasksPage");
         ConfigureSectionPage(milestoneTasksPage, "Milestone Tasks");
         milestoneTasksListContent = CreateSectionList(milestoneTasksPage.transform, "MilestoneTasksList");
+        tasksPage = milestoneTasksPage;
+        tasksListContent = milestoneTasksListContent;
 
         Transform progressionColumnContent = CreateColumnScroll(objectivesColumnsRoot.transform,
             "ProgressionScroll", out progressionScrollRoot);
@@ -1140,13 +1074,20 @@ public class MissionListUI : MonoBehaviour
             Transform progressContent = objectivesColumns.Find("ProgressionScroll/Viewport/Content");
             tasksScrollRoot = objectivesColumns.Find("TasksScroll")?.gameObject;
             progressionScrollRoot = objectivesColumns.Find("ProgressionScroll")?.gameObject;
-            tasksPage = taskContent != null ? taskContent.Find("DailyTasksPage")?.gameObject : null;
             milestoneTasksPage = taskContent != null ? taskContent.Find("MilestoneTasksPage")?.gameObject : null;
             progressionPage = progressContent != null ? progressContent.Find("ProgressionPage")?.gameObject : null;
-            if (tasksListContent == null)
-                tasksListContent = taskContent != null ? taskContent.Find("DailyTasksPage/DailyTasksList") : null;
             if (milestoneTasksListContent == null)
                 milestoneTasksListContent = taskContent != null ? taskContent.Find("MilestoneTasksPage/MilestoneTasksList") : null;
+
+            Transform oldDailyTasks = taskContent != null ? taskContent.Find("DailyTasksPage") : null;
+            if (oldDailyTasks != null)
+            {
+                if (Application.isPlaying) Destroy(oldDailyTasks.gameObject);
+                else DestroyImmediate(oldDailyTasks.gameObject);
+            }
+
+            tasksPage = milestoneTasksPage;
+            tasksListContent = milestoneTasksListContent;
             if (progressionListContent == null)
                 progressionListContent = progressContent != null ? progressContent.Find("ProgressionPage/ProgressionList") : null;
         }
@@ -1156,18 +1097,14 @@ public class MissionListUI : MonoBehaviour
             tasksTabButton = panelRoot.transform.Find("Tabs/TasksTab")?.GetComponent<Button>();
         if (progressionTabButton == null)
             progressionTabButton = panelRoot.transform.Find("Tabs/ProgressionTab")?.GetComponent<Button>();
-        if (tasksPage == null)
-            tasksPage = panelRoot.transform.Find("TasksPage")?.gameObject;
         if (milestoneTasksPage == null)
             milestoneTasksPage = panelRoot.transform.Find("MilestoneTasksPage")?.gameObject;
+        tasksPage = milestoneTasksPage;
         if (progressionPage == null)
             progressionPage = panelRoot.transform.Find("ProgressionPage")?.gameObject;
-        if (tasksListContent == null)
-            tasksListContent = panelRoot.transform.Find("TasksPage/TasksList/Viewport/Content")
-                               ?? panelRoot.transform.Find("TasksPage/TasksList")
-                               ?? panelRoot.transform.Find("List");
         if (milestoneTasksListContent == null && milestoneTasksPage != null)
             milestoneTasksListContent = milestoneTasksPage.transform.Find("MilestoneTasksList");
+        tasksListContent = milestoneTasksListContent;
         if (progressionListContent == null)
             progressionListContent = panelRoot.transform.Find("ProgressionPage/ProgressionList/Viewport/Content")
                                      ?? panelRoot.transform.Find("ProgressionPage/ProgressionList");

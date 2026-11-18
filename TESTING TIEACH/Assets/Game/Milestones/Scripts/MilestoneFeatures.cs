@@ -10,8 +10,8 @@ public static class MilestoneFeatures
     public const int CapacityAndOptimization = 2;
     public const int Mk2Stations = 3;
     public const int AdvancedMenuRecipes = 4;
-    public const int QualityAndReliability = 5;
-    public const int SystemsIntegration = 6;
+    public const int QualityAndReliability = 4;
+    public const int SystemsIntegration = 4;
 
     public static int HighestReachedNumberedStage()
     {
@@ -32,13 +32,13 @@ public static class MilestoneFeatures
         { "recipe_upgrades_2", 2 },
         { "recipe_upgrades_3", 3 },
         { "recipe_upgrades_4", 4 },
-        { "recipe_upgrades_5", 5 },
+        { "recipe_upgrades_5", 4 },
         { "mk2_stations", 3 },
         { "core_workforce", 0 },
         { "manual_operations", 0 },
         { "express_ordering", 2 },
-        { "automatic_ordering", 5 },
-        { "smart_operations", 6 }
+        { "automatic_ordering", 4 },
+        { "smart_operations", 4 }
     };
 
     public static bool IsResearchComplete(string id)
@@ -73,12 +73,9 @@ public static class MilestoneFeatures
             case "milestone_04":
                 return new[]
                 {
-                    "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake"
+                    "Cheese Bacon Fries", "Whipped Cream Sprinkle Shake", "Super Burger",
+                    "Supplier capacity upgrades up to 80 items/min"
                 };
-            case "milestone_05":
-                return new[] { "Super Burger", "Supplier capacity upgrades up to 40 items/min" };
-            case "milestone_06":
-                return new[] { "Integrated Supply Planning: supplier capacity upgrades up to 80 items/min" };
             default:
                 return System.Array.Empty<string>();
         }

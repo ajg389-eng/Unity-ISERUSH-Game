@@ -381,14 +381,15 @@ public class ManagementTabInfoUI : MonoBehaviour
             return;
         }
 
-        if (panel != null && (panel.name == "TasksPage" || panel.name == "DailyTasksPage"))
+        if (panel != null && (panel.name == "TasksPage" || panel.name == "DailyTasksPage"
+            || panel.name == "MilestoneTasksPage"))
         {
-            title = "Tasks";
+            title = "Milestone Tasks";
             guidebookChapter = "ISE Loop";
             body = FormatHelp(
-                "The highlighted task is the current objective. Later tasks show what comes next.",
-                "Read the task condition and complete that action before changing other systems.",
-                "Clear, staged objectives help you learn a complex process one step at a time.");
+                "These item targets and service requirements must be completed in one shift.",
+                "Use the shift results to see which production changes helped you meet them.",
+                "Milestones tie process design and measurement to a clear operating goal.");
             return;
         }
 
@@ -439,8 +440,8 @@ public class ManagementTabInfoUI : MonoBehaviour
         title = "Store Stats";
         guidebookChapter = "Diagnose";
         body = FormatHelp(
-            "Store Stats brings together queues, utilization, wait, Pickup stock, waste, and revenue.",
-            "Find where work is accumulating, then compare that queue with the station or worker serving it.",
-            "Work in process and waiting time help reveal constraints across the whole system.");
+            "Store Stats shows customer lines, station and worker activity, Pickup stock, waste, and revenue.",
+            "Look for growing lines or stations waiting for inputs to see where work is backing up.",
+            "Compare finished output with orders served. Change one likely cause, then check the next shift.");
     }
 }

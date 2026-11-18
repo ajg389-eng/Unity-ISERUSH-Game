@@ -13,13 +13,8 @@ MonoBehaviour:
   m_Name: Milestone_milestone_02
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_02
-  displayName: Capacity Planning
-  description: 'Plan product mix and expedited replenishment as production capacity
-    expands.
-
-
-    Topics:
-    Station utilization, workload balancing, labor allocation'
+  displayName: Demand and Capacity
+  description: Compare how quickly customers order with how quickly the process can produce items.
   completionDialogue:
   - You are matching station capacity to the flow. A fast station cannot help if
     the next step cannot take its output.
@@ -33,42 +28,42 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}
   - {fileID: 11400000, guid: ef8ec327ad06458ba97a3bb331545b9f, type: 2}
   shiftQuestions:
-  - questionId: capacity_utilization
-    prompt: In time-based capacity analysis, what does resource utilization measure?
+  - questionId: core_demand_capacity
+    prompt: "How do demand and capacity relate?"
     answers:
-    - The fraction of available time a resource spends busy
-    - The fraction of scheduled time a resource is available
-    - The fraction of completed units that meet specifications
+    - "Capacity must keep up with the customer demand we plan to serve"
+    - "Demand is the number of workers assigned to a flow"
+    - "Capacity is the amount of money in the register"
     correctAnswerIndex: 0
-    explanation: Utilization compares busy time with available time and helps reveal capacity pressure.
-  - questionId: capacity_balance
-    prompt: Why balance effective capacity across connected process steps?
+    explanation: "Compare planned production capacity with the rate customers are expected to order."
+  - questionId: core_throughput
+    prompt: "What does throughput measure?"
     answers:
-    - To reduce work-in-process buildup and downstream starvation
-    - To maximize each operation's utilization regardless of flow
-    - To make equipment purchase costs equal across the line
+    - "Finished items delivered by the whole process over time"
+    - "Items waiting at one station"
+    - "The speed of the fastest station only"
     correctAnswerIndex: 0
-    explanation: Capacity balance helps flow between steps without excessive queues or idle time.
-  - questionId: capacity_workers
-    prompt: A resource is frequently starved. Which part of the process should you examine first?
+    explanation: "Throughput is finished output from the complete process, not one station in isolation."
+  - questionId: core_balance
+    prompt: "If a queue grows before a station, what should you check?"
     answers:
-    - Upstream material availability and transfer capacity
-    - Downstream buffer space and output removal
-    - The resource's utilization target in isolation
+    - "Whether that step has enough capacity for incoming work"
+    - "Whether every station has the same purchase price"
+    - "Whether the menu has too many categories"
     correctAnswerIndex: 0
-    explanation: Starvation occurs when a resource is ready to work but required input is unavailable.
+    explanation: "Compare the step capacity with the flow of work arriving there."
   shiftLessons:
-  - lessonId: capacity_utilization
-    title: Read utilization
-    explanation: Working time divided by available time is utilization. High utilization leaves little spare capacity.
-    target: 1
-  - lessonId: capacity_balance
-    title: Balance the line
-    explanation: Mismatched station rates create queues upstream or idle time downstream.
-    target: 1
-  - lessonId: capacity_workers
-    title: Check starvation
-    explanation: Starvation means a station is ready to work but lacks inputs. Trace upstream supply and worker coverage to find the cause.
+  - lessonId: core_demand_capacity
+    title: "Compare demand and capacity"
+    explanation: "Demand is what customers want. Capacity is how quickly the process can produce it."
+    target: 0
+  - lessonId: core_throughput
+    title: "Track finished output"
+    explanation: "Throughput is the rate finished items leave the whole process. Use delivered output to judge whether the kitchen keeps up."
+    target: 0
+  - lessonId: core_balance
+    title: "Balance the process"
+    explanation: "When connected steps have mismatched capacity, queues or idle time can form. Check the whole flow."
     target: 1
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

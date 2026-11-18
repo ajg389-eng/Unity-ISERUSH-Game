@@ -454,22 +454,14 @@ public class GuidebookUI : MonoBehaviour
 
     static string GetBookmarkLabel(int firstPageIndex)
     {
-        // Each tab targets one visible two-page spread. The glossary therefore
-        // has direct bookmarks for each topic instead of one tab for 18 pages.
+        // Each tab targets one visible two-page spread. The compact glossary
+        // is now a single, clearly named section in the book.
         switch (firstPageIndex / 2)
         {
-            case 0: return "ISE Loop + Plan";
-            case 1: return "Diagnose + Flow";
-            case 2: return "Design + Improve";
-            case 3: return "Glossary: Systems";
-            case 4: return "Glossary: Analysis";
-            case 5: return "Glossary: Demand";
-            case 6: return "Glossary: Inventory";
-            case 7: return "Glossary: Supply";
-            case 8: return "Glossary: Production";
-            case 9: return "Glossary: Queues";
-            case 10: return "Glossary: Economics";
-            case 11: return "Glossary: Staffing";
+            case 0: return "ISE Basics";
+            case 1: return "Diagnose + Queues";
+            case 2: return "Layout + Improve";
+            case 3: return "ISE Glossary";
             default: return "GUIDE";
         }
     }
