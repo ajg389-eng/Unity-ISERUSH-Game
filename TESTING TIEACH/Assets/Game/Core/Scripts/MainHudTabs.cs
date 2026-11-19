@@ -143,10 +143,10 @@ public class MainHudTabs : MonoBehaviour
     {
         if (UIInputFocusGuard.IsTyping || PauseMenuUI.IsOpen) return;
 
-        int topLevel = GetNumberRowIndex();
-        if (topLevel >= 0)
+        int workspaceTab = GetNumberRowIndex();
+        if (workspaceTab >= 0)
         {
-            OpenTopLevelByNumber(topLevel);
+            OpenWorkspaceTab(workspaceTab);
             return;
         }
 
@@ -594,34 +594,6 @@ public class MainHudTabs : MonoBehaviour
         return -1;
     }
 
-    void OpenTopLevelByNumber(int topLevel)
-    {
-        switch (topLevel)
-        {
-            case 0:
-                if (OnboardingTutorial.IsFeatureLocked(inventoryTabButton)) return;
-                ToggleKitchenWorkspace();
-                break;
-            case 1:
-                OpenWorkspaceTab(1);
-                break;
-            case 2:
-            {
-                MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
-                if (missions != null && !OnboardingTutorial.IsFeatureLocked(missions.TutorialObjectivesButton))
-                    missions.ToggleTasksTab();
-                break;
-            }
-            case 3:
-            {
-                MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
-                if (missions != null && !OnboardingTutorial.IsFeatureLocked(missions.TutorialObjectivesButton))
-                    missions.ToggleProgressionTab();
-                break;
-            }
-        }
-    }
-
     void CycleWorkspaceTab(int direction)
     {
         if (!AnyPanelOpen()) return;
@@ -696,9 +668,9 @@ public class MainHudTabs : MonoBehaviour
             {
                 label.color = Color.white;
                 label.enableAutoSizing = false;
-                label.fontSize = 20f;
-                label.fontSizeMin = 20f;
-                label.fontSizeMax = 20f;
+                label.fontSize = 24f;
+                label.fontSizeMin = 24f;
+                label.fontSizeMax = 24f;
                 label.fontStyle = FontStyles.Bold;
                 label.characterSpacing = 0.8f;
             }

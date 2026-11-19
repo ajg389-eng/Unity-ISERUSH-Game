@@ -710,6 +710,9 @@ public class IngredientsOrderUI : MonoBehaviour
     void OpenRecipes(CustomerOrderConfig menu, int tab = 0, ItemDefinition focusItem = null)
     {
         if (recipesOverlay == null) BuildRecipesOverlay(menu);
+        MissionListUI objectives = MissionListUI.Instance;
+        if (objectives != null && objectives.IsOpen)
+            objectives.SetVisible(false);
         recipesOverlay.SetActive(true);
         IsRecipeOverlayOpen = true;
         UpdateNavigationTabs();

@@ -671,7 +671,13 @@ public class TopHudBar : MonoBehaviour
         button.GetComponent<Image>().color = GameUITheme.Surface;
         GameIconLibrary.ApplyToButton(button, icon, 17f, 7f, false);
         GameUITheme.ApplyCompactControlEffects(button);
-        DelayedTooltip.Attach(button, label + ": open");
+        if (icon == GameIconId.Analytics)
+        {
+            if (button.TryGetComponent(out DelayedTooltip tooltip))
+                tooltip.enabled = false;
+        }
+        else
+            DelayedTooltip.Attach(button, label + ": open");
         return button;
     }
 

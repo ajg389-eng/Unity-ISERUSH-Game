@@ -911,19 +911,38 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
         return missing;
     }
 
-    public int ClearAllMeals()
+    public static void ClearPickupStock()
+    {
+        foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
+                     FindObjectsInactive.Include, FindObjectsSortMode.None))
+            station.ClearAllMeals(recordWaste: false);
+    }
+
+    internal void RestoreHeldMeal(CustomerOrder order, float age)
+    {
+        if (order == null || order.GetTotalQuantity() <= 0 || !HasSpace) return;
+        meals.Add(new HeldMeal(order, Time.time - Mathf.Max(0f, age)));
+        RefreshStatusLabel();
+    }
+
+    public int ClearAllMeals() => ClearAllMeals(recordWaste: true);
+
+    int ClearAllMeals(bool recordWaste)
     {
         int n = meals.Count;
         if (n <= 0) return 0;
-        int wastedItems = 0;
-        for (int i = 0; i < n; i++)
-            wastedItems += Mathf.Max(1, meals[i]?.order?.GetTotalQuantity() ?? 0);
+        if (recordWaste)
+        {
+            int wastedItems = 0;
+            for (int i = 0; i < n; i++)
+                wastedItems += Mathf.Max(1, meals[i]?.order?.GetTotalQuantity() ?? 0);
+            totalWasted += wastedItems;
+            StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
+            if (statistics != null)
+                for (int i = 0; i < wastedItems; i++) statistics.RecordMealWasted();
+            Sfx.Play(SfxId.FoodWasted);
+        }
         meals.Clear();
-        totalWasted += wastedItems;
-        StoreStatisticsManager statistics = StoreStatisticsManager.Instance;
-        if (statistics != null)
-            for (int i = 0; i < wastedItems; i++) statistics.RecordMealWasted();
-        Sfx.Play(SfxId.FoodWasted);
         RefreshStatusLabel();
         return n;
     }

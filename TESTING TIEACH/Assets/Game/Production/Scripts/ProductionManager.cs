@@ -1602,6 +1602,8 @@ public partial class ProductionManager : MonoBehaviour
 
     void Update()
     {
+        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftOver)
+            return;
         if (useScheduledProduction)
         {
             ScheduledProduction.Tick();
@@ -3510,6 +3512,27 @@ public partial class ProductionManager : MonoBehaviour
         workerTripHistory.Clear();
         workerWaitHistory.Clear();
         throughputTrackingStartedAt = Time.time;
+    }
+
+    internal static void ClearShiftProduction()
+    {
+        ProductionManager manager = Instance;
+        if (manager != null)
+        {
+            foreach (KitchenEmployee employee in manager.employees)
+                if (employee != null) employee.AbortCurrentWork();
+            manager.ResetTransientProductionState();
+        }
+
+        foreach (GrillStation station in FindObjectsByType<GrillStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            station.ApplyScheduledBuffers(0, 0, 0, 0, 0f);
+        foreach (AssemblyStation station in FindObjectsByType<AssemblyStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            station.ApplyScheduledBuffers(0, 0, 0, 0, 0, 0f);
+        foreach (CuttingStation station in FindObjectsByType<CuttingStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            station.ApplyScheduledBuffers(0, 0, 0, 0f);
+        foreach (FryerStation station in FindObjectsByType<FryerStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            station.ResetRuntimeState();
+        HeatLampStation.ClearPickupStock();
     }
 
     public void CompleteJob(ProductionJob job)

@@ -16,6 +16,7 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
     BuildPlacer placer;
     Canvas menuCanvas;
     GameTimeUI timeControls;
+    InventoryUI stationInventory;
     CanvasGroup canvasGroup;
     TextMeshProUGUI selectionLabel;
     TextMeshProUGUI messageLabel;
@@ -200,6 +201,15 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
         RectTransform menuRect = transform as RectTransform;
         RectTransform canvasRect = transform.parent as RectTransform;
         if (menuRect == null || canvasRect == null) return;
+
+        if (stationInventory == null)
+            stationInventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (stationInventory != null && stationInventory.TryGetStationsActionPosition(
+                canvasRect, out Vector2 footerPosition))
+        {
+            menuRect.anchoredPosition = footerPosition;
+            return;
+        }
 
         if (timeControls == null)
             timeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Include);

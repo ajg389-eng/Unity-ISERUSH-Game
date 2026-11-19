@@ -15,6 +15,8 @@ public class InventoryUI : MonoBehaviour
     public const string ContentBoxName = "ContentBox";
     public const string TabBarName = "TabBar";
     public const string StationsPanelName = "StationsPanel";
+    const float StationsActionFooterHeight = 120f;
+    const float StationsActionBarLift = 24f;
     public const string FloorPanelName = "FloorPanel";
     public const string CustomizePanelName = "CustomizePanel";
 
@@ -256,6 +258,31 @@ public class InventoryUI : MonoBehaviour
 
     public bool IsPanelOpen => panel != null && panel.activeSelf;
 
+    internal bool TryGetStationsActionPosition(RectTransform targetCanvas, out Vector2 position)
+    {
+        position = default;
+        if (!IsPanelOpen || targetCanvas == null) return false;
+        RectTransform contentBox = panel.transform.Find(ContentBoxName) as RectTransform;
+        Transform stations = contentBox != null ? contentBox.Find(StationsPanelName) : null;
+        if (stations == null || !stations.gameObject.activeInHierarchy) return false;
+
+        Vector3 footerTop = contentBox.TransformPoint(contentBox.rect.center.x,
+            contentBox.rect.yMin + StationsActionFooterHeight + StationsActionBarLift, 0f);
+        Canvas sourceCanvas = contentBox.GetComponentInParent<Canvas>();
+        Canvas destinationCanvas = targetCanvas.GetComponentInParent<Canvas>();
+        Camera sourceCamera = sourceCanvas != null && sourceCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? sourceCanvas.worldCamera : null;
+        Camera destinationCamera = destinationCanvas != null && destinationCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? destinationCanvas.worldCamera : null;
+        Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(sourceCamera, footerTop);
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                targetCanvas, screenPoint, destinationCamera, out Vector2 localPoint))
+            return false;
+
+        position = localPoint - new Vector2(targetCanvas.rect.center.x, targetCanvas.rect.yMax);
+        return true;
+    }
+
     /// <summary>Consumes clicks anywhere in the inventory panel's visible rect.</summary>
     void EnsurePanelClickBlocker()
     {
@@ -394,10 +421,13 @@ public class InventoryUI : MonoBehaviour
         var unlockedItems = new List<ItemDefinition>();
         var lockedItems = new List<ItemDefinition>();
         var orderedFamilies = new HashSet<string>();
+        bool showMk2 = MilestoneFeatures.Mk2StationsUnlocked;
         foreach (var item in inventory.allItems)
         {
             if (item == null) continue;
             if (item.buildFunction == ItemDefinition.BuildFunction.CustomerDoor)
+                continue;
+            if (!showMk2 && item.IsTieredStation && item.stationMark >= 2)
                 continue;
 
             if (squareCards && item.IsTieredStation)
@@ -801,22 +831,16 @@ public class InventoryUI : MonoBehaviour
                 },
                 displayPrice: inventory.GetPurchasePrice(active));
             card.SetDisplayName(family);
-            bool mk2Locked = mk2 != null && !mk2Unlocked;
-            bool lockedMk2Selected = active.stationMark == 2 && mk2Locked;
-            card.SetUnlockRequirement(lockedMk2Selected
-                ? "Unlocks at Milestone 3: Supply Planning"
-                : null);
             card.SetOwnedCount(inventory.GetStationFamilyAcquiredCount(active));
             card.SetTutorialHighlight(OnboardingTutorial.ShouldHighlightInventoryItem(active),
                 inventory.GetCount(active), inventory.GetAcquiredCount(active));
             card.SetTutorialLocked(IsMilestoneStationLocked(active));
             card.ConfigureMarkSelector(mk1 != null,
-                mk2 != null, active.stationMark, mark =>
+                mk2 != null && mk2Unlocked, active.stationMark, mark =>
             {
                 selected = mark == 2 ? mk2 : mk1;
                 if (selected != null) refresh();
-            }, mark1Locked: shakeStationLocked,
-                mark2Locked: mk2 != null && !mk2Unlocked);
+            }, mark1Locked: shakeStationLocked);
             card.SetDesignLocked(IsShiftInProgress);
         };
         refresh();
@@ -982,7 +1006,10 @@ public class InventoryUI : MonoBehaviour
             }
         }
 
-        ClearTabBar(contentBox.Find(StationsPanelName) as RectTransform, reserved);
+        RectTransform stationsPage = contentBox.Find(StationsPanelName) as RectTransform;
+        ClearTabBar(stationsPage, reserved);
+        if (stationsPage != null && stationsPage.offsetMin.y != StationsActionFooterHeight)
+            stationsPage.offsetMin = new Vector2(stationsPage.offsetMin.x, StationsActionFooterHeight);
         ClearTabBar(contentBox.Find(FloorPanelName) as RectTransform, reserved);
         ClearTabBar(contentBox.Find(CustomizePanelName) as RectTransform, reserved);
     }

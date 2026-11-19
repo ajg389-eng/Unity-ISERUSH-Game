@@ -377,7 +377,7 @@ public class CustomerAI : MonoBehaviour
         return saved;
     }
 
-    static List<SavedOrderLine> CaptureOrder(CustomerOrder source)
+    internal static List<SavedOrderLine> CaptureOrder(CustomerOrder source)
     {
         if (source?.lines == null) return null;
         var result = new List<SavedOrderLine>(source.lines.Count);
@@ -462,7 +462,7 @@ public class CustomerAI : MonoBehaviour
         }
     }
 
-    static CustomerOrder RestoreOrder(List<SavedOrderLine> lines,
+    internal static CustomerOrder RestoreOrder(List<SavedOrderLine> lines,
         IReadOnlyDictionary<string, ItemDefinition> definitions)
     {
         if (lines == null) return null;

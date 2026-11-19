@@ -11,6 +11,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
     GameObject popupRoot;
     bool isVisible;
     System.Action tutorialContinueCallback;
+    MissionListUI objectivesToRestore;
 
     public static RectTransform ActivePanelRect
     {
@@ -31,8 +32,12 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
     public static void ShowDetails(MilestoneDefinition milestone)
     {
         MilestoneUnlockPopupUI popup = GetOrCreateInstance(milestone);
-        if (popup == null) return;
-        popup.ShowImmediately(milestone, false);
+        if (popup == null || !popup.ShowImmediately(milestone, false)) return;
+        MissionListUI objectives = MissionListUI.Instance;
+        if (objectives == null || !objectives.IsOpen) return;
+
+        popup.objectivesToRestore = objectives;
+        objectives.SetVisible(false);
     }
 
     public static bool ShowTutorialUnlocks(MilestoneDefinition tutorialMilestone,
@@ -554,6 +559,10 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         }
         popupRoot = null;
         isVisible = false;
+        MissionListUI objectives = objectivesToRestore;
+        objectivesToRestore = null;
+        if (objectives != null)
+            objectives.SetVisible(true);
         GameTimeManager.Instance?.ReleaseExternalPause(PauseSource);
     }
 

@@ -126,10 +126,10 @@ public class GameTimeManager : MonoBehaviour
         OnTimeChanged?.Invoke();
     }
 
-    /// <summary>Marks the start of the isolated tutorial service without advancing its campaign clock.</summary>
-    public void BeginTutorialPracticeShift()
+    /// <summary>Mark service as started even before the clock advances on the next frame.</summary>
+    public void BeginPlannedShift()
     {
-        if (!OnboardingTutorial.IsActive || IsShiftOver) return;
+        if (IsShiftOver) return;
         CurrentMinutes = Mathf.Max(CurrentMinutes, DayStartMinutes + 0.02f);
         OnTimeChanged?.Invoke();
     }
@@ -306,9 +306,9 @@ public class GameTimeManager : MonoBehaviour
             StoreStatisticsManager.Instance?.RecordShiftCompleted(CurrentDay);
             OnShiftEnding?.Invoke();
         }
-        // Clear customers before the end-of-day event so the autosave stores a
-        // clean next-day state and the summary reads only the day's statistics.
+        // Clear service state before the end-of-day autosave and summary.
         CustomerAI.DespawnAllCustomers();
+        ProductionManager.ClearShiftProduction();
         OnDayEnded?.Invoke();
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.DayEnded);
     }

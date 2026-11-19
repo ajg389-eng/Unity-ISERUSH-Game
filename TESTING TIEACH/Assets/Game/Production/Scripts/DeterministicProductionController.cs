@@ -594,9 +594,8 @@ public sealed class DeterministicProductionController : IDisposable
                 foreach (ProductionStationCheckpoint.Food food in saved.pickupFood)
                 {
                     int item = items.FindIndex(x => x != null && x.name == food.item);
-                    if (item < 0 || b.Pickup.StoreInput(items[item], 1) != 1) continue;
-                    IReadOnlyList<HeldMeal> meals = b.Pickup.Meals;
-                    meals[meals.Count - 1].placedAt = Time.time - food.age;
+                    if (item >= 0)
+                        b.Pickup.RestoreHeldMeal(CustomerOrder.FromItem(items[item], 1), food.age);
                 }
         }
     }

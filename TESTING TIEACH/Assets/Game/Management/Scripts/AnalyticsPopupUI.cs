@@ -22,7 +22,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
 
     public static void Open(Transform canvas)
     {
-        if (canvas == null) return;
+        if (canvas == null || IsOpen) return;
 
         if (instance == null)
         {
@@ -40,6 +40,9 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
             }
         }
 
+        MissionListUI objectives = MissionListUI.Instance;
+        if (objectives != null && objectives.IsOpen)
+            objectives.SetVisible(false);
         instance.gameObject.SetActive(false);
         instance.transform.SetAsLastSibling();
         instance.ShowPage(false);

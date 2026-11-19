@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 57;
+    public const int CurrentVersion = 58;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
@@ -15,6 +15,7 @@ public class KitchenSaveSnapshot
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
+    public bool shiftInProgress, shiftEnded;
     public int dailyCompletedOrders, dailyRevenue, careerDailyTasksCompleted;
     public int dailyMealsWasted, dailyCustomersLost, dailyCustomersVisited, dailyMoneyAtStart;
     public bool dailyRevenueTaskAwarded, dailyWaitTaskAwarded;
@@ -55,6 +56,7 @@ public class KitchenSaveSnapshot
     public int gusShiftEventCursor, gusShiftPendingEvent = -1;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
+    public List<PickupMeal> pickupMeals = new List<PickupMeal>();
     public List<Stock> inventory = new List<Stock>(), ingredients = new List<Stock>();
     public List<IngredientShipment> ingredientShipments = new List<IngredientShipment>();
     public List<Worker> workers = new List<Worker>();
@@ -68,6 +70,12 @@ public class KitchenSaveSnapshot
     public float activeResearchMinutesRemaining;
     public List<MissionProgressManager.SavedMissionProgress> missionProgress = new List<MissionProgressManager.SavedMissionProgress>();
     [Serializable] public class WallPhoto { public string name; public Vector3 position; }
+    [Serializable] public class PickupMeal
+    {
+        public int station;
+        public float age;
+        public List<CustomerAI.SavedOrderLine> order;
+    }
     [Serializable] public class Stock
     {
         public string item;
@@ -84,12 +92,15 @@ public class KitchenSaveSnapshot
     public static KitchenSaveSnapshot Capture()
     {
         ProductionManager scheduleManager = ProductionManager.Instance;
-        if (scheduleManager != null && scheduleManager.useScheduledProduction) scheduleManager.ScheduledProduction.Tick();
         var s = new KitchenSaveSnapshot();
         foreach (WallPhotoDrag photo in UnityEngine.Object.FindObjectsByType<WallPhotoDrag>(FindObjectsSortMode.None))
             s.wallPhotos.Add(new WallPhoto { name = photo.gameObject.name, position = photo.PlacementPosition });
         var clock = GameTimeManager.Instance;
         s.day = clock != null ? clock.CurrentDay : 1; s.minutes = clock != null ? clock.CurrentMinutes : 600;
+        s.shiftInProgress = clock != null && clock.IsShiftInProgress;
+        s.shiftEnded = clock != null && clock.IsShiftOver;
+        if (s.shiftInProgress && scheduleManager != null && scheduleManager.useScheduledProduction)
+            scheduleManager.ScheduledProduction.Tick();
         s.shiftPlanningState = ShiftPlanningUI.CaptureSaveState();
         GusShiftQuestionManager questionManager = GusShiftQuestionManager.Instance;
         if (questionManager != null)
@@ -216,7 +227,14 @@ public class KitchenSaveSnapshot
                         : go.name.Replace("(Clone)", "").Trim() == item.prefab.name
                             || HasMatchingStationComponent(go, item.prefab);
                     if (!match) continue;
+                    int equipmentIndex = objects.Count;
                     objects.Add(go);
+                    var pickup = go.GetComponent<HeatLampStation>();
+                    if (s.shiftInProgress && pickup != null)
+                        foreach (HeldMeal meal in pickup.Meals)
+                            if (meal?.order != null)
+                                s.pickupMeals.Add(new PickupMeal { station = equipmentIndex,
+                                    age = meal.AgeSeconds, order = CustomerAI.CaptureOrder(meal.order) });
                     var grill = go.GetComponent<GrillStation>();
                     var assembly = go.GetComponent<AssemblyStation>();
                     var freezer = go.GetComponent<FreezerStation>();
@@ -266,7 +284,7 @@ public class KitchenSaveSnapshot
                         stationIdleSeconds=stationMetrics != null ? stationMetrics.IdleSeconds : 0f,
                         stationCurrentState=stationMetrics != null ? (int)stationMetrics.CurrentState : 0,
                         stationCurrentStateSeconds=stationMetrics != null ? stationMetrics.CurrentStateSeconds : 0f,
-                        productionState=scheduleManager != null && scheduleManager.useScheduledProduction
+                        productionState=s.shiftInProgress && scheduleManager != null && scheduleManager.useScheduledProduction
                             ? scheduleManager.ScheduledProduction.CaptureStation(go) : null });
                 }
             }
@@ -291,7 +309,8 @@ public class KitchenSaveSnapshot
                 staff.Add(employee);
                 PartyCharacterRandomizer look = employee.GetComponent<PartyCharacterRandomizer>();
                 var w=new Worker {name=employee.employeeName,position=employee.transform.position,level=0,priority=0,
-                    productionState=pm.useScheduledProduction ? pm.ScheduledProduction.CaptureWorker(employee) : null,
+                    productionState=s.shiftInProgress && pm.useScheduledProduction
+                        ? pm.ScheduledProduction.CaptureWorker(employee) : null,
                     bodyIndex=look != null ? look.bodyIndex : 0,
                     faceIndex=look != null ? look.faceIndex : 0,
                     hatIndex=look != null ? look.hatIndex : -1};
@@ -336,11 +355,18 @@ public class KitchenSaveSnapshot
         var inv=UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
         var pm=ProductionManager.Instance;
         if(version<1 || version>CurrentVersion || inv==null || pm==null) return false;
+        GameTimeManager clock = GameTimeManager.Instance;
+        float openingMinutes = (clock != null ? clock.dayStartHour : 10) * 60f;
+        float closingMinutes = (clock != null ? clock.dayEndHour : 22) * 60f;
+        bool ended = version >= 58 ? shiftEnded : minutes >= closingMinutes;
+        bool resumeShift = !ended && (version >= 58 ? shiftInProgress
+            : minutes > openingMinutes + 0.01f && minutes < closingMinutes);
         CustomerSpawner customerSpawner = CustomerSpawner.Instance != null
             ? CustomerSpawner.Instance : UnityEngine.Object.FindFirstObjectByType<CustomerSpawner>();
-        if (customers != null && customers.Count > 0
+        if (resumeShift && customers != null && customers.Count > 0
             && (customerSpawner == null || customerSpawner.customerPrefab == null
-                || customerSpawner.customerPrefab.GetComponent<CustomerAI>() == null)) return false;
+                || customerSpawner.customerPrefab.GetComponent<CustomerAI>() == null))
+            return false;
         // Validate assets before removing anything from the current kitchen.
         var definitions=new Dictionary<string,ItemDefinition>();
         foreach(var item in Resources.FindObjectsOfTypeAll<ItemDefinition>()) if(item!=null) {
@@ -367,10 +393,6 @@ public class KitchenSaveSnapshot
         foreach(var e in equipment) if(!string.IsNullOrEmpty(e.pantrySecondProduct) && !definitions.ContainsKey(e.pantrySecondProduct)) return false;
         if(workers != null && workers.Count > 0
             && (pm.employeePrefab == null || pm.employeePrefab.GetComponent<KitchenEmployee>() == null)) return false;
-        if (customers != null)
-            foreach (CustomerAI.SavedState customer in customers)
-                if (customer != null && (!AreSavedOrderItemsAvailable(customer.order, definitions)
-                    || !AreSavedOrderItemsAvailable(customer.originalOrder, definitions))) return false;
         customerSpawner?.ResetArrivalScheduleForSaveRestore();
         CustomerAI.DespawnAllCustomers();
         foreach(var employee in new List<KitchenEmployee>(pm.employees)) if(employee!=null) { employee.AbortCurrentWork(); employee.ClearAllOperatedStations(); employee.gameObject.SetActive(false); UnityEngine.Object.Destroy(employee.gameObject); }
@@ -440,9 +462,26 @@ public class KitchenSaveSnapshot
             // Always restore configurable stations, including an intentionally empty
             // assignment. Skipping null previously left whatever default happened to
             // be serialized on the prefab, which made load results station-dependent.
-            var grill=go.GetComponent<GrillStation>(); if(grill!=null) grill.RestoreBufferedState(product,e.processingUnits,e.processProgress,e.secondaryInputs);
-            if (pm.useScheduledProduction && e.productionState != null) pm.ScheduledProduction.RestoreStation(go,e.productionState);
-            var assembly=go.GetComponent<AssemblyStation>(); if(assembly!=null) assembly.RestoreBufferedState(product,e.processedInputs,e.pantryInputs,e.thirdInputs,e.bufferedOutputs,e.assemblyProcessingUnits,e.assemblyProcessProgress);
+            var grill = go.GetComponent<GrillStation>();
+            if (grill != null)
+                grill.RestoreBufferedState(product, resumeShift ? e.processingUnits : 0,
+                    resumeShift ? e.processProgress : 0f, resumeShift ? e.secondaryInputs : 0);
+            if (resumeShift && pm.useScheduledProduction && e.productionState != null)
+            {
+                // Version 58 restores pickup orders directly, including multiple items.
+                if (version >= 58)
+                    e.productionState.pickupFood?.Clear();
+                pm.ScheduledProduction.RestoreStation(go, e.productionState);
+            }
+            var assembly = go.GetComponent<AssemblyStation>();
+            if (assembly != null)
+            {
+                if (resumeShift)
+                    assembly.RestoreBufferedState(product, e.processedInputs, e.pantryInputs,
+                        e.thirdInputs, e.bufferedOutputs, e.assemblyProcessingUnits, e.assemblyProcessProgress);
+                else
+                    assembly.RestoreBufferedState(product, 0, 0, 0);
+            }
             var fryer=go.GetComponent<FryerStation>(); if(fryer!=null) fryer.SetRecipeOutput(product);
             var freezer=go.GetComponent<FreezerStation>(); if(freezer!=null) freezer.SetStoredItem(product);
             var pantry=go.GetComponent<PantryStation>(); if(pantry!=null) {
@@ -576,7 +615,8 @@ public class KitchenSaveSnapshot
                 look.ApplyCurrent();
             }
             employee.employeeName=w.name; pm.RegisterEmployee(employee); staff.Add(employee);
-            if (pm.useScheduledProduction && w.productionState != null) pm.ScheduledProduction.RestoreWorker(employee,w.productionState);
+            if (resumeShift && pm.useScheduledProduction && w.productionState != null)
+                pm.ScheduledProduction.RestoreWorker(employee, w.productionState);
             var restoredAssignments = new HashSet<GameObject>();
             int assignmentCount = Mathf.Max(w.stations != null ? w.stations.Count : 0,
                 version >= 22 && w.stationGuids != null ? w.stationGuids.Count : 0);
@@ -638,8 +678,6 @@ public class KitchenSaveSnapshot
             pm.productionFlows.Add(flow);
         }
         pm.RefreshAutomaticProductionFlowNames();
-        if (customers != null && customerSpawner != null)
-            customerSpawner.RestoreSavedCustomers(customers, definitions, stationObjectsByGuid);
         // Version 1 checkpoints included the removed door lesson at index 2.
         int restoredTutorialStep = version == 1 && !tutorialComplete && tutorialStep > 2
             ? tutorialStep - 1
@@ -794,10 +832,7 @@ public class KitchenSaveSnapshot
             else
                 statistics.ResetCareerStatistics();
         }
-        milestoneProgress?.RestoreActiveShiftObjectives(version >= 35 && activeMilestoneShiftObjectives);
-        // Restoring a checkpoint at the shift end raises OnDayEnded immediately.
-        // Apply all saved report values first so the EOD panel reads the checkpoint,
-        // not whatever statistics happened to be in memory before this load.
+        milestoneProgress?.RestoreActiveShiftObjectives(resumeShift && version >= 35 && activeMilestoneShiftObjectives);
         if (version >= 51 && !gusShiftLegacyQuestionSchedule)
             GusShiftQuestionManager.RestoreShiftEventsState(gusQuestionScheduledDay,
                 gusShiftEventMinutes, gusShiftQuestionOrder, gusShiftEventCursor, gusShiftPendingEvent);
@@ -812,7 +847,23 @@ public class KitchenSaveSnapshot
                 gusQuestionIndex, gusQuestionAskedThisShift, gusQuestionPending);
         else
             GusShiftQuestionManager.RestoreState(0, null, null, 0, -1);
-        if(GameTimeManager.Instance!=null) GameTimeManager.Instance.RestoreCheckpoint(day,minutes);
+        ShiftPlanningUI.PrepareShiftAfterLoad(clock, resumeShift);
+        if (resumeShift)
+        {
+            clock?.RestoreCheckpoint(day, Mathf.Clamp(minutes, openingMinutes + 0.02f, closingMinutes - 0.02f));
+            if (version >= 58 && pickupMeals != null)
+                foreach (PickupMeal meal in pickupMeals)
+                    if (meal != null && meal.station >= 0 && meal.station < objects.Count)
+                        objects[meal.station].GetComponent<HeatLampStation>()?.RestoreHeldMeal(
+                            CustomerAI.RestoreOrder(meal.order, definitions), meal.age);
+            customerSpawner?.RestoreSavedCustomers(customers, definitions, stationObjectsByGuid);
+        }
+        else
+        {
+            clock?.RestoreDay(ended ? day + 1 : day);
+            ProductionManager.ClearShiftProduction();
+            if (ended) statistics?.BeginDay();
+        }
         PurchaseUndoManager.Instance?.ClearHistory();
         var placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>();
         if (placer != null)
@@ -840,9 +891,9 @@ public class KitchenSaveSnapshot
                 version >= 36 && tutorialPauseControlUsed,
                 version >= 36 && tutorialPlayControlUsed,
                 version >= 36 && tutorialFastForwardControlUsed,
-                version >= 56
+                resumeShift && (version >= 56
                     ? tutorialShiftStarted && restoredTutorialStep >= 2
-                    : version >= 43 && tutorialShiftStarted && restoredTutorialStep >= 3,
+                    : version >= 43 && tutorialShiftStarted && restoredTutorialStep >= 3),
                 version >= 40 ? tutorialFastForwardRateMask : 0,
                 version >= 40 ? tutorialAnalyticsStage : -1,
                 version >= 41 && restoredTutorialStep > 0,
@@ -851,12 +902,12 @@ public class KitchenSaveSnapshot
                 version >= 41 && tutorialStationMoved,
                 version >= 45 && milestoneOneBottleneckLessonDone,
                 version >= 45 && milestoneOneAnalyticsLessonDone,
-                version >= 56 && tutorialBaselinePracticeRunStarted,
-                version >= 56 ? tutorialBaselineCustomersSpawned : 0,
-                version >= 56 ? tutorialBaselineCustomersServed : 0,
-                version >= 57 ? tutorialBaselineCustomersLeft : 0,
-                version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f,
-                tutorialObservingImprovedLayout);
+                resumeShift && version >= 56 && tutorialBaselinePracticeRunStarted,
+                resumeShift && version >= 56 ? tutorialBaselineCustomersSpawned : 0,
+                resumeShift && version >= 56 ? tutorialBaselineCustomersServed : 0,
+                resumeShift && version >= 57 ? tutorialBaselineCustomersLeft : 0,
+                resumeShift && version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f,
+                resumeShift && tutorialObservingImprovedLayout);
         return true;
     }
 
@@ -923,16 +974,6 @@ public class KitchenSaveSnapshot
             return true;
         }
         return false;
-    }
-
-    static bool AreSavedOrderItemsAvailable(List<CustomerAI.SavedOrderLine> lines,
-        Dictionary<string, ItemDefinition> definitions)
-    {
-        if (lines == null) return true;
-        foreach (CustomerAI.SavedOrderLine line in lines)
-            if (line != null && line.quantity > 0
-                && (string.IsNullOrEmpty(line.item) || !definitions.ContainsKey(line.item))) return false;
-        return true;
     }
 
     static int MapLegacyMilestoneNumber(int oldNumber)

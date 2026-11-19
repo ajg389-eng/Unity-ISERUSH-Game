@@ -3262,7 +3262,7 @@ public class OnboardingTutorial : MonoBehaviour
         FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
         BeginBaselinePracticeRun();
         GameTimeManager clock = GameTimeManager.Instance;
-        clock?.BeginTutorialPracticeShift();
+        clock?.BeginPlannedShift();
         clock?.SetSpeed(GameTimeManager.SpeedMode.Play);
         ShiftPlanningUI.Instance?.ResumeTutorialPracticeShift();
         ClearHighlight();
@@ -3473,6 +3473,7 @@ public class OnboardingTutorial : MonoBehaviour
         // The tutorial customer is practice only. Begin the real campaign day at
         // opening time and show its Plan card before normal arrivals can start.
         CustomerAI.DespawnAllCustomers();
+        ProductionManager.ClearShiftProduction();
         StoreStatisticsManager.Instance?.BeginDay();
 
         // The tutorial finishes from Analytics while the Business panel is still

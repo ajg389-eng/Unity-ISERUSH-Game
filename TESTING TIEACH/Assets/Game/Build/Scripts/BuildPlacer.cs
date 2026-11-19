@@ -2944,6 +2944,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     const float FallbackTopOffset = 122f;
     BuildPlacer placer;
     GameTimeUI timeControls;
+    InventoryUI stationInventory;
     TextMeshProUGUI selectionLabel;
     TextMeshProUGUI messageLabel;
     GameObject instructionPanel;
@@ -3174,6 +3175,15 @@ public sealed class BuildStationActionBar : MonoBehaviour
         RectTransform actionRect = transform as RectTransform;
         RectTransform canvasRect = transform.parent as RectTransform;
         if (actionRect == null || canvasRect == null) return;
+
+        if (stationInventory == null)
+            stationInventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
+        if (stationInventory != null && stationInventory.TryGetStationsActionPosition(
+                canvasRect, out Vector2 footerPosition))
+        {
+            actionRect.anchoredPosition = footerPosition;
+            return;
+        }
 
         if (timeControls == null)
             timeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Include);

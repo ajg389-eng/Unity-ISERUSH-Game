@@ -144,6 +144,7 @@ public static class GameSaveSlots
             {
                 // Older saves never contained a layout or clock time.
                 ShiftPlanningUI.RestoreSaveState(null);
+                ShiftPlanningUI.PrepareShiftAfterLoad(time);
                 if (time != null) time.RestoreDay(info.day);
                 if (money != null) money.SetMoney(info.cash);
                 StoreStatisticsManager.Instance?.ResetCareerStatistics();
@@ -161,6 +162,7 @@ public static class GameSaveSlots
                 // There is no saved kitchen to restore, so clear any scene state
                 // left over from the previously selected slot.
                 DebugMenu.ResetStationsAndWorkersRuntime(out _, out _);
+                ProductionManager.ClearShiftProduction();
             }
         }
         else
@@ -198,6 +200,7 @@ public static class GameSaveSlots
             PlayerPrefs.DeleteKey(Key(slotIndex, "MenuItems"));
         }
 
+        if (info.exists) EndOfDaySummaryUI.Instance?.Hide();
         RestoreMenuSelection(slotIndex);
         SaveActiveSlot();
         return true;
@@ -206,7 +209,11 @@ public static class GameSaveSlots
     static void ResetTransientUiBeforeLoad()
     {
         BuildPlacer placer = UnityEngine.Object.FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
-        if (placer != null) placer.CancelPlacement();
+        if (placer != null)
+        {
+            placer.CancelPlacement();
+            placer.CancelDrag();
+        }
 
         InventoryUI inventory = UnityEngine.Object.FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         if (inventory != null)

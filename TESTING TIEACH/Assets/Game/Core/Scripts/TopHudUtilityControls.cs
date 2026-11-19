@@ -56,10 +56,12 @@ public class TopHudUtilityControls : MonoBehaviour
     {
         if (notificationButton == null) return;
         var image = notificationButton.targetGraphic as Image;
-        bool unread = NotificationCenter.UnreadCount > 0;
+        bool unread = NotificationCenter.UnreadCount > 0
+            && !OnboardingTutorial.IsFeatureLocked(notificationButton);
         if (!unread)
         {
             if (image != null) image.color = Control;
+            if (notificationButtonText != null) notificationButtonText.color = Color.white;
             notificationButton.transform.localScale = Vector3.one;
             return;
         }
@@ -122,7 +124,7 @@ public class TopHudUtilityControls : MonoBehaviour
         trackLayout.preferredWidth = 116f;
         trackLayout.flexibleWidth = 0f;
         trackText.alignment = TextAlignmentOptions.Center;
-        trackText.overflowMode = TextOverflowModes.Truncate;
+        trackText.overflowMode = TextOverflowModes.Ellipsis;
         trackText.enableWordWrapping = false;
         EnsureTrackBox(section.transform);
         Button picker = trackText.transform.parent.GetComponent<Button>();
@@ -552,7 +554,8 @@ public class TopHudUtilityControls : MonoBehaviour
             title.fontStyle = active ? FontStyles.Bold : FontStyles.Normal;
             title.color = active ? new Color(0.48f, 0.91f, 0.66f, 1f) : Color.white;
             title.alignment = TextAlignmentOptions.MidlineLeft;
-            title.overflowMode = TextOverflowModes.Truncate;
+            title.textWrappingMode = TextWrappingModes.NoWrap;
+            title.overflowMode = TextOverflowModes.Ellipsis;
             SetRect(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(12f, 2f), new Vector2(-34f, -2f));
             if (active)
             {
@@ -571,10 +574,9 @@ public class TopHudUtilityControls : MonoBehaviour
     {
         if (notificationButtonText != null)
         {
-            int unread = NotificationCenter.UnreadCount;
             notificationButtonText.text = "!";
-            notificationButtonText.color = unread > 0 ? Warning : Color.white;
         }
+        FlashUnreadNotice();
         if (historyPanel != null && historyPanel.activeSelf)
             RebuildHistory();
     }

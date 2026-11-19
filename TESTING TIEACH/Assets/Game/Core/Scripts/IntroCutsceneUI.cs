@@ -562,6 +562,9 @@ public sealed class GusCutscenePreview : MonoBehaviour
     RenderTexture renderTexture;
     Camera previewCamera;
     int previewSlot = -1;
+    SkinnedMeshRenderer faceRenderer;
+    Material[] portraitMaterials;
+    int displayedMood = -1;
 
     public void Configure(GameObject prefab, RawImage target, bool headshot = false)
     {
@@ -591,6 +594,18 @@ public sealed class GusCutscenePreview : MonoBehaviour
         // This prefab's front points opposite the inventory-preview angle.
         model.transform.localRotation = Quaternion.Euler(0f, -30f, 0f);
         SetLayerRecursively(model, PreviewLayer);
+        foreach (SkinnedMeshRenderer renderer in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            Material[] materials = renderer.sharedMaterials;
+            if (materials.Length < 2 || materials[1] == null
+                || PartyCharacterRandomizer.FindFaceIndex(materials[1].name) < 0)
+                continue;
+
+            faceRenderer = renderer;
+            portraitMaterials = materials;
+            break;
+        }
+        RefreshExpression();
 
         foreach (MonoBehaviour behaviour in model.GetComponentsInChildren<MonoBehaviour>(true))
             behaviour.enabled = false;
@@ -685,6 +700,27 @@ public sealed class GusCutscenePreview : MonoBehaviour
     {
         if (previewCamera != null)
             previewCamera.enabled = true;
+    }
+
+    void RefreshExpression()
+    {
+        if (faceRenderer == null) return;
+        MilestoneProgressManager progress = MilestoneProgressManager.Instance;
+        int mood = Mathf.Min(2, progress != null ? progress.CompletedMilestoneCount : 0);
+        if (mood == displayedMood) return;
+        displayedMood = mood;
+
+        // Use the same face materials as customers, in order of improving mood.
+        string faceName = mood == 0 ? "face 2" : mood == 1 ? "face 3" : "face 1";
+        Material face = PartyCharacterRandomizer.GetFaceMaterial(PartyCharacterRandomizer.FindFaceIndex(faceName));
+        if (face == null) return;
+        portraitMaterials[1] = face;
+        faceRenderer.sharedMaterials = portraitMaterials;
+    }
+
+    void Update()
+    {
+        RefreshExpression();
     }
 
     void OnDisable()

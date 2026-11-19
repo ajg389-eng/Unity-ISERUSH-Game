@@ -397,7 +397,7 @@ public class InventoryItemCardUI : MonoBehaviour
     }
 
     public void ConfigureMarkSelector(bool hasMk1, bool hasMk2, int selectedMark,
-        System.Action<int> onSelected, bool mark1Locked = false, bool mark2Locked = false)
+        System.Action<int> onSelected, bool mark1Locked = false)
     {
         EnsureMarkSelector();
         Transform row = mark1Button != null ? mark1Button.transform.parent : null;
@@ -412,7 +412,7 @@ public class InventoryItemCardUI : MonoBehaviour
             }
         }
         ConfigureMarkButton(mark1Button, 1, hasMk1, selectedMark, onSelected, mark1Locked);
-        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected, mark2Locked);
+        ConfigureMarkButton(mark2Button, 2, hasMk2, selectedMark, onSelected, false);
         OrderCardRows();
     }
 
@@ -469,12 +469,12 @@ public class InventoryItemCardUI : MonoBehaviour
     {
         if (button == null) return;
         button.onClick.RemoveAllListeners();
+        button.gameObject.SetActive(exists);
+        if (!exists) return;
         button.transition = Selectable.Transition.None;
-        bool unlocked = exists && !locked;
-        bool selected = exists && mark == selectedMark;
-        // A locked tier remains selectable as a preview. Its station card will
-        // show the lock state and disable placement and purchase controls.
-        button.interactable = exists;
+        bool unlocked = !locked;
+        bool selected = mark == selectedMark;
+        button.interactable = true;
         TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
         if (label != null)
         {
@@ -489,7 +489,7 @@ public class InventoryItemCardUI : MonoBehaviour
                 : selected ? new Color(1f, 0.84f, 0.48f, 1f)
                 : new Color(0.62f, 0.66f, 0.72f, 1f);
         }
-        if (exists && onSelected != null)
+        if (onSelected != null)
             button.onClick.AddListener(() => onSelected(mark));
         var image = button.GetComponent<UnityEngine.UI.Image>();
         if (image != null)
