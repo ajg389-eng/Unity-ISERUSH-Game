@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 public static class ISEVocabularyHighlighter
 {
     const string HighlightTextColor = "#FFD45A";
+    const string ClaimedHighlightTextColor = "#FFFFFF";
     static readonly Regex InjectedHighlight = new Regex(
         @"<link=""ise:[^""]+"">(?:<mark=[^>]+>)?<b>(?:<u>)?<color=[^>]+>(?<term>.*?)</color>(?:</u>)?</b>(?:</mark>)?</link>",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
@@ -19,8 +20,11 @@ public static class ISEVocabularyHighlighter
         text = RemoveHighlightMarkup(text);
         return Vocabulary.Replace(text, match =>
         {
+            string color = GuidebookUI.IsGlossaryTermRewardClaimed(match.Value)
+                ? ClaimedHighlightTextColor
+                : HighlightTextColor;
             return "<link=\"ise:" + match.Value + "\"><b><u>"
-                + "<color=" + HighlightTextColor + ">" + match.Value + "</color>"
+                + "<color=" + color + ">" + match.Value + "</color>"
                 + "</u></b></link>";
         });
     }

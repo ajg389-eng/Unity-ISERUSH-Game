@@ -4,8 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Opens/closes Management. Entering management switches GameMode to Manage
-/// (like Inventory → Build) so you can click stations to assign workers/outputs.
+/// Controls the Workers and Supply pages in the unified Kitchen workspace.
+/// Manage mode continues to handle world interactions while either page is open.
 /// </summary>
 public class ManagementScreenController : MonoBehaviour
 {
@@ -261,12 +261,34 @@ public class ManagementScreenController : MonoBehaviour
         RectTransform contentRect = contentBox as RectTransform;
         RectTransform tabBar = FindDeep(contentBox, "TabBar") as RectTransform;
         RectTransform contentArea = FindDeep(contentBox, "TabContentArea") as RectTransform;
-        if (contentRect == null || tabBar == null || contentArea == null) return;
+        if (contentRect == null || contentArea == null) return;
         LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
-        Vector3[] corners = new Vector3[4];
-        tabBar.GetWorldCorners(corners);
-        float topInset = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y;
-        topInset = Mathf.Max(0f, topInset);
+        bool hasUnifiedNavigation = cachedMainHudTabs != null
+            || FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null;
+        float topInset = 0f;
+        if (hasUnifiedNavigation)
+        {
+            MainHudTabs unifiedNavigation = cachedMainHudTabs != null
+                ? cachedMainHudTabs : FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            RectTransform sharedTabs = unifiedNavigation != null
+                ? unifiedNavigation.WorkspaceTabsRect : null;
+            if (sharedTabs != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(sharedTabs);
+                Vector3[] corners = new Vector3[4];
+                sharedTabs.GetWorldCorners(corners);
+                topInset = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y;
+                topInset = Mathf.Max(0f, topInset);
+            }
+        }
+        else
+        {
+            if (tabBar == null) return;
+            Vector3[] corners = new Vector3[4];
+            tabBar.GetWorldCorners(corners);
+            topInset = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y;
+            topInset = Mathf.Max(0f, topInset);
+        }
 
         contentArea.anchorMin = Vector2.zero;
         contentArea.anchorMax = Vector2.one;
@@ -441,6 +463,7 @@ public class ManagementScreenController : MonoBehaviour
         bool unifiedNavigation = cachedMainHudTabs != null;
         if (!unifiedNavigation && Input.GetKeyDown(toggleKey))
         {
+            if (OnboardingTutorial.IsFeatureLocked(openButton)) return;
             Toggle();
             return;
         }
@@ -473,6 +496,8 @@ public class ManagementScreenController : MonoBehaviour
         System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
             .CompareTo(GetTabSiblingIndex(tabButtons[b])));
 
+        Button requestedButton = tabButtons[visualOrder[requestedPosition]];
+        if (OnboardingTutorial.IsFeatureLocked(requestedButton)) return;
         SelectTab(visualOrder[requestedPosition]);
         Sfx.Play(SfxId.UiClick);
     }
@@ -624,6 +649,9 @@ public class ManagementScreenController : MonoBehaviour
 
     public void SetUnifiedPrimaryPage(bool business)
     {
+        if (cachedMainHudTabs != null
+            || FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include) != null)
+            return;
         if (tabButtons == null || tabButtons.Length == 0) return;
 
         Transform tabBar = null;
@@ -667,9 +695,18 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabButtons == null || tabButtons.Length == 0) return;
         int current = selectedTabIndex >= 0 && selectedTabIndex < tabButtons.Length ? selectedTabIndex : 0;
-        int next = (current + (direction >= 0 ? 1 : -1) + tabButtons.Length) % tabButtons.Length;
-        if (tabButtons[next] != null)
-            tabButtons[next].onClick.Invoke();
+        int step = direction >= 0 ? 1 : -1;
+        for (int distance = 1; distance <= tabButtons.Length; distance++)
+        {
+            int next = (current + step * distance + tabButtons.Length * 2) % tabButtons.Length;
+            Button candidate = tabButtons[next];
+            if (candidate == null || !candidate.gameObject.activeInHierarchy
+                || OnboardingTutorial.IsFeatureLocked(candidate))
+                continue;
+
+            candidate.onClick.Invoke();
+            return;
+        }
     }
 
     public void Close()

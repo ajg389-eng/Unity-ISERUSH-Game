@@ -423,9 +423,8 @@ public class CustomerSpawner : MonoBehaviour
 
     public bool SpawnTutorialCustomer()
     {
-        // Practice orders are independent from the menu's live demand setting.
-        // A player may remove the burger from the menu during Plan, but the
-        // tutorial still needs its single scripted burger to demonstrate service.
+        // Practice orders are independent from live menu demand. The tutorial
+        // still needs its fixed customer cohort even if a menu item was removed.
         return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(true, true);
     }
 
@@ -605,9 +604,9 @@ public class CustomerSpawner : MonoBehaviour
             return false;
         }
 
-        // The tutorial's single practice customer starts at the entrance and
-        // follows the in-store route. Avoid a random street spawn that can make
-        // the tutorial depend on outdoor pathfinding and parked-vehicle layout.
+        // Tutorial practice customers start at the entrance and follow the
+        // in-store route. Avoid a random street spawn that makes the tutorial
+        // depend on outdoor pathfinding and parked-vehicle layout.
         BuildEntryPoints(entryPointsBuffer, r, !fromVehicle && !tutorialPractice);
         Vector3 spawnPos;
         if (fromVehicle)
@@ -641,6 +640,9 @@ public class CustomerSpawner : MonoBehaviour
             LastSpawnError = "Customer prefab needs a CustomerAI component on its root";
             return false;
         }
+
+        if (tutorialPractice)
+            ai.patienceDuration = Mathf.Max(ai.patienceDuration, 600f);
 
         ai.ClearOrder();
         if (!OnboardingTutorial.IsActive && assignedOrder != null)

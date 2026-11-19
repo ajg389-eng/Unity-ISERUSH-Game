@@ -547,6 +547,7 @@ public class GuidebookUI : MonoBehaviour
         money.AddMoney(GlossaryTermReward);
         ClaimedGlossaryTermRewards.Add(NormalizeGlossaryTerm(focusedTerm));
         SaveGlossaryProgress();
+        ISEGlossaryLinkHandler.RefreshAllHighlights();
         GameSaveSlots.SaveActiveSlot();
         Sfx.Play(SfxId.EarnMoney);
         Refresh();

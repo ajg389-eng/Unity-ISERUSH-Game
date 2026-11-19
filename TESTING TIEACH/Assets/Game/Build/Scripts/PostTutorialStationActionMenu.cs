@@ -10,9 +10,12 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
 {
     const string CanvasName = "PostTutorialStationActionCanvas";
     const string MenuName = "PostTutorialStationActionMenu";
+    const float TimeControlsGap = 10f;
+    const float FallbackTopOffset = 122f;
 
     BuildPlacer placer;
     Canvas menuCanvas;
+    GameTimeUI timeControls;
     CanvasGroup canvasGroup;
     TextMeshProUGUI selectionLabel;
     TextMeshProUGUI messageLabel;
@@ -25,6 +28,7 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
     bool displayedDragging;
     bool displayedFixedDoorSelected;
     bool placementInstructionActive;
+    readonly Vector3[] positionCorners = new Vector3[4];
 
     public bool IsPointerOver
     {
@@ -87,6 +91,7 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
         if (menuCanvas == null)
             menuCanvas = GetComponentInParent<Canvas>();
         FitToCanvasWidth();
+        PositionBelowTimeControls();
 
         if (messageLabel != null && messageLabel.gameObject.activeSelf
             && Time.unscaledTime >= messageUntil)
@@ -115,10 +120,10 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
         }
 
         RectTransform rect = (RectTransform)transform;
-        rect.anchorMin = new Vector2(0.5f, 0f);
-        rect.anchorMax = new Vector2(0.5f, 0f);
-        rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = new Vector2(0f, 18f);
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -FallbackTopOffset);
         rect.sizeDelta = new Vector2(340f, 54f);
 
         Image background = GetComponent<Image>();
@@ -152,8 +157,8 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
         RectTransform instructionRect = (RectTransform)instruction;
         instructionRect.anchorMin = new Vector2(0.5f, 0f);
         instructionRect.anchorMax = new Vector2(0.5f, 0f);
-        instructionRect.pivot = new Vector2(0.5f, 0f);
-        instructionRect.anchoredPosition = new Vector2(0f, 54f);
+        instructionRect.pivot = new Vector2(0.5f, 1f);
+        instructionRect.anchoredPosition = Vector2.zero;
         instructionRect.sizeDelta = new Vector2(440f, 36f);
         Image instructionBackground = instructionPanel.GetComponent<Image>();
         instructionBackground.color = HudTabColors.Strip;
@@ -187,6 +192,57 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
         if (deleteImage != null) deleteImage.color = GameUITheme.Danger;
         deleteButton?.GetComponent<GameUIThemeHoverFeedback>()?.SetBaseColor(GameUITheme.Danger);
         FitToCanvasWidth();
+        PositionBelowTimeControls();
+    }
+
+    void PositionBelowTimeControls()
+    {
+        RectTransform menuRect = transform as RectTransform;
+        RectTransform canvasRect = transform.parent as RectTransform;
+        if (menuRect == null || canvasRect == null) return;
+
+        if (timeControls == null)
+            timeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Include);
+
+        float bottomY = float.PositiveInfinity;
+        IncludeTimeControlBottom(timeControls != null ? timeControls.pauseButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.playButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.fastForwardRateButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.fastForwardButton : null,
+            canvasRect, ref bottomY);
+
+        float anchoredY = float.IsInfinity(bottomY)
+            ? -FallbackTopOffset
+            : bottomY - canvasRect.rect.yMax - TimeControlsGap;
+        Vector2 position = new Vector2(0f, anchoredY);
+        if (menuRect.anchoredPosition != position)
+            menuRect.anchoredPosition = position;
+    }
+
+    void IncludeTimeControlBottom(Button button, RectTransform canvasRect, ref float bottomY)
+    {
+        if (button == null || !button.gameObject.activeInHierarchy) return;
+        RectTransform buttonRect = button.transform as RectTransform;
+        if (buttonRect == null) return;
+
+        buttonRect.GetWorldCorners(positionCorners);
+        Canvas sourceCanvas = button.GetComponentInParent<Canvas>();
+        Camera sourceCamera = sourceCanvas != null
+            && sourceCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? sourceCanvas.worldCamera : null;
+        Camera targetCamera = menuCanvas != null
+            && menuCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? menuCanvas.worldCamera : null;
+        for (int i = 0; i < positionCorners.Length; i++)
+        {
+            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(sourceCamera, positionCorners[i]);
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect,
+                    screenPoint, targetCamera, out Vector2 localPoint))
+                bottomY = Mathf.Min(bottomY, localPoint.y);
+        }
     }
 
     static Canvas ResolvePlayerUICanvas()

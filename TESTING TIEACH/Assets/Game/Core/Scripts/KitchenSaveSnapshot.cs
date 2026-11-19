@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 54;
+    public const int CurrentVersion = 56;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
@@ -37,6 +37,9 @@ public class KitchenSaveSnapshot
     public bool tutorialStationMoved;
     public bool milestoneOneBottleneckLessonDone;
     public bool milestoneOneAnalyticsLessonDone;
+    public bool tutorialBaselinePracticeRunStarted;
+    public int tutorialBaselineCustomersSpawned, tutorialBaselineCustomersServed;
+    public float tutorialBaselinePracticeElapsedSeconds;
     public bool activeMilestoneShiftObjectives;
     public int gusQuestionScheduledDay, gusQuestionIndex = -1;
     public float gusQuestionScheduledMinute;
@@ -122,6 +125,14 @@ public class KitchenSaveSnapshot
             && OnboardingTutorial.Instance.MilestoneOneBottleneckLessonDoneForSave;
         s.milestoneOneAnalyticsLessonDone = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
+        s.tutorialBaselinePracticeRunStarted = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.BaselinePracticeRunStartedForSave;
+        s.tutorialBaselineCustomersSpawned = OnboardingTutorial.Instance != null
+            ? OnboardingTutorial.Instance.BaselineCustomersSpawnedForSave : 0;
+        s.tutorialBaselineCustomersServed = OnboardingTutorial.Instance != null
+            ? OnboardingTutorial.Instance.BaselineCustomersServedForSave : 0;
+        s.tutorialBaselinePracticeElapsedSeconds = OnboardingTutorial.Instance != null
+            ? OnboardingTutorial.Instance.BaselinePracticeElapsedSecondsForSave : 0f;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
         s.milestoneProgressionVersion = 2;
         if (MilestoneProgressManager.Instance != null)
@@ -690,6 +701,21 @@ public class KitchenSaveSnapshot
         // Version 53 adds the Build overview before the Business and Flow lessons.
         if (version < 53 && !tutorialComplete && restoredTutorialStep >= 1)
             restoredTutorialStep++;
+        // Version 55 condenses the initial onboarding sequence to four steps:
+        // movement, diagnose and improve the line, plan, then observe a practice shift.
+        if (version < 55 && !tutorialComplete)
+        {
+            if (restoredTutorialStep <= 0)
+                restoredTutorialStep = 0;
+            else if (restoredTutorialStep <= 3)
+                restoredTutorialStep = 1;
+            else if (restoredTutorialStep == 4)
+                restoredTutorialStep = 2;
+            else if (restoredTutorialStep <= 6)
+                restoredTutorialStep = 3;
+            else
+                restoredTutorialStep = 1;
+        }
         // Version 35 makes milestone objectives shift-scoped and changes recipe
         // counts from orders served to items delivered at Pickup. Old campaign
         // progress cannot be converted reliably, so keep tutorial tasks but reset
@@ -808,7 +834,9 @@ public class KitchenSaveSnapshot
                 version >= 36 && tutorialPauseControlUsed,
                 version >= 36 && tutorialPlayControlUsed,
                 version >= 36 && tutorialFastForwardControlUsed,
-                version >= 43 && tutorialShiftStarted,
+                version >= 56
+                    ? tutorialShiftStarted && restoredTutorialStep >= 2
+                    : version >= 43 && tutorialShiftStarted && restoredTutorialStep >= 3,
                 version >= 40 ? tutorialFastForwardRateMask : 0,
                 version >= 40 ? tutorialAnalyticsStage : -1,
                 version >= 41 && restoredTutorialStep > 0,
@@ -816,7 +844,11 @@ public class KitchenSaveSnapshot
                 version >= 41 ? tutorialTargetRate : 0f,
                 version >= 41 && tutorialStationMoved,
                 version >= 45 && milestoneOneBottleneckLessonDone,
-                version >= 45 && milestoneOneAnalyticsLessonDone);
+                version >= 45 && milestoneOneAnalyticsLessonDone,
+                version >= 56 && tutorialBaselinePracticeRunStarted,
+                version >= 56 ? tutorialBaselineCustomersSpawned : 0,
+                version >= 56 ? tutorialBaselineCustomersServed : 0,
+                version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f);
         return true;
     }
 

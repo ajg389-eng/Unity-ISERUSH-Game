@@ -508,7 +508,7 @@ public class IngredientsOrderUI : MonoBehaviour
         LayoutElement layout = go.GetComponent<LayoutElement>();
         layout.minHeight = layout.preferredHeight = 34f;
         TextMeshProUGUI text = go.GetComponent<TextMeshProUGUI>();
-        text.text = "Choose items to sell from the Plan card before starting each shift.";
+        text.text = "The active milestone objectives determine which items customers order.";
         text.fontSize = 13f;
         text.color = GameUITheme.TextSecondary;
         text.textWrappingMode = TextWrappingModes.Normal;
@@ -2308,10 +2308,10 @@ public class IngredientsOrderUI : MonoBehaviour
             typeof(TextMeshProUGUI), typeof(LayoutElement));
         saleStateGo.transform.SetParent(header.transform, false);
         LayoutElement saleStateLayout = saleStateGo.GetComponent<LayoutElement>();
-        saleStateLayout.minWidth = saleStateLayout.preferredWidth = 60f;
+        saleStateLayout.minWidth = saleStateLayout.preferredWidth = 78f;
         saleStateLayout.minHeight = saleStateLayout.preferredHeight = 30f;
         TextMeshProUGUI saleState = saleStateGo.GetComponent<TextMeshProUGUI>();
-        saleState.text = menu.IsItemEnabled(item) ? "ON PLAN" : "OFF PLAN";
+        saleState.text = menu.IsItemEnabled(item) ? "REQUIRED" : "NOT REQUIRED";
         saleState.fontSize = 10f;
         saleState.fontStyle = FontStyles.Bold;
         saleState.color = menu.IsItemEnabled(item) ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
@@ -3233,7 +3233,7 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.saleState != null)
             {
                 bool enabled = menu.IsItemEnabled(row.item);
-                row.saleState.text = enabled ? "ON PLAN" : "OFF PLAN";
+                row.saleState.text = enabled ? "REQUIRED" : "NOT REQUIRED";
                 row.saleState.color = enabled ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
             }
         }

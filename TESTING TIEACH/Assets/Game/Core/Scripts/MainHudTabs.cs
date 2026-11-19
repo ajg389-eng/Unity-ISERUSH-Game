@@ -4,16 +4,29 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Top-left Build / Business tabs. Staff is a submenu of Business. Place under PlayerUI via
+/// Top-left Kitchen workspace navigation. Place under PlayerUI via
 /// Game → Setup Main HUD Tabs so you can edit position in the scene.
 /// </summary>
 public class MainHudTabs : MonoBehaviour
 {
     public const string StripName = "MainHudTabs";
+    const string KitchenWorkspaceTabsName = "KitchenWorkspaceTabs";
 
     const float TabWidth = 168f;
     const float TabHeight = 40f;
     const float TabSpacing = 10f;
+    const float WorkspaceTabSpacing = 4f;
+    const float WorkspaceTabTopOffset = 50f;
+
+    static readonly string[] WorkspaceTabNames =
+    {
+        "Stations", "Workers", "Supply", "Customize"
+    };
+    static readonly string[] WorkspaceTabObjectNames =
+    {
+        "WorkspaceTab_Stations", "WorkspaceTab_Workers",
+        "WorkspaceTab_Supply", "WorkspaceTab_Customize"
+    };
 
     static readonly Color StripColor = HudTabColors.Strip;
     static readonly Color IdleColor = HudTabColors.Idle;
@@ -43,13 +56,40 @@ public class MainHudTabs : MonoBehaviour
     Button managementSourceButton;
     float nextPageControllerRefresh;
     bool built;
-    PrimaryPage lastPage = PrimaryPage.Build;
-
-    enum PrimaryPage { Build, Business }
+    RectTransform workspaceTabsRect;
+    HorizontalLayoutGroup workspaceTabsLayout;
+    readonly Button[] workspaceTabButtons = new Button[4];
+    int selectedWorkspaceTab;
+    bool workspaceTabsBuilt;
 
     public Transform InventoryTabTransform => inventoryTabButton != null ? inventoryTabButton.transform : null;
-    public Transform ManagementTabTransform => businessTabButton != null ? businessTabButton.transform : null;
-    public Transform BusinessTabTransform => businessTabButton != null ? businessTabButton.transform : null;
+    public Transform ManagementTabTransform => InventoryTabTransform;
+    public Transform BusinessTabTransform => InventoryTabTransform;
+    public Button KitchenButton => inventoryTabButton;
+    public RectTransform WorkspaceTabsRect => workspaceTabsRect;
+
+    public Button WorkspaceTabButton(int index)
+    {
+        return index >= 0 && index < workspaceTabButtons.Length ? workspaceTabButtons[index] : null;
+    }
+
+    public void PrepareWorkspaceTabForNextOpen(int index)
+    {
+        if (index >= 0 && index < workspaceTabButtons.Length)
+            selectedWorkspaceTab = index;
+    }
+
+    public bool TryGetWorkspaceTabIndex(Button button, out int index)
+    {
+        for (int i = 0; i < workspaceTabButtons.Length; i++)
+        {
+            if (workspaceTabButtons[i] != button) continue;
+            index = i;
+            return true;
+        }
+        index = -1;
+        return false;
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -96,6 +136,7 @@ public class MainHudTabs : MonoBehaviour
     {
         HideSourceButtons();
         RefreshVisuals();
+        RefreshWorkspaceTabs();
     }
 
     void Update()
@@ -111,12 +152,12 @@ public class MainHudTabs : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Q))
         {
-            CycleSubmenu(-1);
+            CycleWorkspaceTab(-1);
             return;
         }
         if (Input.GetKeyDown(KeyCode.E))
         {
-            CycleSubmenu(1);
+            CycleWorkspaceTab(1);
             return;
         }
     }
@@ -151,10 +192,13 @@ public class MainHudTabs : MonoBehaviour
         EnsureTabVisuals();
         SetPrimaryTabHeight(inventoryTabButton);
         SetPrimaryTabHeight(businessTabButton);
+        EnsureWorkspaceTabs();
         WireTabButtons();
+        WireWorkspaceTabButtons();
         HideSourceButtons();
         HideManagementPageTitle();
         RefreshVisuals();
+        RefreshWorkspaceTabs();
         LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
         built = true;
     }
@@ -176,8 +220,8 @@ public class MainHudTabs : MonoBehaviour
 
         if (inventoryTabButton != null && !inventoryTabButton.gameObject.activeSelf)
             inventoryTabButton.gameObject.SetActive(true);
-        if (businessTabButton != null && !businessTabButton.gameObject.activeSelf)
-            businessTabButton.gameObject.SetActive(true);
+        if (businessTabButton != null && businessTabButton.gameObject.activeSelf)
+            businessTabButton.gameObject.SetActive(false);
 
         RefreshVisuals();
     }
@@ -231,7 +275,7 @@ public class MainHudTabs : MonoBehaviour
         businessBg = FindTabImage("BusinessTab");
 
         if (inventoryBg == null)
-            inventoryBg = CreateTab("InventoryTab", "Build");
+            inventoryBg = CreateTab("InventoryTab", "Kitchen");
         if (managementBg == null)
             managementBg = CreateTab("ManagementTab", "Staff");
         if (businessBg == null)
@@ -240,11 +284,13 @@ public class MainHudTabs : MonoBehaviour
         inventoryTabButton = inventoryBg != null ? inventoryBg.GetComponent<Button>() : null;
         managementTabButton = managementBg != null ? managementBg.GetComponent<Button>() : null;
         businessTabButton = businessBg != null ? businessBg.GetComponent<Button>() : null;
-        SetTabLabel(inventoryBg, "Build");
+        SetTabLabel(inventoryBg, "Kitchen");
         SetTabLabel(managementBg, "Staff");
         SetTabLabel(businessBg, "Business");
         if (managementBg != null)
             managementBg.gameObject.SetActive(false);
+        if (businessBg != null)
+            businessBg.gameObject.SetActive(false);
 
         // Remove accidental duplicates left from older rebuild logic.
         RemoveDuplicateTabs("InventoryTab", inventoryBg != null ? inventoryBg.transform : null);
@@ -274,7 +320,7 @@ public class MainHudTabs : MonoBehaviour
         if (inventoryTabButton != null)
         {
             inventoryTabButton.onClick.RemoveAllListeners();
-            inventoryTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Build));
+            inventoryTabButton.onClick.AddListener(ToggleKitchenWorkspace);
             if (inventoryTabButton.targetGraphic == null)
                 inventoryTabButton.targetGraphic = inventoryBg;
             GameUITheme.ApplyTabButton(inventoryTabButton, false);
@@ -291,14 +337,129 @@ public class MainHudTabs : MonoBehaviour
         if (businessTabButton != null)
         {
             businessTabButton.onClick.RemoveAllListeners();
-            businessTabButton.onClick.AddListener(() => TogglePage(PrimaryPage.Business));
+            businessTabButton.onClick.AddListener(() => OpenWorkspaceTab(1));
             if (businessTabButton.targetGraphic == null)
                 businessTabButton.targetGraphic = businessBg;
             GameUITheme.ApplyTabButton(businessTabButton, false);
         }
 
         if (inventoryTabButton != null)
-            DelayedTooltip.Attach(inventoryTabButton, "Build is available during the Plan phase.");
+            DelayedTooltip.Attach(inventoryTabButton, "Open the Kitchen workspace. Layout changes are available during planning.");
+    }
+
+    void EnsureWorkspaceTabs()
+    {
+        if (workspaceTabsBuilt && workspaceTabsRect != null)
+        {
+            bool allButtonsFound = true;
+            for (int i = 0; i < workspaceTabButtons.Length; i++)
+                if (workspaceTabButtons[i] == null) allButtonsFound = false;
+            if (allButtonsFound) return;
+        }
+
+        if (workspaceTabsRect == null)
+        {
+            Transform existing = transform.Find(KitchenWorkspaceTabsName);
+            if (existing != null)
+                workspaceTabsRect = existing as RectTransform;
+        }
+
+        if (workspaceTabsRect == null)
+        {
+            GameObject row = new GameObject(KitchenWorkspaceTabsName, typeof(RectTransform),
+                typeof(HorizontalLayoutGroup), typeof(LayoutElement), typeof(CanvasGroup));
+            row.transform.SetParent(transform, false);
+            workspaceTabsRect = (RectTransform)row.transform;
+        }
+
+        workspaceTabsRect.anchorMin = new Vector2(0f, 1f);
+        workspaceTabsRect.anchorMax = new Vector2(1f, 1f);
+        workspaceTabsRect.pivot = new Vector2(0f, 1f);
+        workspaceTabsRect.anchoredPosition = new Vector2(0f, -WorkspaceTabTopOffset);
+        workspaceTabsRect.sizeDelta = new Vector2(0f, TabHeight);
+        LayoutElement rowElement = workspaceTabsRect.GetComponent<LayoutElement>();
+        if (rowElement == null) rowElement = workspaceTabsRect.gameObject.AddComponent<LayoutElement>();
+        rowElement.ignoreLayout = true;
+
+        workspaceTabsLayout = workspaceTabsRect.GetComponent<HorizontalLayoutGroup>();
+        workspaceTabsLayout.padding = new RectOffset(8, 8, 0, 0);
+        workspaceTabsLayout.spacing = WorkspaceTabSpacing;
+        workspaceTabsLayout.childAlignment = TextAnchor.MiddleCenter;
+        workspaceTabsLayout.childControlWidth = true;
+        workspaceTabsLayout.childControlHeight = true;
+        workspaceTabsLayout.childForceExpandWidth = true;
+        workspaceTabsLayout.childForceExpandHeight = true;
+
+        for (int i = 0; i < workspaceTabButtons.Length; i++)
+        {
+            string objectName = WorkspaceTabObjectNames[i];
+            Transform child = workspaceTabsRect.Find(objectName);
+            Button button = child != null ? child.GetComponent<Button>() : null;
+            if (button == null)
+                button = CreateWorkspaceTabButton(objectName, WorkspaceTabNames[i], workspaceTabsRect);
+            int index = i;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OpenWorkspaceTab(index));
+            workspaceTabButtons[i] = button;
+        }
+
+        workspaceTabsBuilt = true;
+    }
+
+    Button CreateWorkspaceTabButton(string objectName, string label, Transform parent)
+    {
+        GameObject buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(Image),
+            typeof(Button), typeof(LayoutElement));
+        buttonObject.transform.SetParent(parent, false);
+        Image image = buttonObject.GetComponent<Image>();
+        image.color = IdleColor;
+        image.raycastTarget = true;
+        Button button = buttonObject.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.None;
+
+        LayoutElement element = buttonObject.GetComponent<LayoutElement>();
+        element.minWidth = 62f;
+        element.preferredWidth = 90f;
+        element.flexibleWidth = 1f;
+        element.minHeight = TabHeight;
+        element.preferredHeight = TabHeight;
+
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelObject.transform.SetParent(buttonObject.transform, false);
+        RectTransform labelRect = (RectTransform)labelObject.transform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(3f, 2f);
+        labelRect.offsetMax = new Vector2(-3f, -2f);
+        TextMeshProUGUI text = labelObject.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 14f;
+        text.fontSizeMin = 11f;
+        text.fontSizeMax = 14f;
+        text.enableAutoSizing = true;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Truncate;
+        if (TMP_Settings.defaultFontAsset != null)
+            text.font = TMP_Settings.defaultFontAsset;
+        GameUITheme.ApplyTabButton(button, false);
+        return button;
+    }
+
+    void WireWorkspaceTabButtons()
+    {
+        for (int i = 0; i < workspaceTabButtons.Length; i++)
+        {
+            Button button = workspaceTabButtons[i];
+            if (button == null) continue;
+            int index = i;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => OpenWorkspaceTab(index));
+        }
     }
 
     Image CreateTab(string objectName, string label)
@@ -345,71 +506,75 @@ public class MainHudTabs : MonoBehaviour
         return img;
     }
 
-    void TogglePage(PrimaryPage page)
-    {
-        if (page == PrimaryPage.Build && IsBuildLocked())
-        {
-            Sfx.Play(SfxId.UiError);
-            return;
-        }
+    public void OpenBuildPage() => OpenWorkspaceTab(0);
+    public void OpenStaffPage() => OpenWorkspaceTab(1);
+    public void OpenBusinessPage() => OpenWorkspaceTab(1);
 
-        if (IsPageOpen(page))
+    void ToggleKitchenWorkspace()
+    {
+        if (AnyPanelOpen())
         {
             CloseAll();
             return;
         }
 
-        SwitchTo(page);
+        if (IsBuildLocked() && (selectedWorkspaceTab == 0 || selectedWorkspaceTab == 3))
+            selectedWorkspaceTab = 1;
+        OpenWorkspaceTab(selectedWorkspaceTab);
     }
 
-    bool IsPageOpen(PrimaryPage page)
+    public void OpenWorkspaceTab(int index)
     {
-        var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-        if (page == PrimaryPage.Build)
-            return inv != null && inv.IsPanelOpen;
-        if (mgmt == null || !mgmt.IsOpen) return false;
-        return page == lastPage;
-    }
+        EnsureWorkspaceTabs();
+        if (index < 0 || index >= workspaceTabButtons.Length) return;
+        if (OnboardingTutorial.IsFeatureLocked(WorkspaceTabButton(index))) return;
 
-    public void OpenBuildPage() => SwitchTo(PrimaryPage.Build);
-    public void OpenStaffPage()
-    {
-        SwitchTo(PrimaryPage.Business);
-        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-        if (management != null) management.OpenWorkersTab();
-    }
-    public void OpenBusinessPage() => SwitchTo(PrimaryPage.Business);
-
-    void SwitchTo(PrimaryPage page)
-    {
-        if (page == PrimaryPage.Build && IsBuildLocked())
+        bool buildTab = index == 0 || index == 3;
+        if (buildTab && IsBuildLocked())
         {
             Sfx.Play(SfxId.UiError);
             return;
         }
 
+        selectedWorkspaceTab = index;
         var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-        lastPage = page;
+        if (inv != null) cachedInventoryUI = inv;
+        if (mgmt != null) cachedManagementScreen = mgmt;
 
-        if (page == PrimaryPage.Build)
+        if (buildTab)
         {
             if (mgmt != null && mgmt.IsOpen) mgmt.Close();
-            if (inv != null) inv.OpenBuildPage();
+            if (inv != null)
+            {
+                inv.OpenPanel();
+                int targetPanel = FindInventoryPanelIndex(inv,
+                    index == 0 ? InventoryUI.StationsPanelName : InventoryUI.CustomizePanelName);
+                if (targetPanel >= 0) inv.SelectTab(targetPanel);
+            }
             else FindInventoryButton()?.onClick.Invoke();
+            HideLegacyWorkspaceTabs();
             return;
         }
 
-        if (inv != null && inv.IsPanelOpen) inv.TogglePanel();
         if (mgmt == null)
         {
             FindManagementButton()?.onClick.Invoke();
             return;
         }
 
-        mgmt.SetUnifiedPrimaryPage(true);
-        mgmt.OpenWorkersTab();
+        if (index == 1) mgmt.OpenWorkersTab();
+        else mgmt.OpenIngredientsTab();
+        HideLegacyWorkspaceTabs();
+    }
+
+    static int FindInventoryPanelIndex(InventoryUI inventory, string panelName)
+    {
+        if (inventory == null || inventory.tabPanels == null) return -1;
+        for (int i = 0; i < inventory.tabPanels.Length; i++)
+            if (inventory.tabPanels[i] != null && inventory.tabPanels[i].name == panelName)
+                return i;
+        return -1;
     }
 
     void CloseAll()
@@ -434,63 +599,45 @@ public class MainHudTabs : MonoBehaviour
         switch (topLevel)
         {
             case 0:
-                TogglePage(PrimaryPage.Build);
+                if (OnboardingTutorial.IsFeatureLocked(inventoryTabButton)) return;
+                ToggleKitchenWorkspace();
                 break;
             case 1:
-                TogglePage(PrimaryPage.Business);
+                OpenWorkspaceTab(1);
                 break;
             case 2:
             {
                 MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
-                if (missions != null) missions.ToggleTasksTab();
+                if (missions != null && !OnboardingTutorial.IsFeatureLocked(missions.TutorialObjectivesButton))
+                    missions.ToggleTasksTab();
                 break;
             }
             case 3:
             {
                 MissionListUI missions = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
-                if (missions != null) missions.ToggleProgressionTab();
+                if (missions != null && !OnboardingTutorial.IsFeatureLocked(missions.TutorialObjectivesButton))
+                    missions.ToggleProgressionTab();
                 break;
             }
         }
     }
 
-    static void CycleSubmenu(int direction)
+    void CycleWorkspaceTab(int direction)
     {
-        var management = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);
-        if (management != null && management.IsOpen)
+        if (!AnyPanelOpen()) return;
+        EnsureWorkspaceTabs();
+        int step = direction >= 0 ? 1 : -1;
+        for (int distance = 1; distance <= workspaceTabButtons.Length; distance++)
         {
-            management.CycleBusinessTab(direction);
+            int next = (selectedWorkspaceTab + step * distance + workspaceTabButtons.Length * 2)
+                % workspaceTabButtons.Length;
+            Button candidate = workspaceTabButtons[next];
+            if (candidate == null || !candidate.interactable
+                || OnboardingTutorial.IsFeatureLocked(candidate))
+                continue;
+            OpenWorkspaceTab(next);
             return;
         }
-
-        Button[] buttons = null;
-        GameObject[] panels = null;
-        var inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
-        if (inventory != null && inventory.IsPanelOpen)
-        {
-            buttons = inventory.tabButtons;
-            panels = inventory.tabPanels;
-        }
-        else if (management != null && management.IsOpen)
-        {
-            buttons = management.tabButtons;
-            panels = management.tabPanels;
-        }
-        if (buttons == null || panels == null) return;
-
-        var visible = new List<int>();
-        int count = Mathf.Min(buttons.Length, panels.Length);
-        for (int i = 0; i < count; i++)
-            if (buttons[i] != null && buttons[i].gameObject.activeInHierarchy && panels[i] != null)
-                visible.Add(i);
-        visible.Sort((a, b) => buttons[a].transform.GetSiblingIndex()
-            .CompareTo(buttons[b].transform.GetSiblingIndex()));
-        if (visible.Count == 0) return;
-
-        int current = visible.FindIndex(index => panels[index].activeSelf);
-        if (current < 0) current = direction > 0 ? -1 : 0;
-        int next = (current + direction + visible.Count) % visible.Count;
-        buttons[visible[next]].onClick.Invoke();
     }
 
     static bool AnyPanelOpen()
@@ -538,17 +685,16 @@ public class MainHudTabs : MonoBehaviour
             && buildLocked == displayedBuildLocked)
             return;
 
-        HudTabColors.Apply(inventoryTabButton, inventoryOpen);
-        HudTabColors.Apply(businessTabButton, managementOpen);
+        HudTabColors.Apply(inventoryTabButton, inventoryOpen || managementOpen);
         if (inventoryTabButton != null)
         {
-            inventoryTabButton.interactable = !buildLocked;
-            SetTabLabel(inventoryBg, buildLocked ? "Build (Plan)" : "Build");
+            inventoryTabButton.interactable = true;
+            SetTabLabel(inventoryBg, "Kitchen");
             var label = inventoryBg != null
                 ? inventoryBg.GetComponentInChildren<TextMeshProUGUI>(true) : null;
             if (label != null)
             {
-                label.color = buildLocked ? GameUITheme.TextSecondary : Color.white;
+                label.color = Color.white;
                 label.enableAutoSizing = false;
                 label.fontSize = 20f;
                 label.fontSizeMin = 20f;
@@ -556,13 +702,95 @@ public class MainHudTabs : MonoBehaviour
                 label.fontStyle = FontStyles.Bold;
                 label.characterSpacing = 0.8f;
             }
-            if (buildLocked && inventoryBg != null)
-                inventoryBg.color = GameUITheme.PanelSlate;
         }
         displayedInventoryOpen = inventoryOpen;
         displayedManagementOpen = managementOpen;
         displayedBuildLocked = buildLocked;
         visualStateKnown = true;
+    }
+
+    void RefreshWorkspaceTabs()
+    {
+        RefreshPageControllerReferences();
+        EnsureWorkspaceTabs();
+        HideLegacyWorkspaceTabs();
+
+        bool inventoryOpen = cachedInventoryUI != null && cachedInventoryUI.IsPanelOpen;
+        bool managementOpen = cachedManagementScreen != null && cachedManagementScreen.IsOpen;
+        bool workspaceOpen = inventoryOpen || managementOpen;
+        if (workspaceTabsRect != null && workspaceTabsRect.gameObject.activeSelf != workspaceOpen)
+            workspaceTabsRect.gameObject.SetActive(workspaceOpen);
+
+        if (workspaceOpen)
+        {
+            if (inventoryOpen)
+                selectedWorkspaceTab = GetActiveInventoryWorkspaceTab(cachedInventoryUI);
+            else if (managementOpen)
+                selectedWorkspaceTab = GetActiveManagementWorkspaceTab(cachedManagementScreen);
+        }
+
+        bool buildLocked = IsBuildLocked();
+        for (int i = 0; i < workspaceTabButtons.Length; i++)
+        {
+            Button button = workspaceTabButtons[i];
+            if (button == null) continue;
+            bool phaseAllowsTab = !buildLocked || (i != 0 && i != 3);
+            button.interactable = phaseAllowsTab && !OnboardingTutorial.IsFeatureLocked(button);
+            if (!phaseAllowsTab)
+            {
+                Image image = button.GetComponent<Image>();
+                if (image != null) image.color = GameUITheme.PanelSlate;
+            }
+            else
+                HudTabColors.Apply(button, workspaceOpen && selectedWorkspaceTab == i);
+        }
+    }
+
+    static int GetActiveInventoryWorkspaceTab(InventoryUI inventory)
+    {
+        if (inventory == null || inventory.tabPanels == null) return 0;
+        for (int i = 0; i < inventory.tabPanels.Length; i++)
+        {
+            GameObject panel = inventory.tabPanels[i];
+            if (panel == null || !panel.activeSelf) continue;
+            if (panel.name == InventoryUI.CustomizePanelName || panel.name == InventoryUI.FloorPanelName)
+                return 3;
+            return 0;
+        }
+        return 0;
+    }
+
+    static int GetActiveManagementWorkspaceTab(ManagementScreenController management)
+    {
+        if (management == null || management.tabPanels == null) return 1;
+        for (int i = 0; i < management.tabPanels.Length; i++)
+        {
+            GameObject panel = management.tabPanels[i];
+            if (panel == null || !panel.activeSelf) continue;
+            return panel.GetComponentInChildren<WorkersUI>(true) != null ? 1 : 2;
+        }
+        return 1;
+    }
+
+    void HideLegacyWorkspaceTabs()
+    {
+        RefreshPageControllerReferences();
+        HideLegacyTabBar(cachedInventoryUI != null ? cachedInventoryUI.tabButtons : null);
+        HideLegacyTabBar(cachedManagementScreen != null ? cachedManagementScreen.tabButtons : null);
+    }
+
+    static void HideLegacyTabBar(Button[] buttons)
+    {
+        if (buttons == null || buttons.Length == 0 || buttons[0] == null) return;
+        Transform tabBar = buttons[0].transform.parent;
+        if (tabBar == null) return;
+        CanvasGroup group = tabBar.GetComponent<CanvasGroup>();
+        if (group == null) group = tabBar.gameObject.AddComponent<CanvasGroup>();
+        group.alpha = 0f;
+        group.interactable = false;
+        group.blocksRaycasts = false;
+        if (tabBar.gameObject.activeSelf)
+            tabBar.gameObject.SetActive(false);
     }
 
     static bool IsBuildLocked()

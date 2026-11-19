@@ -118,7 +118,8 @@ public class InventoryUI : MonoBehaviour
         if (!UIInputFocusGuard.IsTyping && !PauseMenuUI.IsOpen)
         {
             bool unifiedNavigation = cachedHudTabs != null;
-            if (!unifiedNavigation && Input.GetKeyDown(KeyCode.Q))
+            if (!unifiedNavigation && Input.GetKeyDown(KeyCode.Q)
+                && !OnboardingTutorial.IsFeatureLocked(inventoryButton))
                 TogglePanel();
 
             if (!unifiedNavigation && panel != null && panel.activeSelf)
@@ -180,6 +181,8 @@ public class InventoryUI : MonoBehaviour
         System.Array.Sort(visualOrder, (a, b) => GetTabSiblingIndex(tabButtons[a])
             .CompareTo(GetTabSiblingIndex(tabButtons[b])));
 
+        Button requestedButton = tabButtons[visualOrder[requestedPosition]];
+        if (OnboardingTutorial.IsFeatureLocked(requestedButton)) return;
         SelectTab(visualOrder[requestedPosition]);
         Sfx.Play(SfxId.UiClick);
     }
@@ -937,10 +940,23 @@ public class InventoryUI : MonoBehaviour
         Transform contentBox = panel.transform.Find(ContentBoxName);
         if (contentBox == null) return;
 
+        MainHudTabs unifiedNavigation = cachedHudTabs != null
+            ? cachedHudTabs : FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        bool hasUnifiedNavigation = unifiedNavigation != null;
         float reserved = 128f;
         var tabBar = contentBox.Find(TabBarName) as RectTransform;
         RectTransform contentRect = contentBox as RectTransform;
-        if (tabBar != null && contentRect != null)
+        RectTransform sharedTabs = hasUnifiedNavigation ? unifiedNavigation.WorkspaceTabsRect : null;
+        if (hasUnifiedNavigation && sharedTabs != null && contentRect != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(sharedTabs);
+            Vector3[] corners = new Vector3[4];
+            sharedTabs.GetWorldCorners(corners);
+            float scaleY = Mathf.Max(0.0001f, Mathf.Abs(contentRect.lossyScale.y));
+            reserved = contentRect.rect.yMax - contentRect.InverseTransformPoint(corners[0]).y
+                + 6f / scaleY;
+        }
+        else if (!hasUnifiedNavigation && tabBar != null && contentRect != null)
         {
             LayoutRebuilder.ForceRebuildLayoutImmediate(tabBar);
             float buttonBottom = float.PositiveInfinity;
@@ -1572,15 +1588,16 @@ public class InventoryUI : MonoBehaviour
         int currentExpandCost = GetCurrentFloorExpansionCost();
         bool canPay = money != null && money.CanAfford(currentExpandCost);
         bool planPhase = GameTimeManager.Instance == null || !GameTimeManager.Instance.IsShiftInProgress;
+        bool tutorialAllowsExpansion = !OnboardingTutorial.BlocksProgression;
         bool confirming = expansionConfirmRoot != null && expansionConfirmRoot.activeSelf;
         bool buildPanelOpen = panel != null && panel.activeSelf;
-        if (confirming && (!buildPanelOpen || !planPhase || !canSize))
+        if (confirming && (!buildPanelOpen || !planPhase || !canSize || !tutorialAllowsExpansion))
         {
             expansionConfirmRoot.SetActive(false);
             confirming = false;
         }
-        bool showPreview = buildPanelOpen && planPhase && canSize && !confirming;
-        bool showOverlayCanvas = buildPanelOpen && planPhase && (canSize || confirming);
+        bool showPreview = buildPanelOpen && planPhase && canSize && !confirming && tutorialAllowsExpansion;
+        bool showOverlayCanvas = buildPanelOpen && planPhase && tutorialAllowsExpansion && (canSize || confirming);
         if (expansionPreviewObject != null && expansionPreviewObject.activeSelf != showPreview)
             expansionPreviewObject.SetActive(showPreview);
         SetPreviewLabelVisible(expansionPreviewWestCanvas, showPreview && expandWidth > 0);

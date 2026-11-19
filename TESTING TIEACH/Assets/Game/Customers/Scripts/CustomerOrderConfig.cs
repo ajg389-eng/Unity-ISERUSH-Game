@@ -185,9 +185,9 @@ public class CustomerOrderConfig : ScriptableObject
     [Tooltip("Chance the customer wants a shake")]
     public float drinkChance = 0.7f;
 
-    // Runtime menu choices. These deliberately are not serialized back into the shared asset.
-    // A new run starts with every sellable item disabled. The player explicitly
-    // enables each unlocked recipe from the Menu screen.
+    // The active milestone sets these runtime items. They are deliberately not
+    // serialized back into the shared asset; old save selections are migrated
+    // to the current milestone objectives when restored.
     [System.NonSerialized] readonly HashSet<ItemDefinition> enabledMenuItems = new HashSet<ItemDefinition>();
     [System.NonSerialized] bool demandScheduleReady;
     [System.NonSerialized] int demandScheduleRevision;
@@ -1057,7 +1057,7 @@ public class CustomerOrderConfig : ScriptableObject
             && enabledMenuItems.Contains(item);
     }
 
-    /// <summary>Returns stable asset names for the menu choices selected by the player.</summary>
+    /// <summary>Returns stable asset names for the menu items derived from milestone objectives.</summary>
     public List<string> CaptureEnabledMenuItemNames()
     {
         var names = new List<string>();
@@ -1070,33 +1070,75 @@ public class CustomerOrderConfig : ScriptableObject
     }
 
     /// <summary>
-    /// Restores menu choices from a save. The set is cleared first so loading a
-    /// different slot cannot inherit selections from the previous slot.
-    /// Locked or removed items are ignored and remain unavailable.
+    /// Reads legacy menu selections from a save, then replaces them with the
+    /// current milestone's required sellable items.
     /// </summary>
     public void RestoreEnabledMenuItems(IEnumerable<string> savedNames)
     {
         enabledMenuItems.Clear();
-        if (savedNames == null)
+        if (savedNames != null)
         {
-            InvalidateDemandSchedule();
-            return;
+            var names = new HashSet<string>();
+            foreach (string name in savedNames)
+                if (!string.IsNullOrEmpty(name)) names.Add(name);
+
+            foreach (ItemDefinition item in GetMenuItems())
+            {
+                if (item == null || !names.Contains(item.name)) continue;
+                if (IsCustomerRecipeUnlocked(item))
+                    enabledMenuItems.Add(item);
+            }
         }
 
-        var names = new HashSet<string>();
-        foreach (string name in savedNames)
-            if (!string.IsNullOrEmpty(name)) names.Add(name);
-
-        foreach (ItemDefinition item in GetMenuItems())
-        {
-            if (item == null || !names.Contains(item.name)) continue;
-            if (IsCustomerRecipeUnlocked(item))
-                enabledMenuItems.Add(item);
-        }
+        SyncMenuToActiveMilestoneObjectives(allowDuringShift: true);
         InvalidateDemandSchedule();
     }
 
-    /// <summary>Clears menu choices when starting a fresh save slot.</summary>
+    /// <summary>Sets customer menu items from the active milestone's serve objectives.</summary>
+    public bool SyncMenuToActiveMilestoneObjectives(bool allowDuringShift = false)
+    {
+        if (!allowDuringShift && GameTimeManager.Instance != null
+            && GameTimeManager.Instance.IsShiftInProgress)
+            return false;
+
+        MilestoneProgressManager progression = MilestoneProgressManager.Instance;
+        MilestoneDefinition milestone = progression != null ? progression.GetActiveMilestone() : null;
+        if (milestone == null) return false;
+
+        var desiredItems = new HashSet<ItemDefinition>();
+        if (milestone.isTutorial)
+        {
+            if (burgerBase != null && IsCustomerRecipeUnlocked(burgerBase))
+                desiredItems.Add(burgerBase);
+        }
+        else
+        {
+            bool includeAllUnlockedProducts = false;
+            IReadOnlyList<MissionDefinition> missions = milestone.GetMissions();
+            for (int i = 0; missions != null && i < missions.Count; i++)
+            {
+                MissionDefinition mission = missions[i];
+                if (mission == null) continue;
+                includeAllUnlockedProducts |= mission.countAnyUnlockedMenuProduct;
+                if (mission.deliveredItem != null && IsCustomerRecipeUnlocked(mission.deliveredItem))
+                    desiredItems.Add(mission.deliveredItem);
+            }
+
+            if (includeAllUnlockedProducts)
+                foreach (ItemDefinition item in GetMenuItems())
+                    if (IsCustomerRecipeUnlocked(item))
+                        desiredItems.Add(item);
+        }
+
+        if (enabledMenuItems.SetEquals(desiredItems)) return false;
+        enabledMenuItems.Clear();
+        foreach (ItemDefinition item in desiredItems)
+            enabledMenuItems.Add(item);
+        InvalidateDemandSchedule();
+        return true;
+    }
+
+    /// <summary>Clears the derived menu before a fresh save is initialized.</summary>
     public void ClearEnabledMenuItems()
     {
         enabledMenuItems.Clear();
@@ -1124,6 +1166,22 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
             return;
+        MilestoneProgressManager progression = MilestoneProgressManager.Instance;
+        if (progression != null)
+        {
+            MilestoneDefinition milestone = progression.GetActiveMilestone();
+            if (milestone == null)
+            {
+                SyncMenuToActiveMilestoneObjectives();
+                return;
+            }
+            if (!milestone.isTutorial)
+            {
+                SyncMenuToActiveMilestoneObjectives();
+                return;
+            }
+            if (item != burgerBase || !enabled) return;
+        }
         if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
         if (enabled && !IsMenuItemUnlocked(item)) return;
         bool changed = enabled

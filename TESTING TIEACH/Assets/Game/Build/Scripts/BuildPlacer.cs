@@ -988,7 +988,11 @@ public class BuildPlacer : MonoBehaviour
 
         if (target == null)
         {
-            if (!additive) ClearStationSelection();
+            if (!additive)
+            {
+                ClearStationSelection();
+                ManagementModeController.Instance?.ClearBuildStationInspection();
+            }
             lastEditClickId = 0;
             return;
         }
@@ -1008,6 +1012,7 @@ public class BuildPlacer : MonoBehaviour
                 selectedObjects.Add(target);
                 StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
             }
+            ManagementModeController.Instance?.InspectStationFromBuild(target);
             BeginMoveSelected();
             return;
         }
@@ -1015,9 +1020,15 @@ public class BuildPlacer : MonoBehaviour
         if (selectedObjects.Contains(target))
         {
             if (additive)
+            {
                 RemoveFromSelection(target);
+                ManagementModeController.Instance?.ClearBuildStationInspection();
+            }
             else
+            {
+                ManagementModeController.Instance?.InspectStationFromBuild(target);
                 actionBar?.Refresh();
+            }
             return;
         }
 
@@ -1025,6 +1036,8 @@ public class BuildPlacer : MonoBehaviour
 
         selectedObjects.Add(target);
         StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
+        if (!additive)
+            ManagementModeController.Instance?.InspectStationFromBuild(target);
         actionBar?.Refresh();
         if (additive)
         {
@@ -2967,7 +2980,10 @@ public class BuildPlacer : MonoBehaviour
 public sealed class BuildStationActionBar : MonoBehaviour
 {
     const string ObjectName = "BuildStationActionBar";
+    const float TimeControlsGap = 10f;
+    const float FallbackTopOffset = 122f;
     BuildPlacer placer;
+    GameTimeUI timeControls;
     TextMeshProUGUI selectionLabel;
     TextMeshProUGUI messageLabel;
     GameObject instructionPanel;
@@ -2980,6 +2996,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
     int displayedSelectionCount = -1;
     bool displayedDragging;
     bool displayedFixedDoorSelected;
+    readonly Vector3[] positionCorners = new Vector3[4];
 
     public bool IsPointerOver
     {
@@ -3070,6 +3087,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
             SetVisible(false);
             return;
         }
+        PositionBelowTimeControls();
         if (messageLabel != null && messageLabel.gameObject.activeSelf && Time.unscaledTime >= messageUntil)
         {
             messageLabel.gameObject.SetActive(false);
@@ -3099,14 +3117,14 @@ public sealed class BuildStationActionBar : MonoBehaviour
 
     void EnsureBuilt()
     {
-        // Keep the bar above base HUD panels (Build inventory, plan card, etc.)
-        // while leaving tutorial, pause, and milestone overlays above it.
+        // Keep the controls visible below the clock and above base HUD panels.
+        // Tutorial, pause, and milestone overlays remain above this bar.
         GameUITheme.EnsureHudCanvas(transform, 3200);
         RectTransform rt = (RectTransform)transform;
-        rt.anchorMin = new Vector2(0.5f, 0f);
-        rt.anchorMax = new Vector2(0.5f, 0f);
-        rt.pivot = new Vector2(0.5f, 0f);
-        rt.anchoredPosition = new Vector2(0f, 18f);
+        rt.anchorMin = new Vector2(0.5f, 1f);
+        rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.anchoredPosition = new Vector2(0f, -FallbackTopOffset);
         rt.sizeDelta = new Vector2(340f, 54f);
 
         Image background = GetComponent<Image>();
@@ -3136,9 +3154,9 @@ public sealed class BuildStationActionBar : MonoBehaviour
         RectTransform instructionRect = (RectTransform)instruction;
         instructionRect.anchorMin = new Vector2(0.5f, 0f);
         instructionRect.anchorMax = new Vector2(0.5f, 0f);
-        instructionRect.pivot = new Vector2(0.5f, 0f);
-        instructionRect.anchoredPosition = new Vector2(0f, 54f);
-        instructionRect.sizeDelta = new Vector2(640f, 54f);
+        instructionRect.pivot = new Vector2(0.5f, 1f);
+        instructionRect.anchoredPosition = Vector2.zero;
+        instructionRect.sizeDelta = new Vector2(rt.sizeDelta.x, 54f);
         Image instructionBackground = instructionPanel.GetComponent<Image>();
         instructionBackground.color = HudTabColors.Strip;
         instructionBackground.raycastTarget = false;
@@ -3188,6 +3206,59 @@ public sealed class BuildStationActionBar : MonoBehaviour
             deleteButton.GetComponent<GameUIThemeHoverFeedback>()?.SetBaseColor(GameUITheme.Danger);
         }
         FitToCanvasWidth();
+        PositionBelowTimeControls();
+    }
+
+    void PositionBelowTimeControls()
+    {
+        RectTransform actionRect = transform as RectTransform;
+        RectTransform canvasRect = transform.parent as RectTransform;
+        if (actionRect == null || canvasRect == null) return;
+
+        if (timeControls == null)
+            timeControls = FindFirstObjectByType<GameTimeUI>(FindObjectsInactive.Include);
+
+        float bottomY = float.PositiveInfinity;
+        IncludeTimeControlBottom(timeControls != null ? timeControls.pauseButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.playButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.fastForwardRateButton : null,
+            canvasRect, ref bottomY);
+        IncludeTimeControlBottom(timeControls != null ? timeControls.fastForwardButton : null,
+            canvasRect, ref bottomY);
+
+        float anchoredY = float.IsInfinity(bottomY)
+            ? -FallbackTopOffset
+            : bottomY - canvasRect.rect.yMax - TimeControlsGap;
+        Vector2 position = new Vector2(0f, anchoredY);
+        if (actionRect.anchoredPosition != position)
+            actionRect.anchoredPosition = position;
+    }
+
+    void IncludeTimeControlBottom(Button button, RectTransform canvasRect, ref float bottomY)
+    {
+        if (button == null || !button.gameObject.activeInHierarchy)
+            return;
+        RectTransform buttonRect = button.transform as RectTransform;
+        if (buttonRect == null) return;
+
+        buttonRect.GetWorldCorners(positionCorners);
+        Canvas sourceCanvas = button.GetComponentInParent<Canvas>();
+        Camera sourceCamera = sourceCanvas != null
+            && sourceCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? sourceCanvas.worldCamera : null;
+        Canvas targetCanvas = canvasRect.GetComponentInParent<Canvas>();
+        Camera targetCamera = targetCanvas != null
+            && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? targetCanvas.worldCamera : null;
+        for (int i = 0; i < positionCorners.Length; i++)
+        {
+            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(sourceCamera, positionCorners[i]);
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect,
+                    screenPoint, targetCamera, out Vector2 localPoint))
+                bottomY = Mathf.Min(bottomY, localPoint.y);
+        }
     }
 
     void FitToCanvasWidth()
@@ -3209,8 +3280,7 @@ public sealed class BuildStationActionBar : MonoBehaviour
 
         if (instructionPanel == null) return;
         RectTransform instructionRect = (RectTransform)instructionPanel.transform;
-        float instructionWidth = Mathf.Min(680f, Mathf.Max(1f, canvasWidth - 24f));
-        instructionRect.sizeDelta = new Vector2(instructionWidth, 54f);
+        instructionRect.sizeDelta = new Vector2(barRect.rect.width, 54f);
     }
 
     static void SetButtonWidth(Button button, float width)

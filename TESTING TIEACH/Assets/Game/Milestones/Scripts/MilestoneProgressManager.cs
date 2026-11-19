@@ -436,6 +436,11 @@ public class MilestoneProgressManager : MonoBehaviour
 
     void ApplyActiveMissions(bool reset)
     {
+        CustomerOrderConfig orderConfig = ProductionManager.Instance != null
+            ? ProductionManager.Instance.orderConfig : null;
+        if (orderConfig != null)
+            orderConfig.SyncMenuToActiveMilestoneObjectives(allowDuringShift: true);
+
         if (!driveMissionList) return;
 
         var progress = MissionProgressManager.Instance;
