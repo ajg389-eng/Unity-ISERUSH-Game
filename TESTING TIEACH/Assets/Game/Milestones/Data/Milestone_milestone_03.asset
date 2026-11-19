@@ -25,43 +25,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 720b3bc1d4e94236af25b99cfc37e39a, type: 2}
   - {fileID: 11400000, guid: 2f81f5e24e884a3890e7bf3f4f9d1eff, type: 2}
   shiftQuestions:
-  - questionId: core_supply_rate
-    prompt: "What should guide the supply rate for a process?"
+  - questionId: supply_forecast
+    prompt: "What tells you how much of an ingredient you may need?"
     answers:
-    - "How quickly the process is expected to use that ingredient"
-    - "The highest rate the supplier allows, regardless of need"
-    - "The number of stations placed in the kitchen"
+    - "The Forecast column"
+    - "The station purchase price"
+    - "The song title"
     correctAnswerIndex: 0
-    explanation: "Match incoming supply to expected use so production has inputs without building excess stock."
-  - questionId: core_input_flow
-    prompt: "What can happen if ingredients arrive slower than a process uses them?"
+    explanation: "Compare Forecast with Stock when planning deliveries."
+  - questionId: supply_apply
+    prompt: "Which button puts your delivery rates into effect?"
     answers:
-    - "A process step may run out and become starved"
-    - "The completed output rate must increase"
-    - "Customer demand is automatically reduced"
+    - "Apply Supply Plan"
+    - "Edit Menu"
+    - "New Flow"
     correctAnswerIndex: 0
-    explanation: "When supply cannot keep up with use, a step may wait for inputs and finished output can drop."
-  - questionId: core_excess
-    prompt: "Why avoid excess stock for a process?"
+    explanation: "Apply Supply Plan saves the selected delivery rates."
+  - questionId: supply_full
+    prompt: "When do deliveries stop for an ingredient?"
     answers:
-    - "Excess stock ties up money and may go unused"
-    - "It always improves throughput"
-    - "It removes the need to plan supply"
+    - "When its stock is full"
+    - "When you open Objectives"
+    - "When you move the camera"
     correctAnswerIndex: 0
-    explanation: "Plan supply around the process, bringing in enough stock without tying up money in ingredients you may not use."
-  shiftLessons:
-  - lessonId: core_supply_rate
-    title: "Match supply to use"
-    explanation: "Set each ingredient's supply rate around how quickly the process is expected to use it."
-    target: 1
-  - lessonId: core_input_flow
-    title: "Keep inputs moving"
-    explanation: "If ingredients arrive too slowly, a process step can wait for inputs and finished output falls."
-    target: 1
-  - lessonId: core_excess
-    title: "Avoid excess stock"
-    explanation: "Bring in enough stock to support the process without tying up money in ingredients you may not use."
-    target: 1
+    explanation: "Deliveries stop at the stock limit and can resume when there is room."
+  shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

@@ -26,43 +26,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 2d6eff8a216647678689348797f51cf0, type: 2}
   - {fileID: 11400000, guid: f273a94d2ab7449198238e0e6f0bb506, type: 2}
   shiftQuestions:
-  - questionId: core_connected_system
-    prompt: "What makes the kitchen a system?"
+  - questionId: read_demand
+    prompt: "Which number should you compare with Produced / Min?"
     answers:
-    - "Stations, workers, ingredients, and customer demand affect one another"
-    - "Each station works independently of every other part"
-    - "Only the final station affects finished output"
+    - "Demand / Min"
+    - "Day number"
+    - "Supplier upgrade price"
     correctAnswerIndex: 0
-    explanation: "The whole system's result depends on how its connected parts work together."
-  - questionId: core_whole_output
-    prompt: "Which measure best shows what the whole process completed?"
+    explanation: "Together these rates show whether your kitchen is keeping up with demand."
+  - questionId: follow_flow
+    prompt: "What should a worker's flow connect?"
     answers:
-    - "Finished items delivered to Pickup over time"
-    - "The target of one station"
-    - "The number of workers hired"
+    - "Ingredient sources, workstations, and Pickup"
+    - "Only the registers"
+    - "Only the stations with the same color"
     correctAnswerIndex: 0
-    explanation: "Delivered throughput shows the output that made it through the complete process."
-  - questionId: core_improve
-    prompt: "What is a good way to improve a system?"
+    explanation: "A complete flow shows the route from ingredients to finished food at Pickup."
+  - questionId: review_objectives
+    prompt: "Where do you check what a shift must accomplish?"
     answers:
-    - "Find a problem, make a focused change, and compare the result"
-    - "Increase every station target without checking demand"
-    - "Judge performance by one station alone"
+    - "Objectives"
+    - "Recipes"
+    - "Music"
     correctAnswerIndex: 0
-    explanation: "Continuous improvement uses evidence from the whole process to guide the next change."
-  shiftLessons:
-  - lessonId: core_connected_system
-    title: "See the connected system"
-    explanation: "Stations, workers, ingredients, and demand affect one another. ISE looks at how the whole system performs."
-    target: 0
-  - lessonId: core_whole_output
-    title: "Measure whole-process output"
-    explanation: "Items delivered to Pickup show what completed the whole process, not just what one station made."
-    target: 0
-  - lessonId: core_improve
-    title: "Use continuous improvement"
-    explanation: "Find a problem, make a focused change, and compare the whole-process result."
-    target: 0
+    explanation: "Objectives lists the targets you need to meet to advance."
+  shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

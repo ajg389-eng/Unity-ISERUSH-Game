@@ -46,6 +46,8 @@ public class SupplyPlanningScreenUI : MonoBehaviour
     bool planningStateInitialized;
 
     public Button TutorialPlaceOrderButton => applyButton;
+    internal Component TutorialCapacityTarget => capacityText;
+    internal Component TutorialBalanceRatesTarget => balanceButton;
 
     public Button TutorialAddButton(ItemDefinition item)
     {

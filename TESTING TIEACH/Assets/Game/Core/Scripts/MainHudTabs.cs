@@ -527,6 +527,7 @@ public class MainHudTabs : MonoBehaviour
     {
         EnsureWorkspaceTabs();
         if (index < 0 || index >= workspaceTabButtons.Length) return;
+        if (index == 2 && !MilestoneFeatures.SupplyPlanningUnlocked) return;
         if (OnboardingTutorial.IsFeatureLocked(WorkspaceTabButton(index))) return;
 
         bool buildTab = index == 0 || index == 3;
@@ -706,7 +707,8 @@ public class MainHudTabs : MonoBehaviour
         {
             Button button = workspaceTabButtons[i];
             if (button == null) continue;
-            bool phaseAllowsTab = !buildLocked || (i != 0 && i != 3);
+            bool phaseAllowsTab = (!buildLocked || (i != 0 && i != 3))
+                && (i != 2 || MilestoneFeatures.SupplyPlanningUnlocked);
             button.interactable = phaseAllowsTab && !OnboardingTutorial.IsFeatureLocked(button);
             if (!phaseAllowsTab)
             {

@@ -9,6 +9,7 @@ public static class MilestoneFeatures
     public const int RestaurantBasics = 1;
     public const int CapacityAndOptimization = 2;
     public const int Mk2Stations = 3;
+    public const int SupplyPlanning = 3;
     public const int AdvancedMenuRecipes = 4;
     public const int QualityAndReliability = 4;
     public const int SystemsIntegration = 4;
@@ -49,6 +50,7 @@ public static class MilestoneFeatures
     }
 
     public static bool Mk2StationsUnlocked => HasReached(Mk2Stations);
+    public static bool SupplyPlanningUnlocked => HasReached(SupplyPlanning);
 
     public static IReadOnlyList<string> GetUnlocksForMilestone(MilestoneDefinition milestone)
     {
@@ -63,12 +65,12 @@ public static class MilestoneFeatures
                 return new[]
                 {
                     "Cheeseburger", "Cheese Fries", "Whipped Cream Shake",
-                    "Express ingredient ordering"
+                    "Express ingredient ordering", "Analytics"
                 };
             case "milestone_03":
                 return new[]
                 {
-                    "Bacon Cheeseburger", "Classic Burger", "MK2 Stations"
+                    "Bacon Cheeseburger", "Classic Burger", "MK2 Stations", "Supply planning"
                 };
             case "milestone_04":
                 return new[]

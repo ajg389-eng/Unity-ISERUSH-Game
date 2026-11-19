@@ -23,6 +23,7 @@ public sealed class PostTutorialStationActionMenu : MonoBehaviour
     GameObject instructionPanel;
     Button moveButton;
     Button deleteButton;
+    internal Button DeleteButton => deleteButton;
     float messageUntil;
     float lastCanvasWidth = -1f;
     int displayedSelectionCount = -1;

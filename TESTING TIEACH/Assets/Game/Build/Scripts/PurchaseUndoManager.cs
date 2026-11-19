@@ -180,7 +180,7 @@ public class PurchaseUndoManager : MonoBehaviour
         }
     }
 
-    public bool DeletePlacedStationAndRefund(GameObject placed)
+    public bool DeletePlacedStationAndRefund(GameObject placed, int? practiceRefund = null)
     {
         if (placed == null) return false;
         for (int i = stack.Count - 1; i >= 0; i--)
@@ -192,7 +192,9 @@ public class PurchaseUndoManager : MonoBehaviour
             RefreshRelatedUi();
             return true;
         }
-        return false;
+        ItemDefinition practiceItem = placed.GetComponent<PlacedBuildItem>()?.itemDefinition;
+        return practiceRefund.HasValue && practiceItem != null
+            && UndoStation(new StationRecord { item = practiceItem, placed = placed, paid = practiceRefund.Value });
     }
 
     public void RecordFloorExpand(int addWidth, int addHeight, int paid)

@@ -22,7 +22,7 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
 
     public static void Open(Transform canvas)
     {
-        if (canvas == null || IsOpen) return;
+        if (canvas == null || IsOpen || OnboardingTutorial.IsAnalyticsAccessLocked) return;
 
         if (instance == null)
         {

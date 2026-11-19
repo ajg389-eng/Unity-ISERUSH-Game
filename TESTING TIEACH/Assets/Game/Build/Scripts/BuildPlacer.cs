@@ -986,10 +986,7 @@ public class BuildPlacer : MonoBehaviour
         if (target == null)
         {
             if (!additive)
-            {
                 ClearStationSelection();
-                ManagementModeController.Instance?.ClearBuildStationInspection();
-            }
             lastEditClickId = 0;
             return;
         }
@@ -1009,7 +1006,7 @@ public class BuildPlacer : MonoBehaviour
                 selectedObjects.Add(target);
                 StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
             }
-            ManagementModeController.Instance?.InspectStationFromBuild(target);
+
             BeginMoveSelected();
             return;
         }
@@ -1017,15 +1014,9 @@ public class BuildPlacer : MonoBehaviour
         if (selectedObjects.Contains(target))
         {
             if (additive)
-            {
                 RemoveFromSelection(target);
-                ManagementModeController.Instance?.ClearBuildStationInspection();
-            }
             else
-            {
-                ManagementModeController.Instance?.InspectStationFromBuild(target);
                 actionBar?.Refresh();
-            }
             return;
         }
 
@@ -1033,8 +1024,6 @@ public class BuildPlacer : MonoBehaviour
 
         selectedObjects.Add(target);
         StationSelectionHighlight.EnsureOn(target)?.SetSelected(true);
-        if (!additive)
-            ManagementModeController.Instance?.InspectStationFromBuild(target);
         actionBar?.Refresh();
         if (additive)
         {
@@ -1532,6 +1521,11 @@ public class BuildPlacer : MonoBehaviour
         if (tutorialRemoval && (selectedObjects.Count != 1
             || !OnboardingTutorial.CanRemoveTutorialPurchasedPantry(selectedObjects[0]))) return;
         if (IsStationEditingLocked || IsDragging || IsPlacing || selectedObjects.Count == 0) return;
+        if (selectedObjects.Exists(OnboardingTutorial.IsPracticePantryBeingConfigured))
+        {
+            ShowStationActionMessage("Set the practice Pantry to Potatoes first");
+            return;
+        }
         if (HasFixedDoorSelected)
         {
             ShowStationActionMessage("The entrance door cannot be deleted");
@@ -1551,8 +1545,8 @@ public class BuildPlacer : MonoBehaviour
             GameObject root = selectedObjects[i];
             if (root == null) { selectedObjects.RemoveAt(i); continue; }
             if (tutorialRemoval && !OnboardingTutorial.CanRemoveTutorialPurchasedPantry(root)) continue;
-            if (!undo.DeletePlacedStationAndRefund(root)) continue;
-            if (tutorialRemoval) OnboardingTutorial.NotifyTutorialPantryRemoved(root);
+            if (!undo.DeletePlacedStationAndRefund(root, OnboardingTutorial.GetPracticePantryRefund(root))) continue;
+            OnboardingTutorial.NotifyTutorialPantryRemoved(root);
             root.GetComponent<StationSelectionHighlight>()?.SetSelected(false);
             selectedObjects.RemoveAt(i);
             deleted++;

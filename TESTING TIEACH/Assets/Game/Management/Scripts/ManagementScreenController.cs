@@ -196,6 +196,9 @@ public class ManagementScreenController : MonoBehaviour
     {
         if (tabPanels == null || tabPanels.Length == 0) return;
         index = Mathf.Clamp(index, 0, tabPanels.Length - 1);
+        if (!MilestoneFeatures.SupplyPlanningUnlocked && tabPanels[index] != null
+            && (tabPanels[index].GetComponentInChildren<SupplyPlanningScreenUI>(true) != null
+                || tabPanels[index].GetComponentInChildren<IngredientsOrderUI>(true) != null)) return;
         if (selectedTabIndex == index && tabPanels[index] != null && tabPanels[index].activeSelf)
         {
             var supplyPlan = tabPanels[index].GetComponentInChildren<SupplyPlanningScreenUI>(true);
@@ -677,6 +680,7 @@ public class ManagementScreenController : MonoBehaviour
 
     public void OpenIngredientsTab()
     {
+        if (!MilestoneFeatures.SupplyPlanningUnlocked) return;
         if (!isOpen)
             Open();
         if (tabPanels == null) return;

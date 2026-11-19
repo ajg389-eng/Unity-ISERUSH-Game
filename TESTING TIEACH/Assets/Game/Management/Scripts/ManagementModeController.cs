@@ -123,7 +123,6 @@ public class ManagementModeController : MonoBehaviour
     enum PendingAction { None, PickOutput, PickWorker }
     PendingAction pending;
     StationNode selectedStation;
-    bool buildModeInspectionActive;
     StationSelectionHighlight selectedHighlight;
     WorkerHoverHighlight hoveredWorkerHighlight;
     KitchenEmployee selectedEmployee;
@@ -230,31 +229,6 @@ public class ManagementModeController : MonoBehaviour
     public bool IsManageMode =>
         modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Manage;
 
-    /// <summary>Open the shared station inspector for a station selected in the Stations view.</summary>
-    public void InspectStationFromBuild(GameObject stationObject)
-    {
-        if (modeManager == null || modeManager.CurrentMode != GameModeManager.Mode.Build
-            || stationObject == null)
-            return;
-        StationNode node = stationObject.GetComponentInChildren<StationNode>(true);
-        if (node == null)
-        {
-            ClearBuildStationInspection();
-            return;
-        }
-        buildModeInspectionActive = true;
-        SelectStation(node);
-    }
-
-    /// <summary>Close the build-mode inspector when the player deselects the station.</summary>
-    public void ClearBuildStationInspection()
-    {
-        if (!buildModeInspectionActive) return;
-        buildModeInspectionActive = false;
-        if (modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Build)
-            ClearStationSelection();
-    }
-
     /// <summary>Select a worker from the Management UI and show their grid workflow.</summary>
     public void SelectWorker(KitchenEmployee employee)
     {
@@ -293,24 +267,6 @@ public class ManagementModeController : MonoBehaviour
     {
         if (!IsManageMode)
         {
-            bool keepBuildInspection = buildModeInspectionActive
-                && modeManager != null && modeManager.CurrentMode == GameModeManager.Mode.Build
-                && selectedStation != null && stationPopup != null && stationPopup.activeSelf;
-            if (keepBuildInspection)
-            {
-                if (Time.unscaledTime >= nextStationDisplayRefresh)
-                {
-                    nextStationDisplayRefresh = Time.unscaledTime + StationDisplayRefreshInterval;
-                    if (selectedStation.GetComponent<HeatLampStation>() != null)
-                        RefreshHeatLampInventory();
-                    else
-                        RefreshRecipeStationRatesLive();
-                    RefreshStationSummary();
-                }
-                return;
-            }
-
-            buildModeInspectionActive = false;
             CustomerWallDoor.HideActivePopup();
             if (IsCapturingFlow)
                 CancelFlowCapture();
@@ -323,7 +279,6 @@ public class ManagementModeController : MonoBehaviour
             return;
         }
 
-        buildModeInspectionActive = false;
 
         bool shiftInProgress = GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress;
         if (shiftInProgress != cachedShiftInProgress)
@@ -1153,7 +1108,7 @@ public class ManagementModeController : MonoBehaviour
         }
         else if (productInfoText != null && hasOutputChoices)
         {
-            productInfoText.text = "CLICK OUTPUT TO CHANGE";
+            productInfoText.text = GetItemPickerHint();
             productInfoText.gameObject.SetActive(true);
         }
         if (!recipePickerOpen && productListContainer != null)
@@ -2900,13 +2855,18 @@ public class ManagementModeController : MonoBehaviour
             productBuildHash = int.MinValue;
         }
         if (productInfoText != null && productInfoText.gameObject.activeSelf)
-            productInfoText.text = "CLICK OUTPUT TO CHANGE";
+            productInfoText.text = GetItemPickerHint();
 
         if (selectedStation != null && stationPopup != null && stationPopup.activeSelf)
             ApplyPanelLayout(selectedStation.GetComponent<HeatLampStation>() != null);
         if (productionOutputSelectButton != null && productListContainer != null)
             productionOutputSelectButton.interactable = productListContainer.childCount > 0;
     }
+
+    string GetItemPickerHint() => selectedStation != null
+        && (selectedStation.GetComponent<PantryStation>() != null
+            || selectedStation.GetComponent<FreezerStation>() != null)
+        ? "CLICK TO CHOOSE INGREDIENT" : "CLICK OUTPUT TO CHANGE";
 
     void EnsureRecipePickerUI()
     {

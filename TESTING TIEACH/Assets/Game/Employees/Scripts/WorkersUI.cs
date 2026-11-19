@@ -21,6 +21,11 @@ public class WorkersUI : MonoBehaviour
     public ScrollRect workerCardsScroll;
     public Component TutorialFlowHeaderTarget => flowHeaderLabel;
     public Component TutorialFlowTabsTarget => flowTabsScroll != null ? flowTabsScroll : flowListRow as Component;
+    public Button GetTutorialFlowTab(ProductionFlowPlan flow)
+    {
+        int index = displayedTabFlows.IndexOf(flow);
+        return index >= 0 ? displayedTabButtons[index] : null;
+    }
     public Component TutorialCreateFlowTarget => createFlowButton;
     public Component TutorialEditFlowTarget => editFlowButton;
     public Component TutorialWorkerCardsTarget
@@ -478,8 +483,9 @@ public class WorkersUI : MonoBehaviour
             production = FindObjectOfType<ProductionManager>();
             if (production == null) return;
         }
-        production.HireWorker();
+        KitchenEmployee hired = production.HireWorker();
         Refresh();
+        if (hired != null) OnboardingTutorial.NotifyWorkerHired();
     }
 
     void SetHireButtonLabel(string label)

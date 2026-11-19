@@ -28,43 +28,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   shiftQuestions:
-  - questionId: core_process
-    prompt: "What is a process?"
+  - questionId: flow_route
+    prompt: "What does a production flow show?"
     answers:
-    - "Connected steps that turn ingredients into a finished item"
-    - "A single station working by itself"
-    - "A list of menu prices"
+    - "Where workers carry items next"
+    - "Which song is playing"
+    - "How much cash is in the register"
     correctAnswerIndex: 0
-    explanation: "A process connects work steps from inputs to finished output."
-  - questionId: core_bottleneck
-    prompt: "What does a bottleneck limit?"
+    explanation: "A flow connects the stations that make and deliver an item."
+  - questionId: fries_cutting
+    prompt: "Which station cuts potatoes for fries?"
     answers:
-    - "The finished output of the whole process"
-    - "The price of each recipe"
-    - "The number of stations in the restaurant"
+    - "Cutting Station"
+    - "Register"
+    - "Pickup Station"
     correctAnswerIndex: 0
-    explanation: "The bottleneck is the step that limits how quickly the process can finish items."
-  - questionId: core_queue
-    prompt: "What can a growing queue tell you?"
+    explanation: "The Cutting Station turns potatoes into slices before they go to the Fryer."
+  - questionId: pantry_ingredient
+    prompt: "Where do you choose what a Pantry supplies?"
     answers:
-    - "The next step cannot keep up with incoming work"
-    - "The whole process has extra capacity"
-    - "The item is already ready for pickup"
+    - "Select it in Kitchen → Workers"
+    - "Click the music button"
+    - "Open Objectives"
     correctAnswerIndex: 0
-    explanation: "A queue grows when work arrives faster than the next process step can handle it."
-  shiftLessons:
-  - lessonId: core_process
-    title: "Follow the process"
-    explanation: "A process is connected steps that turn ingredients into finished items. Check how each step links to the next."
-    target: 1
-  - lessonId: core_bottleneck
-    title: "Find the bottleneck"
-    explanation: "The bottleneck is the step that limits finished output. Improving another step may not increase the whole process output."
-    target: 0
-  - lessonId: core_queue
-    title: "Read the queue"
-    explanation: "A growing queue means work is arriving faster than the next step can handle it."
-    target: 1
+    explanation: "In Workers, select a station and use its ingredient box."
+  shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 58;
+    public const int CurrentVersion = 60;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
@@ -39,6 +39,10 @@ public class KitchenSaveSnapshot
     public bool milestoneOneBottleneckLessonDone;
     public bool milestoneOneAnalyticsLessonDone;
     public int milestoneOneIntroProgress;
+    public bool supplyLessonDone;
+    public bool workerLessonDone, workerLessonHireReviewed;
+    public int workerLessonFlowIndex = -1;
+    public OnboardingTutorial.PantryPracticeState pantryPractice;
     public bool tutorialBaselinePracticeRunStarted;
     public bool tutorialObservingImprovedLayout;
     public int tutorialBaselineCustomersSpawned, tutorialBaselineCustomersServed;
@@ -141,6 +145,13 @@ public class KitchenSaveSnapshot
             && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
         s.milestoneOneIntroProgress = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.MilestoneOneIntroProgressForSave : 0;
+        s.supplyLessonDone = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.SupplyLessonDoneForSave;
+        if (OnboardingTutorial.Instance != null)
+        {
+            s.workerLessonDone = OnboardingTutorial.Instance.WorkerLessonDoneForSave;
+            s.workerLessonHireReviewed = OnboardingTutorial.Instance.WorkerLessonHireReviewedForSave;
+        }
+        s.pantryPractice = OnboardingTutorial.Instance?.CapturePantryPractice();
         s.tutorialBaselinePracticeRunStarted = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.BaselinePracticeRunStartedForSave;
         s.tutorialObservingImprovedLayout = OnboardingTutorial.Instance != null
@@ -325,6 +336,8 @@ public class KitchenSaveSnapshot
                 }
                 s.workers.Add(w);
             }
+            if (OnboardingTutorial.Instance != null)
+                s.workerLessonFlowIndex = OnboardingTutorial.Instance.CaptureWorkerLessonFlowIndex(pm.productionFlows);
             foreach(var flow in pm.productionFlows) if(flow!=null) {
                 flow.EnsureLegacyConnections();
                 var f=new Flow {name=flow.flowName,kind=flow.kind,steps=new List<string>(flow.stepIds),graphInitialized=flow.graphInitialized,autoName=flow.autoName};
@@ -911,7 +924,12 @@ public class KitchenSaveSnapshot
                 resumeShift && version >= 57 ? tutorialBaselineCustomersLeft : 0,
                 resumeShift && version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f,
                 resumeShift && tutorialObservingImprovedLayout,
-                milestoneOneIntroProgress);
+                version < 59 && milestoneOneIntroProgress >= 9
+                    ? (milestoneProgress?.ActiveMilestoneId == "milestone_01" ? 9 : milestoneOneIntroProgress + 1)
+                    : milestoneOneIntroProgress,
+                supplyLessonDone, pantryPractice, workerLessonDone, workerLessonHireReviewed,
+                version >= 60 && workerLessonFlowIndex >= 0 && workerLessonFlowIndex < pm.productionFlows.Count
+                    ? pm.productionFlows[workerLessonFlowIndex] : null);
         return true;
     }
 

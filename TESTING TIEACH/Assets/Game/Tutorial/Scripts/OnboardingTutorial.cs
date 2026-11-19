@@ -13,14 +13,19 @@ public class OnboardingTutorial : MonoBehaviour
     public const string PauseSource = "OnboardingTutorial";
     const string CustomerJourneyPauseSource = "OnboardingTutorial.CustomerJourney";
     const string TutorialArrowCursorResource = "Cursors/KenneyUpLeftCursorOutlined";
-    const int AnalyticsTourCloseStage = 11;
+    const int AnalyticsTourCloseStage = 5;
     const int OnboardingStepCount = 4;
     const int MilestoneOneBottleneckStep = 4;
-    const int MilestoneOneAnalyticsStep = 5;
+    const int MilestoneTwoAnalyticsStep = 5;
     const int MilestoneOneIntroStep = 6;
     const int MilestoneOneFlowDemoStep = 7;
     const int MilestoneOneRecipesStep = 8;
-    const int MilestoneOneObjectivesStep = 9;
+    const int MilestoneOneBuildStep = 9;
+    const int MilestoneOneObjectivesStep = 10;
+    const int MilestoneThreeSupplyStep = 11;
+    const int HireWorkerStep = 12;
+    const int AssignWorkerStep = 13;
+    const int SupplyTourLastPage = 2;
     const int BaselineRunCustomerCount = 15;
     const float BaselineRunDurationSeconds = 180f;
     const float FeatureLockRefreshSeconds = 0.35f;
@@ -30,7 +35,7 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
     public static bool IsActive => Instance != null && Instance.running
         && !Instance.milestoneOneLessonActive;
-    public static bool CanStartShiftFromPlan => Instance == null || (!Instance.IsMilestoneOneIntro
+    public static bool CanStartShiftFromPlan => Instance == null || (!Instance.milestoneOneLessonActive
         && (!IsActive || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
             && Steps[Instance.stepIndex].requireShiftStarted && !Instance.tutorialShiftStarted)));
     public static bool BlocksAutoCustomers => IsActive || !IsComplete;
@@ -42,6 +47,21 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
     internal static bool IsFirstDayRecipeAccessLocked => IsFirstDayFeatureLockedUntil(MilestoneOneRecipesStep);
     internal static bool IsFirstDayObjectivesAccessLocked => IsFirstDayFeatureLockedUntil(MilestoneOneObjectivesStep);
+    internal static bool IsAnalyticsAccessLocked => IsComplete
+        && !MilestoneFeatures.HasReached(MilestoneFeatures.CapacityAndOptimization);
+
+    internal static bool HasIntroducedShiftQuestions(MilestoneDefinition milestone)
+    {
+        OnboardingTutorial tutorial = Instance;
+        if (tutorial == null || milestone == null || !IsComplete) return false;
+        return milestone.milestoneId switch
+        {
+            "milestone_01" => tutorial.milestoneOneIntroProgress > MilestoneOneObjectivesStep,
+            "milestone_02" => tutorial.milestoneOneAnalyticsLessonDone,
+            "milestone_03" => tutorial.supplyLessonDone,
+            _ => true
+        };
+    }
 
     static bool IsFirstDayFeatureLockedUntil(int step)
     {
@@ -79,7 +99,7 @@ public class OnboardingTutorial : MonoBehaviour
             return !tutorial.IsFeatureIntroduced(button);
 
         bool deferredGateActive = tutorial.gameplayReady && IsComplete
-            && (!tutorial.milestoneOneBottleneckLessonDone || !tutorial.milestoneOneAnalyticsLessonDone
+            && (IsAnalyticsAccessLocked || !MilestoneFeatures.SupplyPlanningUnlocked
                 || IsFirstDayObjectivesAccessLocked);
         return deferredGateActive && tutorial.IsDeferredMilestoneFeatureLocked(button);
     }
@@ -111,7 +131,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         bool tutorialGateActive = gameplayReady && !IsComplete && (running || pendingStart);
         bool deferredLessonGateActive = gameplayReady && IsComplete
-            && (!milestoneOneBottleneckLessonDone || !milestoneOneAnalyticsLessonDone
+            && (IsAnalyticsAccessLocked || !MilestoneFeatures.SupplyPlanningUnlocked
                 || IsFirstDayObjectivesAccessLocked);
         if (!tutorialGateActive && !deferredLessonGateActive)
         {
@@ -196,7 +216,7 @@ public class OnboardingTutorial : MonoBehaviour
             onboardingLocksActive && stepIndex < 1);
 
         AnalyticsPopupUI analytics = FindFirstObjectByType<AnalyticsPopupUI>(FindObjectsInactive.Include);
-        bool analyticsLocked = onboardingLocksActive || IsDeferredMilestoneAnalyticsLocked();
+        bool analyticsLocked = onboardingLocksActive || IsAnalyticsAccessLocked;
         TutorialFeatureLockOverlay.SetLocked(analytics != null
             ? analytics.transform as RectTransform : null, analyticsLocked);
 
@@ -204,8 +224,7 @@ public class OnboardingTutorial : MonoBehaviour
         RectTransform stationPopupRect = stationManagement != null && stationManagement.stationPopup != null
             ? stationManagement.stationPopup.transform as RectTransform : null;
         bool stationHealthIntroduced = IsCurrentStep(step => step.requireStationHealthReview);
-        bool stationHealthLocked = onboardingLocksActive && !stationHealthIntroduced
-            || IsDeferredMilestoneStationHealthLocked();
+        bool stationHealthLocked = onboardingLocksActive && !stationHealthIntroduced;
         TutorialFeatureLockOverlay.SetLocked(stationPopupRect, stationHealthLocked);
 
         MissionListUI objectives = FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
@@ -316,32 +335,17 @@ public class OnboardingTutorial : MonoBehaviour
 
     bool IsDeferredMilestoneFeatureLocked(Button button)
     {
-        if (IsAnalyticsControl(button)) return IsDeferredMilestoneAnalyticsLocked();
+        if (IsAnalyticsControl(button)) return IsAnalyticsAccessLocked;
         if (button != null)
         {
             if (button.name == "ObjectivesTopTab") return IsFirstDayObjectivesAccessLocked;
             if (button.name == "RecipesButton" || button.name == "OpenRecipes")
                 return IsFirstDayRecipeAccessLocked;
+            if (button.name == "WorkspaceTab_Supply" || button.name == "Tab_Supplies")
+                return !MilestoneFeatures.SupplyPlanningUnlocked;
         }
 
-        ManagementModeController management = ManagementModeController.Instance;
-        if (management != null && management.stationPopup != null
-            && button != null && button.transform.IsChildOf(management.stationPopup.transform))
-            return IsDeferredMilestoneStationHealthLocked();
-
         return false;
-    }
-
-    bool IsDeferredMilestoneAnalyticsLocked()
-    {
-        if (!IsComplete || milestoneOneAnalyticsLessonDone) return false;
-        return !(milestoneOneLessonActive && stepIndex == MilestoneOneAnalyticsStep);
-    }
-
-    bool IsDeferredMilestoneStationHealthLocked()
-    {
-        if (!IsComplete || milestoneOneBottleneckLessonDone) return false;
-        return !(milestoneOneLessonActive && stepIndex == MilestoneOneBottleneckStep);
     }
 
     static bool IsAnalyticsControl(Button button)
@@ -630,8 +634,58 @@ public class OnboardingTutorial : MonoBehaviour
     public bool MilestoneOneBottleneckLessonDoneForSave => milestoneOneBottleneckLessonDone;
     public bool MilestoneOneAnalyticsLessonDoneForSave => milestoneOneAnalyticsLessonDone;
     int milestoneOneIntroProgress;
-    bool IsMilestoneOneIntro => milestoneOneLessonActive && stepIndex >= MilestoneOneIntroStep;
+    bool IsMilestoneOneIntro => milestoneOneLessonActive && stepIndex >= MilestoneOneIntroStep
+        && stepIndex <= MilestoneOneObjectivesStep;
     bool IsFirstDayRecipeReview => IsMilestoneOneIntro && stepIndex == MilestoneOneRecipesStep;
+    bool IsFirstDayBuildLesson => IsMilestoneOneIntro && stepIndex == MilestoneOneBuildStep;
+    int DeletePantryStage => IsFirstDayBuildLesson ? 3 : 2;
+    bool BuildTutorialComplete => buildTutorialStage > DeletePantryStage;
+    [System.Serializable]
+    public sealed class PantryPracticeState
+    {
+        public int stage, paid;
+        public bool purchased;
+        public string stationId;
+    }
+    PantryPracticeState pendingPantryPractice;
+    int buildTutorialPantryPaid;
+
+    public PantryPracticeState CapturePantryPractice()
+    {
+        if (!IsFirstDayBuildLesson) return pendingPantryPractice;
+        return new PantryPracticeState
+        {
+            stage = buildTutorialStage,
+            paid = buildTutorialPantryPaid,
+            purchased = buildTutorialPantryPurchaseMade,
+            stationId = buildTutorialPantry != null
+                ? StationNode.EnsureOn(buildTutorialPantry)?.StableStationId : null
+        };
+    }
+    bool IsSupplyLesson => milestoneOneLessonActive && stepIndex == MilestoneThreeSupplyStep;
+    bool supplyLessonDone;
+    int supplyLessonPage;
+    public bool SupplyLessonDoneForSave => supplyLessonDone;
+    bool IsWorkerLesson => milestoneOneLessonActive
+        && (stepIndex == HireWorkerStep || stepIndex == AssignWorkerStep);
+    ProductionFlowPlan workerLessonFlow;
+    bool workerLessonDone;
+    bool workerLessonHireReviewed;
+    public bool WorkerLessonDoneForSave => workerLessonDone;
+    public bool WorkerLessonHireReviewedForSave => workerLessonHireReviewed;
+
+    public int CaptureWorkerLessonFlowIndex(List<ProductionFlowPlan> flows)
+    {
+        if (workerLessonFlow == null || flows == null) return -1;
+        int index = 0;
+        foreach (ProductionFlowPlan flow in flows)
+        {
+            if (flow == workerLessonFlow) return index;
+            if (flow != null) index++;
+        }
+        return -1;
+    }
+
     bool firstDayFriesReviewed;
     bool firstDayShakeReviewed;
     public int MilestoneOneIntroProgressForSave => milestoneOneIntroProgress;
@@ -646,7 +700,9 @@ public class OnboardingTutorial : MonoBehaviour
         bool savedBaselinePracticeRunStarted = false, int savedBaselineCustomersSpawned = 0,
         int savedBaselineCustomersServed = 0, int savedBaselineCustomersLeft = 0,
         float savedBaselinePracticeElapsedSeconds = 0f, bool savedObservingImprovedLayout = false,
-        int savedMilestoneOneIntroProgress = 0)
+        int savedMilestoneOneIntroProgress = 0, bool savedSupplyLessonDone = false,
+        PantryPracticeState savedPantryPractice = null, bool savedWorkerLessonDone = false,
+        bool savedWorkerLessonHireReviewed = false, ProductionFlowPlan savedWorkerLessonFlow = null)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -687,6 +743,11 @@ public class OnboardingTutorial : MonoBehaviour
         milestoneOneBottleneckLessonDone = savedMilestoneOneBottleneckLessonDone;
         milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone;
         milestoneOneIntroProgress = Mathf.Clamp(savedMilestoneOneIntroProgress, 0, MilestoneOneObjectivesStep + 1);
+        supplyLessonDone = savedSupplyLessonDone;
+        workerLessonDone = savedWorkerLessonDone;
+        workerLessonFlow = complete && !workerLessonDone ? savedWorkerLessonFlow : null;
+        workerLessonHireReviewed = workerLessonFlow != null && savedWorkerLessonHireReviewed;
+        pendingPantryPractice = savedPantryPractice;
         milestoneOneLessonActive = false;
         tutorialStationHealthReviewed = false;
         milestoneOneStationClickObserved = false;
@@ -1030,8 +1091,8 @@ public class OnboardingTutorial : MonoBehaviour
             "It is noon. Open <b>Kitchen</b>, choose <b>Workers</b>, and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
         new Step("Review Analytics",
-            "It is 6 PM. Open <b>Analytics</b> and review demand, orders, production, and service performance.",
-            "Finish", Highlight.None, requireAnalyticsScreen: true),
+            "Open <b>Analytics</b> to compare service, demand, and production.",
+            "Finish", Highlight.None, pauseSim: true, requireAnalyticsScreen: true),
         new Step("Expand the menu",
             "Let's look at your <b>burger flow</b> before building the new lines.",
             "Show me", Highlight.None, pauseSim: true),
@@ -1041,9 +1102,21 @@ public class OnboardingTutorial : MonoBehaviour
         new Step("Review fries and shakes",
             "Open <b>Recipes</b> to see the ingredients and stations for fries and shakes.",
             "Next", Highlight.None, pauseSim: true, requireRecipeScreen: true),
+        new Step("Set up a workstation",
+            "Buy a Pantry and practice choosing what it supplies.",
+            "Next", Highlight.None, pauseSim: true, requireBuildOverview: true),
         new Step("Check your objectives",
             "Open <b>Objectives</b>. Complete the listed tasks in one shift to unlock the next milestone.",
-            "Finish", Highlight.None, pauseSim: true, requireObjectivesScreen: true)
+            "Finish", Highlight.None, pauseSim: true, requireObjectivesScreen: true),
+        new Step("Plan your supply",
+            "Open <b>Kitchen → Supply</b> to see your ingredient stock.",
+            "Next", Highlight.None, pauseSim: true),
+        new Step("Hire a worker",
+            "In <b>Workers</b>, click <b>Hire Worker</b>. If you already have a worker to use, click <b>Next</b>.",
+            "Next", Highlight.None, pauseSim: true, openWorkers: true),
+        new Step("Assign a worker",
+            "Click <b>Assign</b> on a worker's card, or drag the card onto your new flow's tab.",
+            "Finish", Highlight.None, pauseSim: true, openWorkers: true)
     };
 
     // Gus gives the player context and motivation. The moving instruction card
@@ -1055,11 +1128,15 @@ public class OnboardingTutorial : MonoBehaviour
         "Let's see how this process handles 15 customers over three minutes before we start changing anything.",
         "Let's shorten the route between stations and see if we can get more burgers out.",
         "That line's slowing down around noon. Help me see where things are getting stuck.",
-        "Take a look at the day's numbers. I want to know what we actually got out the door.",
+        "Analytics shows where the kitchen is keeping up and where we need more capacity.",
         "I stocked potatoes, fry containers, milk, and cups. Let's add fries and shakes.",
         "A flow tells workers where to pick up ingredients and where to deliver them.",
         "The recipe diagrams show what goes into each item and where it gets made.",
-        "Check the tasks before you open, then set up the menu and kitchen to meet them."
+        "Let's use an extra Pantry to practice buying, setting an ingredient, and deleting a station.",
+        "Check the tasks before you open, then set up the menu and kitchen to meet them.",
+        "I've handled ingredient deliveries up to now. It's your turn to run Supply.",
+        "Your flow is saved. Let's get someone to run it.",
+        "Give a worker this flow so they know which stations to run."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -1186,6 +1263,11 @@ public class OnboardingTutorial : MonoBehaviour
         inheritedStationMoved = false;
         observingImprovedLayout = false;
         milestoneOneIntroProgress = 0;
+        supplyLessonDone = false;
+        workerLessonDone = false;
+        workerLessonFlow = null;
+        workerLessonHireReviewed = false;
+        pendingPantryPractice = null;
         inheritedBaselineRate = 0f;
         inheritedTargetRate = 0f;
         furthestStepIndex = -1;
@@ -1453,10 +1535,40 @@ public class OnboardingTutorial : MonoBehaviour
             InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inventory != null && inventory.IsPanelOpen) inventory.TogglePanel();
         }
-        if (milestoneOneLessonActive && stepIndex == MilestoneOneAnalyticsStep)
+        if (milestoneOneLessonActive && stepIndex == MilestoneTwoAnalyticsStep)
         {
             milestoneOneAnalyticsLessonDone = true;
             EndMilestoneOneLesson();
+            GameSaveSlots.SaveActiveSlot();
+            return;
+        }
+
+        if (IsWorkerLesson)
+        {
+            if (stepIndex == HireWorkerStep)
+                ShowWorkerAssignmentStep();
+            else
+            {
+                workerLessonDone = true;
+                workerLessonFlow = null;
+                EndMilestoneOneLesson();
+                GameSaveSlots.SaveActiveSlot();
+            }
+            return;
+        }
+
+        if (IsSupplyLesson)
+        {
+            if (supplyLessonPage < SupplyTourLastPage)
+            {
+                supplyLessonPage++;
+                nextControlHighlightRefresh = 0f;
+                RefreshControlHighlights();
+                return;
+            }
+            supplyLessonDone = true;
+            EndMilestoneOneLesson();
+            GameSaveSlots.SaveActiveSlot();
             return;
         }
 
@@ -1699,8 +1811,9 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (stepLabel != null)
             stepLabel.text = milestoneOneLessonActive
-                ? IsMilestoneOneIntro ? "MILESTONE 1  |  FIRST DAY"
-                    : stepIndex == MilestoneOneBottleneckStep ? "MILESTONE 1  |  12 PM" : "MILESTONE 1  |  6 PM"
+                ? IsWorkerLesson ? "WORKERS"
+                    : IsSupplyLesson ? "MILESTONE 3"
+                    : stepIndex == MilestoneTwoAnalyticsStep ? "MILESTONE 2" : "MILESTONE 1"
                 : $"Tutorial  {stepIndex + 1} / {OnboardingStepCount}";
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
@@ -2325,7 +2438,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (stationaryRecipeTutorial)
             panelPosition = new Vector2(0f, -rootHeight * 0.12f);
         bool fixedImproveLineCard = running && Steps[stepIndex].requireOptimizedLayout;
-        if (fixedImproveLineCard || IsMilestoneOneIntro)
+        if (fixedImproveLineCard || milestoneOneLessonActive)
         {
             const float topBarGap = 26f;
             float cardY = rootHeight * 0.5f - 122f - panelHeight * 0.5f;
@@ -2667,7 +2780,8 @@ public class OnboardingTutorial : MonoBehaviour
         {
             var step = Steps[stepIndex];
             string labelText = ready
-                ? observingImprovedLayout ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
+                ? observingImprovedLayout || (IsSupplyLesson && supplyLessonPage == SupplyTourLastPage)
+                    ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
                 : LockedLabel(step);
             nextLabel.text = labelText;
             FitTutorialButton();
@@ -2678,6 +2792,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     string LockedLabel(Step step)
     {
+        if (IsSupplyLesson) return "Open Supply";
         if (IsBaselinePracticeStep(step))
         {
             if (!tutorialShiftStarted) return "Start Shift";
@@ -2694,9 +2809,10 @@ public class OnboardingTutorial : MonoBehaviour
             return "Open Business";
         if (step.requireBuildOverview)
         {
-            if (!IsBuildInventoryOpen()) return "Open Build";
-            if (buildTutorialStage == 1) return "Buy and place a Pantry";
-            if (buildTutorialStage == 2) return "Remove the extra Pantry";
+            if (IsFirstDayBuildLesson && buildTutorialStage == 2) return "Set Potatoes";
+            if (!IsBuildInventoryOpen()) return "Open Stations";
+            if (buildTutorialStage <= 1) return "Buy and place a Pantry";
+            if (buildTutorialStage == DeletePantryStage) return "Delete the practice Pantry";
         }
         if (step.requireProductionFlowOverview && !IsBusinessOverviewOpen())
             return "Open Business";
@@ -2821,7 +2937,8 @@ public class OnboardingTutorial : MonoBehaviour
             && (!analyticsScreenOpened || !analyticsScreenClosed
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
         if (step.requireBusinessOverview && !IsBusinessOverviewOpen()) return false;
-        if (step.requireBuildOverview && buildTutorialStage < 3) return false;
+        if (IsSupplyLesson && !IsBusinessSupplyTabActive()) return false;
+        if (step.requireBuildOverview && !BuildTutorialComplete) return false;
         if (step.requireProductionFlowOverview && !IsBusinessOverviewOpen()) return false;
         if (step.requireBusinessOverview && businessOverviewStage <= 2 && !IsBusinessWorkersTabActive()) return false;
         if (step.requireBusinessOverview && businessOverviewStage == 3 && !IsBusinessSupplyTabActive()) return false;
@@ -3039,17 +3156,11 @@ public class OnboardingTutorial : MonoBehaviour
     {
         switch (analyticsTutorialStage)
         {
-            case 0: return "<b>Customers in Store</b> counts customers currently waiting or being served.";
-            case 1: return "<b>Order to Pickup</b> is average time from register order to collecting the full order.";
-            case 2: return "<b>Orders Served / Min</b> measures completed customer orders per minute.";
-            case 3: return "<b>Service Rate</b> is the share of customers served instead of lost.";
-            case 4: return "<b>Arrivals this hour</b> compares actual customer arrivals with planned arrivals so far.";
-            case 5: return "<b>Item</b> names the menu product tracked by each row. Click an <b>i</b> for a column definition.";
-            case 6: return "<b>Open Orders</b> counts register orders still waiting for pickup.";
-            case 7: return "<b>Ordered / Min</b> is the recent rate customers ordered this item at the register.";
-            case 8: return "<b>Demand / Min</b> is the forecast rate of customer demand for this item.";
-            case 9: return "<b>Produced / Min</b> counts units delivered to Pickup Stations in the last 60 seconds.";
-            case 10: return "<b>Predicted / Min</b> estimates steady flow output using timing, supply, and pickup space.";
+            case 0: return "<b>Service Rate</b> shows the share of customers you served.";
+            case 1: return "<b>Demand / Min</b> shows how many of each item customers are expected to order.";
+            case 2: return "<b>Produced / Min</b> shows what reached Pickup. Compare it with demand to spot shortfalls.";
+            case 3: return "A <b>bottleneck</b> limits the whole line's output. If production falls short, check which station is holding up the flow.";
+            case 4: return "<b>Customers in Store</b> counts people still here. If they arrive faster than you serve them, the waiting line grows.";
             default: return analyticsScreenOpened && !analyticsScreenClosed && AnalyticsPopupUI.IsOpen
                 ? "Close Analytics. Then click <b>Finish</b> to complete the tutorial."
                 : "Open Analytics again to close it and finish the walkthrough.";
@@ -3238,6 +3349,14 @@ public class OnboardingTutorial : MonoBehaviour
 
     public static void NotifyFlowSaved(ProductionFlowPlan flow, bool wasEdit)
     {
+        OnboardingTutorial tutorial = Instance;
+        if (!wasEdit && flow != null && IsComplete && tutorial != null
+            && !tutorial.workerLessonDone && tutorial.workerLessonFlow == null)
+        {
+            tutorial.workerLessonFlow = flow;
+            tutorial.workerLessonHireReviewed = false;
+        }
+
         if (!IsActive || flow == null || flow.stations == null || flow.stations.Count < 2)
             return;
 
@@ -3246,6 +3365,19 @@ public class OnboardingTutorial : MonoBehaviour
         else if (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
             && Steps[Instance.stepIndex].requireFlow && IsBurgerTutorialFlow(flow))
             Instance.flowCreateCompleted = true;
+    }
+
+    internal static void NotifyWorkerHired()
+    {
+        if (Instance != null && Instance.IsWorkerLesson && Instance.stepIndex == HireWorkerStep)
+            Instance.ShowWorkerAssignmentStep();
+    }
+
+    void ShowWorkerAssignmentStep()
+    {
+        workerLessonHireReviewed = true;
+        stepIndex = AssignWorkerStep;
+        ShowStep();
     }
 
     bool AllTutorialStationsPlaced()
@@ -3994,6 +4126,7 @@ public class OnboardingTutorial : MonoBehaviour
         buildTutorialStage = 0;
         buildTutorialPantryPurchaseMade = false;
         buildTutorialPantry = null;
+        buildTutorialPantryPaid = 0;
         buildTutorialStartingPantries.Clear();
         foreach (PantryStation pantry in FindObjectsByType<PantryStation>(
                      FindObjectsInactive.Exclude, FindObjectsSortMode.None))
@@ -4001,6 +4134,32 @@ public class OnboardingTutorial : MonoBehaviour
             if (pantry == null) continue;
             PlacedBuildItem placed = pantry.GetComponentInParent<PlacedBuildItem>();
             if (placed != null) buildTutorialStartingPantries.Add(placed.gameObject);
+        }
+
+        if (!IsFirstDayBuildLesson) return;
+        if (pendingPantryPractice == null)
+        {
+            ItemDefinition pantryItem = FindBuildTutorialPantryItem();
+            InventoryManager inventory = FindFirstObjectByType<InventoryManager>();
+            buildTutorialPantryPurchaseMade = pantryItem != null && inventory != null && inventory.GetCount(pantryItem) > 0;
+            return;
+        }
+        PantryPracticeState saved = pendingPantryPractice;
+        pendingPantryPractice = null;
+        buildTutorialStage = Mathf.Clamp(saved.stage, 0, DeletePantryStage + 1);
+        buildTutorialPantryPurchaseMade = saved.purchased;
+        buildTutorialPantryPaid = Mathf.Max(0, saved.paid);
+        if (!string.IsNullOrEmpty(saved.stationId))
+            foreach (GameObject pantry in buildTutorialStartingPantries)
+                if (pantry.GetComponent<StationNode>()?.StableStationId == saved.stationId)
+                {
+                    buildTutorialPantry = pantry;
+                    break;
+                }
+        if (buildTutorialStage >= 2 && !BuildTutorialComplete && buildTutorialPantry == null)
+        {
+            buildTutorialStage = 1;
+            buildTutorialPantryPurchaseMade = false;
         }
     }
 
@@ -4026,6 +4185,23 @@ public class OnboardingTutorial : MonoBehaviour
                 SetBuildTutorialInstruction();
             }
         }
+        if (IsFirstDayBuildLesson && buildTutorialStage >= 2 && !BuildTutorialComplete)
+        {
+            if (buildTutorialPantry == null)
+            {
+                buildTutorialStage = 1;
+                buildTutorialPantryPurchaseMade = false;
+                SetBuildTutorialInstruction();
+                return;
+            }
+            ItemDefinition potatoes = ProductionManager.Instance?.orderConfig?.friesIngredient;
+            PantryStation pantry = buildTutorialPantry.GetComponentInChildren<PantryStation>();
+            if (buildTutorialStage == 2 && potatoes != null && pantry != null && pantry.CanDispense(potatoes))
+            {
+                buildTutorialStage = DeletePantryStage;
+                SetBuildTutorialInstruction();
+            }
+        }
     }
 
     GameObject FindNewTutorialPantry()
@@ -4046,9 +4222,12 @@ public class OnboardingTutorial : MonoBehaviour
         string text = buildTutorialStage switch
         {
             0 => "Open <b>Kitchen</b>, choose <b>Stations</b>, and find the Pantry.",
-            1 => "Find the <b>Pantry</b> card and click <b>Buy</b>. Place the extra Pantry on an open floor tile to see how a purchase becomes a station.",
-            2 => "The extra Pantry is placed. Select that station, then click <b>Delete</b> in the action bar to remove it and return its cost. Your starting stations stay in place.",
-            _ => "The extra Pantry was removed and refunded. Your original kitchen is still intact."
+            1 => buildTutorialPantryPurchaseMade
+                ? "Place the Pantry on a clear floor tile. Use <b>Place</b> on its card if you closed the preview."
+                : "Choose <b>Buy</b> on the Pantry card, then click a clear floor tile.",
+            2 when IsFirstDayBuildLesson => "Open <b>Workers</b> and select the new Pantry. Click its ingredient box and choose <b>Potatoes</b>.",
+            _ when BuildTutorialComplete => "Practice complete. Now you can set up your own stations.",
+            _ => "Switch to <b>Stations</b>, select the practice Pantry, and click <b>Delete</b> to refund it."
         };
         SetTutorialBodyText(text);
         RefreshAdvanceGate();
@@ -4507,6 +4686,16 @@ public class OnboardingTutorial : MonoBehaviour
         ClearControlHighlights();
         calloutTarget = null;
         var step = Steps[stepIndex];
+        if (IsWorkerLesson)
+        {
+            RefreshWorkerLesson();
+            return;
+        }
+        if (IsSupplyLesson)
+        {
+            RefreshSupplyLesson();
+            return;
+        }
         if (IsFirstDayRecipeReview)
         {
             RefreshFirstDayRecipeReview();
@@ -4528,6 +4717,26 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (step.requireBuildOverview)
         {
+            if (BuildTutorialComplete) return;
+            if (IsFirstDayBuildLesson && buildTutorialStage == 2)
+            {
+                if (!IsBusinessWorkersTabActive())
+                {
+                    HighlightHudButton("BusinessTab");
+                    return;
+                }
+                ManagementModeController manager = ManagementModeController.Instance;
+                if (manager != null && manager.TutorialSelectedStation == buildTutorialPantry)
+                {
+                    ItemDefinition potatoes = ProductionManager.Instance?.orderConfig?.friesIngredient;
+                    FocusTutorialControl(manager.TutorialRecipePickerOpen
+                        ? manager.TutorialRecipeChoice(potatoes?.itemName)
+                        : manager.TutorialOutputSelectButton);
+                }
+                else if (buildTutorialPantry != null)
+                    SetHighlightTarget(buildTutorialPantry.transform);
+                return;
+            }
             if (!IsBuildInventoryOpen())
             {
                 HighlightHudButton("InventoryTab");
@@ -4536,11 +4745,11 @@ public class OnboardingTutorial : MonoBehaviour
             if (buildTutorialStage == 1)
             {
                 InventoryItemCardUI pantryCard = FindBuildTutorialPantryCard();
-                if (pantryCard != null && pantryCard.buyButton != null)
+                if (pantryCard != null)
                     FocusTutorialControl(pantryCard.buyButton);
                 return;
             }
-            if (buildTutorialStage == 2 && buildTutorialPantry != null)
+            if (buildTutorialStage == DeletePantryStage && buildTutorialPantry != null)
             {
                 BuildPlacer placer = FindFirstObjectByType<BuildPlacer>(FindObjectsInactive.Include);
                 bool selected = placer != null && placer.SelectedObjects.Count == 1
@@ -4549,10 +4758,10 @@ public class OnboardingTutorial : MonoBehaviour
                 {
                     highlightTarget = null;
                     if (highlight != null) highlight.SetActive(false);
-                    BuildStationActionBar actionBar = FindFirstObjectByType<BuildStationActionBar>(
-                        FindObjectsInactive.Include);
-                    if (actionBar != null && actionBar.DeleteButton != null)
-                        FocusTutorialControl(actionBar.DeleteButton);
+                    Button delete = IsFirstDayBuildLesson
+                        ? FindFirstObjectByType<PostTutorialStationActionMenu>(FindObjectsInactive.Include)?.DeleteButton
+                        : FindFirstObjectByType<BuildStationActionBar>(FindObjectsInactive.Include)?.DeleteButton;
+                    FocusTutorialControl(delete);
                 }
                 else
                     SetHighlightTarget(buildTutorialPantry.transform);
@@ -4691,16 +4900,15 @@ public class OnboardingTutorial : MonoBehaviour
             }
 
             CustomersUI analytics = FindFirstObjectByType<CustomersUI>(FindObjectsInactive.Exclude);
-            Component target = null;
-            if (analyticsTutorialStage >= 0 && analyticsTutorialStage < 4)
-                target = analytics != null ? analytics.TutorialMetricTarget(analyticsTutorialStage) : null;
-            else if (analyticsTutorialStage == 4)
-                target = analytics != null ? analytics.TutorialArrivalsTarget : null;
-            else if (analyticsTutorialStage >= 5 && analyticsTutorialStage < AnalyticsTourCloseStage)
-                target = analytics != null
-                    ? analytics.TutorialDemandHeaderTarget(analyticsTutorialStage - 5) : null;
-            else if (analyticsTutorialStage >= AnalyticsTourCloseStage)
-                target = AnalyticsPopupUI.TutorialCloseButton;
+            Component target = analyticsTutorialStage switch
+            {
+                0 => analytics?.TutorialMetricTarget(3),
+                1 => analytics?.TutorialDemandHeaderTarget(3),
+                2 => analytics?.TutorialDemandHeaderTarget(4),
+                3 => analytics?.TutorialDemandHeaderTarget(4),
+                4 => analytics?.TutorialMetricTarget(0),
+                _ => AnalyticsPopupUI.TutorialCloseButton
+            };
 
             if (target != null)
                 FocusTutorialControl(target);
@@ -4871,15 +5079,26 @@ public class OnboardingTutorial : MonoBehaviour
             if (pendingStart && !IsComplete)
                 TryBegin();
             else
-                TryBeginMilestoneOneIntro();
+                TryBeginMilestoneLesson();
             return;
         }
-        if (IsMilestoneOneIntro)
+        if (milestoneOneLessonActive)
         {
-            bool waitForMilestone = MilestoneUnlockPopupUI.IsPendingOrVisible;
-            if (canvasRoot != null && canvasRoot.activeSelf == waitForMilestone)
-                canvasRoot.SetActive(!waitForMilestone);
-            if (waitForMilestone) return;
+            bool hideLesson = MilestoneUnlockPopupUI.IsPendingOrVisible
+                || (IsWorkerLesson && ManagementModeController.Instance?.IsCapturingFlow == true);
+            if (canvasRoot != null && canvasRoot.activeSelf == hideLesson)
+                canvasRoot.SetActive(!hideLesson);
+            if (hideLesson)
+            {
+                if (IsWorkerLesson) ClearControlHighlights();
+                return;
+            }
+            if (IsWorkerLesson && ProductionManager.Instance?.productionFlows.Contains(workerLessonFlow) == false)
+            {
+                workerLessonFlow = null;
+                EndMilestoneOneLesson();
+                return;
+            }
         }
         TrackCameraTutorialInputs();
         RefreshCameraPromptStatus();
@@ -4915,14 +5134,45 @@ public class OnboardingTutorial : MonoBehaviour
         highlight.transform.localScale = Vector3.one * pulse;
     }
 
-    void TryBeginMilestoneOneIntro()
+    void TryBeginMilestoneLesson()
     {
         if (!gameplayReady || !IsComplete || !ShiftPlanningUI.IsPlanning
-            || milestoneOneIntroProgress > MilestoneOneObjectivesStep
-            || MilestoneProgressManager.Instance?.ActiveMilestoneId != "milestone_01"
             || TitleScreenController.IsTitleScreenActive || CutscenePresentation.IsActive
             || IntroCutsceneUI.IsPlaying || MilestoneUnlockPopupUI.IsPendingOrVisible
             || PauseMenuUI.IsOpen)
+            return;
+
+        string milestone = MilestoneProgressManager.Instance?.ActiveMilestoneId;
+        ProductionManager production = ProductionManager.Instance;
+        if (workerLessonFlow != null && production != null)
+        {
+            int flowIndex = production.productionFlows.IndexOf(workerLessonFlow);
+            if (flowIndex < 0)
+                workerLessonFlow = null;
+            else if (ManagementModeController.Instance?.IsCapturingFlow != true)
+            {
+                bool selectionChanged = production.selectedFlowIndex != flowIndex;
+                if (selectionChanged)
+                    production.SelectProductionFlow(flowIndex);
+                BeginMilestoneLesson(workerLessonHireReviewed ? AssignWorkerStep : HireWorkerStep);
+                if (selectionChanged)
+                    FindFirstObjectByType<WorkersUI>()?.RefreshFlowOnly();
+                return;
+            }
+        }
+
+        if (milestone == "milestone_02" && !milestoneOneAnalyticsLessonDone)
+        {
+            BeginMilestoneLesson(MilestoneTwoAnalyticsStep);
+            return;
+        }
+        if (milestone == "milestone_03" && !supplyLessonDone)
+        {
+            supplyLessonPage = 0;
+            BeginMilestoneLesson(MilestoneThreeSupplyStep);
+            return;
+        }
+        if (milestone != "milestone_01" || milestoneOneIntroProgress > MilestoneOneObjectivesStep)
             return;
 
         if (milestoneOneIntroProgress == 0)
@@ -4956,48 +5206,122 @@ public class OnboardingTutorial : MonoBehaviour
         ShowStep();
     }
 
-    void UpdateMilestoneOneLessonSchedule()
+    void BeginMilestoneLesson(int lessonStep)
     {
-        if (!IsComplete || milestoneOneLessonActive || ShiftPlanningUI.IsPlanning)
-            return;
-
-        MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
-        GameTimeManager clock = GameTimeManager.Instance;
-        if (milestones == null || milestones.ActiveMilestoneId != "milestone_01"
-            || clock == null || !clock.IsShiftInProgress || clock.IsShiftOver)
-            return;
-
-        if (!milestoneOneBottleneckLessonDone && clock.CurrentMinutes >= 12f * 60f)
-            BeginMilestoneOneLesson(MilestoneOneBottleneckStep);
-        else if (milestoneOneBottleneckLessonDone && !milestoneOneAnalyticsLessonDone
-            && clock.CurrentMinutes >= 18f * 60f)
-            BeginMilestoneOneLesson(MilestoneOneAnalyticsStep);
-    }
-
-    void BeginMilestoneOneLesson(int lessonStep)
-    {
-        if (lessonStep < MilestoneOneBottleneckStep || lessonStep > MilestoneOneAnalyticsStep)
-            return;
-
         milestoneOneLessonActive = true;
         running = true;
         pendingStart = false;
         stepIndex = lessonStep;
         analyticsScreenOpened = false;
         analyticsScreenClosed = false;
-        if (lessonStep == MilestoneOneAnalyticsStep)
+        if (lessonStep == MilestoneTwoAnalyticsStep)
             analyticsTutorialStage = -1;
-        ManagementModeController management = ManagementModeController.Instance;
-        lastStationHealthLessonTarget = management != null
-            ? management.TutorialSelectedStation : null;
-        stationHealthLessonSelectionRevision = management != null
-            ? management.TutorialStationSelectionRevision : 0;
-        milestoneOneStationClickObserved = false;
         EnsureUI();
         ShowStep();
-        ApplyPause(true);
-        if (lessonStep == MilestoneOneBottleneckStep)
-            SetTutorialBodyText(Steps[lessonStep].body);
+    }
+
+    void RefreshWorkerLesson()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        if (production == null) return;
+        bool assigning = stepIndex == AssignWorkerStep;
+        if (assigning && workerLessonFlow?.workers?.Exists(worker => worker != null) == true)
+        {
+            SetTutorialBodyText("Worker assigned. Click <b>Finish</b> to continue.");
+            FocusTutorialControl(nextButton);
+            return;
+        }
+
+        WorkersUI workers = IsBusinessWorkersTabActive() ? FindFirstObjectByType<WorkersUI>() : null;
+        if (workers == null)
+        {
+            SetTutorialBodyText("Open <b>Kitchen → Workers</b>.");
+            MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            Button workersTab = tabs?.WorkspaceTabButton(1);
+            if (workersTab != null && workersTab.gameObject.activeInHierarchy)
+                FocusTutorialControl(workersTab);
+            else
+                FocusTutorialControl(tabs?.KitchenButton);
+            return;
+        }
+
+        if (!assigning)
+        {
+            SetTutorialBodyText(Steps[HireWorkerStep].body);
+            FocusTutorialControl(workers.hireButton);
+            return;
+        }
+
+        if (production.SelectedFlow != workerLessonFlow)
+        {
+            SetTutorialBodyText("Select the flow you just saved.");
+            FocusTutorialControl(workers.GetTutorialFlowTab(workerLessonFlow));
+            return;
+        }
+
+        WorkerCardUI availableCard = null;
+        WorkerCardUI assignedCard = null;
+        foreach (WorkerCardUI card in workers.GetComponentsInChildren<WorkerCardUI>())
+        {
+            if (card.employee == null || card.flowAssignButton == null) continue;
+            if (production.GetFlowForWorker(card.employee) == null)
+            {
+                availableCard = card;
+                break;
+            }
+            if (assignedCard == null) assignedCard = card;
+        }
+
+        if (availableCard != null)
+        {
+            SetTutorialBodyText(Steps[AssignWorkerStep].body);
+            FocusTutorialControl(availableCard.flowAssignButton);
+        }
+        else if (assignedCard != null)
+        {
+            SetTutorialBodyText("To give a worker this flow, click <b>Move here</b> on their card.");
+            FocusTutorialControl(assignedCard.flowAssignButton);
+        }
+        else
+        {
+            SetTutorialBodyText("Hire a worker, then click <b>Assign</b> on their card.");
+            FocusTutorialControl(workers.hireButton);
+        }
+    }
+
+    void RefreshSupplyLesson()
+    {
+        if (!IsBusinessSupplyTabActive())
+        {
+            SetTutorialBodyText("Open <b>Kitchen → Supply</b> to start.");
+            MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+            Button supplyTab = tabs?.WorkspaceTabButton(2);
+            if (supplyTab != null && supplyTab.gameObject.activeInHierarchy)
+                FocusTutorialControl(supplyTab);
+            else if (tabs != null && tabs.KitchenButton != null)
+            {
+                tabs.PrepareWorkspaceTabForNextOpen(2);
+                FocusTutorialControl(tabs.KitchenButton);
+            }
+            return;
+        }
+
+        SupplyPlanningScreenUI supply = FindFirstObjectByType<SupplyPlanningScreenUI>();
+        switch (supplyLessonPage)
+        {
+            case 0:
+                SetTutorialBodyText("Compare <b>Stock</b> with the <b>Forecast</b>. Supplier capacity limits your total delivery rate.");
+                FocusTutorialControl(supply?.TutorialCapacityTarget);
+                break;
+            case 1:
+                SetTutorialBodyText("Use <b>−</b> and <b>+</b> to set delivery rates. <b>Balance Rates</b> suggests rates within your supplier capacity.");
+                FocusTutorialControl(supply?.TutorialBalanceRatesTarget);
+                break;
+            default:
+                SetTutorialBodyText("Click <b>Apply Supply Plan</b> to use your rates. Deliveries run during the shift and stop when stock is full.");
+                FocusTutorialControl(supply?.TutorialPlaceOrderButton);
+                break;
+        }
     }
 
     void RefreshStationHealthLesson()
@@ -5750,27 +6074,37 @@ public class OnboardingTutorial : MonoBehaviour
         return ItemMatchesHighlight(item, Instance.currentHighlight);
     }
 
-    public static void NotifyTutorialStationPurchased(ItemDefinition item)
+    public static void NotifyTutorialStationPurchased(ItemDefinition item, int paid)
     {
         if (!IsBuildTutorialActive || Instance.buildTutorialStage != 1
             || item == null || item != FindBuildTutorialPantryItem()) return;
         Instance.buildTutorialPantryPurchaseMade = true;
+        Instance.buildTutorialPantryPaid = paid;
+        Instance.SetBuildTutorialInstruction();
     }
 
     public static bool CanRemoveTutorialPurchasedPantry(GameObject target)
     {
-        return IsBuildTutorialActive && Instance.buildTutorialStage == 2
+        return IsBuildTutorialActive && Instance.buildTutorialStage == Instance.DeletePantryStage
             && target != null && target == Instance.buildTutorialPantry;
     }
 
     public static void NotifyTutorialPantryRemoved(GameObject target)
     {
         if (!CanRemoveTutorialPurchasedPantry(target)) return;
-        Instance.buildTutorialStage = 3;
+        Instance.buildTutorialStage = Instance.DeletePantryStage + 1;
         Instance.buildTutorialPantry = null;
         Instance.SetBuildTutorialInstruction();
         Instance.RefreshAdvanceGate();
     }
+
+    internal static int? GetPracticePantryRefund(GameObject target) =>
+        CanRemoveTutorialPurchasedPantry(target) && Instance.IsFirstDayBuildLesson
+            ? Instance.buildTutorialPantryPaid : (int?)null;
+
+    internal static bool IsPracticePantryBeingConfigured(GameObject target) =>
+        Instance != null && Instance.IsFirstDayBuildLesson && Instance.buildTutorialStage == 2
+        && target != null && target == Instance.buildTutorialPantry;
 
     // Checklist stations unlock together after the tutorial introduces them.
     public static bool IsStationLocked(ItemDefinition item)

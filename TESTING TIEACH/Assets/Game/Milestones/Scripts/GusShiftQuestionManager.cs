@@ -4,12 +4,13 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>Schedules short milestone lessons and related knowledge checks during each shift.</summary>
+/// <summary>Schedules short knowledge checks during each shift.</summary>
 public sealed class GusShiftQuestionManager : MonoBehaviour
 {
-    const int LessonsPerShift = 3;
+    // Older saves used tokens 0–2 for lesson popups. Keep question tokens stable.
+    const int FirstQuestionToken = 3;
     const int QuestionsPerShift = 3;
-    const int ShiftEventsPerShift = LessonsPerShift + QuestionsPerShift;
+    const int ShiftEventsPerShift = FirstQuestionToken + QuestionsPerShift;
     const int CorrectAnswerReward = 50;
 
     public static GusShiftQuestionManager Instance { get; private set; }
@@ -22,7 +23,6 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     int questionCursor;
     int pendingQuestionIndex = -1;
     int pendingEventToken = -1;
-    int pendingLessonIndex = -1;
     bool questionResolved;
     bool questionVisible;
     bool legacyQuestionSchedule;
@@ -33,15 +33,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     GameObject overlay;
     GameObject canvasRoot;
     GameObject answerRoot;
-    RectTransform canvasRect;
-    RectTransform targetFrame;
-    Image[] targetFrameBars;
-    RectTransform calloutArrow;
-    Image calloutShaft;
-    Image[] calloutHeads;
-    RectTransform calloutTarget;
-    readonly Vector3[] calloutWorldCorners = new Vector3[4];
-    float nextCalloutTargetSearchTime;
+
     TextMeshProUGUI titleText;
     TextMeshProUGUI milestoneText;
     TextMeshProUGUI promptText;
@@ -56,7 +48,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     public int QuestionIndexForSave => pendingQuestionIndex;
     public int PendingEventTokenForSave => pendingEventToken;
     public bool LegacyScheduleForSave => legacyQuestionSchedule;
-    public bool AskedThisShiftForSave => questionCursor > LessonsPerShift;
+    public bool AskedThisShiftForSave => questionCursor > (legacyQuestionSchedule ? 0 : FirstQuestionToken);
     public bool QuestionPendingForSave => pendingQuestionIndex >= 0;
     public float[] ScheduledMinutesForSave => (float[])scheduledMinutes.Clone();
     public int[] QuestionOrderForSave => (int[])questionOrder.Clone();
@@ -91,14 +83,11 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         manager.questionCursor = Mathf.Clamp(cursor, 0, QuestionsPerShift);
         manager.pendingQuestionIndex = pendingIndex;
         manager.pendingEventToken = -1;
-        manager.pendingLessonIndex = -1;
         manager.legacyQuestionSchedule = true;
         manager.questionResolved = false;
         manager.questionVisible = false;
         manager.visibleQuestionId = null;
         if (manager.overlay != null) manager.overlay.SetActive(false);
-        if (manager.calloutArrow != null) manager.calloutArrow.gameObject.SetActive(false);
-        if (manager.targetFrame != null) manager.targetFrame.gameObject.SetActive(false);
     }
 
     public static void RestoreLegacyState(int day, int savedQuestionIndex, bool asked, bool pending)
@@ -110,14 +99,11 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         manager.questionCursor = asked ? QuestionsPerShift : 0;
         manager.pendingQuestionIndex = pending ? savedQuestionIndex : -1;
         manager.pendingEventToken = -1;
-        manager.pendingLessonIndex = -1;
         manager.legacyQuestionSchedule = true;
         manager.questionResolved = false;
         manager.questionVisible = false;
         manager.visibleQuestionId = null;
         if (manager.overlay != null) manager.overlay.SetActive(false);
-        if (manager.calloutArrow != null) manager.calloutArrow.gameObject.SetActive(false);
-        if (manager.targetFrame != null) manager.targetFrame.gameObject.SetActive(false);
     }
 
     public static void RestoreShiftEventsState(int day, float[] savedMinutes, int[] savedOrder,
@@ -129,21 +115,17 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             ? (float[])savedMinutes.Clone() : System.Array.Empty<float>();
         manager.questionOrder = savedOrder != null
             ? (int[])savedOrder.Clone() : System.Array.Empty<int>();
-        manager.questionCursor = Mathf.Clamp(cursor, 0, ShiftEventsPerShift);
-        manager.pendingEventToken = pendingToken >= 0 && pendingToken < ShiftEventsPerShift
+        manager.questionCursor = Mathf.Clamp(cursor, FirstQuestionToken, ShiftEventsPerShift);
+        manager.pendingEventToken = pendingToken >= FirstQuestionToken && pendingToken < ShiftEventsPerShift
             ? pendingToken : -1;
-        manager.pendingLessonIndex = manager.pendingEventToken >= 0
-            && manager.pendingEventToken < LessonsPerShift ? manager.pendingEventToken : -1;
-        manager.pendingQuestionIndex = manager.pendingEventToken >= LessonsPerShift
+        manager.pendingQuestionIndex = manager.pendingEventToken >= FirstQuestionToken
             && manager.questionOrder.Length >= QuestionsPerShift
-            ? manager.questionOrder[manager.pendingEventToken - LessonsPerShift] : -1;
+            ? manager.questionOrder[manager.pendingEventToken - FirstQuestionToken] : -1;
         manager.legacyQuestionSchedule = false;
         manager.questionResolved = false;
         manager.questionVisible = false;
         manager.visibleQuestionId = null;
         if (manager.overlay != null) manager.overlay.SetActive(false);
-        if (manager.calloutArrow != null) manager.calloutArrow.gameObject.SetActive(false);
-        if (manager.targetFrame != null) manager.targetFrame.gameObject.SetActive(false);
     }
 
     void Awake()
@@ -185,8 +167,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return;
         }
 
-        if (OnboardingTutorial.BlocksProgression
-            || (!time.IsShiftInProgress && !time.IsShiftOver))
+        if (OnboardingTutorial.BlocksProgression || !time.IsShiftInProgress)
             return;
 
         MilestoneDefinition milestone = GetActiveMilestone();
@@ -200,11 +181,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             ShowSavedPendingEvent(milestone);
             return;
         }
-        if (questionVisible)
-        {
-            UpdateCallout();
-            return;
-        }
+        if (questionVisible) return;
         ShowNextDueShiftEvent(time, milestone);
     }
 
@@ -219,7 +196,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return;
 
         MilestoneDefinition milestone = GetActiveMilestone();
-        if (!HasQuestions(milestone)) return;
+        if (!HasShiftContent(milestone)) return;
 
         if (pendingQuestionIndex >= 0)
         {
@@ -246,29 +223,13 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
 
     void HandleShiftEnding()
     {
-        if (legacyQuestionSchedule || OnboardingTutorial.BlocksProgression) return;
-        GameTimeManager time = GameTimeManager.Instance;
-        MilestoneDefinition milestone = GetActiveMilestone();
-        if (time == null || !HasShiftContent(milestone)) return;
-        if (!HasValidSchedule(time.CurrentDay, milestone))
-            ScheduleForCurrentShift(time, milestone);
-        ShowNextDueShiftEvent(time, milestone);
-        PromptStateChanged?.Invoke();
+        questionCursor = legacyQuestionSchedule ? QuestionsPerShift : ShiftEventsPerShift;
+        DismissPendingQuestion();
     }
 
     void ShowSavedPendingEvent(MilestoneDefinition milestone)
     {
-        if (pendingEventToken < LessonsPerShift)
-        {
-            pendingLessonIndex = pendingEventToken;
-            if (pendingLessonIndex >= 0 && pendingLessonIndex < milestone.shiftLessons.Count)
-                ShowLesson(milestone, milestone.shiftLessons[pendingLessonIndex]);
-            else
-                DismissPendingQuestion();
-            return;
-        }
-
-        int questionPosition = pendingEventToken - LessonsPerShift;
+        int questionPosition = pendingEventToken - FirstQuestionToken;
         if (questionOrder != null && questionPosition >= 0 && questionPosition < questionOrder.Length)
         {
             pendingQuestionIndex = questionOrder[questionPosition];
@@ -290,15 +251,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
 
         int eventIndex = questionCursor++;
         pendingEventToken = eventIndex;
-        if (eventIndex < LessonsPerShift)
-        {
-            pendingLessonIndex = eventIndex;
-            ShowLesson(milestone, milestone.shiftLessons[eventIndex]);
-            return;
-        }
-
-        int scheduledQuestion = eventIndex - LessonsPerShift;
-        pendingLessonIndex = -1;
+        int scheduledQuestion = eventIndex - FirstQuestionToken;
         pendingQuestionIndex = scheduledQuestion < questionOrder.Length
             ? questionOrder[scheduledQuestion] : -1;
         if (IsValidQuestion(milestone, pendingQuestionIndex))
@@ -313,26 +266,22 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         scheduledDay = currentDay;
         scheduledMinutes = System.Array.Empty<float>();
         questionOrder = System.Array.Empty<int>();
-        questionCursor = 0;
+        questionCursor = FirstQuestionToken;
         pendingQuestionIndex = -1;
         pendingEventToken = -1;
-        pendingLessonIndex = -1;
         legacyQuestionSchedule = false;
         questionResolved = false;
         questionVisible = false;
         visibleQuestionId = null;
         if (overlay != null) overlay.SetActive(false);
-        if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-        if (targetFrame != null) targetFrame.gameObject.SetActive(false);
         PromptStateChanged?.Invoke();
     }
 
     void ScheduleForCurrentShift(GameTimeManager time, MilestoneDefinition milestone)
     {
         scheduledDay = time.CurrentDay;
-        questionCursor = 0;
+        questionCursor = FirstQuestionToken;
         pendingEventToken = -1;
-        pendingLessonIndex = -1;
         if (!HasShiftContent(milestone))
         {
             scheduledMinutes = System.Array.Empty<float>();
@@ -347,8 +296,8 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         float start = time.dayStartHour * 60f;
         float duration = Mathf.Max(1f, (time.dayEndHour - time.dayStartHour) * 60f);
         scheduledMinutes = new float[ShiftEventsPerShift];
-        for (int i = 0; i < ShiftEventsPerShift; i++)
-            scheduledMinutes[i] = start + duration * (i + 1) / ShiftEventsPerShift;
+        for (int i = 0; i < QuestionsPerShift; i++)
+            scheduledMinutes[FirstQuestionToken + i] = start + duration * (i + 1) / (QuestionsPerShift + 1);
     }
 
     void ScheduleLegacyForCurrentShift(GameTimeManager time, MilestoneDefinition milestone)
@@ -406,10 +355,10 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         if (scheduledDay != day || scheduledMinutes == null
             || scheduledMinutes.Length != ShiftEventsPerShift
             || questionOrder == null || questionOrder.Length != QuestionsPerShift
-            || !HasLessons(milestone))
+            || questionCursor < FirstQuestionToken)
             return false;
 
-        for (int i = 0; i < scheduledMinutes.Length; i++)
+        for (int i = FirstQuestionToken; i < scheduledMinutes.Length; i++)
             if (scheduledMinutes[i] <= 0f) return false;
         for (int i = 0; i < questionOrder.Length; i++)
             if (questionOrder[i] != i || !IsValidQuestion(milestone, questionOrder[i])) return false;
@@ -428,16 +377,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
 
     static bool HasShiftContent(MilestoneDefinition milestone)
     {
-        if (!HasLessons(milestone) || !HasOrderedQuestions(milestone)) return false;
-        for (int i = 0; i < LessonsPerShift; i++)
-        {
-            string lessonId = milestone.shiftLessons[i].lessonId;
-            string questionId = milestone.shiftQuestions[i].questionId;
-            if (string.IsNullOrWhiteSpace(lessonId)
-                || !string.Equals(lessonId, questionId, StringComparison.OrdinalIgnoreCase))
-                return false;
-        }
-        return true;
+        return HasOrderedQuestions(milestone) && OnboardingTutorial.HasIntroducedShiftQuestions(milestone);
     }
 
     static bool HasOrderedQuestions(MilestoneDefinition milestone)
@@ -446,22 +386,6 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return false;
         for (int i = 0; i < QuestionsPerShift; i++)
             if (!IsValidQuestion(milestone, i)) return false;
-        return true;
-    }
-
-    static bool HasLessons(MilestoneDefinition milestone)
-    {
-        if (milestone == null || milestone.isTutorial || milestone.shiftLessons == null
-            || milestone.shiftLessons.Count < LessonsPerShift)
-            return false;
-
-        for (int i = 0; i < LessonsPerShift; i++)
-        {
-            MilestoneDefinition.ShiftLesson lesson = milestone.shiftLessons[i];
-            if (lesson == null || string.IsNullOrWhiteSpace(lesson.title)
-                || string.IsNullOrWhiteSpace(lesson.explanation))
-                return false;
-        }
         return true;
     }
 
@@ -482,10 +406,6 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         if (overlay == null) return;
 
         questionResolved = false;
-        pendingLessonIndex = -1;
-        calloutTarget = null;
-        if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-        if (targetFrame != null) targetFrame.gameObject.SetActive(false);
         titleText.text = ISEVocabularyHighlighter.Highlight("ISE Knowledge Check");
         milestoneText.text = MilestoneProgressManager.Instance != null
             ? MilestoneProgressManager.Instance.GetMilestoneDisplayLabel(milestone)
@@ -532,44 +452,6 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         Sfx.Play(SfxId.UiOpen);
     }
 
-    void ShowLesson(MilestoneDefinition milestone, MilestoneDefinition.ShiftLesson lesson)
-    {
-        EnsurePanel();
-        if (overlay == null || lesson == null) return;
-
-        pendingQuestionIndex = -1;
-        pendingLessonIndex = Mathf.Clamp(pendingEventToken, 0, LessonsPerShift - 1);
-        questionResolved = false;
-        titleText.text = ISEVocabularyHighlighter.Highlight(lesson.title);
-        milestoneText.text = MilestoneProgressManager.Instance != null
-            ? MilestoneProgressManager.Instance.GetMilestoneDisplayLabel(milestone)
-            : milestone.displayName;
-        milestoneText.text = ISEVocabularyHighlighter.Highlight(milestoneText.text);
-        promptText.text = ISEVocabularyHighlighter.Highlight(lesson.explanation);
-        ResizePromptText();
-        feedbackText.text = string.Empty;
-        feedbackText.gameObject.SetActive(false);
-        answerRoot.SetActive(false);
-        skipButton.gameObject.SetActive(false);
-        continueButton.gameObject.SetActive(true);
-        SetButtonLabel(continueButton, "Continue");
-
-        for (int i = 0; i < answerButtons.Count; i++)
-            if (answerButtons[i] != null) Destroy(answerButtons[i].gameObject);
-        answerButtons.Clear();
-        answerOrder.Clear();
-
-        overlay.SetActive(true);
-        overlay.transform.SetAsLastSibling();
-        questionVisible = true;
-        visibleQuestionId = string.IsNullOrWhiteSpace(lesson.lessonId)
-            ? lesson.title : lesson.lessonId;
-        calloutTarget = FindLessonTarget(lesson.target);
-        nextCalloutTargetSearchTime = Time.unscaledTime + 0.5f;
-        UpdateCallout();
-        Sfx.Play(SfxId.UiOpen);
-    }
-
     static void SetButtonLabel(Button button, string label)
     {
         if (button == null) return;
@@ -583,214 +465,6 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         LayoutElement layout = promptText.GetComponent<LayoutElement>();
         if (layout != null)
             layout.preferredHeight = Mathf.Clamp(promptText.preferredHeight + 8f, 58f, 100f);
-    }
-
-    static RectTransform FindLessonTarget(MilestoneDefinition.ShiftLessonTarget target)
-    {
-        string label;
-        switch (target)
-        {
-            case MilestoneDefinition.ShiftLessonTarget.Business: label = "Business"; break;
-            case MilestoneDefinition.ShiftLessonTarget.Objectives: label = "Objectives"; break;
-            case MilestoneDefinition.ShiftLessonTarget.Recipes: label = "Recipes"; break;
-            default: label = "Analytics"; break;
-        }
-
-        TextMeshProUGUI[] labels = FindObjectsByType<TextMeshProUGUI>(FindObjectsSortMode.None);
-        for (int i = 0; i < labels.Length; i++)
-        {
-            TextMeshProUGUI candidate = labels[i];
-            if (candidate == null || !candidate.gameObject.activeInHierarchy
-                || !string.Equals(candidate.text.Trim(), label, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            Button button = candidate.GetComponentInParent<Button>();
-            return button != null ? button.transform as RectTransform : candidate.rectTransform;
-        }
-        return null;
-    }
-
-    void UpdateCallout()
-    {
-        bool show = pendingLessonIndex >= 0 && overlay != null && overlay.activeSelf;
-        if (!show)
-        {
-            if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-            if (targetFrame != null) targetFrame.gameObject.SetActive(false);
-            return;
-        }
-
-        if (calloutTarget == null || !calloutTarget.gameObject.activeInHierarchy)
-        {
-            if (Time.unscaledTime >= nextCalloutTargetSearchTime)
-            {
-                nextCalloutTargetSearchTime = Time.unscaledTime + 0.5f;
-                MilestoneDefinition milestone = GetActiveMilestone();
-                if (milestone != null && milestone.shiftLessons != null
-                    && pendingLessonIndex < milestone.shiftLessons.Count)
-                    calloutTarget = FindLessonTarget(milestone.shiftLessons[pendingLessonIndex].target);
-            }
-        }
-        if (calloutTarget == null || canvasRect == null || overlay == null)
-        {
-            if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-            if (targetFrame != null) targetFrame.gameObject.SetActive(false);
-            return;
-        }
-
-        if (!TryGetCanvasBounds(calloutTarget, out Rect targetBounds)
-            || !TryGetCanvasBounds(overlay.transform as RectTransform, out Rect cardBounds))
-        {
-            if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-            if (targetFrame != null) targetFrame.gameObject.SetActive(false);
-            return;
-        }
-
-        if (targetFrame != null)
-        {
-            targetFrame.gameObject.SetActive(true);
-            targetFrame.anchoredPosition = targetBounds.center;
-            targetFrame.sizeDelta = targetBounds.size + Vector2.one * 10f;
-            float pulse = 0.72f + Mathf.PingPong(Time.unscaledTime * 0.75f, 0.22f);
-            Color frameColor = GameUITheme.Accent;
-            frameColor.a = pulse;
-            if (targetFrameBars != null)
-                for (int i = 0; i < targetFrameBars.Length; i++)
-                    if (targetFrameBars[i] != null) targetFrameBars[i].color = frameColor;
-        }
-
-        if (calloutArrow != null)
-        {
-            Vector2 direction = (targetBounds.center - cardBounds.center).normalized;
-            Vector2 start = cardBounds.center + GetRectEdgeOffset(cardBounds, direction);
-            Vector2 end = targetBounds.center - GetRectEdgeOffset(targetBounds, direction) - direction * 8f;
-            Vector2 delta = end - start;
-            float length = delta.magnitude;
-            calloutArrow.anchoredPosition = (start + end) * 0.5f;
-            calloutArrow.sizeDelta = new Vector2(length, 26f);
-            calloutArrow.localRotation = Quaternion.Euler(0f, 0f,
-                Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
-            Color arrowColor = GameUITheme.Accent;
-            arrowColor.a = 0.82f;
-            if (calloutShaft != null) calloutShaft.color = arrowColor;
-            if (calloutHeads != null)
-                for (int i = 0; i < calloutHeads.Length; i++)
-                    if (calloutHeads[i] != null) calloutHeads[i].color = arrowColor;
-            calloutArrow.gameObject.SetActive(true);
-        }
-    }
-
-    bool TryGetCanvasBounds(RectTransform target, out Rect bounds)
-    {
-        bounds = new Rect();
-        if (target == null || canvasRect == null) return false;
-
-        target.GetWorldCorners(calloutWorldCorners);
-        Canvas targetCanvas = target.GetComponentInParent<Canvas>();
-        Camera eventCamera = targetCanvas != null && targetCanvas.renderMode != RenderMode.ScreenSpaceOverlay
-            ? targetCanvas.worldCamera : null;
-        Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
-        Vector2 max = new Vector2(float.MinValue, float.MinValue);
-        for (int i = 0; i < calloutWorldCorners.Length; i++)
-        {
-            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(eventCamera, calloutWorldCorners[i]);
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect,
-                    screenPoint, null, out Vector2 localPoint))
-                continue;
-            min = Vector2.Min(min, localPoint);
-            max = Vector2.Max(max, localPoint);
-        }
-        if (min.x == float.MaxValue) return false;
-        bounds = Rect.MinMaxRect(min.x, min.y, max.x, max.y);
-        return true;
-    }
-
-    static Vector2 GetRectEdgeOffset(Rect rect, Vector2 direction)
-    {
-        if (direction.sqrMagnitude < 0.0001f) return Vector2.zero;
-        float xDistance = Mathf.Abs(direction.x) > 0.0001f
-            ? rect.width * 0.5f / Mathf.Abs(direction.x) : float.MaxValue;
-        float yDistance = Mathf.Abs(direction.y) > 0.0001f
-            ? rect.height * 0.5f / Mathf.Abs(direction.y) : float.MaxValue;
-        return direction * Mathf.Min(xDistance, yDistance);
-    }
-
-    void EnsureCalloutVisuals()
-    {
-        if (canvasRoot == null || canvasRect == null) return;
-        if (calloutArrow == null)
-        {
-            GameObject arrowObject = new GameObject("GusLessonArrow", typeof(RectTransform));
-            arrowObject.transform.SetParent(canvasRoot.transform, false);
-            RectTransform arrowRect = (RectTransform)arrowObject.transform;
-            arrowRect.anchorMin = arrowRect.anchorMax = arrowRect.pivot = new Vector2(0.5f, 0.5f);
-            calloutArrow = arrowRect;
-            calloutShaft = CreateArrowSegment(arrowRect, "Shaft", new Vector2(0f, 0.5f),
-                new Vector2(1f, 0.5f), new Vector2(0f, 0.5f), new Vector2(-18f, 4f), Vector2.zero);
-            calloutHeads = new Image[2];
-            calloutHeads[0] = CreateArrowSegment(arrowRect, "HeadUpper", new Vector2(1f, 0.5f),
-                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(22f, 4f), Vector2.zero);
-            calloutHeads[0].rectTransform.localRotation = Quaternion.Euler(0f, 0f, 38f);
-            calloutHeads[1] = CreateArrowSegment(arrowRect, "HeadLower", new Vector2(1f, 0.5f),
-                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(22f, 4f), Vector2.zero);
-            calloutHeads[1].rectTransform.localRotation = Quaternion.Euler(0f, 0f, -38f);
-            arrowObject.SetActive(false);
-        }
-
-        if (targetFrame == null)
-        {
-            GameObject frameObject = new GameObject("GusLessonTargetFrame", typeof(RectTransform));
-            frameObject.transform.SetParent(canvasRoot.transform, false);
-            targetFrame = frameObject.GetComponent<RectTransform>();
-            targetFrame.anchorMin = targetFrame.anchorMax = targetFrame.pivot = new Vector2(0.5f, 0.5f);
-            targetFrameBars = new Image[4];
-            targetFrameBars[0] = CreateFrameBar(targetFrame, "Top", new Vector2(0f, 1f),
-                new Vector2(1f, 1f), new Vector2(0.5f, 1f));
-            targetFrameBars[1] = CreateFrameBar(targetFrame, "Bottom", Vector2.zero,
-                new Vector2(1f, 0f), new Vector2(0.5f, 0f));
-            targetFrameBars[2] = CreateFrameBar(targetFrame, "Left", Vector2.zero,
-                new Vector2(0f, 1f), new Vector2(0f, 0.5f));
-            targetFrameBars[3] = CreateFrameBar(targetFrame, "Right", new Vector2(1f, 0f),
-                Vector2.one, new Vector2(1f, 0.5f));
-            targetFrame.gameObject.SetActive(false);
-        }
-
-        calloutArrow.transform.SetAsFirstSibling();
-        targetFrame.transform.SetAsLastSibling();
-    }
-
-    static Image CreateArrowSegment(Transform parent, string name, Vector2 anchorMin,
-        Vector2 anchorMax, Vector2 pivot, Vector2 size, Vector2 position)
-    {
-        GameObject segment = new GameObject(name, typeof(RectTransform), typeof(Image));
-        segment.transform.SetParent(parent, false);
-        RectTransform rect = (RectTransform)segment.transform;
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.pivot = pivot;
-        rect.sizeDelta = size;
-        rect.anchoredPosition = position;
-        Image image = segment.GetComponent<Image>();
-        image.color = GameUITheme.Accent;
-        image.raycastTarget = false;
-        return image;
-    }
-
-    static Image CreateFrameBar(Transform parent, string name, Vector2 anchorMin,
-        Vector2 anchorMax, Vector2 pivot)
-    {
-        GameObject bar = new GameObject(name, typeof(RectTransform), typeof(Image));
-        bar.transform.SetParent(parent, false);
-        RectTransform rect = (RectTransform)bar.transform;
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.pivot = pivot;
-        rect.sizeDelta = anchorMin.x == anchorMax.x
-            ? new Vector2(3f, 0f) : new Vector2(0f, 3f);
-        Image image = bar.GetComponent<Image>();
-        image.color = GameUITheme.Accent;
-        image.raycastTarget = false;
-        return image;
     }
 
     void SelectAnswer(MilestoneDefinition.ShiftQuestion question, int answerIndex)
@@ -849,14 +523,10 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     {
         pendingQuestionIndex = -1;
         pendingEventToken = -1;
-        pendingLessonIndex = -1;
         questionResolved = false;
         if (overlay != null) overlay.SetActive(false);
-        if (calloutArrow != null) calloutArrow.gameObject.SetActive(false);
-        if (targetFrame != null) targetFrame.gameObject.SetActive(false);
         questionVisible = false;
         visibleQuestionId = null;
-        calloutTarget = null;
         PromptStateChanged?.Invoke();
     }
 
@@ -902,12 +572,11 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         scaler.matchWidthOrHeight = 0f;
 
         canvasRoot.transform.SetParent(sourceRootCanvas.transform, false);
-        canvasRect = (RectTransform)canvasRoot.transform;
+        var canvasRect = (RectTransform)canvasRoot.transform;
         canvasRect.anchorMin = Vector2.zero;
         canvasRect.anchorMax = Vector2.one;
         canvasRect.offsetMin = Vector2.zero;
         canvasRect.offsetMax = Vector2.zero;
-        EnsureCalloutVisuals();
 
         overlay = new GameObject("Panel", typeof(RectTransform), typeof(Image),
             typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));

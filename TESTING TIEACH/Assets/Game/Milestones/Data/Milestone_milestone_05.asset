@@ -24,43 +24,31 @@ MonoBehaviour:
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   shiftQuestions:
-  - questionId: core_measure
-    prompt: "What should you compare after changing one process step?"
+  - questionId: pickup_output
+    prompt: "Where should finished food go?"
     answers:
-    - "Finished output from the whole process"
-    - "Only the fastest station rate"
-    - "The color of the station card"
+    - "Pickup Station"
+    - "Freezer"
+    - "Register"
     correctAnswerIndex: 0
-    explanation: "A process change is useful when it improves the result that matters, such as delivered output."
-  - questionId: core_one_change
-    prompt: "Why change one cause at a time when improving a process?"
+    explanation: "Flows end at Pickup so customers can collect their food."
+  - questionId: menu_edit
+    prompt: "Where can you add an unlocked item to sell?"
     answers:
-    - "It helps show which change affected process output"
-    - "It guarantees every station reaches maximum capacity"
-    - "It makes customer demand stop changing"
+    - "Shift Plan → Edit Menu"
+    - "Camera controls"
+    - "Objectives"
     correctAnswerIndex: 0
-    explanation: "One change at a time makes it easier to connect the result to the cause."
-  - questionId: core_system
-    prompt: "Why check the whole system after an improvement?"
+    explanation: "Edit Menu lets you choose which unlocked items to serve."
+  - questionId: service_rate
+    prompt: "What does Service Rate measure?"
     answers:
-    - "Another step may become the new bottleneck"
-    - "Every other station automatically becomes faster"
-    - "The process no longer needs ingredients"
+    - "The share of customers served"
+    - "How fast supplies arrive"
+    - "The number of workstations"
     correctAnswerIndex: 0
-    explanation: "Improving one part can shift the bottleneck elsewhere in the connected system."
-  shiftLessons:
-  - lessonId: core_measure
-    title: "Measure finished output"
-    explanation: "Use delivered output to see whether a process change improved the result."
-    target: 0
-  - lessonId: core_one_change
-    title: "Change one thing"
-    explanation: "Changing one likely cause at a time helps you see what affected the process."
-    target: 0
-  - lessonId: core_system
-    title: "Check the whole system"
-    explanation: "A change to one station can affect the rest of the process or move the bottleneck."
-    target: 0
+    explanation: "Service Rate tells you how many customers were served relative to those who arrived."
+  shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

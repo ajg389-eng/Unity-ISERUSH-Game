@@ -28,43 +28,31 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 507587f068654a1eb58b18c2a901c326, type: 2}
   - {fileID: 11400000, guid: ef8ec327ad06458ba97a3bb331545b9f, type: 2}
   shiftQuestions:
-  - questionId: core_demand_capacity
-    prompt: "How do demand and capacity relate?"
+  - questionId: analytics_demand
+    prompt: "Which Analytics column shows expected orders per minute?"
     answers:
-    - "Capacity must keep up with the customer demand we plan to serve"
-    - "Demand is the number of workers assigned to a flow"
-    - "Capacity is the amount of money in the register"
+    - "Demand / Min"
+    - "Produced / Min"
+    - "Open Orders"
     correctAnswerIndex: 0
-    explanation: "Compare planned production capacity with the rate customers are expected to order."
-  - questionId: core_throughput
-    prompt: "What does throughput measure?"
+    explanation: "Demand / Min is the forecast for that item."
+  - questionId: analytics_pickup
+    prompt: "What does Produced / Min count?"
     answers:
-    - "Finished items delivered by the whole process over time"
-    - "Items waiting at one station"
-    - "The speed of the fastest station only"
+    - "Items that reach Pickup"
+    - "Stations you bought"
+    - "Ingredients in storage"
     correctAnswerIndex: 0
-    explanation: "Throughput is finished output from the complete process, not one station in isolation."
-  - questionId: core_balance
-    prompt: "If a queue grows before a station, what should you check?"
+    explanation: "Produced / Min measures finished items delivered to Pickup."
+  - questionId: analytics_bottleneck
+    prompt: "What does a bottleneck limit?"
     answers:
-    - "Whether that step has enough capacity for incoming work"
-    - "Whether every station has the same purchase price"
-    - "Whether the menu has too many categories"
+    - "How much the whole line can finish"
+    - "How many menu items you can unlock"
+    - "How far the camera can zoom"
     correctAnswerIndex: 0
-    explanation: "Compare the step capacity with the flow of work arriving there."
-  shiftLessons:
-  - lessonId: core_demand_capacity
-    title: "Compare demand and capacity"
-    explanation: "Demand is what customers want. Capacity is how quickly the process can produce it."
-    target: 0
-  - lessonId: core_throughput
-    title: "Track finished output"
-    explanation: "Throughput is the rate finished items leave the whole process. Use delivered output to judge whether the kitchen keeps up."
-    target: 0
-  - lessonId: core_balance
-    title: "Balance the process"
-    explanation: "When connected steps have mismatched capacity, queues or idle time can form. Check the whole flow."
-    target: 1
+    explanation: "The limiting step determines how much finished output the line can deliver."
+  shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}
   unlocks: []

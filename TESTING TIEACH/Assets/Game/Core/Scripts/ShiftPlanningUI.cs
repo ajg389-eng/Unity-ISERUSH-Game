@@ -1350,6 +1350,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (!OnboardingTutorial.CanStartShiftFromPlan) return;
         editingMenu = false;
         ResolveOrderConfig()?.SyncMenuToActiveMilestoneObjectives();
+        if (OnboardingTutorial.IsComplete && !MilestoneFeatures.SupplyPlanningUnlocked
+            && KitchenInventory.Instance is KitchenInventory stock)
+            foreach (KeyValuePair<ItemDefinition, float> need in GetForecastIngredientNeedsPerShift())
+                stock.AddStock(need.Key, Mathf.Max(0, Mathf.CeilToInt(need.Value) - stock.GetCount(need.Key)));
         preShiftPlanningActive = false;
         timeManager?.BeginPlannedShift();
         CustomerSpawner.Instance?.BeginPlannedShiftDemandCycle();
