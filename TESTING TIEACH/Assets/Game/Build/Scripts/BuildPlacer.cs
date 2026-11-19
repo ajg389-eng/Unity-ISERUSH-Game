@@ -157,6 +157,16 @@ public class BuildPlacer : MonoBehaviour
         postTutorialActionMenu = PostTutorialStationActionMenu.EnsureFor(this);
     }
 
+    void LateUpdate()
+    {
+        PlayerUIVisibilityToggle.SetStationMoveHidden(this, IsDragging && !PauseMenuUI.IsOpen);
+    }
+
+    void OnDisable()
+    {
+        PlayerUIVisibilityToggle.SetStationMoveHidden(this, false);
+    }
+
     void Update()
     {
         // The action bar is independent of placement/input processing. Keep it
@@ -221,9 +231,10 @@ public class BuildPlacer : MonoBehaviour
 
         // Block only the visible Inventory / Management rectangles. Transparent
         // full-screen canvas roots must not prevent interaction with the world.
-        if (UIInputFocusGuard.IsPointerOverBlockingPanel
+        // Allow placement on tiles beneath the hidden HUD.
+        if (!IsDragging && (UIInputFocusGuard.IsPointerOverBlockingPanel
             || (actionBar != null && actionBar.IsPointerOver)
-            || (postTutorialActionMenu != null && postTutorialActionMenu.IsPointerOver)) return;
+            || (postTutorialActionMenu != null && postTutorialActionMenu.IsPointerOver))) return;
 
         // Clicking an already placed station while an inventory ghost is active
         // means the player is targeting that station for repositioning.
@@ -237,20 +248,11 @@ public class BuildPlacer : MonoBehaviour
         // ---- Dragging a placed object ----
         if (IsDragging)
         {
+            if (PauseMenuUI.IsOpen || Input.GetMouseButton(1)) return;
+
             if (groupMoveMembers.Count > 0)
             {
                 UpdateGroupMove();
-                return;
-            }
-
-            if (Input.GetMouseButtonDown(1))
-            {
-                if (draggingWallDoor != null && draggingWallDoor.permanentFixture)
-                    CancelDrag();
-                else if (OnboardingTutorial.BlocksProgression)
-                    CancelDrag();
-                else
-                    RemoveDraggedAndReturnToInventory();
                 return;
             }
 
@@ -504,14 +506,9 @@ public class BuildPlacer : MonoBehaviour
             : IsRotationLocked(placingItem, ghost));
         if (dragging)
         {
-            if (OnboardingTutorial.BlocksProgression)
-                instruction = rotationLocked
-                    ? "LMB: Place    RMB: Cancel move"
-                    : "LMB: Place    R: Rotate    RMB: Cancel move";
-            else
-                instruction = rotationLocked
-                    ? "LMB: Place    RMB: Return to inventory    ESC: Cancel"
-                    : "LMB: Place    R: Rotate    RMB: Return to inventory    ESC: Cancel";
+            instruction = rotationLocked
+                ? "LMB: Place    Right-drag: Camera    ESC: Cancel"
+                : "LMB: Place    R: Rotate station    Right-drag: Camera    ESC: Cancel";
         }
         else if (IsPickupStationDefinition(placingItem))
             instruction = "Click a counter slot    LMB: Place    ESC: Cancel";
@@ -1399,11 +1396,6 @@ public class BuildPlacer : MonoBehaviour
 
     void UpdateGroupMove()
     {
-        if (Input.GetMouseButtonDown(1))
-        {
-            CancelGroupMove();
-            return;
-        }
         if (!TryGetFloorAimPoint(out Vector3 aim)) return;
 
         int groupWidth = 1;
@@ -1462,15 +1454,21 @@ public class BuildPlacer : MonoBehaviour
         }
 
         if (!Input.GetMouseButtonDown(0)) return;
+        bool stationMoved = false;
         foreach (GroupMoveMember member in groupMoveMembers)
         {
             grid.SetOccupied(anchorX + member.offsetX, anchorY + member.offsetY,
                 member.sizeX, member.sizeY, true);
             grid.ReserveInteractionHighlightForPlacement(
                 member.root.GetComponent<StationInteractionTiles>());
+            stationMoved |= member.root.GetComponent<StationNode>() != null
+                && (anchorX + member.offsetX != member.originalX
+                    || anchorY + member.offsetY != member.originalY);
         }
         Physics.SyncTransforms();
         groupMoveMembers.Clear();
+        if (stationMoved)
+            TutorialVoiceEvents.Raise(TutorialVoiceEventId.StationRepositioned);
         SetHint(IsPlacing);
         actionBar?.Refresh();
         Sfx.Play(SfxId.BuildPlace);
@@ -1868,44 +1866,6 @@ public class BuildPlacer : MonoBehaviour
         if (dragSelectionHighlight != null && !selectedObjects.Contains(dragSelectionHighlight.gameObject))
             dragSelectionHighlight.SetSelected(false);
         dragSelectionHighlight = null;
-    }
-
-    void RemoveDraggedAndReturnToInventory()
-    {
-        if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress) return;
-        if (draggingObject == null) return;
-
-        ItemDefinition returnedItem = draggingMountedItem != null
-            ? draggingMountedItem.itemDefinition
-            : draggingObject.GetComponent<PlacedBuildItem>()?.itemDefinition;
-        if (returnedItem != null && inventory != null)
-            inventory.AddOne(returnedItem);
-
-        if (draggingMountedItem != null && draggingMountedItem.surface != null)
-            draggingMountedItem.surface.Release(draggingMountedItem);
-
-        if (grid != null)
-            grid.ReleaseInteractionHighlightForPlacement(
-                draggingObject.GetComponent<StationInteractionTiles>());
-
-        selectedObjects.Remove(draggingObject);
-        ClearDraggedObjectHighlight();
-        Object.Destroy(draggingObject);
-        draggingObject = null;
-        dragFootprint = null;
-        draggingMountedItem = null;
-        draggingGroundPickupStation = null;
-        draggingWallDoor = null;
-        dragOriginalSurface = null;
-        dragOriginalSlot = -1;
-        dragOriginalGroundPickupSurface = null;
-        dragOriginalGroundPickupSlot = -1;
-        SetHint(IsPlacing);
-        actionBar?.Refresh();
-        Sfx.Play(SfxId.BuildRemove);
-
-        var invUI = FindObjectOfType<InventoryUI>();
-        if (invUI != null) invUI.RefreshAll();
     }
 
     void TryPlaceAt(int x, int y)

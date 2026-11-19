@@ -514,7 +514,7 @@ public class MainHudTabs : MonoBehaviour
     {
         if (AnyPanelOpen())
         {
-            CloseAll();
+            CloseKitchenWorkspace();
             return;
         }
 
@@ -577,7 +577,7 @@ public class MainHudTabs : MonoBehaviour
         return -1;
     }
 
-    void CloseAll()
+    internal void CloseKitchenWorkspace()
     {
         var inv = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         var mgmt = FindFirstObjectByType<ManagementScreenController>(FindObjectsInactive.Include);

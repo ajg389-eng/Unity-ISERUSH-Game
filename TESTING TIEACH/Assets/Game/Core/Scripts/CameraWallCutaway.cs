@@ -68,13 +68,13 @@ public class CameraWallCutaway : MonoBehaviour
 
     [Header("Line of sight fade")]
     [Tooltip("Wall sections within this radius of the camera focus become fully transparent.")]
-    [Min(0.1f)] public float focusClearRadius = 4.5f;
+    [Min(0.1f)] public float focusClearRadius = 5.75f;
     [Tooltip("Wall sections within this radius of the focus receive a softer fade.")]
-    [Min(0.5f)] public float surroundingFadeRadius = 9f;
+    [Min(0.5f)] public float surroundingFadeRadius = 10.5f;
     [Tooltip("Fade amount applied at the outside edge of the surrounding radius.")]
     [Range(0f, 1f)] public float surroundingFadeAmount = 0.35f;
     [Tooltip("Horizontal half-width of the camera line of sight. Sections inside this corridor become fully transparent when they block the view.")]
-    [Min(0f)] public float lineOfSightHalfWidth = 3f;
+    [Min(0f)] public float lineOfSightHalfWidth = 3.5f;
 
     Transform customerFloor;
     Renderer customerFloorRenderer;

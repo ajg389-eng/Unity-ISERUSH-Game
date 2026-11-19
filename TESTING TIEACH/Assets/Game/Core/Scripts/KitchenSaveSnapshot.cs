@@ -38,6 +38,7 @@ public class KitchenSaveSnapshot
     public bool milestoneOneBottleneckLessonDone;
     public bool milestoneOneAnalyticsLessonDone;
     public bool tutorialBaselinePracticeRunStarted;
+    public bool tutorialObservingImprovedLayout;
     public int tutorialBaselineCustomersSpawned, tutorialBaselineCustomersServed;
     public int tutorialBaselineCustomersLeft;
     public float tutorialBaselinePracticeElapsedSeconds;
@@ -128,6 +129,8 @@ public class KitchenSaveSnapshot
             && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
         s.tutorialBaselinePracticeRunStarted = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.BaselinePracticeRunStartedForSave;
+        s.tutorialObservingImprovedLayout = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.ObservingImprovedLayoutForSave;
         s.tutorialBaselineCustomersSpawned = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.BaselineCustomersSpawnedForSave : 0;
         s.tutorialBaselineCustomersServed = OnboardingTutorial.Instance != null
@@ -852,7 +855,8 @@ public class KitchenSaveSnapshot
                 version >= 56 ? tutorialBaselineCustomersSpawned : 0,
                 version >= 56 ? tutorialBaselineCustomersServed : 0,
                 version >= 57 ? tutorialBaselineCustomersLeft : 0,
-                version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f);
+                version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f,
+                tutorialObservingImprovedLayout);
         return true;
     }
 

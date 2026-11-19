@@ -84,11 +84,14 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     readonly Dictionary<string, StationSnapshot> stationBaseline =
         new Dictionary<string, StationSnapshot>(System.StringComparer.Ordinal);
-    readonly Dictionary<GameObject, bool> planExpandedChildStates = new Dictionary<GameObject, bool>();
     readonly List<ItemDefinition> goalItems = new List<ItemDefinition>();
     readonly List<DemandRow> demandRows = new List<DemandRow>();
     GameTimeManager timeManager;
     GameObject panelRoot;
+    GameObject planBody;
+    GameObject startShiftFooter;
+    Button planCollapseButton;
+    TextMeshProUGUI planCollapseLabel;
     GameObject livePanelRoot;
     TextMeshProUGUI dayTitle;
     TextMeshProUGUI shiftDurationText;
@@ -112,6 +115,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     bool initialized;
     bool planHiddenForStationPopup;
     bool planCondensedForOverlay;
+    bool planCollapsedByPlayer;
+    bool IsPlanCompact => planCondensedForOverlay || planCollapsedByPlayer;
     bool preShiftPlanningActive;
     bool hasSavedStationBaseline;
     float nextLiveRefreshTime;
@@ -331,36 +336,21 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (shouldCondense == planCondensedForOverlay) return;
 
         planCondensedForOverlay = shouldCondense;
-        RectTransform rect = panelRoot.transform as RectTransform;
-        if (shouldCondense)
-        {
-            planExpandedChildStates.Clear();
-            for (int i = 0; i < panelRoot.transform.childCount; i++)
-            {
-                GameObject child = panelRoot.transform.GetChild(i).gameObject;
-                planExpandedChildStates[child] = child.activeSelf;
-                if (child != dayTitle.gameObject)
-                    child.SetActive(false);
-            }
+        ApplyPlanPresentation();
+    }
 
-            dayTitle.alignment = TextAlignmentOptions.Center;
-            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0f);
-            rect.anchoredPosition = new Vector2(0f, 20f);
-        }
-        else
-        {
-            foreach (KeyValuePair<GameObject, bool> childState in planExpandedChildStates)
-                if (childState.Key != null)
-                    childState.Key.SetActive(childState.Value);
-            planExpandedChildStates.Clear();
-
-            dayTitle.alignment = TextAlignmentOptions.Left;
-            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(1f, 0f);
-            rect.anchoredPosition = new Vector2(-20f, 20f);
-        }
-
+    void ApplyPlanPresentation()
+    {
+        planBody.SetActive(!IsPlanCompact);
+        startShiftFooter.SetActive(!IsPlanCompact);
+        startShiftButton.gameObject.SetActive(!IsPlanCompact);
+        planCollapseButton.gameObject.SetActive(!planCondensedForOverlay);
+        planCollapseLabel.text = planCollapsedByPlayer ? "Expand" : "Collapse";
+        dayTitle.alignment = planCondensedForOverlay ? TextAlignmentOptions.Center : TextAlignmentOptions.Left;
+        var rect = (RectTransform)panelRoot.transform;
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(planCondensedForOverlay ? 0.5f : 1f, 0f);
+        rect.anchoredPosition = new Vector2(planCondensedForOverlay ? 0f : -20f, 20f);
         FitPlanPanel();
-        Canvas.ForceUpdateCanvases();
     }
 
     public static void ReturnToPlanPhaseAfterTutorial()
@@ -468,31 +458,57 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        dayTitle = CreateText(panelRoot.transform, "DayTitle", "SHIFT PLAN", 26f,
+        var header = new GameObject("PlanHeader", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        header.transform.SetParent(panelRoot.transform, false);
+        HorizontalLayoutGroup headerLayout = header.GetComponent<HorizontalLayoutGroup>();
+        headerLayout.spacing = 8f;
+        headerLayout.childAlignment = TextAnchor.MiddleLeft;
+        headerLayout.childControlWidth = headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandWidth = headerLayout.childForceExpandHeight = false;
+        dayTitle = CreateText(header.transform, "DayTitle", "SHIFT PLAN", 26f,
             FontStyles.Bold, 32f, GameUITheme.Accent);
-        TextMeshProUGUI intro = CreateText(panelRoot.transform, "Intro",
+        dayTitle.GetComponent<LayoutElement>().flexibleWidth = 1f;
+        planCollapseButton = CreateButton(header.transform, "ToggleShiftPlan", "Collapse");
+        planCollapseButton.image.color = HudTabColors.Strip;
+        LayoutElement collapseSize = planCollapseButton.GetComponent<LayoutElement>();
+        collapseSize.minHeight = collapseSize.preferredHeight = 34f;
+        collapseSize.minWidth = collapseSize.preferredWidth = 104f;
+        planCollapseLabel = planCollapseButton.GetComponentInChildren<TextMeshProUGUI>();
+        planCollapseButton.onClick.AddListener(() =>
+        {
+            planCollapsedByPlayer = !planCollapsedByPlayer;
+            ApplyPlanPresentation();
+        });
+
+        planBody = new GameObject("PlanDetails", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        planBody.transform.SetParent(panelRoot.transform, false);
+        VerticalLayoutGroup bodyLayout = planBody.GetComponent<VerticalLayoutGroup>();
+        bodyLayout.spacing = layout.spacing;
+        bodyLayout.childControlWidth = bodyLayout.childControlHeight = true;
+        bodyLayout.childForceExpandHeight = false;
+        TextMeshProUGUI intro = CreateText(planBody.transform, "Intro",
             "The active milestone sets the items to serve. Review demand, tune the kitchen, then start the shift.",
             14f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
         intro.textWrappingMode = TextWrappingModes.Normal;
 
-        shiftDurationText = CreateText(panelRoot.transform, "ShiftDuration",
+        shiftDurationText = CreateText(planBody.transform, "ShiftDuration",
             "SHIFT LENGTH  10:00 AM–10:00 PM  |  12 MINUTES AT 1x",
             14f, FontStyles.Bold, 20f, GameUITheme.TextSecondary);
 
-        CreateText(panelRoot.transform, "DemandHeading", "MILESTONE MENU", 14f,
+        CreateText(planBody.transform, "DemandHeading", "MILESTONE MENU", 14f,
             FontStyles.Bold, 20f, GameUITheme.Accent);
-        demandHeaderRow = CreateDemandHeader(panelRoot.transform);
-        demandEmptyText = CreateText(panelRoot.transform, "DemandEmptyMessage", "Loading demand...", 14f,
+        demandHeaderRow = CreateDemandHeader(planBody.transform);
+        demandEmptyText = CreateText(planBody.transform, "DemandEmptyMessage", "Loading demand...", 14f,
             FontStyles.Normal, 32f, GameUITheme.TextPrimary);
         demandEmptyText.textWrappingMode = TextWrappingModes.Normal;
         demandEmptyText.gameObject.SetActive(false);
-        demandRowsRoot = CreateDemandRowsRoot(panelRoot.transform);
+        demandRowsRoot = CreateDemandRowsRoot(planBody.transform);
         demandRowsLayout = demandRowsRoot.GetComponent<LayoutElement>();
         EnsureDemandRowCapacity(4);
 
         // Reserve a footer in the vertical layout while positioning the action
         // against the card bottom. The button therefore stays put as menu rows grow.
-        var startShiftFooter = new GameObject("StartShiftFooterSpace", typeof(RectTransform),
+        startShiftFooter = new GameObject("StartShiftFooterSpace", typeof(RectTransform),
             typeof(LayoutElement));
         startShiftFooter.transform.SetParent(panelRoot.transform, false);
         LayoutElement footerSize = startShiftFooter.GetComponent<LayoutElement>();
@@ -1069,6 +1085,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         RectTransform canvasRect = panelRoot.transform.parent as RectTransform;
         if (rect == null) return;
 
+        LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
         VerticalLayoutGroup layout = panelRoot.GetComponent<VerticalLayoutGroup>();
         float preferredHeight = layout != null ? layout.padding.vertical : 0f;
         int activeChildCount = 0;
@@ -1088,13 +1105,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             preferredHeight += layout.spacing * Mathf.Max(0, activeChildCount - 1);
         // Keep a small inset below Start Shift. Hidden UI elements do not add
         // phantom spacing to the plan card's measured height.
-        float desiredHeight = planCondensedForOverlay
+        float desiredHeight = IsPlanCompact
             ? 72f : Mathf.Max(360f, preferredHeight + 16f);
         float availableHeight = canvasRect != null
             ? Mathf.Max(240f, canvasRect.rect.height - 40f)
             : Mathf.Max(240f, Screen.height - 40f);
         float availableWidth = canvasRect != null ? canvasRect.rect.width : Screen.width;
-        float width = planCondensedForOverlay
+        float width = IsPlanCompact
             ? Mathf.Min(360f, Mathf.Max(1f, availableWidth - 32f))
             : Mathf.Min(640f, Mathf.Max(320f, availableWidth - 40f));
 

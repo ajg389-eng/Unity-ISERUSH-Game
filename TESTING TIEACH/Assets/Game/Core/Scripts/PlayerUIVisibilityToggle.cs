@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>Hides all game canvases and the pointer for clean screenshots with F2.</summary>
 [DisallowMultipleComponent]
@@ -10,8 +11,21 @@ public sealed class PlayerUIVisibilityToggle : MonoBehaviour
     static PlayerUIVisibilityToggle instance;
 
     readonly Dictionary<Canvas, bool> canvasEnabledStates = new Dictionary<Canvas, bool>();
+    readonly Dictionary<GraphicRaycaster, bool> raycasterEnabledStates = new Dictionary<GraphicRaycaster, bool>();
     bool uiHidden;
+    BuildPlacer movingStationOwner;
+    bool ShouldHideCanvases => uiHidden || movingStationOwner != null;
     float nextCanvasScanTime;
+
+    internal static void SetStationMoveHidden(BuildPlacer owner, bool hidden)
+    {
+        if (instance == null) return;
+        if (hidden ? instance.movingStationOwner == owner : instance.movingStationOwner != owner)
+            return;
+
+        instance.movingStationOwner = hidden ? owner : null;
+        instance.RefreshCanvases();
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
@@ -43,7 +57,7 @@ public sealed class PlayerUIVisibilityToggle : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F2))
             SetHidden(!uiHidden);
 
-        if (uiHidden && Time.unscaledTime >= nextCanvasScanTime)
+        if (ShouldHideCanvases && Time.unscaledTime >= nextCanvasScanTime)
         {
             nextCanvasScanTime = Time.unscaledTime + HiddenCanvasScanInterval;
             HideCurrentCanvases();
@@ -55,12 +69,16 @@ public sealed class PlayerUIVisibilityToggle : MonoBehaviour
         if (uiHidden == hidden) return;
 
         uiHidden = hidden;
-        if (uiHidden)
+        RefreshCanvases();
+        GameCursorController.SetHiddenForPlayerUI(uiHidden);
+    }
+
+    void RefreshCanvases()
+    {
+        if (ShouldHideCanvases)
             HideCurrentCanvases();
         else
             RestoreCanvases();
-
-        GameCursorController.SetHiddenForPlayerUI(uiHidden);
     }
 
     void HideCurrentCanvases()
@@ -76,6 +94,13 @@ public sealed class PlayerUIVisibilityToggle : MonoBehaviour
 
             if (canvas.enabled)
                 canvas.enabled = false;
+
+            if (canvas.TryGetComponent(out GraphicRaycaster raycaster))
+            {
+                if (!raycasterEnabledStates.ContainsKey(raycaster))
+                    raycasterEnabledStates.Add(raycaster, raycaster.enabled);
+                raycaster.enabled = false;
+            }
         }
     }
 
@@ -88,5 +113,9 @@ public sealed class PlayerUIVisibilityToggle : MonoBehaviour
         }
 
         canvasEnabledStates.Clear();
+        foreach (KeyValuePair<GraphicRaycaster, bool> entry in raycasterEnabledStates)
+            if (entry.Key != null)
+                entry.Key.enabled = entry.Value;
+        raycasterEnabledStates.Clear();
     }
 }

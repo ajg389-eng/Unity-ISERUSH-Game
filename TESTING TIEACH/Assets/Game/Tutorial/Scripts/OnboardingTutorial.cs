@@ -30,7 +30,8 @@ public class OnboardingTutorial : MonoBehaviour
         || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
             && Steps[Instance.stepIndex].requireShiftStarted && !Instance.tutorialShiftStarted);
     public static bool BlocksAutoCustomers => IsActive || !IsComplete;
-    public static bool AllowsPracticeCustomer => IsActive && Steps[Instance.stepIndex].liveCustomer;
+    public static bool AllowsPracticeCustomer => IsActive
+        && (Steps[Instance.stepIndex].liveCustomer || Instance.observingImprovedLayout);
     public static bool BlocksProgression => IsActive || (!IsComplete && Instance != null && Instance.pendingStart);
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
     public static bool IsResearchTutorialActive => IsCurrentStep(step => step.requireResearch);
@@ -565,6 +566,8 @@ public class OnboardingTutorial : MonoBehaviour
     bool inheritedSetupWarningLogged;
     bool preserveLoadedKitchen;
     bool inheritedStationMoved;
+    bool observingImprovedLayout;
+    bool IsObservingPracticeRun => stepIndex == 2 || observingImprovedLayout;
     float inheritedBaselineRate;
     float inheritedTargetRate;
     float inheritedCurrentRate;
@@ -582,6 +585,7 @@ public class OnboardingTutorial : MonoBehaviour
     public float TutorialTargetRateForSave => inheritedTargetRate;
     public bool TutorialStationMovedForSave => inheritedStationMoved;
     public bool BaselinePracticeRunStartedForSave => baselinePracticeRunStarted;
+    public bool ObservingImprovedLayoutForSave => observingImprovedLayout;
     public int BaselineCustomersSpawnedForSave => baselineCustomersSpawned;
     public int BaselineCustomersServedForSave => baselineCustomersServed;
     public int BaselineCustomersLeftForSave => baselineCustomersLeft;
@@ -598,7 +602,7 @@ public class OnboardingTutorial : MonoBehaviour
         bool savedMilestoneOneAnalyticsLessonDone = false,
         bool savedBaselinePracticeRunStarted = false, int savedBaselineCustomersSpawned = 0,
         int savedBaselineCustomersServed = 0, int savedBaselineCustomersLeft = 0,
-        float savedBaselinePracticeElapsedSeconds = 0f)
+        float savedBaselinePracticeElapsedSeconds = 0f, bool savedObservingImprovedLayout = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -611,7 +615,9 @@ public class OnboardingTutorial : MonoBehaviour
         // the new planning step instead of entering the run without a shift.
         if (!complete && stepIndex == 2 && !savedShiftStarted)
             stepIndex = 1;
-        baselinePracticeRunStarted = !complete && stepIndex == 2 && savedBaselinePracticeRunStarted;
+        observingImprovedLayout = !complete && Steps[stepIndex].requireOptimizedLayout
+            && savedObservingImprovedLayout;
+        baselinePracticeRunStarted = !complete && IsObservingPracticeRun && savedBaselinePracticeRunStarted;
         baselineCustomersSpawned = baselinePracticeRunStarted
             ? Mathf.Clamp(savedBaselineCustomersSpawned, 0, BaselineRunCustomerCount) : 0;
         baselineCustomersServed = baselinePracticeRunStarted
@@ -623,7 +629,7 @@ public class OnboardingTutorial : MonoBehaviour
         float baselineSpawnInterval = BaselineRunDurationSeconds / BaselineRunCustomerCount;
         nextBaselineCustomerAtSeconds = baselineSpawnInterval * (baselineCustomersSpawned + 1);
         tutorialShiftStarted = savedShiftStarted || stepIndex >= 2;
-        if (!complete && tutorialShiftStarted && stepIndex == 2)
+        if (!complete && tutorialShiftStarted && IsObservingPracticeRun)
             ShiftPlanningUI.Instance?.ResumeTutorialPracticeShift();
         glossaryTermClicked = false;
         objectivesScreenOpened = false;
@@ -761,6 +767,10 @@ public class OnboardingTutorial : MonoBehaviour
     Button backButton;
     Button nextButton;
     TextMeshProUGUI nextLabel;
+    LayoutElement nextButtonLayout;
+    LayoutElement navigationLayout;
+    string measuredNextLabel;
+    float measuredNextLabelWidth;
     GameObject cameraPromptPanel;
     GameObject flowLinkingVideoFrame;
     RawImage flowLinkingVideoImage;
@@ -969,8 +979,8 @@ public class OnboardingTutorial : MonoBehaviour
             "Improve Line", Highlight.None, liveCustomer: true, requirePickupDelivery: true,
             requireFastForwardControl: true),
         new Step("Improve the burger line",
-            "Inspect a station's health to find the <b>bottleneck</b>. Then move a station to improve the line enough to cover demand.",
-            "Finish", Highlight.None, requireStationHealthReview: true, requireOptimizedLayout: true),
+            "Open <b>Kitchen → Stations</b> and move a station to improve the layout. Then test the new line with customers.",
+            "Test Layout", Highlight.None, requireOptimizedLayout: true),
         new Step("Identify a bottleneck",
             "It is noon. Open <b>Kitchen</b>, choose <b>Workers</b>, and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
@@ -986,7 +996,7 @@ public class OnboardingTutorial : MonoBehaviour
         "All right, get used to moving around this joint. We got work to do.",
         "Let's run this kitchen as it is. I want to see what the line can do before we start moving things around.",
         "Let's see how this process handles 15 customers over three minutes before we start changing anything.",
-        "That output won't cut it. Find what's holding the line up and help me get more burgers out.",
+        "Let's shorten the route between stations and see if we can get more burgers out.",
         "That line's slowing down around noon. Help me see where things are getting stuck.",
         "Take a look at the day's numbers. I want to know what we actually got out the door."
     };
@@ -1113,6 +1123,7 @@ public class OnboardingTutorial : MonoBehaviour
         inheritedSetupWarningLogged = false;
         preserveLoadedKitchen = false;
         inheritedStationMoved = false;
+        observingImprovedLayout = false;
         inheritedBaselineRate = 0f;
         inheritedTargetRate = 0f;
         furthestStepIndex = -1;
@@ -1194,7 +1205,7 @@ public class OnboardingTutorial : MonoBehaviour
             RefreshAdvanceGate();
             return;
         }
-        if (running && stepIndex == 2 && eventId == TutorialVoiceEventId.CustomerLeft)
+        if (running && IsObservingPracticeRun && eventId == TutorialVoiceEventId.CustomerLeft)
         {
             baselineCustomersLeft = Mathf.Min(BaselineRunCustomerCount, baselineCustomersLeft + 1);
             RefreshAdvanceGate();
@@ -1203,7 +1214,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (eventId != TutorialVoiceEventId.FirstOrderServed && eventId != TutorialVoiceEventId.OrderServed)
             return;
 
-        if (running && stepIndex == 2 && eventId == TutorialVoiceEventId.OrderServed)
+        if (running && IsObservingPracticeRun && eventId == TutorialVoiceEventId.OrderServed)
         {
             baselineCustomersServed = Mathf.Min(BaselineRunCustomerCount, baselineCustomersServed + 1);
             RefreshAdvanceGate();
@@ -1370,6 +1381,11 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         Sfx.Play(SfxId.UiClick);
+        if (Steps[stepIndex].requireOptimizedLayout && !observingImprovedLayout)
+        {
+            BeginImprovedLayoutRun();
+            return;
+        }
         if (Steps[stepIndex].requireBuildOverview)
         {
             InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
@@ -1559,7 +1575,9 @@ public class OnboardingTutorial : MonoBehaviour
             : "All right, let's get this sorted out.";
         if (stepIndex == 2)
             gusLine = ISEVocabularyHighlighter.Highlight(gusLine);
-        SetGusDialogueText(gusLine);
+        SetGusDialogueText(observingImprovedLayout
+            ? "Let's see how the new layout handles the same customer rush."
+            : gusLine);
         string initialBody = !string.IsNullOrEmpty(tutorialFocusText) ? tutorialFocusText : step.body;
         if (step.requireCameraControls)
             initialBody = string.Empty;
@@ -1707,7 +1725,7 @@ public class OnboardingTutorial : MonoBehaviour
                 mgmt.OpenWorkersTab();
         }
 
-        if (IsBaselinePracticeStep(step) && !baselinePracticeRunStarted)
+        if ((IsBaselinePracticeStep(step) || observingImprovedLayout) && !baselinePracticeRunStarted)
             BeginBaselinePracticeRun();
         else if (step.liveCustomer)
             SpawnPracticeCustomer();
@@ -1990,6 +2008,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (Mathf.Abs(panelRect.sizeDelta.x - desiredPanelWidth) > 1f)
         {
             panelRect.sizeDelta = new Vector2(desiredPanelWidth, panelRect.sizeDelta.y);
+            FitTutorialButton();
             LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
         }
         float panelWidth = panelRect.rect.width > 1f ? panelRect.rect.width : 560f;
@@ -2231,22 +2250,23 @@ public class OnboardingTutorial : MonoBehaviour
         bool fixedImproveLineCard = running && Steps[stepIndex].requireOptimizedLayout;
         if (fixedImproveLineCard)
         {
-            float cardY = rootHeight * 0.5f - 110f - panelHeight * 0.5f;
+            const float topBarGap = 26f;
+            float cardY = rootHeight * 0.5f - 122f - panelHeight * 0.5f;
             MissionListUI objectives = MissionListUI.Instance != null
                 ? MissionListUI.Instance
                 : FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
             Button objectivesButton = objectives != null ? objectives.TutorialObjectivesButton : null;
             if (objectivesButton != null && TryGetRectInRoot(
                     objectivesButton.transform as RectTransform, rootRect, out Rect objectivesBounds))
-                cardY = objectivesBounds.yMin - panelHeight * 0.5f - 14f;
+                cardY = objectivesBounds.yMin - panelHeight * 0.5f - topBarGap;
 
             panelPosition = new Vector2(
                 rootWidth * 0.5f - panelWidth * 0.5f - 20f,
                 cardY);
         }
-        Vector2 overlapAdjustedPosition = AvoidOpenPanelOverlap(rootRect, panelPosition, panelWidth,
+        PositionGusDialogue(rootRect, rootWidth, rootHeight);
+        panelPosition = AvoidOpenPanelOverlap(rootRect, panelPosition, panelWidth,
             panelHeight, rootWidth, rootHeight);
-        panelPosition = fixedImproveLineCard ? panelPosition : overlapAdjustedPosition;
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
         float calloutScreenMargin = running && stepIndex == 5 && tutorialUnlockContinuePending ? 10f : 18f;
         panelPosition.x = Mathf.Clamp(panelPosition.x,
@@ -2298,8 +2318,19 @@ public class OnboardingTutorial : MonoBehaviour
             pointDownAtLayoutStation ? false : (bool?)null);
     }
 
+    void PositionGusDialogue(RectTransform rootRect, float rootWidth, float rootHeight)
+    {
+        if (gusPanel == null || !gusPanel.activeInHierarchy) return;
+        var rect = (RectTransform)gusPanel.transform;
+        Vector2 halfSize = rect.rect.size * 0.5f;
+        Vector2 preferred = new Vector2(0f, -rootHeight * 0.5f + halfSize.y + 24f);
+        Vector2 center = AvoidOpenPanelOverlap(rootRect, preferred, rect.rect.width,
+            rect.rect.height, rootWidth, rootHeight, includeGus: false);
+        rect.anchoredPosition = center - preferred + new Vector2(0f, 24f);
+    }
+
     Vector2 AvoidOpenPanelOverlap(RectTransform rootRect, Vector2 preferred, float panelWidth,
-        float panelHeight, float rootWidth, float rootHeight)
+        float panelHeight, float rootWidth, float rootHeight, bool includeGus = true)
     {
         var blockers = new List<RectTransform>();
         InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
@@ -2309,10 +2340,13 @@ public class OnboardingTutorial : MonoBehaviour
             FindObjectsInactive.Include);
         if (management != null && management.IsOpen && management.managementPanel != null)
             blockers.Add(management.managementPanel.transform as RectTransform);
+        ManagementModeController stationManagement = ManagementModeController.Instance;
+        if (stationManagement != null && stationManagement.HasOpenStationPanel)
+            blockers.Add(stationManagement.stationPopup.transform as RectTransform);
         if (ShiftPlanningUI.Instance != null && ShiftPlanningUI.IsPlanning
             && ShiftPlanningUI.Instance.TutorialPlanningCard != null)
             blockers.Add(ShiftPlanningUI.Instance.TutorialPlanningCard);
-        if (gusPanel != null && gusPanel.activeInHierarchy)
+        if (includeGus && gusPanel != null && gusPanel.activeInHierarchy)
             blockers.Add(gusPanel.transform as RectTransform);
         MissionListUI missions = MissionListUI.Instance;
         if (missions != null && missions.IsOpen && missions.panelRoot != null)
@@ -2322,7 +2356,11 @@ public class OnboardingTutorial : MonoBehaviour
         foreach (RectTransform blocker in blockers)
             if (blocker != null && blocker.gameObject.activeInHierarchy
                 && TryGetRectInRoot(blocker, rootRect, out Rect rect))
-                blockerRects.Add(rect);
+            {
+                float clearance = includeGus ? 0f : 28f;
+                blockerRects.Add(Rect.MinMaxRect(rect.xMin - clearance, rect.yMin - clearance,
+                    rect.xMax + clearance, rect.yMax + clearance));
+            }
         if (blockerRects.Count == 0) return preferred;
 
         float halfW = panelWidth * 0.5f;
@@ -2337,17 +2375,19 @@ public class OnboardingTutorial : MonoBehaviour
 
         Vector2 best = Clamp(preferred);
         float bestCost = float.MaxValue;
-        var candidates = new List<Vector2> { best };
+        var candidateX = new List<float> { best.x };
+        var candidateY = new List<float> { best.y };
         foreach (Rect r in blockerRects)
         {
-            candidates.Add(new Vector2(r.xMin - halfW - gap, best.y));
-            candidates.Add(new Vector2(r.xMax + halfW + gap, best.y));
-            candidates.Add(new Vector2(best.x, r.yMin - halfH - gap));
-            candidates.Add(new Vector2(best.x, r.yMax + halfH + gap));
+            candidateX.Add(r.xMin - halfW - gap);
+            candidateX.Add(r.xMax + halfW + gap);
+            candidateY.Add(r.yMin - halfH - gap);
+            candidateY.Add(r.yMax + halfH + gap);
         }
-        foreach (Vector2 raw in candidates)
+        foreach (float x in candidateX)
+        foreach (float y in candidateY)
         {
-            Vector2 candidate = Clamp(raw);
+            Vector2 candidate = Clamp(new Vector2(x, y));
             bool collision = false;
             foreach (Rect r in blockerRects)
                 if (Overlaps(candidate, r)) { collision = true; break; }
@@ -2515,6 +2555,7 @@ public class OnboardingTutorial : MonoBehaviour
             nextButton.interactable = touring || reviewComplete;
             if (nextLabel != null)
                 nextLabel.text = reviewComplete ? Steps[stepIndex].nextLabel : "Next";
+            FitTutorialButton();
             Image analyticsButtonImage = nextButton.GetComponent<Image>();
             if (analyticsButtonImage != null)
                 analyticsButtonImage.color = touring || reviewComplete
@@ -2543,17 +2584,11 @@ public class OnboardingTutorial : MonoBehaviour
         if (nextLabel != null && stepIndex >= 0 && stepIndex < Steps.Length)
         {
             var step = Steps[stepIndex];
-            string labelText = ready ? freezerGuideNext ? "Next" : step.nextLabel : LockedLabel(step);
+            string labelText = ready
+                ? observingImprovedLayout ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
+                : LockedLabel(step);
             nextLabel.text = labelText;
-            bool cameraMovePrompt = labelText == "Move camera with WASD";
-            nextLabel.enableAutoSizing = !cameraMovePrompt;
-            if (cameraMovePrompt)
-                nextLabel.fontSize = 13f;
-            else
-            {
-                nextLabel.fontSizeMin = 16f;
-                nextLabel.fontSizeMax = 22f;
-            }
+            FitTutorialButton();
             if (ready && step.requirePlaced)
                 UpdateHighlight(step.highlight);
         }
@@ -2601,9 +2636,11 @@ public class OnboardingTutorial : MonoBehaviour
             && !tutorialStationHealthReviewed)
             return "Review a production station";
         if (step.requireOptimizedLayout)
-            return inheritedStationMoved
-                ? "Improve the line to cover demand"
-                : "Move a station";
+        {
+            if (observingImprovedLayout)
+                return $"Visits resolved: {baselineCustomersServed + baselineCustomersLeft}/{BaselineRunCustomerCount}";
+            return "Move a station";
+        }
         if (step.requireFastForwardControl)
         {
             if (!tutorialFastForwardControlUsed) return "Click Fast Forward";
@@ -2703,9 +2740,12 @@ public class OnboardingTutorial : MonoBehaviour
             && ManagementModeController.Instance.IsCapturingFlow) return false;
         if (step.requireMenuScreen && !menuScreenOpened) return false;
         if (step.requireHamburger && !IsHamburgerEnabled()) return false;
-        if (step.requireOptimizedLayout && (!inheritedStationMoved
-            || inheritedTargetRate <= 0f
-            || CurrentInheritedOutputRate() + 0.05f < inheritedTargetRate)) return false;
+        if (step.requireOptimizedLayout)
+        {
+            if (observingImprovedLayout)
+                return BaselinePracticeRunComplete;
+            if (!inheritedStationMoved) return false;
+        }
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced()) return false;
         if (step.requireShiftStarted && !tutorialShiftStarted) return false;
         if (step.requireOrderServed && !orderServed) return false;
@@ -3216,9 +3256,22 @@ public class OnboardingTutorial : MonoBehaviour
         CustomerAI.DespawnAllCustomers();
     }
 
+    void BeginImprovedLayoutRun()
+    {
+        observingImprovedLayout = true;
+        FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+        BeginBaselinePracticeRun();
+        GameTimeManager clock = GameTimeManager.Instance;
+        clock?.BeginTutorialPracticeShift();
+        clock?.SetSpeed(GameTimeManager.SpeedMode.Play);
+        ShiftPlanningUI.Instance?.ResumeTutorialPracticeShift();
+        ClearHighlight();
+        ShowStep();
+    }
+
     void UpdateBaselinePracticeRun()
     {
-        if (!baselinePracticeRunStarted || stepIndex != 2 || !tutorialShiftStarted
+        if (!baselinePracticeRunStarted || !IsObservingPracticeRun || !tutorialShiftStarted
             || baselineCustomersSpawned >= BaselineRunCustomerCount)
             return;
 
@@ -3377,6 +3430,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     void Complete(bool skipped)
     {
+        observingImprovedLayout = false;
         running = false;
         pendingStart = false;
         currentHighlight = Highlight.None;
@@ -3801,7 +3855,7 @@ public class OnboardingTutorial : MonoBehaviour
         }
     }
 
-    void HighlightHudButton(string buttonName)
+    void HighlightHudButton(string buttonName, int? tabForNextOpen = null)
     {
         if (string.IsNullOrEmpty(buttonName)) return;
         if (buttonName == "BusinessTab" || buttonName == "ManagementButton"
@@ -3810,7 +3864,14 @@ public class OnboardingTutorial : MonoBehaviour
             MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
             if (tabs != null && tabs.KitchenButton != null)
             {
-                tabs.PrepareWorkspaceTabForNextOpen(buttonName == "InventoryTab" ? 0 : 1);
+                int index = buttonName == "InventoryTab" ? 0 : 1;
+                Button workspaceButton = tabs.WorkspaceTabButton(index);
+                if (workspaceButton != null && workspaceButton.gameObject.activeInHierarchy)
+                {
+                    FocusTutorialControl(workspaceButton);
+                    return;
+                }
+                tabs.PrepareWorkspaceTabForNextOpen(tabForNextOpen ?? index);
                 FocusTutorialControl(tabs.KitchenButton);
                 return;
             }
@@ -4063,17 +4124,26 @@ public class OnboardingTutorial : MonoBehaviour
 
     void RefreshLayoutTutorialHighlight()
     {
+        if (observingImprovedLayout)
+        {
+            ClearHighlight();
+            SetTutorialBodyText(BaselinePracticeRunComplete
+                ? $"New layout: {baselineCustomersServed} served, {baselineCustomersLeft} left. Click <b>Finish</b> to continue."
+                : $"Watch the new layout serve the same {BaselineRunCustomerCount}-customer rush.\n"
+                    + $"Served: {baselineCustomersServed} · Left: {baselineCustomersLeft}");
+            return;
+        }
+
         InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
         if (inventory == null || !inventory.IsPanelOpen)
         {
             ClearHighlight();
-            SetLayoutTutorialText("Open <b>Kitchen</b> and choose <b>Stations</b> to move a station.");
+            HighlightHudButton("InventoryTab", tabForNextOpen: 1);
             MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
-            Transform buildTab = tabs != null ? tabs.InventoryTabTransform : null;
-            if (buildTab != null)
-                FocusTutorialControl(buildTab);
-            else
-                HighlightHudButton("InventoryTab");
+            Button stationsTab = tabs != null ? tabs.WorkspaceTabButton(0) : null;
+            SetLayoutTutorialText(stationsTab != null && stationsTab.gameObject.activeInHierarchy
+                ? "Choose <b>Stations</b> to move a station."
+                : "Open <b>Kitchen</b> to find the <b>Stations</b> tab.");
             return;
         }
 
@@ -4097,7 +4167,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (!inheritedStationMoved && placer.IsDragging)
         {
-            SetLayoutTutorialText("Place it on an open tile. Shorter routes reduce worker travel.");
+            SetLayoutTutorialText("Left-click to place. Right-drag to rotate the camera. Esc cancels the move.");
             ClearHighlight();
             if (actionBar != null && actionBar.PlacementInstructionTarget != null)
                 FocusTutorialControl(actionBar.PlacementInstructionTarget);
@@ -4131,7 +4201,8 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         ClearHighlight();
-        SetLayoutTutorialText("Keep adjusting the layout until it can cover demand.");
+        SetTutorialBodyText($"Forecast: {CurrentInheritedOutputRate():0.0} burgers/min. Demand: {inheritedTargetRate:0.#}/min.\n"
+            + "Keep adjusting or click <b>Test Layout</b> to watch the new line.");
     }
 
     void SetLayoutTutorialText(string action)
@@ -4670,7 +4741,7 @@ public class OnboardingTutorial : MonoBehaviour
             RefreshInheritedLayoutText();
         UpdateContextualCallout();
         UpdateTutorialWorldHighlights();
-        if (IsBaselinePracticeStep(Steps[stepIndex]))
+        if (IsBaselinePracticeStep(Steps[stepIndex]) || observingImprovedLayout)
             UpdateBaselinePracticeRun();
         else if (Steps[stepIndex].liveCustomer && !liveCustomerSpawned)
             SpawnPracticeCustomer();
@@ -5667,6 +5738,10 @@ public class OnboardingTutorial : MonoBehaviour
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0.08f, 0.09f, 0.12f, 0.985f);
+        var border = panel.AddComponent<Outline>();
+        border.effectColor = GameUITheme.Accent;
+        border.effectDistance = new Vector2(2f, -2f);
+        border.useGraphicAlpha = false;
         // The tutorial card can overlap a highlighted station in the kitchen.
         // Let world clicks pass through its background; the Next button remains
         // independently clickable.
@@ -5783,21 +5858,18 @@ public class OnboardingTutorial : MonoBehaviour
 
         var footer = new GameObject("Navigation", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
         footer.transform.SetParent(panel.transform, false);
-        footer.GetComponent<LayoutElement>().preferredHeight = 46f;
+        navigationLayout = footer.GetComponent<LayoutElement>();
         var footerLayout = footer.GetComponent<HorizontalLayoutGroup>();
         footerLayout.childAlignment = TextAnchor.MiddleRight;
         footerLayout.childControlWidth = true;
         footerLayout.childControlHeight = true;
         footerLayout.childForceExpandWidth = false;
         footerLayout.childForceExpandHeight = false;
-        nextButton = CreateSideButton(footer.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f), 1);
-        var nextLayout = nextButton.gameObject.AddComponent<LayoutElement>();
-        nextLayout.preferredWidth = 188f;
-        nextLayout.preferredHeight = 46f;
+        nextButton = CreateTutorialButton(footer.transform, "Next", OnNext, new Color(0.22f, 0.55f, 0.38f, 1f));
+        nextButtonLayout = nextButton.gameObject.AddComponent<LayoutElement>();
         nextLabel = nextButton.GetComponentInChildren<TextMeshProUGUI>();
-        nextLabel.enableAutoSizing = true;
-        nextLabel.fontSizeMin = 16f;
-        nextLabel.fontSizeMax = 22f;
+        measuredNextLabel = null;
+        FitTutorialButton();
         CreateGusDialoguePanel(canvasRoot.transform);
         ISEGlossaryLinkHandler.Attach(gusDialogueText);
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
@@ -6260,16 +6332,31 @@ public class OnboardingTutorial : MonoBehaviour
         return tmp;
     }
 
-    static Button CreateSideButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick, Color color, int side)
+    void FitTutorialButton()
+    {
+        if (nextLabel == null) return;
+        const float horizontalPadding = 24f;
+        const float verticalPadding = 12f;
+        float availableWidth = Mathf.Max(horizontalPadding + 1f,
+            ((RectTransform)panel.transform).rect.width - 32f);
+        if (measuredNextLabel == nextLabel.text && Mathf.Approximately(measuredNextLabelWidth, availableWidth))
+            return;
+
+        measuredNextLabel = nextLabel.text;
+        measuredNextLabelWidth = availableWidth;
+        Vector2 naturalSize = nextLabel.GetPreferredValues(nextLabel.text);
+        float width = Mathf.Min(availableWidth, Mathf.Max(188f, Mathf.Ceil(naturalSize.x) + horizontalPadding));
+        Vector2 wrappedSize = nextLabel.GetPreferredValues(nextLabel.text, width - horizontalPadding, float.PositiveInfinity);
+        float height = Mathf.Max(46f, Mathf.Ceil(wrappedSize.y) + verticalPadding);
+        nextButtonLayout.preferredWidth = width;
+        nextButtonLayout.preferredHeight = height;
+        navigationLayout.preferredHeight = height;
+    }
+
+    static Button CreateTutorialButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick, Color color)
     {
         var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
         go.transform.SetParent(parent, false);
-        var rt = (RectTransform)go.transform;
-        rt.anchorMin = new Vector2(0.5f, 0f);
-        rt.anchorMax = new Vector2(0.5f, 0f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(188f, 46f);
-        rt.anchoredPosition = new Vector2(470f, side < 0 ? 51f : 103f);
         go.GetComponent<Image>().color = color;
         var btn = go.GetComponent<Button>();
         btn.onClick.AddListener(onClick);
@@ -6279,16 +6366,16 @@ public class OnboardingTutorial : MonoBehaviour
         var tr = (RectTransform)textGo.transform;
         tr.anchorMin = Vector2.zero;
         tr.anchorMax = Vector2.one;
-        tr.offsetMin = Vector2.zero;
-        tr.offsetMax = Vector2.zero;
+        tr.offsetMin = new Vector2(12f, 6f);
+        tr.offsetMax = new Vector2(-12f, -6f);
         var tmp = textGo.AddComponent<TextMeshProUGUI>();
         tmp.text = label;
-        tmp.fontSize = 22;
+        tmp.fontSize = 18;
         tmp.fontStyle = FontStyles.Bold;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
         tmp.raycastTarget = false;
-        tmp.textWrappingMode = TextWrappingModes.NoWrap;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
         if (TMP_Settings.defaultFontAsset != null)
             tmp.font = TMP_Settings.defaultFontAsset;
         return btn;
