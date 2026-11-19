@@ -292,6 +292,7 @@ public class MissionListUI : MonoBehaviour
 
     public void SetVisible(bool visible)
     {
+        if (visible && OnboardingTutorial.IsFirstDayObjectivesAccessLocked) return;
         EnsureUI();
         EnsureTopTabs();
         panelOpen = visible;

@@ -75,6 +75,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         public TextMeshProUGUI rate;
         public TextMeshProUGUI predictedRate;
         public TextMeshProUGUI shiftTotal;
+        public Button menuToggle;
+        public TextMeshProUGUI menuToggleLabel;
     }
 
     public static ShiftPlanningUI Instance { get; private set; }
@@ -100,6 +102,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     TextMeshProUGUI shiftDurationText;
     GameObject demandHeaderRow;
     GameObject demandRowsRoot;
+    ScrollRect demandRowsScroll;
     TextMeshProUGUI demandEmptyText;
     LayoutElement demandRowsLayout;
     TextMeshProUGUI liveItemRatesText;
@@ -107,6 +110,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     TextMeshProUGUI liveDiagnosisText;
     TextMeshProUGUI liveCollapseLabel;
     Button startShiftButton;
+    Button editMenuButton;
+    TextMeshProUGUI editMenuLabel;
+    TextMeshProUGUI shiftTotalHeader;
+    bool editingMenu;
     GameObject startShiftWarningOverlay;
     TextMeshProUGUI startShiftWarningDetails;
     RectTransform startShiftWarningCardRect;
@@ -120,7 +127,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     bool planHiddenForStationPopup;
     bool planCondensedForOverlay;
     bool planCollapsedByPlayer;
-    bool IsPlanCompact => planCondensedForOverlay || planCollapsedByPlayer;
+    bool planCollapsedForTutorial;
+    bool IsPlanCompact => planCondensedForOverlay || planCollapsedByPlayer || planCollapsedForTutorial;
     bool preShiftPlanningActive;
     bool livePanelCollapsed;
     bool? resumeShiftAfterLoad;
@@ -128,11 +136,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     float nextLiveRefreshTime;
     int lastPlanDemandRevision = int.MinValue;
 
-    public Button TutorialAddMenuItemButton => null;
+    public Button TutorialAddMenuItemButton => editMenuButton;
     public Button TutorialStartShiftButton => startShiftWarningOverlay != null
         && startShiftWarningOverlay.activeInHierarchy && startShiftAnywayButton != null
             ? startShiftAnywayButton : startShiftButton;
-    public bool IsMenuItemPickerOpen => false;
+    public bool IsMenuItemPickerOpen => editingMenu && panelRoot != null && panelRoot.activeInHierarchy;
     public RectTransform TutorialPlanningCard => panelRoot != null ? panelRoot.transform as RectTransform : null;
     public RectTransform TutorialPlanningWarning => startShiftWarningOverlay != null
         ? startShiftWarningOverlay.transform as RectTransform : null;
@@ -335,6 +343,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
         planning.timeManager = clock;
         planning.resumeShiftAfterLoad = resume;
+        planning.editingMenu = false;
         planning.planHiddenForStationPopup = false;
         planning.preShiftPlanningActive = false;
         if (planning.livePanelRoot != null) planning.livePanelRoot.SetActive(false);
@@ -356,6 +365,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
+        RefreshPlanOverlayPresentation();
 
         // RefreshPlan can run while the card is inactive during save restore.
         // Unity skips layout for inactive hierarchies, so rebuild after activation
@@ -378,9 +388,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         bool recipesOpen = IngredientsOrderUI.IsRecipeOverlayOpen;
         bool shouldCondense = panelRoot.activeSelf && preShiftPlanningActive
             && (analyticsOpen || recipesOpen);
-        if (shouldCondense == planCondensedForOverlay) return;
+        bool forceCollapse = OnboardingTutorial.IsLayoutImprovementLesson;
+        if (shouldCondense == planCondensedForOverlay && forceCollapse == planCollapsedForTutorial) return;
 
         planCondensedForOverlay = shouldCondense;
+        planCollapsedForTutorial = forceCollapse;
         ApplyPlanPresentation();
     }
 
@@ -389,7 +401,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         planBody.SetActive(!IsPlanCompact);
         startShiftFooter.SetActive(!IsPlanCompact);
         startShiftButton.gameObject.SetActive(!IsPlanCompact);
-        planCollapseButton.gameObject.SetActive(!planCondensedForOverlay);
+        planCollapseButton.gameObject.SetActive(!planCondensedForOverlay && !planCollapsedForTutorial);
         planCollapseLabel.text = planCollapsedByPlayer ? "Expand" : "Collapse";
         dayTitle.alignment = planCondensedForOverlay ? TextAlignmentOptions.Center : TextAlignmentOptions.Left;
         var rect = (RectTransform)panelRoot.transform;
@@ -511,6 +523,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         planCollapseLabel = planCollapseButton.GetComponentInChildren<TextMeshProUGUI>();
         planCollapseButton.onClick.AddListener(() =>
         {
+            if (OnboardingTutorial.IsLayoutImprovementLesson) return;
             planCollapsedByPlayer = !planCollapsedByPlayer;
             ApplyPlanPresentation();
         });
@@ -522,7 +535,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         bodyLayout.childControlWidth = bodyLayout.childControlHeight = true;
         bodyLayout.childForceExpandHeight = false;
         TextMeshProUGUI intro = CreateText(planBody.transform, "Intro",
-            "The active milestone sets the items to serve. Review demand, tune the kitchen, then start the shift.",
+            "Choose what to serve, review demand, and tune the kitchen before starting the shift.",
             14f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
         intro.textWrappingMode = TextWrappingModes.Normal;
 
@@ -530,15 +543,23 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             "SHIFT LENGTH  10:00 AM–10:00 PM  |  12 MINUTES AT 1x",
             14f, FontStyles.Bold, 20f, Color.white);
 
-        CreateText(planBody.transform, "DemandHeading", "MILESTONE MENU", 14f,
+        CreateText(planBody.transform, "DemandHeading", "MENU", 14f,
             FontStyles.Bold, 20f, GameUITheme.Accent);
+        editMenuButton = CreateCompactButton(planBody.transform, "EditMenu", "Edit Menu",
+            34f, 15f, HudTabColors.Strip);
+        editMenuLabel = editMenuButton.GetComponentInChildren<TextMeshProUGUI>();
+        editMenuButton.onClick.AddListener(() =>
+        {
+            editingMenu = !editingMenu;
+            RefreshPlan();
+            demandRowsScroll.verticalNormalizedPosition = 1f;
+        });
         demandHeaderRow = CreateDemandHeader(planBody.transform);
         demandEmptyText = CreateText(planBody.transform, "DemandEmptyMessage", "Loading demand...", 14f,
             FontStyles.Normal, 32f, GameUITheme.TextPrimary);
         demandEmptyText.textWrappingMode = TextWrappingModes.Normal;
         demandEmptyText.gameObject.SetActive(false);
         demandRowsRoot = CreateDemandRowsRoot(planBody.transform);
-        demandRowsLayout = demandRowsRoot.GetComponent<LayoutElement>();
         EnsureDemandRowCapacity(4);
 
         // Reserve a footer in the vertical layout while positioning the action
@@ -726,7 +747,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, Color.white);
         CreateDemandCell(row.transform, "PredictedHeader", "PREDICTED\n/MIN", PredictedRateColumnWidth, false,
             DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, Color.white);
-        CreateDemandCell(row.transform, "TotalHeader", "SHIFT\nTOTAL", ShiftTotalColumnWidth, false,
+        shiftTotalHeader = CreateDemandCell(row.transform, "TotalHeader", "SHIFT\nTOTAL", ShiftTotalColumnWidth, false,
             DemandHeaderFontSize, TextAlignmentOptions.MidlineRight, Color.white);
         return row;
     }
@@ -742,9 +763,28 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     GameObject CreateDemandRowsRoot(Transform parent)
     {
+        var viewport = new GameObject("DemandList", typeof(RectTransform), typeof(Image),
+            typeof(RectMask2D), typeof(ScrollRect), typeof(LayoutElement));
+        viewport.transform.SetParent(parent, false);
+        viewport.GetComponent<Image>().color = Color.clear;
+        demandRowsLayout = viewport.GetComponent<LayoutElement>();
+        demandRowsScroll = viewport.GetComponent<ScrollRect>();
+        demandRowsScroll.viewport = (RectTransform)viewport.transform;
+        demandRowsScroll.horizontal = false;
+        demandRowsScroll.movementType = ScrollRect.MovementType.Clamped;
+        demandRowsScroll.scrollSensitivity = 32f;
+
         GameObject root = new GameObject("DemandRows", typeof(RectTransform),
-            typeof(VerticalLayoutGroup), typeof(LayoutElement));
-        root.transform.SetParent(parent, false);
+            typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
+        root.transform.SetParent(viewport.transform, false);
+        var rect = (RectTransform)root.transform;
+        rect.anchorMin = Vector2.up;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = Vector2.up;
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = Vector2.zero;
+        root.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        demandRowsScroll.content = rect;
 
         VerticalLayoutGroup layout = root.GetComponent<VerticalLayoutGroup>();
         layout.spacing = 1f;
@@ -754,9 +794,6 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        LayoutElement size = root.GetComponent<LayoutElement>();
-        size.minHeight = 0f;
-        size.preferredHeight = 0f;
         return root;
     }
 
@@ -805,6 +842,20 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         row.itemName.fontSizeMin = 13f;
         row.itemName.fontSizeMax = 19f;
         row.itemName.overflowMode = TextOverflowModes.Ellipsis;
+        row.menuToggle = CreateCompactButton(rowRoot.transform, "ToggleMenuItem", "Add",
+            34f, 12f, HudTabColors.Strip);
+        LayoutElement menuButtonSize = row.menuToggle.GetComponent<LayoutElement>();
+        menuButtonSize.minWidth = menuButtonSize.preferredWidth = ShiftTotalColumnWidth;
+        row.menuToggleLabel = row.menuToggle.GetComponentInChildren<TextMeshProUGUI>();
+        row.menuToggle.onClick.AddListener(() =>
+        {
+            CustomerOrderConfig config = ResolveOrderConfig();
+            if (!IsPlanning || config == null || row.item == null) return;
+            config.SetItemEnabled(row.item, !config.IsItemEnabled(row.item));
+            GameSaveSlots.SaveEnabledMenuSelection(config);
+            RefreshPlan();
+        });
+        row.menuToggle.gameObject.SetActive(false);
         previewButton.onClick.AddListener(() => OpenRecipeForDemandItem(row.item));
         DelayedTooltip.Attach(previewButton, "View this item's recipe");
         rowRoot.SetActive(false);
@@ -942,6 +993,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
 
         config.SyncMenuToActiveMilestoneObjectives();
+        editMenuButton.gameObject.SetActive(!OnboardingTutorial.IsActive);
+        if (OnboardingTutorial.IsActive) editingMenu = false;
+        editMenuLabel.text = editingMenu ? "Done Editing" : "Edit Menu";
+        shiftTotalHeader.text = editingMenu ? "MENU" : "SHIFT\nTOTAL";
         lastPlanDemandRevision = config.DemandScheduleRevision;
 
         var items = new List<ItemDefinition>(config.GetEnabledMenuItems());
@@ -972,17 +1027,24 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             selectedGoalItem = goalItems[0];
         selectedGoalItemName = selectedGoalItem != null ? selectedGoalItem.itemName : string.Empty;
 
-        EnsureDemandRowCapacity(goalItems.Count);
-        if (goalItems.Count == 0)
+        List<ItemDefinition> visibleMenu = goalItems;
+        if (editingMenu)
         {
-            SetDemandEmptyState("No sellable items are required by the active milestone objectives.");
+            visibleMenu = new List<ItemDefinition>();
+            foreach (ItemDefinition item in config.GetMenuItems())
+                if (config.IsCustomerRecipeUnlocked(item)) visibleMenu.Add(item);
+        }
+        EnsureDemandRowCapacity(visibleMenu.Count);
+        if (visibleMenu.Count == 0)
+        {
+            SetDemandEmptyState(editingMenu ? "No menu items unlocked yet." : "Use Edit Menu to add items to serve.");
         }
         else
         {
-            int visibleItems = goalItems.Count;
+            int visibleItems = visibleMenu.Count;
             for (int i = 0; i < visibleItems; i++)
             {
-                ItemDefinition item = goalItems[i];
+                ItemDefinition item = visibleMenu[i];
                 float rate = config.GetCustomerDemandPerMinute(item);
                 int shiftTotal = Mathf.RoundToInt(rate * GetShiftDurationMinutes());
                 DemandRow row = demandRows[i];
@@ -993,6 +1055,9 @@ public sealed class ShiftPlanningUI : MonoBehaviour
                 row.rate.text = rate.ToString("0.#") + "/min";
                 row.predictedRate.text = FormatPredictedOutputRate(item);
                 row.shiftTotal.text = shiftTotal.ToString("N0");
+                row.shiftTotal.gameObject.SetActive(!editingMenu);
+                row.menuToggle.gameObject.SetActive(editingMenu);
+                row.menuToggleLabel.text = config.IsItemEnabled(item) ? "Remove" : "Add";
                 row.root.SetActive(true);
             }
             for (int i = visibleItems; i < demandRows.Count; i++)
@@ -1003,7 +1068,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
             if (demandEmptyText != null) demandEmptyText.gameObject.SetActive(false);
             if (demandHeaderRow != null) demandHeaderRow.SetActive(true);
-            if (demandRowsRoot != null) demandRowsRoot.SetActive(true);
+            if (demandRowsScroll != null) demandRowsScroll.gameObject.SetActive(true);
             SetDemandListHeight(visibleItems);
         }
 
@@ -1103,13 +1168,14 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             demandEmptyText.gameObject.SetActive(true);
         }
         if (demandHeaderRow != null) demandHeaderRow.SetActive(false);
-        if (demandRowsRoot != null) demandRowsRoot.SetActive(false);
+        if (demandRowsScroll != null) demandRowsScroll.gameObject.SetActive(false);
     }
 
     void SetDemandListHeight(int rowCount)
     {
         if (demandRowsLayout == null) return;
-        float height = rowCount * 52f;
+        float height = Mathf.Min(rowCount, 6) * 53f;
+        demandRowsScroll.vertical = rowCount > 6;
         demandRowsLayout.minHeight = height;
         demandRowsLayout.preferredHeight = height;
     }
@@ -1282,6 +1348,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     void BeginShift()
     {
         if (!OnboardingTutorial.CanStartShiftFromPlan) return;
+        editingMenu = false;
         ResolveOrderConfig()?.SyncMenuToActiveMilestoneObjectives();
         preShiftPlanningActive = false;
         timeManager?.BeginPlannedShift();

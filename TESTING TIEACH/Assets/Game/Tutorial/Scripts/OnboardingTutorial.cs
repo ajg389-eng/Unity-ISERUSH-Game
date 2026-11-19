@@ -17,6 +17,10 @@ public class OnboardingTutorial : MonoBehaviour
     const int OnboardingStepCount = 4;
     const int MilestoneOneBottleneckStep = 4;
     const int MilestoneOneAnalyticsStep = 5;
+    const int MilestoneOneIntroStep = 6;
+    const int MilestoneOneFlowDemoStep = 7;
+    const int MilestoneOneRecipesStep = 8;
+    const int MilestoneOneObjectivesStep = 9;
     const int BaselineRunCustomerCount = 15;
     const float BaselineRunDurationSeconds = 180f;
     const float FeatureLockRefreshSeconds = 0.35f;
@@ -26,9 +30,9 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsComplete => PlayerPrefs.GetInt(PrefsCompleteKey, 0) == 1;
     public static bool IsActive => Instance != null && Instance.running
         && !Instance.milestoneOneLessonActive;
-    public static bool CanStartShiftFromPlan => !IsActive
-        || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
-            && Steps[Instance.stepIndex].requireShiftStarted && !Instance.tutorialShiftStarted);
+    public static bool CanStartShiftFromPlan => Instance == null || (!Instance.IsMilestoneOneIntro
+        && (!IsActive || (Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
+            && Steps[Instance.stepIndex].requireShiftStarted && !Instance.tutorialShiftStarted)));
     public static bool BlocksAutoCustomers => IsActive || !IsComplete;
     public static bool AllowsPracticeCustomer => IsActive
         && (Steps[Instance.stepIndex].liveCustomer || Instance.observingImprovedLayout);
@@ -36,6 +40,14 @@ public class OnboardingTutorial : MonoBehaviour
     public static int StationUnlockProgress => BlocksProgression ? Instance.furthestStepIndex : int.MaxValue;
     public static bool IsResearchTutorialActive => IsCurrentStep(step => step.requireResearch);
     public static bool IsRecipeTutorialActive => IsCurrentStep(step => step.requireRecipeScreen);
+    internal static bool IsFirstDayRecipeAccessLocked => IsFirstDayFeatureLockedUntil(MilestoneOneRecipesStep);
+    internal static bool IsFirstDayObjectivesAccessLocked => IsFirstDayFeatureLockedUntil(MilestoneOneObjectivesStep);
+
+    static bool IsFirstDayFeatureLockedUntil(int step)
+    {
+        return Instance != null && IsComplete && Instance.milestoneOneIntroProgress < step
+            && MilestoneProgressManager.Instance?.ActiveMilestoneId == "milestone_01";
+    }
     public static bool IsAnalyticsTutorialActive => IsCurrentStep(step => step.requireAnalyticsScreen)
         || Instance != null && Instance.milestoneOneLessonActive
             && Instance.stepIndex >= 0 && Instance.stepIndex < Steps.Length
@@ -43,6 +55,7 @@ public class OnboardingTutorial : MonoBehaviour
     public static bool IsMenuTutorialActive => IsCurrentStep(step => step.requireMenuScreen);
     public static bool IsObjectivesTutorialActive => IsCurrentStep(step => step.requireObjectivesScreen);
     public static bool IsBuildTutorialActive => IsCurrentStep(step => step.requireBuildOverview);
+    internal static bool IsLayoutImprovementLesson => IsCurrentStep(step => step.requireOptimizedLayout);
     public static bool IsTimeControlTutorialActive => IsCurrentStep(step =>
         step.requireTimeControlInteractions || step.requireFastForwardControl);
     public static bool IsFeatureLocked(Button button)
@@ -66,7 +79,8 @@ public class OnboardingTutorial : MonoBehaviour
             return !tutorial.IsFeatureIntroduced(button);
 
         bool deferredGateActive = tutorial.gameplayReady && IsComplete
-            && (!tutorial.milestoneOneBottleneckLessonDone || !tutorial.milestoneOneAnalyticsLessonDone);
+            && (!tutorial.milestoneOneBottleneckLessonDone || !tutorial.milestoneOneAnalyticsLessonDone
+                || IsFirstDayObjectivesAccessLocked);
         return deferredGateActive && tutorial.IsDeferredMilestoneFeatureLocked(button);
     }
     public static bool ShouldShowPlanCardDuringTutorial => IsActive
@@ -97,7 +111,8 @@ public class OnboardingTutorial : MonoBehaviour
     {
         bool tutorialGateActive = gameplayReady && !IsComplete && (running || pendingStart);
         bool deferredLessonGateActive = gameplayReady && IsComplete
-            && (!milestoneOneBottleneckLessonDone || !milestoneOneAnalyticsLessonDone);
+            && (!milestoneOneBottleneckLessonDone || !milestoneOneAnalyticsLessonDone
+                || IsFirstDayObjectivesAccessLocked);
         if (!tutorialGateActive && !deferredLessonGateActive)
         {
             if (tutorialFeatureLocksApplied)
@@ -204,6 +219,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (button == null) return false;
         if (canvasRoot != null && button.transform.IsChildOf(canvasRoot.transform)) return true;
         if (button.GetComponentInParent<MilestoneUnlockPopupUI>(true) != null
+            || button.GetComponentInParent<DebugMenu>(true) != null
             || button.GetComponentInParent<GusButtonHelpMode>(true) != null
             || button.GetComponentInParent<GuidebookUI>(true) != null)
             return true;
@@ -301,6 +317,12 @@ public class OnboardingTutorial : MonoBehaviour
     bool IsDeferredMilestoneFeatureLocked(Button button)
     {
         if (IsAnalyticsControl(button)) return IsDeferredMilestoneAnalyticsLocked();
+        if (button != null)
+        {
+            if (button.name == "ObjectivesTopTab") return IsFirstDayObjectivesAccessLocked;
+            if (button.name == "RecipesButton" || button.name == "OpenRecipes")
+                return IsFirstDayRecipeAccessLocked;
+        }
 
         ManagementModeController management = ManagementModeController.Instance;
         if (management != null && management.stationPopup != null
@@ -385,6 +407,19 @@ public class OnboardingTutorial : MonoBehaviour
         if (IsRecipeTutorialActive) Instance.recipeScreenOpened = true;
     }
 
+    internal static void NotifyFirstDayRecipeReviewed(ItemDefinition item)
+    {
+        OnboardingTutorial tutorial = Instance;
+        if (tutorial == null || !tutorial.IsFirstDayRecipeReview) return;
+        CustomerOrderConfig menu = ProductionManager.Instance?.orderConfig;
+        if (item == null || menu == null) return;
+        if (item == menu.friesItem)
+            tutorial.firstDayFriesReviewed = true;
+        else if (item == menu.drinkItem && tutorial.firstDayFriesReviewed)
+            tutorial.firstDayShakeReviewed = true;
+        tutorial.nextControlHighlightRefresh = 0f;
+    }
+
     public static void NotifyAnalyticsScreenOpened()
     {
         if (!IsAnalyticsTutorialActive) return;
@@ -435,6 +470,8 @@ public class OnboardingTutorial : MonoBehaviour
     public static void NotifyObjectivesScreenOpened()
     {
         if (!IsObjectivesTutorialActive) return;
+        if (Instance.IsMilestoneOneIntro)
+            FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
         Instance.objectivesScreenOpened = true;
         Instance.SetTutorialBodyText(Steps[Instance.stepIndex].body);
         Instance.RefreshAdvanceGate();
@@ -592,6 +629,12 @@ public class OnboardingTutorial : MonoBehaviour
     public float BaselinePracticeElapsedSecondsForSave => baselinePracticeElapsedSeconds;
     public bool MilestoneOneBottleneckLessonDoneForSave => milestoneOneBottleneckLessonDone;
     public bool MilestoneOneAnalyticsLessonDoneForSave => milestoneOneAnalyticsLessonDone;
+    int milestoneOneIntroProgress;
+    bool IsMilestoneOneIntro => milestoneOneLessonActive && stepIndex >= MilestoneOneIntroStep;
+    bool IsFirstDayRecipeReview => IsMilestoneOneIntro && stepIndex == MilestoneOneRecipesStep;
+    bool firstDayFriesReviewed;
+    bool firstDayShakeReviewed;
+    public int MilestoneOneIntroProgressForSave => milestoneOneIntroProgress;
 
     public void RestoreCheckpoint(bool complete, int savedStep, bool savedOrderServed = false,
         bool savedPauseUsed = false, bool savedPlayUsed = false, bool savedFastForwardUsed = false,
@@ -602,7 +645,8 @@ public class OnboardingTutorial : MonoBehaviour
         bool savedMilestoneOneAnalyticsLessonDone = false,
         bool savedBaselinePracticeRunStarted = false, int savedBaselineCustomersSpawned = 0,
         int savedBaselineCustomersServed = 0, int savedBaselineCustomersLeft = 0,
-        float savedBaselinePracticeElapsedSeconds = 0f, bool savedObservingImprovedLayout = false)
+        float savedBaselinePracticeElapsedSeconds = 0f, bool savedObservingImprovedLayout = false,
+        int savedMilestoneOneIntroProgress = 0)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -642,6 +686,7 @@ public class OnboardingTutorial : MonoBehaviour
         inheritedStationMoved = savedStationMoved;
         milestoneOneBottleneckLessonDone = savedMilestoneOneBottleneckLessonDone;
         milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone;
+        milestoneOneIntroProgress = Mathf.Clamp(savedMilestoneOneIntroProgress, 0, MilestoneOneObjectivesStep + 1);
         milestoneOneLessonActive = false;
         tutorialStationHealthReviewed = false;
         milestoneOneStationClickObserved = false;
@@ -986,7 +1031,19 @@ public class OnboardingTutorial : MonoBehaviour
             "Got it", Highlight.None, requireStationHealthReview: true),
         new Step("Review Analytics",
             "It is 6 PM. Open <b>Analytics</b> and review demand, orders, production, and service performance.",
-            "Finish", Highlight.None, requireAnalyticsScreen: true)
+            "Finish", Highlight.None, requireAnalyticsScreen: true),
+        new Step("Expand the menu",
+            "Let's look at your <b>burger flow</b> before building the new lines.",
+            "Show me", Highlight.None, pauseSim: true),
+        new Step("Build a flow",
+            "Follow the burger flow on the kitchen floor.",
+            "Next", Highlight.None, pauseSim: true, openWorkers: true, requireProductionFlowOverview: true),
+        new Step("Review fries and shakes",
+            "Open <b>Recipes</b> to see the ingredients and stations for fries and shakes.",
+            "Next", Highlight.None, pauseSim: true, requireRecipeScreen: true),
+        new Step("Check your objectives",
+            "Open <b>Objectives</b>. Complete the listed tasks in one shift to unlock the next milestone.",
+            "Finish", Highlight.None, pauseSim: true, requireObjectivesScreen: true)
     };
 
     // Gus gives the player context and motivation. The moving instruction card
@@ -998,7 +1055,11 @@ public class OnboardingTutorial : MonoBehaviour
         "Let's see how this process handles 15 customers over three minutes before we start changing anything.",
         "Let's shorten the route between stations and see if we can get more burgers out.",
         "That line's slowing down around noon. Help me see where things are getting stuck.",
-        "Take a look at the day's numbers. I want to know what we actually got out the door."
+        "Take a look at the day's numbers. I want to know what we actually got out the door.",
+        "I stocked potatoes, fry containers, milk, and cups. Let's add fries and shakes.",
+        "A flow tells workers where to pick up ingredients and where to deliver them.",
+        "The recipe diagrams show what goes into each item and where it gets made.",
+        "Check the tasks before you open, then set up the menu and kitchen to meet them."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -1124,6 +1185,7 @@ public class OnboardingTutorial : MonoBehaviour
         preserveLoadedKitchen = false;
         inheritedStationMoved = false;
         observingImprovedLayout = false;
+        milestoneOneIntroProgress = 0;
         inheritedBaselineRate = 0f;
         inheritedTargetRate = 0f;
         furthestStepIndex = -1;
@@ -1437,6 +1499,19 @@ public class OnboardingTutorial : MonoBehaviour
             WorkerAssignmentLinkVisuals.ClearTutorialFlowProgress();
         }
 
+        if (IsMilestoneOneIntro)
+        {
+            milestoneOneIntroProgress = stepIndex + 1;
+            if (stepIndex == MilestoneOneObjectivesStep)
+            {
+                EndMilestoneOneLesson();
+                GameSaveSlots.SaveActiveSlot();
+            }
+            else
+                ShowMilestoneOneIntroStep();
+            return;
+        }
+
         if (stepIndex >= OnboardingStepCount - 1)
         {
             Complete(skipped: false);
@@ -1624,7 +1699,8 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (stepLabel != null)
             stepLabel.text = milestoneOneLessonActive
-                ? stepIndex == MilestoneOneBottleneckStep ? "MILESTONE 1  |  12 PM" : "MILESTONE 1  |  6 PM"
+                ? IsMilestoneOneIntro ? "MILESTONE 1  |  FIRST DAY"
+                    : stepIndex == MilestoneOneBottleneckStep ? "MILESTONE 1  |  12 PM" : "MILESTONE 1  |  6 PM"
                 : $"Tutorial  {stepIndex + 1} / {OnboardingStepCount}";
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
@@ -2002,7 +2078,8 @@ public class OnboardingTutorial : MonoBehaviour
         bool analyticsTutorial = running && Steps[stepIndex].requireAnalyticsScreen;
         bool stationaryRecipeTutorial = running && Steps[stepIndex].requireRecipes;
         bool timeControlTutorial = running && Steps[stepIndex].requireTimeControlInteractions;
-        float desiredPanelWidth = recipePickerPanel != null ? 420f
+        float desiredPanelWidth = IsFirstDayRecipeReview && IngredientsOrderUI.IsRecipeOverlayOpen ? 400f
+            : recipePickerPanel != null ? 420f
             : objectivesPanelRect != null ? 460f
             : analyticsTutorial ? 440f : 560f;
         if (Mathf.Abs(panelRect.sizeDelta.x - desiredPanelWidth) > 1f)
@@ -2248,7 +2325,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (stationaryRecipeTutorial)
             panelPosition = new Vector2(0f, -rootHeight * 0.12f);
         bool fixedImproveLineCard = running && Steps[stepIndex].requireOptimizedLayout;
-        if (fixedImproveLineCard)
+        if (fixedImproveLineCard || IsMilestoneOneIntro)
         {
             const float topBarGap = 26f;
             float cardY = rootHeight * 0.5f - 122f - panelHeight * 0.5f;
@@ -2256,12 +2333,16 @@ public class OnboardingTutorial : MonoBehaviour
                 ? MissionListUI.Instance
                 : FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
             Button objectivesButton = objectives != null ? objectives.TutorialObjectivesButton : null;
-            if (objectivesButton != null && TryGetRectInRoot(
-                    objectivesButton.transform as RectTransform, rootRect, out Rect objectivesBounds))
-                cardY = objectivesBounds.yMin - panelHeight * 0.5f - topBarGap;
+            bool dockLeft = IsMilestoneOneIntro && objectivesTutorial != null;
+            Button dockButton = dockLeft
+                ? FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.KitchenButton
+                : objectivesButton;
+            if (dockButton != null && TryGetRectInRoot(
+                    dockButton.transform as RectTransform, rootRect, out Rect dockBounds))
+                cardY = dockBounds.yMin - panelHeight * 0.5f - topBarGap;
 
             panelPosition = new Vector2(
-                rootWidth * 0.5f - panelWidth * 0.5f - 20f,
+                (dockLeft ? -1f : 1f) * (rootWidth * 0.5f - panelWidth * 0.5f - 20f),
                 cardY);
         }
         PositionGusDialogue(rootRect, rootWidth, rootHeight);
@@ -2568,7 +2649,8 @@ public class OnboardingTutorial : MonoBehaviour
             && IsFreezerExplanationPhase(freezerWalkthroughPhase);
         bool ready = freezerGuideNext || StepRequirementMet();
         bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
-            && Steps[stepIndex].requireRecipeScreen;
+            && Steps[stepIndex].requireRecipeScreen
+            && (!IsFirstDayRecipeReview || !IngredientsOrderUI.IsRecipeOverlayOpen);
         bool canOpenObjectives = !ready && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireObjectivesScreen && !objectivesScreenOpened;
         bool canOpenBusiness = !ready && stepIndex >= 0 && stepIndex < Steps.Length
@@ -2628,6 +2710,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced())
             return "Place the seven stations";
         if (step.requireResearch) return "Research all three foundations";
+        if (IsFirstDayRecipeReview && IngredientsOrderUI.IsRecipeOverlayOpen)
+            return firstDayShakeReviewed ? "Close Recipes" : firstDayFriesReviewed ? "Review Shake" : "Review Fries";
         if (step.requireRecipeScreen) return "Open Recipes";
         if (step.requireAnalyticsScreen) return "Click Analytics";
         if (step.requireMenuScreen && !menuScreenOpened) return "Open Menu";
@@ -2727,7 +2811,12 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (step.requireIngredients && !HasTutorialIngredients()) return false;
         if (step.requireResearch && (!researchScreenOpened || !IsTutorialResearchComplete())) return false;
-        if (step.requireRecipeScreen && !recipeScreenOpened) return false;
+        if (IsFirstDayRecipeReview)
+        {
+            if (!firstDayFriesReviewed || !firstDayShakeReviewed || IngredientsOrderUI.IsRecipeOverlayOpen)
+                return false;
+        }
+        else if (step.requireRecipeScreen && !recipeScreenOpened) return false;
         if (step.requireAnalyticsScreen
             && (!analyticsScreenOpened || !analyticsScreenClosed
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
@@ -4014,7 +4103,9 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (businessTutorialFlow == null)
         {
-            SetTutorialBodyText("Select a production flow to see its connected stations and the route workers follow. You can use <b>Edit Flow</b> to change it or <b>+ New Flow</b> to create another route.");
+            SetTutorialBodyText(businessFlowOverviewStage == 0
+                ? "The burger route has no links to show. Click <b>Next</b> to see where flows are created."
+                : "<b>+ New Flow</b> in <b>Workers</b> is where you can experiment later. Click <b>Next</b> to continue.");
             return;
         }
 
@@ -4031,9 +4122,8 @@ public class OnboardingTutorial : MonoBehaviour
         {
             GameObject startStation = businessTutorialFlow.stations != null
                 ? businessTutorialFlow.stations.Find(station => station != null) : null;
-            SetTutorialBodyText("Follow the existing <b>" + businessTutorialFlow.flowName
-                + "</b> flow from beginning to end. It starts at <b>" + TutorialFlowStationName(startStation)
-                + "</b>, marked START on the kitchen floor. Click Next to reveal each connection in order.");
+            SetTutorialBodyText("Look for <b>" + TutorialFlowStationName(startStation)
+                + "</b>, marked START on the floor. Click <b>Next</b> to reveal the first connection.");
             return;
         }
 
@@ -4043,20 +4133,32 @@ public class OnboardingTutorial : MonoBehaviour
             string from = TutorialFlowStationName(connection != null ? connection.from : null);
             string to = TutorialFlowStationName(connection != null ? connection.to : null);
             SetTutorialBodyText("<b>Connection " + businessFlowOverviewStage + " of "
-                + businessTutorialFlowConnectionCount + ":</b> work moves from <b>" + from
-                + "</b> to <b>" + to
-                + "</b>. The highlighted line shows this transfer. Click Next to follow the route.");
+                + businessTutorialFlowConnectionCount + ":</b> The worker carries items from <b>" + from
+                + "</b> to <b>" + to + "</b>. Follow the arrow on the floor.");
             return;
         }
 
-        SetTutorialBodyText("The full <b>" + businessTutorialFlow.flowName
-            + "</b> flow is now visible. Follow the lines from START to each ending station. To change this route, select <b>Edit Flow</b>; to make another route, select <b>+ New Flow</b>.");
+        SetTutorialBodyText("The full route is now visible. Use <b>Workers → + New Flow</b> when you're ready to experiment. Click <b>Next</b> to continue.");
     }
 
     void BeginBusinessFlowWalkthrough()
     {
         ProductionManager production = ProductionManager.Instance;
-        businessTutorialFlow = production != null ? production.SelectedFlow : null;
+        businessTutorialFlow = production != null
+            ? production.productionFlows.Find(flow => flow != null && IsBurgerTutorialFlow(flow))
+            : null;
+        if (businessTutorialFlow == null)
+        {
+            var example = new ProductionFlowPlan { flowName = "Burger example", graphInitialized = true };
+            for (int i = 0; i < 4; i++)
+            {
+                var link = GetExpectedFlowLink(example);
+                if (link.source == null || link.destination == null) break;
+                example.AddConnection(link.source.gameObject, link.destination.gameObject);
+            }
+            if (example.connections.Count > 0)
+                businessTutorialFlow = example;
+        }
         if (businessTutorialFlow != null)
         {
             businessTutorialFlow.EnsureLegacyConnections();
@@ -4204,6 +4306,45 @@ public class OnboardingTutorial : MonoBehaviour
         ClearHighlight();
         SetTutorialBodyText($"Forecast: {CurrentInheritedOutputRate():0.0} burgers/min. Demand: {inheritedTargetRate:0.#}/min.\n"
             + "Keep adjusting or click <b>Test Layout</b> to watch the new line.");
+    }
+
+    void RefreshFirstDayRecipeReview()
+    {
+        ClearHighlight();
+        if (!IngredientsOrderUI.IsRecipeOverlayOpen)
+        {
+            if (firstDayShakeReviewed)
+                SetTutorialBodyText("Build the two routes in <b>Workers</b>. Use <b>Shift Plan → Edit Menu</b> when you're ready to sell them.");
+            else
+            {
+                SetTutorialBodyText("Open <b>Recipes</b> to see the ingredients and stations.");
+                HighlightHudButton("RecipesButton");
+            }
+            return;
+        }
+
+        IngredientsOrderUI recipes = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+        if (recipes == null) return;
+        if (firstDayShakeReviewed)
+        {
+            SetTutorialBodyText("Close <b>Recipes</b> to return to the kitchen.");
+            FocusTutorialControl(recipes.TutorialRecipeCloseButton);
+            return;
+        }
+
+        CustomerOrderConfig menu = ProductionManager.Instance?.orderConfig;
+        int tab = firstDayFriesReviewed ? 2 : 1;
+        string name = firstDayFriesReviewed ? "Shake" : "Fries";
+        if (recipes.TutorialActiveRecipeTab != tab)
+        {
+            SetTutorialBodyText(firstDayFriesReviewed ? "Select the <b>Shakes</b> tab." : "Select the <b>Fries</b> tab.");
+            FocusTutorialControl(recipes.GetTutorialRecipeTab(tab));
+        }
+        else
+        {
+            SetTutorialBodyText("Open <b>" + name + "</b> to see its production flow.");
+            FocusTutorialControl(recipes.GetTutorialRecipeHeader(firstDayFriesReviewed ? menu?.drinkItem : menu?.friesItem));
+        }
     }
 
     void SetLayoutTutorialText(string action)
@@ -4366,6 +4507,11 @@ public class OnboardingTutorial : MonoBehaviour
         ClearControlHighlights();
         calloutTarget = null;
         var step = Steps[stepIndex];
+        if (IsFirstDayRecipeReview)
+        {
+            RefreshFirstDayRecipeReview();
+            return;
+        }
 
         if (step.openInventory)
         {
@@ -4518,15 +4664,13 @@ public class OnboardingTutorial : MonoBehaviour
                 return;
             }
             WorkersUI flowWorkers = FindFirstObjectByType<WorkersUI>(FindObjectsInactive.Exclude);
-            Component target = flowWorkers == null ? null
-                : businessFlowOverviewStage >= GetBusinessFlowTutorialFinalStage()
-                    ? flowWorkers.TutorialEditFlowTarget : flowWorkers.TutorialFlowTabsTarget;
+            Component target = flowWorkers != null && businessFlowOverviewStage == GetBusinessFlowTutorialFinalStage()
+                ? flowWorkers.TutorialCreateFlowTarget : null;
             if (target != null) FocusTutorialControl(target);
             ManagementModeController capture = ManagementModeController.Instance;
             if (capture != null && capture.IsCapturingFlow)
             {
-                if (capture.flowCaptureFinishButton != null) FocusTutorialControl(capture.flowCaptureFinishButton);
-                if (capture.flowCaptureCancelButton != null) HighlightControl(capture.flowCaptureCancelButton);
+                if (capture.flowCaptureCancelButton != null) FocusTutorialControl(capture.flowCaptureCancelButton);
             }
             return;
         }
@@ -4726,7 +4870,16 @@ public class OnboardingTutorial : MonoBehaviour
             SetFastForwardHelpVisible(false);
             if (pendingStart && !IsComplete)
                 TryBegin();
+            else
+                TryBeginMilestoneOneIntro();
             return;
+        }
+        if (IsMilestoneOneIntro)
+        {
+            bool waitForMilestone = MilestoneUnlockPopupUI.IsPendingOrVisible;
+            if (canvasRoot != null && canvasRoot.activeSelf == waitForMilestone)
+                canvasRoot.SetActive(!waitForMilestone);
+            if (waitForMilestone) return;
         }
         TrackCameraTutorialInputs();
         RefreshCameraPromptStatus();
@@ -4760,6 +4913,47 @@ public class OnboardingTutorial : MonoBehaviour
         float pulse = 0.5f + Mathf.PingPong(Time.unscaledTime * 1.6f, 0.25f);
         highlight.transform.position = GetTutorialWorldAimPoint(highlightTarget);
         highlight.transform.localScale = Vector3.one * pulse;
+    }
+
+    void TryBeginMilestoneOneIntro()
+    {
+        if (!gameplayReady || !IsComplete || !ShiftPlanningUI.IsPlanning
+            || milestoneOneIntroProgress > MilestoneOneObjectivesStep
+            || MilestoneProgressManager.Instance?.ActiveMilestoneId != "milestone_01"
+            || TitleScreenController.IsTitleScreenActive || CutscenePresentation.IsActive
+            || IntroCutsceneUI.IsPlaying || MilestoneUnlockPopupUI.IsPendingOrVisible
+            || PauseMenuUI.IsOpen)
+            return;
+
+        if (milestoneOneIntroProgress == 0)
+        {
+            CustomerOrderConfig menu = ProductionManager.Instance?.orderConfig;
+            KitchenInventory stock = KitchenInventory.Instance;
+            if (menu == null || stock == null) return;
+            AssemblyRecipeDefinition shake = menu.GetAssemblyRecipe(menu.drinkItem);
+            stock.AddStock(menu.friesIngredient, 12);
+            stock.AddStock(menu.fryContainerIngredient, 12);
+            stock.AddStock(shake?.processedInput, 12);
+            stock.AddStock(shake?.pantryInput, 12);
+            milestoneOneIntroProgress = MilestoneOneIntroStep;
+        }
+
+        milestoneOneLessonActive = true;
+        running = true;
+        pendingStart = false;
+        EnsureUI();
+        ShowMilestoneOneIntroStep();
+    }
+
+    void ShowMilestoneOneIntroStep()
+    {
+        stepIndex = milestoneOneIntroProgress;
+        if (IsFirstDayRecipeReview)
+        {
+            firstDayFriesReviewed = false;
+            firstDayShakeReviewed = false;
+        }
+        ShowStep();
     }
 
     void UpdateMilestoneOneLessonSchedule()
@@ -4962,6 +5156,14 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         ManagementModeController manager = ManagementModeController.Instance;
+        if (Steps[stepIndex].requireProductionFlowOverview && businessTutorialFlow?.connections != null
+            && businessFlowOverviewStage > 0 && businessFlowOverviewStage <= businessTutorialFlow.connections.Count)
+        {
+            ProductionFlowConnection edge = businessTutorialFlow.connections[businessFlowOverviewStage - 1];
+            UpdateTutorialFlowGuide(edge?.from != null ? edge.from.transform : null,
+                edge?.to != null ? edge.to.transform : null);
+            return;
+        }
         bool showingFlowGuide = Steps[stepIndex].requireFlow
             && manager != null && manager.IsCapturingFlow;
         if (showingFlowGuide)

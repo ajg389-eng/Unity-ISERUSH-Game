@@ -10,8 +10,13 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     GameObject popupRoot;
     bool isVisible;
+    int pendingUnlocks;
+    bool requiresContinue;
     System.Action tutorialContinueCallback;
     MissionListUI objectivesToRestore;
+
+    internal static bool IsPendingOrVisible => instance != null
+        && (instance.pendingUnlocks > 0 || instance.isVisible);
 
     public static RectTransform ActivePanelRect
     {
@@ -26,6 +31,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
     {
         MilestoneUnlockPopupUI popup = GetOrCreateInstance(milestone);
         if (popup == null) return;
+        popup.pendingUnlocks++;
         popup.StartCoroutine(popup.ShowWhenReady(milestone));
     }
 
@@ -73,9 +79,8 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         while (CutscenePresentation.IsActive || IntroCutsceneUI.IsPlaying)
             yield return null;
 
-        Canvas canvas = ResolvePlayerCanvas();
-        if (canvas == null) yield break;
         ShowImmediately(milestone, true);
+        pendingUnlocks--;
     }
 
     bool ShowImmediately(MilestoneDefinition milestone, bool newlyUnlocked,
@@ -89,6 +94,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
             return false;
         }
         Build(canvas.transform, milestone, newlyUnlocked);
+        requiresContinue = newlyUnlocked && milestone.milestoneId == "milestone_01";
         GameTimeManager.Instance?.RequestExternalPause(PauseSource);
         isVisible = true;
         return true;
@@ -538,7 +544,11 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
     void Update()
     {
-        if (isVisible && tutorialContinueCallback == null && Input.GetKeyDown(KeyCode.Escape)) Close();
+        if (!isVisible || !Input.GetKeyDown(KeyCode.Escape)) return;
+        if (requiresContinue || tutorialContinueCallback != null)
+            PauseMenuUI.MarkEscapeHandled();
+        else
+            Close();
     }
 
     void ContinueFromPopup()
@@ -559,6 +569,7 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         }
         popupRoot = null;
         isVisible = false;
+        requiresContinue = false;
         MissionListUI objectives = objectivesToRestore;
         objectivesToRestore = null;
         if (objectives != null)

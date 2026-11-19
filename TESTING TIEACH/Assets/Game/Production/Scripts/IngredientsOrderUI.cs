@@ -80,6 +80,15 @@ public class IngredientsOrderUI : MonoBehaviour
     readonly List<RecipeGraphNodeView> recipeGraphNodes = new List<RecipeGraphNodeView>();
     readonly List<RecipeGraphEdgeView> recipeGraphEdges = new List<RecipeGraphEdgeView>();
     readonly List<Button> recipeTabButtons = new List<Button>();
+    Button recipeCloseButton;
+    internal Button TutorialRecipeCloseButton => recipeCloseButton;
+    internal int TutorialActiveRecipeTab => activeRecipeTab;
+
+    internal Button GetTutorialRecipeTab(int index) =>
+        index >= 0 && index < recipeTabButtons.Count ? recipeTabButtons[index] : null;
+
+    internal Button GetTutorialRecipeHeader(ItemDefinition item) => item == null ? null
+        : recipeChartContainer?.Find("RecipeCard_" + item.name + "/RecipeHeader")?.GetComponent<Button>();
     readonly Dictionary<StationType, ItemDefinition> stationPreviewItems =
         new Dictionary<StationType, ItemDefinition>();
 
@@ -526,7 +535,7 @@ public class IngredientsOrderUI : MonoBehaviour
         LayoutElement layout = go.GetComponent<LayoutElement>();
         layout.minHeight = layout.preferredHeight = 34f;
         TextMeshProUGUI text = go.GetComponent<TextMeshProUGUI>();
-        text.text = "The active milestone objectives determine which items customers order.";
+        text.text = "Use Shift Plan → Edit Menu to choose what customers can order.";
         text.fontSize = 13f;
         text.color = GameUITheme.TextSecondary;
         text.textWrappingMode = TextWrappingModes.Normal;
@@ -709,6 +718,7 @@ public class IngredientsOrderUI : MonoBehaviour
 
     void OpenRecipes(CustomerOrderConfig menu, int tab = 0, ItemDefinition focusItem = null)
     {
+        if (OnboardingTutorial.IsFirstDayRecipeAccessLocked) return;
         if (recipesOverlay == null) BuildRecipesOverlay(menu);
         MissionListUI objectives = MissionListUI.Instance;
         if (objectives != null && objectives.IsOpen)
@@ -755,9 +765,9 @@ public class IngredientsOrderUI : MonoBehaviour
             TextAlignmentOptions.Left);
         title.color = GameUITheme.TextPrimary;
         TextMeshProUGUI closeLabel;
-        Button close = CreateAbsoluteButton(panel.transform, "Close", "X",
+        recipeCloseButton = CreateAbsoluteButton(panel.transform, "Close", "X",
             new Vector2(-58f, -54f), new Vector2(-14f, -14f), GameUITheme.Danger, out closeLabel);
-        close.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
+        recipeCloseButton.onClick.AddListener(() => { CloseRecipes(); Sfx.Play(SfxId.UiClick); });
 
         GameObject tabs = new GameObject("Tabs", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         tabs.transform.SetParent(panel.transform, false);
@@ -974,6 +984,7 @@ public class IngredientsOrderUI : MonoBehaviour
             if (expandedLabel != null) expandedLabel.text = "HIDE  ▲";
         }
         CreateRecipeDetails(menu, product, card.transform, openDetails);
+        if (openDetails && !locked) OnboardingTutorial.NotifyFirstDayRecipeReviewed(product);
         return card.transform;
     }
 
@@ -1017,6 +1028,7 @@ public class IngredientsOrderUI : MonoBehaviour
         details.gameObject.SetActive(open);
         if (chevron != null) chevron.text = open ? "HIDE  ▲" : "DETAILS  ▼";
         LayoutRebuilder.MarkLayoutForRebuild(recipeChartContainer as RectTransform);
+        if (open) OnboardingTutorial.NotifyFirstDayRecipeReviewed(product);
         Sfx.Play(SfxId.UiClick);
     }
 
@@ -2367,7 +2379,7 @@ public class IngredientsOrderUI : MonoBehaviour
         saleStateLayout.minWidth = saleStateLayout.preferredWidth = 78f;
         saleStateLayout.minHeight = saleStateLayout.preferredHeight = 30f;
         TextMeshProUGUI saleState = saleStateGo.GetComponent<TextMeshProUGUI>();
-        saleState.text = menu.IsItemEnabled(item) ? "REQUIRED" : "NOT REQUIRED";
+        saleState.text = menu.IsItemEnabled(item) ? "ON MENU" : "OFF MENU";
         saleState.fontSize = 10f;
         saleState.fontStyle = FontStyles.Bold;
         saleState.color = menu.IsItemEnabled(item) ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
@@ -3289,7 +3301,7 @@ public class IngredientsOrderUI : MonoBehaviour
             if (row.saleState != null)
             {
                 bool enabled = menu.IsItemEnabled(row.item);
-                row.saleState.text = enabled ? "REQUIRED" : "NOT REQUIRED";
+                row.saleState.text = enabled ? "ON MENU" : "OFF MENU";
                 row.saleState.color = enabled ? GameUITheme.PositiveAccent : GameUITheme.TextSecondary;
             }
         }

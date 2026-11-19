@@ -189,6 +189,7 @@ public class CustomerOrderConfig : ScriptableObject
     // serialized back into the shared asset; old save selections are migrated
     // to the current milestone objectives when restored.
     [System.NonSerialized] readonly HashSet<ItemDefinition> enabledMenuItems = new HashSet<ItemDefinition>();
+    [System.NonSerialized] bool menuSelectionInitialized;
     [System.NonSerialized] bool demandScheduleReady;
     [System.NonSerialized] int demandScheduleRevision;
     [System.NonSerialized] int demandCustomersPerMinute;
@@ -1057,7 +1058,7 @@ public class CustomerOrderConfig : ScriptableObject
             && enabledMenuItems.Contains(item);
     }
 
-    /// <summary>Returns stable asset names for the menu items derived from milestone objectives.</summary>
+    /// <summary>Returns stable asset names for the selected menu items.</summary>
     public List<string> CaptureEnabledMenuItemNames()
     {
         var names = new List<string>();
@@ -1069,13 +1070,11 @@ public class CustomerOrderConfig : ScriptableObject
         return names;
     }
 
-    /// <summary>
-    /// Reads legacy menu selections from a save, then replaces them with the
-    /// current milestone's required sellable items.
-    /// </summary>
+    /// <summary>Restores the player's menu selection from a save.</summary>
     public void RestoreEnabledMenuItems(IEnumerable<string> savedNames)
     {
         enabledMenuItems.Clear();
+        menuSelectionInitialized = savedNames != null;
         if (savedNames != null)
         {
             var names = new HashSet<string>();
@@ -1094,7 +1093,7 @@ public class CustomerOrderConfig : ScriptableObject
         InvalidateDemandSchedule();
     }
 
-    /// <summary>Sets customer menu items from the active milestone's serve objectives.</summary>
+    /// <summary>Applies recipe unlocks while preserving the player's selection.</summary>
     public bool SyncMenuToActiveMilestoneObjectives(bool allowDuringShift = false)
     {
         if (!allowDuringShift && GameTimeManager.Instance != null
@@ -1103,37 +1102,15 @@ public class CustomerOrderConfig : ScriptableObject
 
         MilestoneProgressManager progression = MilestoneProgressManager.Instance;
         MilestoneDefinition milestone = progression != null ? progression.GetActiveMilestone() : null;
-        if (milestone == null) return false;
-
-        var desiredItems = new HashSet<ItemDefinition>();
-        if (milestone.isTutorial)
+        bool tutorial = milestone != null && milestone.isTutorial;
+        bool changed = enabledMenuItems.RemoveWhere(item =>
+            !IsCustomerRecipeUnlocked(item) || (tutorial && item != burgerBase)) > 0;
+        if ((tutorial || !menuSelectionInitialized) && IsCustomerRecipeUnlocked(burgerBase))
         {
-            if (burgerBase != null && IsCustomerRecipeUnlocked(burgerBase))
-                desiredItems.Add(burgerBase);
+            changed |= enabledMenuItems.Add(burgerBase);
+            menuSelectionInitialized = true;
         }
-        else
-        {
-            bool includeAllUnlockedProducts = false;
-            IReadOnlyList<MissionDefinition> missions = milestone.GetMissions();
-            for (int i = 0; missions != null && i < missions.Count; i++)
-            {
-                MissionDefinition mission = missions[i];
-                if (mission == null) continue;
-                includeAllUnlockedProducts |= mission.countAnyUnlockedMenuProduct;
-                if (mission.deliveredItem != null && IsCustomerRecipeUnlocked(mission.deliveredItem))
-                    desiredItems.Add(mission.deliveredItem);
-            }
-
-            if (includeAllUnlockedProducts)
-                foreach (ItemDefinition item in GetMenuItems())
-                    if (IsCustomerRecipeUnlocked(item))
-                        desiredItems.Add(item);
-        }
-
-        if (enabledMenuItems.SetEquals(desiredItems)) return false;
-        enabledMenuItems.Clear();
-        foreach (ItemDefinition item in desiredItems)
-            enabledMenuItems.Add(item);
+        if (!changed) return false;
         InvalidateDemandSchedule();
         return true;
     }
@@ -1142,6 +1119,7 @@ public class CustomerOrderConfig : ScriptableObject
     public void ClearEnabledMenuItems()
     {
         enabledMenuItems.Clear();
+        menuSelectionInitialized = false;
         InvalidateDemandSchedule();
     }
 
@@ -1166,24 +1144,10 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
             return;
-        MilestoneProgressManager progression = MilestoneProgressManager.Instance;
-        if (progression != null)
-        {
-            MilestoneDefinition milestone = progression.GetActiveMilestone();
-            if (milestone == null)
-            {
-                SyncMenuToActiveMilestoneObjectives();
-                return;
-            }
-            if (!milestone.isTutorial)
-            {
-                SyncMenuToActiveMilestoneObjectives();
-                return;
-            }
-            if (item != burgerBase || !enabled) return;
-        }
-        if (item == null || !(IsBurger(item) || IsFries(item) || IsDrink(item))) return;
-        if (enabled && !IsMenuItemUnlocked(item)) return;
+        MilestoneDefinition milestone = MilestoneProgressManager.Instance?.GetActiveMilestone();
+        if (milestone != null && milestone.isTutorial && (item != burgerBase || !enabled)) return;
+        if (!IsCustomerRecipeUnlocked(item)) return;
+        menuSelectionInitialized = true;
         bool changed = enabled
             ? enabledMenuItems.Add(item)
             : enabledMenuItems.Remove(item);
