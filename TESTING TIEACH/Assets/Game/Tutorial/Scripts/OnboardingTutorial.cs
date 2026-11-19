@@ -536,6 +536,7 @@ public class OnboardingTutorial : MonoBehaviour
     float nextBaselineCustomerAtSeconds;
     int baselineCustomersSpawned;
     int baselineCustomersServed;
+    int baselineCustomersLeft;
     bool milestoneOneLessonActive;
     bool milestoneOneBottleneckLessonDone;
     bool milestoneOneAnalyticsLessonDone;
@@ -545,7 +546,7 @@ public class OnboardingTutorial : MonoBehaviour
     int stationHealthLessonSelectionRevision;
     bool burgerArrivedAtPickup;
     bool BaselinePracticeRunComplete => baselineCustomersSpawned >= BaselineRunCustomerCount
-        && baselineCustomersServed >= BaselineRunCustomerCount;
+        && baselineCustomersServed + baselineCustomersLeft >= BaselineRunCustomerCount;
     bool customerJourneyComplete;
     bool tutorialCustomerOrderServed;
     int customerJourneyStage = -1;
@@ -583,6 +584,7 @@ public class OnboardingTutorial : MonoBehaviour
     public bool BaselinePracticeRunStartedForSave => baselinePracticeRunStarted;
     public int BaselineCustomersSpawnedForSave => baselineCustomersSpawned;
     public int BaselineCustomersServedForSave => baselineCustomersServed;
+    public int BaselineCustomersLeftForSave => baselineCustomersLeft;
     public float BaselinePracticeElapsedSecondsForSave => baselinePracticeElapsedSeconds;
     public bool MilestoneOneBottleneckLessonDoneForSave => milestoneOneBottleneckLessonDone;
     public bool MilestoneOneAnalyticsLessonDoneForSave => milestoneOneAnalyticsLessonDone;
@@ -595,7 +597,8 @@ public class OnboardingTutorial : MonoBehaviour
         bool savedStationMoved = false, bool savedMilestoneOneBottleneckLessonDone = false,
         bool savedMilestoneOneAnalyticsLessonDone = false,
         bool savedBaselinePracticeRunStarted = false, int savedBaselineCustomersSpawned = 0,
-        int savedBaselineCustomersServed = 0, float savedBaselinePracticeElapsedSeconds = 0f)
+        int savedBaselineCustomersServed = 0, int savedBaselineCustomersLeft = 0,
+        float savedBaselinePracticeElapsedSeconds = 0f)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -613,6 +616,8 @@ public class OnboardingTutorial : MonoBehaviour
             ? Mathf.Clamp(savedBaselineCustomersSpawned, 0, BaselineRunCustomerCount) : 0;
         baselineCustomersServed = baselinePracticeRunStarted
             ? Mathf.Clamp(savedBaselineCustomersServed, 0, baselineCustomersSpawned) : 0;
+        baselineCustomersLeft = baselinePracticeRunStarted
+            ? Mathf.Clamp(savedBaselineCustomersLeft, 0, baselineCustomersSpawned - baselineCustomersServed) : 0;
         baselinePracticeElapsedSeconds = baselinePracticeRunStarted
             ? Mathf.Max(0f, savedBaselinePracticeElapsedSeconds) : 0f;
         float baselineSpawnInterval = BaselineRunDurationSeconds / BaselineRunCustomerCount;
@@ -960,7 +965,7 @@ public class OnboardingTutorial : MonoBehaviour
             "Start a shift without changing the kitchen. We will observe the existing layout as a <b>baseline</b>.",
             "Next", Highlight.None, requirePlanIntroduction: true, requireShiftStarted: true),
         new Step("Observe the baseline",
-            "Run the kitchen for three minutes. Fifteen customers will arrive. Serve all of them to complete the baseline run.",
+            "Run the kitchen for three minutes. Fifteen customers will arrive. The baseline ends when all 15 visits are resolved, either served or lost to waiting.",
             "Improve Line", Highlight.None, liveCustomer: true, requirePickupDelivery: true,
             requireFastForwardControl: true),
         new Step("Improve the burger line",
@@ -1120,6 +1125,7 @@ public class OnboardingTutorial : MonoBehaviour
         nextBaselineCustomerAtSeconds = 0f;
         baselineCustomersSpawned = 0;
         baselineCustomersServed = 0;
+        baselineCustomersLeft = 0;
         burgerArrivedAtPickup = false;
         customerJourneyComplete = false;
         tutorialCustomerOrderServed = false;
@@ -1185,6 +1191,12 @@ public class OnboardingTutorial : MonoBehaviour
         {
             inheritedStationMoved = true;
             nextInheritedForecastRefresh = 0f;
+            RefreshAdvanceGate();
+            return;
+        }
+        if (running && stepIndex == 2 && eventId == TutorialVoiceEventId.CustomerLeft)
+        {
+            baselineCustomersLeft = Mathf.Min(BaselineRunCustomerCount, baselineCustomersLeft + 1);
             RefreshAdvanceGate();
             return;
         }
@@ -1532,7 +1544,9 @@ public class OnboardingTutorial : MonoBehaviour
         bool cameraControlsOnly = step.requireCameraControls;
         if (stepLabel != null) stepLabel.gameObject.SetActive(!cameraControlsOnly && !titleOnlyStep);
         if (titleText != null) titleText.gameObject.SetActive(true);
-        if (bodyText != null) bodyText.gameObject.SetActive(!cameraControlsOnly && !titleOnlyStep);
+        if (bodyText != null)
+            bodyText.gameObject.SetActive(!cameraControlsOnly
+                && (!titleOnlyStep || step.requireOptimizedLayout));
         if (panelDragHandle != null) panelDragHandle.gameObject.SetActive(!titleOnlyStep);
         if (gusPanel != null) gusPanel.SetActive(!cameraControlsOnly);
         SetFastForwardHelpVisible(step.requireTimeControlInteractions && running);
@@ -2214,8 +2228,25 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (stationaryRecipeTutorial)
             panelPosition = new Vector2(0f, -rootHeight * 0.12f);
-        panelPosition = AvoidOpenPanelOverlap(rootRect, panelPosition, panelWidth, panelHeight,
-            rootWidth, rootHeight);
+        bool fixedImproveLineCard = running && Steps[stepIndex].requireOptimizedLayout;
+        if (fixedImproveLineCard)
+        {
+            float cardY = rootHeight * 0.5f - 110f - panelHeight * 0.5f;
+            MissionListUI objectives = MissionListUI.Instance != null
+                ? MissionListUI.Instance
+                : FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
+            Button objectivesButton = objectives != null ? objectives.TutorialObjectivesButton : null;
+            if (objectivesButton != null && TryGetRectInRoot(
+                    objectivesButton.transform as RectTransform, rootRect, out Rect objectivesBounds))
+                cardY = objectivesBounds.yMin - panelHeight * 0.5f - 14f;
+
+            panelPosition = new Vector2(
+                rootWidth * 0.5f - panelWidth * 0.5f - 20f,
+                cardY);
+        }
+        Vector2 overlapAdjustedPosition = AvoidOpenPanelOverlap(rootRect, panelPosition, panelWidth,
+            panelHeight, rootWidth, rootHeight);
+        panelPosition = fixedImproveLineCard ? panelPosition : overlapAdjustedPosition;
         // Apply screen bounds after every contextual adjustment, including bottom-row targets.
         float calloutScreenMargin = running && stepIndex == 5 && tutorialUnlockContinuePending ? 10f : 18f;
         panelPosition.x = Mathf.Clamp(panelPosition.x,
@@ -2261,7 +2292,10 @@ public class OnboardingTutorial : MonoBehaviour
 
         bool customTimeControlArrows = running && stepIndex >= 0 && stepIndex < Steps.Length
             && IsBaselinePracticeStep(Steps[stepIndex]) && !BaselinePracticeRunComplete;
-        PositionCalloutArrow(targetPosition, targetBounds, hasTarget && !customTimeControlArrows);
+        bool pointDownAtLayoutStation = fixedImproveLineCard && calloutTarget == null
+            && highlightTarget != null;
+        PositionCalloutArrow(targetPosition, targetBounds, hasTarget && !customTimeControlArrows,
+            pointDownAtLayoutStation ? false : (bool?)null);
     }
 
     Vector2 AvoidOpenPanelOverlap(RectTransform rootRect, Vector2 preferred, float panelWidth,
@@ -2379,8 +2413,39 @@ public class OnboardingTutorial : MonoBehaviour
             Vector3 worldPoint = GetTutorialWorldAimPoint(highlightTarget);
             Vector3 projected = Camera.main.WorldToScreenPoint(worldPoint);
             if (projected.z <= 0f) return false;
-            return RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                rootRect, projected, null, out localPoint);
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    rootRect, projected, null, out localPoint))
+                return false;
+
+            if (running && stepIndex >= 0 && stepIndex < Steps.Length
+                && Steps[stepIndex].requireOptimizedLayout)
+            {
+                Bounds stationBounds = GetTutorialStationBounds(highlightTarget);
+                Vector3 boundsMin = stationBounds.min;
+                Vector3 boundsMax = stationBounds.max;
+                Vector2 screenMin = new Vector2(float.MaxValue, float.MaxValue);
+                Vector2 screenMax = new Vector2(float.MinValue, float.MinValue);
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 worldCorner = new Vector3(
+                        (corner & 1) == 0 ? boundsMin.x : boundsMax.x,
+                        (corner & 2) == 0 ? boundsMin.y : boundsMax.y,
+                        (corner & 4) == 0 ? boundsMin.z : boundsMax.z);
+                    Vector3 screenCorner = Camera.main.WorldToScreenPoint(worldCorner);
+                    if (screenCorner.z <= 0f) continue;
+                    if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                            rootRect, screenCorner, null, out Vector2 localCorner))
+                        continue;
+                    screenMin = Vector2.Min(screenMin, localCorner);
+                    screenMax = Vector2.Max(screenMax, localCorner);
+                }
+                if (screenMin.x != float.MaxValue)
+                {
+                    localBounds = Rect.MinMaxRect(screenMin.x, screenMin.y, screenMax.x, screenMax.y);
+                    localPoint = localBounds.center;
+                }
+            }
+            return true;
         }
         else
         {
@@ -2499,9 +2564,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (IsBaselinePracticeStep(step))
         {
             if (!tutorialShiftStarted) return "Start Shift";
-            if (!burgerArrivedAtPickup) return "Wait for the first burger at Pickup";
-            if (baselineCustomersServed < BaselineRunCustomerCount)
-                return $"Serve customers: {baselineCustomersServed}/{BaselineRunCustomerCount}";
+            if (!BaselinePracticeRunComplete)
+                return $"Resolve visits: {baselineCustomersServed + baselineCustomersLeft}/{BaselineRunCustomerCount} (served {baselineCustomersServed}, left {baselineCustomersLeft})";
             return "Baseline complete";
         }
         if (step.highlight == Highlight.Inventory) return "Open Build";
@@ -2645,7 +2709,8 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireStationChecklist && !TutorialChecklistStationsPlaced()) return false;
         if (step.requireShiftStarted && !tutorialShiftStarted) return false;
         if (step.requireOrderServed && !orderServed) return false;
-        if (step.requirePickupDelivery && !burgerArrivedAtPickup) return false;
+        if (step.requirePickupDelivery && !burgerArrivedAtPickup
+            && !IsBaselinePracticeStep(step)) return false;
         if (IsBaselinePracticeStep(step) && !BaselinePracticeRunComplete) return false;
         if (step.requireCustomerJourney && !customerJourneyComplete) return false;
         if (step.requireStationHealthReview)
@@ -3145,6 +3210,7 @@ public class OnboardingTutorial : MonoBehaviour
         nextBaselineCustomerAtSeconds = BaselineRunDurationSeconds / BaselineRunCustomerCount;
         baselineCustomersSpawned = 0;
         baselineCustomersServed = 0;
+        baselineCustomersLeft = 0;
         liveCustomerSpawned = false;
         burgerArrivedAtPickup = false;
         CustomerAI.DespawnAllCustomers();
@@ -3177,7 +3243,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (customer == null) return;
         tutorialCustomer = customer;
-        customer.patienceDuration = Mathf.Max(customer.patienceDuration, 180f);
+        customer.patienceDuration = CustomerAI.DefaultPatienceDurationSeconds;
         customerJourneyStage = -1;
     }
 
@@ -3635,11 +3701,12 @@ public class OnboardingTutorial : MonoBehaviour
             }
         }
 
-        highlight.SetActive(true);
+        bool suppressLayoutWorldPulse = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireOptimizedLayout && !(target is RectTransform);
+        highlight.SetActive(!suppressLayoutWorldPulse);
         highlight.transform.position = target.position + (ui ? Vector3.zero : Vector3.up * 2.2f);
         highlight.transform.localScale = Vector3.one * (ui ? 0.01f : 0.55f);
-        if (ui)
-            highlight.SetActive(false);
+        if (ui) highlight.SetActive(false);
     }
 
     void EnsureSecondaryHighlight()
@@ -4069,19 +4136,8 @@ public class OnboardingTutorial : MonoBehaviour
 
     void SetLayoutTutorialText(string action)
     {
-        if (!tutorialStationHealthReviewed)
-        {
-            SetTutorialBodyText(action);
-            return;
-        }
-
-        SetTutorialBodyText(
-            "<b>Station health</b> (the four percentages total 100%):\n"
-            + "<b>Working</b>: processing an item.\n"
-            + "<b>Blocked</b>: an output handoff or worker route is blocked, often by a full buffer.\n"
-            + "<b>Starved</b>: a required input is missing.\n"
-            + "<b>Idle</b>: no active work is needed right now.\n\n"
-            + action);
+        const string layoutGoal = "Place stations closer to increase output.";
+        SetTutorialBodyText(action + "\n\n" + layoutGoal);
     }
 
     GameObject FindLayoutTutorialMoveTarget()
@@ -4319,8 +4375,12 @@ public class OnboardingTutorial : MonoBehaviour
                 FindObjectsInactive.Include);
             if (stationManagement == null || managementScreen == null || !managementScreen.IsOpen)
                 HighlightHudButton("BusinessTab");
-            else if (HasSelectedProductionStation() && stationManagement.stationPopup != null)
-                calloutTarget = stationManagement.stationPopup.transform as RectTransform;
+            else if (HasSelectedProductionStation())
+            {
+                GameObject selectedStation = stationManagement.TutorialSelectedStation;
+                if (selectedStation != null)
+                    SetHighlightTarget(selectedStation.transform);
+            }
             else
             {
                 Component station = StarterStation<AssemblyStation>();
@@ -4746,6 +4806,11 @@ public class OnboardingTutorial : MonoBehaviour
 
     Vector3 GetTutorialWorldAimPoint(Transform target)
     {
+        bool improvingLayout = running && stepIndex >= 0 && stepIndex < Steps.Length
+            && Steps[stepIndex].requireOptimizedLayout && target != null;
+        if (improvingLayout)
+            return GetTutorialStationBounds(target).center;
+
         bool clickingFlowStation = running && stepIndex >= 0 && stepIndex < Steps.Length
             && (Steps[stepIndex].requireFlow || Steps[stepIndex].requireEditedFlow) && target != null
             && target.GetComponent<StationNode>() != null;
@@ -4845,9 +4910,11 @@ public class OnboardingTutorial : MonoBehaviour
         }
 
         bool recipeConfigurationStep = Steps[stepIndex].requireRecipes;
+        bool hideWorldMarker = recipeConfigurationStep
+            || Steps[stepIndex].requireOptimizedLayout;
         if (highlight != null)
         {
-            if (recipeConfigurationStep)
+            if (hideWorldMarker)
                 highlight.SetActive(false);
             else
             {
@@ -4857,7 +4924,7 @@ public class OnboardingTutorial : MonoBehaviour
                 highlight.transform.localScale = Vector3.one * markerPulse;
             }
         }
-        if (!recipeConfigurationStep && secondaryHighlightTarget != null)
+        if (!hideWorldMarker && secondaryHighlightTarget != null)
         {
             EnsureSecondaryHighlight();
             secondaryHighlight.SetActive(true);

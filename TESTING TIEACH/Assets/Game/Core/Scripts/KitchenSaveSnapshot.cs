@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 56;
+    public const int CurrentVersion = 57;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
@@ -39,6 +39,7 @@ public class KitchenSaveSnapshot
     public bool milestoneOneAnalyticsLessonDone;
     public bool tutorialBaselinePracticeRunStarted;
     public int tutorialBaselineCustomersSpawned, tutorialBaselineCustomersServed;
+    public int tutorialBaselineCustomersLeft;
     public float tutorialBaselinePracticeElapsedSeconds;
     public bool activeMilestoneShiftObjectives;
     public int gusQuestionScheduledDay, gusQuestionIndex = -1;
@@ -131,6 +132,8 @@ public class KitchenSaveSnapshot
             ? OnboardingTutorial.Instance.BaselineCustomersSpawnedForSave : 0;
         s.tutorialBaselineCustomersServed = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.BaselineCustomersServedForSave : 0;
+        s.tutorialBaselineCustomersLeft = OnboardingTutorial.Instance != null
+            ? OnboardingTutorial.Instance.BaselineCustomersLeftForSave : 0;
         s.tutorialBaselinePracticeElapsedSeconds = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.BaselinePracticeElapsedSecondsForSave : 0f;
         s.milestone = MilestoneProgressManager.Instance != null ? MilestoneProgressManager.Instance.GetHighestReachedNumberedStage() : 0;
@@ -848,6 +851,7 @@ public class KitchenSaveSnapshot
                 version >= 56 && tutorialBaselinePracticeRunStarted,
                 version >= 56 ? tutorialBaselineCustomersSpawned : 0,
                 version >= 56 ? tutorialBaselineCustomersServed : 0,
+                version >= 57 ? tutorialBaselineCustomersLeft : 0,
                 version >= 56 ? tutorialBaselinePracticeElapsedSeconds : 0f);
         return true;
     }

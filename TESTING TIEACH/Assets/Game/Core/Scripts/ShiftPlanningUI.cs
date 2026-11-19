@@ -720,8 +720,11 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         previewSize.minHeight = previewSize.preferredHeight = 44f;
         Image frameImage = previewFrame.GetComponent<Image>();
         frameImage.color = GameUITheme.Surface;
-        frameImage.raycastTarget = false;
+        frameImage.raycastTarget = true;
         ApplyWhiteButtonOutline(previewFrame.GetComponent<Outline>());
+        Button previewButton = previewFrame.AddComponent<Button>();
+        previewButton.targetGraphic = frameImage;
+        GameUITheme.ApplyButton(previewButton);
 
         var previewObject = new GameObject("ItemPreview", typeof(RectTransform), typeof(RawImage));
         previewObject.transform.SetParent(previewFrame.transform, false);
@@ -750,8 +753,17 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         row.itemName.enableAutoSizing = true;
         row.itemName.fontSizeMin = 11f;
         row.itemName.fontSizeMax = 15f;
+        previewButton.onClick.AddListener(() => OpenRecipeForDemandItem(row.item));
+        DelayedTooltip.Attach(previewButton, "View this item's recipe");
         rowRoot.SetActive(false);
         return row;
+    }
+
+    void OpenRecipeForDemandItem(ItemDefinition item)
+    {
+        if (item == null) return;
+        IngredientsOrderUI recipes = FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include);
+        recipes?.OpenRecipeForPlanItem(item);
     }
 
     static Button CreateCompactButton(Transform parent, string name, string label, float height,

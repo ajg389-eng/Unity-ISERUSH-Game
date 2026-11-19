@@ -34,7 +34,7 @@ public static class CustomerPrefabSetup
         ai.patienceMeter = patience;
         ai.orderLabel = orderLabel;
         ai.moveSpeed = 2.5f;
-        ai.patienceDuration = 50f;
+        ai.patienceDuration = CustomerAI.DefaultPatienceDurationSeconds;
 
         SavePrefab(root);
         Selection.activeObject = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);

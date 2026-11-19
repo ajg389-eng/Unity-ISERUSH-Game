@@ -85,7 +85,8 @@ public class CustomerPatienceMeter : MonoBehaviour
     void Update()
     {
         if (!active) return;
-
+        // Patience follows simulation time, so fast-forward advances it faster
+        // and pausing the simulation freezes the countdown.
         remaining -= Time.deltaTime;
         if (remaining <= 0f)
         {

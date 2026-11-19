@@ -22,7 +22,8 @@ public class CustomerAI : MonoBehaviour
 
     [Header("Patience")]
     [Tooltip("Seconds a customer will wait for their order after ordering at the register.")]
-    public float patienceDuration = 50f;
+    public const float DefaultPatienceDurationSeconds = 30f;
+    public float patienceDuration = DefaultPatienceDurationSeconds;
 
     [Header("Components")]
     public CustomerPatienceMeter patienceMeter;
@@ -416,7 +417,7 @@ public class CustomerAI : MonoBehaviour
         hasOrderPlacedTime = saved.hasOrderPlacedTime;
         orderPlacedTime = Time.time - saved.orderPlacedAgeSeconds;
         queueJoinTime = Time.time - saved.queueJoinAgeSeconds;
-        patienceDuration = Mathf.Max(0.1f, saved.patienceDuration);
+        patienceDuration = Mathf.Clamp(saved.patienceDuration, 0.1f, DefaultPatienceDurationSeconds);
         patienceStarted = saved.patienceStarted;
         patienceActive = false;
         waitingForPickup = saved.waitingForPickup;
@@ -643,6 +644,7 @@ public class CustomerAI : MonoBehaviour
         leaving = true;
         leavingImpatient = true;
         BeginLeaveRoute(exit);
+        TutorialVoiceEvents.Raise(TutorialVoiceEventId.CustomerLeft);
 
         if (StoreStatisticsManager.Instance != null)
             StoreStatisticsManager.Instance.RecordCustomerLost();

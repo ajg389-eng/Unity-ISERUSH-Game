@@ -642,7 +642,7 @@ public class CustomerSpawner : MonoBehaviour
         }
 
         if (tutorialPractice)
-            ai.patienceDuration = Mathf.Max(ai.patienceDuration, 600f);
+            ai.patienceDuration = CustomerAI.DefaultPatienceDurationSeconds;
 
         ai.ClearOrder();
         if (!OnboardingTutorial.IsActive && assignedOrder != null)

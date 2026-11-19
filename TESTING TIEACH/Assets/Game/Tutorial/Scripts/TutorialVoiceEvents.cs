@@ -28,6 +28,7 @@ public static class TutorialVoiceEventId
 
     // Repeatable gameplay events (milestone tasks)
     public const string OrderServed = "order_served";
+    public const string CustomerLeft = "customer_left";
     public const string WorkerHired = "worker_hired";
     public const string WorkerAssigned = "worker_assigned";
     public const string OutputLinked = "output_linked";

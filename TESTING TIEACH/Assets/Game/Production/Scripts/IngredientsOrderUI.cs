@@ -106,6 +106,24 @@ public class IngredientsOrderUI : MonoBehaviour
         OpenRecipes(menu);
     }
 
+    public void OpenRecipeForPlanItem(ItemDefinition item)
+    {
+        if (item == null) return;
+        EnsureRefs();
+        CustomerOrderConfig menu = inventory != null ? inventory.orderConfig : null;
+        if (menu == null || FindRecipeForOutput(menu, item) == null) return;
+
+        int tab = -1;
+        for (int candidateTab = 0; candidateTab < 3; candidateTab++)
+            if (GetRecipeProducts(menu, candidateTab).Contains(item))
+            {
+                tab = candidateTab;
+                break;
+            }
+        if (tab >= 0)
+            OpenRecipes(menu, tab, item);
+    }
+
     public void CloseRecipesFromHud()
     {
         CloseRecipes();
@@ -689,13 +707,13 @@ public class IngredientsOrderUI : MonoBehaviour
         DelayedTooltip.Attach(button, "Open recipes");
     }
 
-    void OpenRecipes(CustomerOrderConfig menu)
+    void OpenRecipes(CustomerOrderConfig menu, int tab = 0, ItemDefinition focusItem = null)
     {
         if (recipesOverlay == null) BuildRecipesOverlay(menu);
         recipesOverlay.SetActive(true);
         IsRecipeOverlayOpen = true;
         UpdateNavigationTabs();
-        ShowRecipeTab(menu, 0);
+        ShowRecipeTab(menu, tab, focusItem);
         recipesOverlay.transform.SetAsLastSibling();
         OnboardingTutorial.NotifyRecipeScreenOpened();
         Sfx.Play(SfxId.UiClick);
@@ -808,7 +826,7 @@ public class IngredientsOrderUI : MonoBehaviour
         GameUITheme.ApplyTo(recipesOverlay.transform);
     }
 
-    void ShowRecipeTab(CustomerOrderConfig menu, int tab)
+    void ShowRecipeTab(CustomerOrderConfig menu, int tab, ItemDefinition focusItem = null)
     {
         if (recipeChartContainer == null || menu == null) return;
         activeRecipeTab = Mathf.Clamp(tab, 0, 2);
@@ -831,9 +849,37 @@ public class IngredientsOrderUI : MonoBehaviour
             AddRecipeListMessage("No recipes are available in this category yet.");
             return;
         }
+        Transform focusedCard = null;
         foreach (ItemDefinition product in products)
             if (FindRecipeForOutput(menu, product) != null)
-                CreateRecipeCard(menu, product);
+            {
+                Transform createdCard = CreateRecipeCard(menu, product, product == focusItem);
+                if (product == focusItem) focusedCard = createdCard;
+            }
+        Canvas.ForceUpdateCanvases();
+        if (focusedCard != null)
+            ScrollRecipeCardIntoView(focusedCard);
+    }
+
+    void ScrollRecipeCardIntoView(Transform card)
+    {
+        if (card == null || recipeChartViewport == null || recipeChartContainer == null) return;
+        ScrollRect scroll = recipeChartViewport.GetComponent<ScrollRect>();
+        RectTransform content = recipeChartContainer as RectTransform;
+        RectTransform cardRect = card as RectTransform;
+        if (scroll == null || content == null || cardRect == null) return;
+
+        Canvas.ForceUpdateCanvases();
+        float maxScroll = Mathf.Max(0f, content.rect.height - recipeChartViewport.rect.height);
+        if (maxScroll <= 0.01f)
+        {
+            scroll.verticalNormalizedPosition = 1f;
+            return;
+        }
+
+        float cardTopOffset = Mathf.Max(0f, -cardRect.anchoredPosition.y);
+        float targetOffset = Mathf.Clamp(cardTopOffset - 8f, 0f, maxScroll);
+        scroll.verticalNormalizedPosition = 1f - targetOffset / maxScroll;
         Canvas.ForceUpdateCanvases();
     }
 
@@ -862,10 +908,10 @@ public class IngredientsOrderUI : MonoBehaviour
         return null;
     }
 
-    void CreateRecipeCard(CustomerOrderConfig menu, ItemDefinition product)
+    Transform CreateRecipeCard(CustomerOrderConfig menu, ItemDefinition product, bool openDetails = false)
     {
         RecipeGraphNodeDefinition recipe = FindRecipeForOutput(menu, product);
-        if (recipe == null) return;
+        if (recipe == null) return null;
         bool locked = !IsRecipeUnlocked(menu, product, new HashSet<ItemDefinition>());
         GameObject card = new GameObject("RecipeCard_" + product.name, typeof(RectTransform),
             typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(ContentSizeFitter));
@@ -918,7 +964,14 @@ public class IngredientsOrderUI : MonoBehaviour
             chevron.color = GameUITheme.Accent;
             header.GetComponent<Button>().onClick.AddListener(() => ToggleRecipeDetails(menu, product, card.transform, chevron));
         }
-        CreateRecipeDetails(menu, product, card.transform, false);
+        if (openDetails && !locked && header.transform.childCount > 0)
+        {
+            Transform toggleLabel = header.transform.GetChild(header.transform.childCount - 1);
+            TextMeshProUGUI expandedLabel = toggleLabel.GetComponent<TextMeshProUGUI>();
+            if (expandedLabel != null) expandedLabel.text = "HIDE  ▲";
+        }
+        CreateRecipeDetails(menu, product, card.transform, openDetails);
+        return card.transform;
     }
 
     bool IsRecipeUnlocked(CustomerOrderConfig menu, ItemDefinition output, HashSet<ItemDefinition> visited)
