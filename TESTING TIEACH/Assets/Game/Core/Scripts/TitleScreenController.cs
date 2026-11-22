@@ -622,6 +622,11 @@ public class TitleScreenController : MonoBehaviour
             if (placer != null)
                 placer.EnsureCustomerEntrance();
 
+            // Save loading can queue old placements for destruction. Verify the
+            // entrance after that pass, rather than accepting a door that is
+            // still discoverable but will disappear before the camera moves.
+            yield return null;
+
             CustomerWallDoor entrance = null;
             CustomerWallDoor[] doors = FindObjectsByType<CustomerWallDoor>(
                 FindObjectsInactive.Exclude, FindObjectsSortMode.None);

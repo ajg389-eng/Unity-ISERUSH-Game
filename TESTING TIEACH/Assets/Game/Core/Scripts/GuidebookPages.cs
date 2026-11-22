@@ -66,7 +66,7 @@ public static class GuidebookPages
             "flow", "process", "throughput"),
         new Page(
             "Improve",
-            "Measure, change, compare",
+            "Measure, Change, Compare",
             "<b>Continuous improvement</b> means making a change, checking the result, and learning from the evidence.\n\n" +
             "<b>In ISE Rush</b>\nCompare delivered output, waits, and service before and after a change. Change one likely cause at a time.\n\n" +
             "<b>Try this</b>\nPredict what your change will improve, then check the next shift.",

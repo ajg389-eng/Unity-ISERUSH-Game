@@ -579,6 +579,8 @@ public class OnboardingTutorial : MonoBehaviour
     int baselineCustomersSpawned;
     int baselineCustomersServed;
     int baselineCustomersLeft;
+    int PracticeCustomersRemaining => Mathf.Max(0,
+        BaselineRunCustomerCount - baselineCustomersServed - baselineCustomersLeft);
     bool milestoneOneLessonActive;
     bool milestoneOneBottleneckLessonDone;
     bool milestoneOneAnalyticsLessonDone;
@@ -865,6 +867,7 @@ public class OnboardingTutorial : MonoBehaviour
     GameObject gusPanel;
     GameObject panel;
     TutorialPanelDragHandle panelDragHandle;
+    TutorialPanelDragHandle fastForwardHelpDragHandle;
     TextMeshProUGUI gusDialogueText;
     TextMeshProUGUI titleText;
     TextMeshProUGUI bodyText;
@@ -1349,18 +1352,24 @@ public class OnboardingTutorial : MonoBehaviour
             RefreshAdvanceGate();
             return;
         }
-        if (running && IsObservingPracticeRun && eventId == TutorialVoiceEventId.CustomerLeft)
+        if (running && baselinePracticeRunStarted && IsObservingPracticeRun
+            && eventId == TutorialVoiceEventId.CustomerLeft)
         {
-            baselineCustomersLeft = Mathf.Min(BaselineRunCustomerCount, baselineCustomersLeft + 1);
+            baselineCustomersLeft = Mathf.Min(baselineCustomersSpawned - baselineCustomersServed,
+                baselineCustomersLeft + 1);
+            RefreshImprovedLayoutRunProgress();
             RefreshAdvanceGate();
             return;
         }
         if (eventId != TutorialVoiceEventId.FirstOrderServed && eventId != TutorialVoiceEventId.OrderServed)
             return;
 
-        if (running && IsObservingPracticeRun && eventId == TutorialVoiceEventId.OrderServed)
+        if (running && baselinePracticeRunStarted && IsObservingPracticeRun
+            && eventId == TutorialVoiceEventId.OrderServed)
         {
-            baselineCustomersServed = Mathf.Min(BaselineRunCustomerCount, baselineCustomersServed + 1);
+            baselineCustomersServed = Mathf.Min(baselineCustomersSpawned - baselineCustomersLeft,
+                baselineCustomersServed + 1);
+            RefreshImprovedLayoutRunProgress();
             RefreshAdvanceGate();
         }
 
@@ -1512,6 +1521,14 @@ public class OnboardingTutorial : MonoBehaviour
             }
             Sfx.Play(SfxId.UiError);
             RefreshAdvanceGate();
+            return;
+        }
+
+        if (observingImprovedLayout && BaselinePracticeRunComplete)
+        {
+            Sfx.Play(SfxId.UiClick);
+            Complete(skipped: false);
+            GameSaveSlots.SaveActiveSlot();
             return;
         }
 
@@ -1681,6 +1698,7 @@ public class OnboardingTutorial : MonoBehaviour
         // A manual drag only overrides placement for the current step. Let the
         // next step return to its contextual position, animating from here.
         panelDragHandle?.ResetUserPosition();
+        fastForwardHelpDragHandle?.ResetUserPosition();
         calloutPanelPositionVelocity = Vector2.zero;
         tutorialUnlockContinuePending = false;
         if (step.requireObjectivesScreen)
@@ -1750,7 +1768,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (bodyText != null)
             bodyText.gameObject.SetActive(!cameraControlsOnly
                 && (!titleOnlyStep || step.requireOptimizedLayout));
-        if (panelDragHandle != null) panelDragHandle.gameObject.SetActive(!titleOnlyStep);
+        if (panelDragHandle != null) panelDragHandle.gameObject.SetActive(true);
         if (gusPanel != null) gusPanel.SetActive(!cameraControlsOnly);
         SetFastForwardHelpVisible(step.requireTimeControlInteractions && running);
         if (cameraPromptPanel != null)
@@ -2012,16 +2030,8 @@ public class OnboardingTutorial : MonoBehaviour
         lastTutorialHighlightedText = highlightedText;
         if (bodyText.text != highlightedText)
         {
-            // A changed instruction can have a different focus target. Resume
-            // contextual placement so the dragged card cannot hide that target.
-            bool keepPanelPlacement = running && stepIndex >= 0 && stepIndex < Steps.Length
-                && (Steps[stepIndex].requireAnalyticsScreen || Steps[stepIndex].requireRecipes
-                    || Steps[stepIndex].requireOptimizedLayout);
-            if (!keepPanelPlacement)
-            {
-                panelDragHandle?.ResetUserPosition();
-                calloutPanelPositionVelocity = Vector2.zero;
-            }
+            // Instruction updates keep the player's drag override. ShowStep
+            // resets it when the next tutorial step begins.
             bodyText.text = highlightedText;
             bodyText.maxVisibleCharacters = int.MaxValue;
         }
@@ -2446,7 +2456,7 @@ public class OnboardingTutorial : MonoBehaviour
                 ? MissionListUI.Instance
                 : FindFirstObjectByType<MissionListUI>(FindObjectsInactive.Include);
             Button objectivesButton = objectives != null ? objectives.TutorialObjectivesButton : null;
-            bool dockLeft = IsMilestoneOneIntro && objectivesTutorial != null;
+            bool dockLeft = fixedImproveLineCard || (IsMilestoneOneIntro && objectivesTutorial != null);
             Button dockButton = dockLeft
                 ? FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.KitchenButton
                 : objectivesButton;
@@ -2761,6 +2771,8 @@ public class OnboardingTutorial : MonoBehaviour
         bool freezerGuideNext = Steps[stepIndex].requireStationChecklist
             && IsFreezerExplanationPhase(freezerWalkthroughPhase);
         bool ready = freezerGuideNext || StepRequirementMet();
+        if (observingImprovedLayout)
+            nextButton.gameObject.SetActive(ready);
         bool canOpenRecipes = !ready && stepIndex >= 0 && stepIndex < Steps.Length
             && Steps[stepIndex].requireRecipeScreen
             && (!IsFirstDayRecipeReview || !IngredientsOrderUI.IsRecipeOverlayOpen);
@@ -2838,7 +2850,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (step.requireOptimizedLayout)
         {
             if (observingImprovedLayout)
-                return $"Visits resolved: {baselineCustomersServed + baselineCustomersLeft}/{BaselineRunCustomerCount}";
+                return ImprovedLayoutProgressText();
             return "Move a station";
         }
         if (step.requireFastForwardControl)
@@ -3890,7 +3902,9 @@ public class OnboardingTutorial : MonoBehaviour
         {
             CustomerWallDoor door = doors[i];
             if (door == null || !CustomerWallDoor.IsGameplayDoor(door)) continue;
+            if (door.permanentFixture) continue;
             if (starterKitchen.Contains(door.gameObject)) continue;
+            door.gameObject.SetActive(false);
             Destroy(door.gameObject);
         }
     }
@@ -3917,6 +3931,11 @@ public class OnboardingTutorial : MonoBehaviour
         for (int i = 0; i < placed.Length; i++)
         {
             if (placed[i] == null) continue;
+            // New Game clears the starter cache before removing purchased
+            // stations. The fixed entrance must survive that reset, including
+            // the end-of-frame destruction pass before the camera moves to Gus.
+            CustomerWallDoor door = placed[i].GetComponent<CustomerWallDoor>();
+            if (door != null && door.permanentFixture) continue;
             if (starterKitchen.Contains(placed[i].gameObject)) continue;
             placed[i].gameObject.SetActive(false);
             Destroy(placed[i].gameObject);
@@ -4410,9 +4429,9 @@ public class OnboardingTutorial : MonoBehaviour
         {
             ClearHighlight();
             SetTutorialBodyText(BaselinePracticeRunComplete
-                ? $"New layout: {baselineCustomersServed} served, {baselineCustomersLeft} left. Click <b>Finish</b> to continue."
+                ? ImprovedLayoutProgressText() + "\nClick <b>Finish</b> to unlock Milestone 1."
                 : $"Watch the new layout serve the same {BaselineRunCustomerCount}-customer rush.\n"
-                    + $"Served: {baselineCustomersServed} · Left: {baselineCustomersLeft}");
+                    + ImprovedLayoutProgressText());
             return;
         }
 
@@ -4485,6 +4504,22 @@ public class OnboardingTutorial : MonoBehaviour
         ClearHighlight();
         SetTutorialBodyText($"Forecast: {CurrentInheritedOutputRate():0.0} burgers/min. Demand: {inheritedTargetRate:0.#}/min.\n"
             + "Keep adjusting or click <b>Test Layout</b> to watch the new line.");
+    }
+
+    string ImprovedLayoutProgressText()
+    {
+        string progress = $"{baselineCustomersServed} served · {PracticeCustomersRemaining} remaining";
+        if (baselineCustomersLeft > 0)
+            progress += $" · {baselineCustomersLeft} left without service";
+        return progress;
+    }
+
+    void RefreshImprovedLayoutRunProgress()
+    {
+        if (!observingImprovedLayout) return;
+        RefreshLayoutTutorialHighlight();
+        if (BaselinePracticeRunComplete)
+            ApplyPause(true);
     }
 
     void RefreshFirstDayRecipeReview()
@@ -5082,6 +5117,8 @@ public class OnboardingTutorial : MonoBehaviour
                 TryBeginMilestoneLesson();
             return;
         }
+        if (observingImprovedLayout && BaselinePracticeRunComplete)
+            ApplyPause(true);
         if (milestoneOneLessonActive)
         {
             bool hideLesson = MilestoneUnlockPopupUI.IsPendingOrVisible
@@ -6231,6 +6268,7 @@ public class OnboardingTutorial : MonoBehaviour
         EnsureTutorialTypewriterVoice();
         if (canvasRoot != null && panel != null && gusPanel != null && gusDialogueText != null
             && nextButton != null && cameraPromptPanel != null
+            && panelDragHandle != null && fastForwardHelpDragHandle != null
             && fastForwardHelpCard != null && fastForwardHelpArrow != null
             && fastForwardRateHelpArrow != null
             && nextButton.transform.IsChildOf(panel.transform))
@@ -6321,28 +6359,7 @@ public class OnboardingTutorial : MonoBehaviour
         textLayout.childForceExpandHeight = false;
         headerText.GetComponent<LayoutElement>().flexibleWidth = 1f;
 
-        var dragHandle = new GameObject("DragHandle", typeof(RectTransform), typeof(Image),
-            typeof(LayoutElement), typeof(TutorialPanelDragHandle));
-        dragHandle.transform.SetParent(header.transform, false);
-        panelDragHandle = dragHandle.GetComponent<TutorialPanelDragHandle>();
-        var dragHandleImage = dragHandle.GetComponent<Image>();
-        dragHandleImage.color = new Color(0.2f, 0.23f, 0.29f, 1f);
-        dragHandleImage.raycastTarget = true;
-        panelDragHandle.Initialize((RectTransform)panel.transform, (RectTransform)canvasRoot.transform);
-        var dragHandleLayout = dragHandle.GetComponent<LayoutElement>();
-        dragHandleLayout.minWidth = dragHandleLayout.preferredWidth = 52f;
-        dragHandleLayout.minHeight = dragHandleLayout.preferredHeight = 52f;
-        var moveHandleGlyph = new GameObject("MoveHandleGlyph", typeof(RectTransform), typeof(Image));
-        moveHandleGlyph.transform.SetParent(dragHandle.transform, false);
-        var glyphRect = (RectTransform)moveHandleGlyph.transform;
-        glyphRect.anchorMin = Vector2.zero;
-        glyphRect.anchorMax = Vector2.one;
-        glyphRect.offsetMin = new Vector2(8f, 8f);
-        glyphRect.offsetMax = new Vector2(-8f, -8f);
-        var glyphImage = moveHandleGlyph.GetComponent<Image>();
-        glyphImage.sprite = Resources.Load<Sprite>("Tutorial/MoveHandleWhite");
-        glyphImage.preserveAspect = true;
-        glyphImage.raycastTarget = false;
+        panelDragHandle = CreateTutorialMoveHandle(header.transform, (RectTransform)panel.transform);
 
         stepLabel = CreateLabel(headerText.transform, "", 14, FontStyles.Bold, GameUITheme.Accent);
         stepLabel.alignment = TextAlignmentOptions.Left;
@@ -6412,6 +6429,34 @@ public class OnboardingTutorial : MonoBehaviour
         calloutArrow = CreateCalloutArrow(canvasRoot.transform);
         CreateFastForwardHelpCard(canvasRoot.transform);
         GameUITheme.ApplyToCanvas(canvas);
+    }
+
+    TutorialPanelDragHandle CreateTutorialMoveHandle(Transform parent, RectTransform card)
+    {
+        var handle = new GameObject("DragHandle", typeof(RectTransform), typeof(Image),
+            typeof(LayoutElement), typeof(TutorialPanelDragHandle));
+        handle.transform.SetParent(parent, false);
+        Image background = handle.GetComponent<Image>();
+        background.color = new Color(0.2f, 0.23f, 0.29f, 1f);
+        background.raycastTarget = true;
+        var dragHandle = handle.GetComponent<TutorialPanelDragHandle>();
+        dragHandle.Initialize(card, (RectTransform)canvasRoot.transform);
+        LayoutElement size = handle.GetComponent<LayoutElement>();
+        size.minWidth = size.preferredWidth = 52f;
+        size.minHeight = size.preferredHeight = 52f;
+
+        var glyph = new GameObject("MoveHandleGlyph", typeof(RectTransform), typeof(Image));
+        glyph.transform.SetParent(handle.transform, false);
+        RectTransform glyphRect = (RectTransform)glyph.transform;
+        glyphRect.anchorMin = Vector2.zero;
+        glyphRect.anchorMax = Vector2.one;
+        glyphRect.offsetMin = new Vector2(8f, 8f);
+        glyphRect.offsetMax = new Vector2(-8f, -8f);
+        Image glyphImage = glyph.GetComponent<Image>();
+        glyphImage.sprite = Resources.Load<Sprite>("Tutorial/MoveHandleWhite");
+        glyphImage.preserveAspect = true;
+        glyphImage.raycastTarget = false;
+        return dragHandle;
     }
 
     void CreateGusDialoguePanel(Transform parent)
@@ -6511,7 +6556,7 @@ public class OnboardingTutorial : MonoBehaviour
         fastForwardHelpCardRect = (RectTransform)fastForwardHelpCard.transform;
         fastForwardHelpCardRect.anchorMin = fastForwardHelpCardRect.anchorMax = new Vector2(0.5f, 0.5f);
         fastForwardHelpCardRect.pivot = new Vector2(0.5f, 0.5f);
-        fastForwardHelpCardRect.sizeDelta = new Vector2(430f, 104f);
+        fastForwardHelpCardRect.sizeDelta = new Vector2(430f, 140f);
 
         Image background = fastForwardHelpCard.GetComponent<Image>();
         background.color = new Color(0.08f, 0.09f, 0.12f, 0.985f);
@@ -6528,13 +6573,26 @@ public class OnboardingTutorial : MonoBehaviour
 
         LayoutElement cardSize = fastForwardHelpCard.GetComponent<LayoutElement>();
         cardSize.minWidth = cardSize.preferredWidth = 430f;
-        cardSize.minHeight = cardSize.preferredHeight = 104f;
+        cardSize.minHeight = cardSize.preferredHeight = 140f;
         cardSize.flexibleWidth = cardSize.flexibleHeight = 0f;
 
-        TextMeshProUGUI heading = CreateLabel(fastForwardHelpCard.transform,
+        var header = new GameObject("SpeedHelpHeader", typeof(RectTransform),
+            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        header.transform.SetParent(fastForwardHelpCard.transform, false);
+        header.GetComponent<LayoutElement>().preferredHeight = 52f;
+        HorizontalLayoutGroup headerLayout = header.GetComponent<HorizontalLayoutGroup>();
+        headerLayout.spacing = 10f;
+        headerLayout.childAlignment = TextAnchor.MiddleLeft;
+        headerLayout.childControlWidth = true;
+        headerLayout.childControlHeight = true;
+        headerLayout.childForceExpandWidth = false;
+        headerLayout.childForceExpandHeight = false;
+        TextMeshProUGUI heading = CreateLabel(header.transform,
             "SHIFT SPEED", 16f, FontStyles.Bold, GameUITheme.Accent);
+        heading.GetComponent<LayoutElement>().flexibleWidth = 1f;
         heading.alignment = TextAlignmentOptions.Left;
         heading.textWrappingMode = TextWrappingModes.NoWrap;
+        fastForwardHelpDragHandle = CreateTutorialMoveHandle(header.transform, fastForwardHelpCardRect);
         TextMeshProUGUI instructions = CreateLabel(fastForwardHelpCard.transform,
             "<b>Fast Forward:</b> Run the shift faster.\n<b>Speed:</b> Choose the rate Fast Forward uses.",
             18f, FontStyles.Normal, new Color(0.92f, 0.94f, 0.98f));
@@ -6596,7 +6654,11 @@ public class OnboardingTutorial : MonoBehaviour
             cardY = Mathf.Clamp(cardY,
                 rootRect.rect.yMin + cardSize.y * 0.5f + 12f,
                 rootRect.rect.yMax - cardSize.y * 0.5f - 12f);
-            fastForwardHelpCardRect.anchoredPosition = new Vector2(centerX, cardY);
+            Vector2 cardPosition = new Vector2(centerX, cardY);
+            if (fastForwardHelpDragHandle != null)
+                fastForwardHelpDragHandle.SetAutomaticPosition(cardPosition);
+            else
+                fastForwardHelpCardRect.anchoredPosition = cardPosition;
         }
 
         PositionSpecificCalloutArrow(fastForwardHelpArrow, fastBounds.center, fastBounds,

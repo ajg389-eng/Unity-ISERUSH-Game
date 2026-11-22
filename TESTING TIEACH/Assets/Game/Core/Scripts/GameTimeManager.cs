@@ -198,7 +198,7 @@ public class GameTimeManager : MonoBehaviour
             SetSpeed(SpeedMode.Paused);
     }
 
-    /// <summary>Cycles the selected fast-forward rate without starting the simulation.</summary>
+    /// <summary>Cycles the rate and immediately activates fast-forward at that rate.</summary>
     public void CycleFastForwardRate()
     {
         if (IsShiftOver) return;
@@ -206,12 +206,7 @@ public class GameTimeManager : MonoBehaviour
         int rateCount = GetFastForwardRateCount();
         selectedFastForwardRateIndex = (selectedFastForwardRateIndex + 1) % rateCount;
 
-        // Keep selecting a rate separate from starting fast-forward, but apply
-        // each new selection immediately when fast-forward is already running.
-        if (CurrentSpeed == SpeedMode.FastForward)
-            SetSpeed(SpeedMode.FastForward);
-        else
-            OnSpeedChanged?.Invoke();
+        SetSpeed(SpeedMode.FastForward);
     }
 
     int GetFastForwardRateCount()
