@@ -223,6 +223,18 @@ public class TitleScreenController : MonoBehaviour
             GameUITheme.DangerHover,
             GameUITheme.DangerAccent);
 
+        TMP_FontAsset menuFont = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        foreach (Button button in new[] { playButton, settingsButton, exitButton })
+        {
+            if (button == null) continue;
+            TextMeshProUGUI label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label == null) continue;
+            if (menuFont != null) label.font = menuFont;
+            label.fontStyle = FontStyles.Normal;
+            label.fontWeight = FontWeight.Regular;
+            label.characterSpacing = 0f;
+        }
+
         if (showTitleButtonIcons)
         {
             AddTitleButtonIcon(playButton, "PlayWhite");
