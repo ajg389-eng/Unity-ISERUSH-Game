@@ -399,7 +399,8 @@ public partial class AssemblyStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        if (!ProductionManager.IsScheduledStation(gameObject)) AdvanceAutomaticProcessing(Time.deltaTime);
+        if (ProductionManager.CanProcessFood && !ProductionManager.IsScheduledStation(gameObject))
+            AdvanceAutomaticProcessing(Time.deltaTime);
         processProgressIndicator?.SetProgress(
             IsProcessing, processingTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
     }

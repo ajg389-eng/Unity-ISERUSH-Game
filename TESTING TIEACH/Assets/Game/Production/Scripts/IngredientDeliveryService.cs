@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,6 +12,9 @@ public class IngredientDeliveryService : MonoBehaviour
     public const float ArrivalLeadSeconds = 17f;
 
     public static IngredientDeliveryService Instance { get; private set; }
+    internal static float DeliveryDeltaTime => ShiftPlanningUI.IsPlanning
+        ? GameTimeManager.Instance?.PlanningDeliveryDeltaTime ?? 0f
+        : GameTimeManager.Instance?.IsShiftOver == true ? 0f : Time.deltaTime;
 
     public class Pack
     {
@@ -26,9 +30,13 @@ public class IngredientDeliveryService : MonoBehaviour
         public IngredientCourier courier;
         public DeliveryVan van;
         public bool dispatched;
+        internal bool delivered;
+        internal bool cancelled;
+        internal float activeSeconds;
     }
 
     readonly List<Shipment> shipments = new List<Shipment>();
+    readonly List<GameObject> droppedParcels = new List<GameObject>();
 
     public IReadOnlyList<Shipment> Shipments => shipments;
     public bool HasPending
@@ -133,6 +141,7 @@ public class IngredientDeliveryService : MonoBehaviour
 
     void OnDestroy()
     {
+        ClearDroppedParcels();
         if (Instance == this)
             Instance = null;
     }
@@ -312,6 +321,8 @@ public class IngredientDeliveryService : MonoBehaviour
 
     void Update()
     {
+        float deltaTime = DeliveryDeltaTime;
+        if (deltaTime <= 0f) return;
         for (int i = shipments.Count - 1; i >= 0; i--)
         {
             Shipment shipment = shipments[i];
@@ -321,12 +332,37 @@ public class IngredientDeliveryService : MonoBehaviour
                 continue;
             }
 
+            shipment.activeSeconds += deltaTime;
             if (shipment.remaining > 0f)
-                shipment.remaining = Mathf.Max(0f, shipment.remaining - Time.deltaTime);
+                shipment.remaining = Mathf.Max(0f, shipment.remaining - deltaTime);
 
             if (!shipment.dispatched && shipment.remaining <= ArrivalLead(shipment))
                 BeginArrival(shipment);
         }
+    }
+
+    internal void ShowDroppedParcel(GameObject parcel)
+    {
+        droppedParcels.Add(parcel);
+        StartCoroutine(RemoveDroppedParcel(parcel));
+    }
+
+    IEnumerator RemoveDroppedParcel(GameObject parcel)
+    {
+        yield return new WaitForSecondsRealtime(5f);
+        droppedParcels.Remove(parcel);
+        if (parcel != null) Destroy(parcel);
+    }
+
+    internal void ClearDroppedParcels()
+    {
+        foreach (GameObject parcel in droppedParcels)
+        {
+            if (parcel == null) continue;
+            parcel.SetActive(false);
+            Destroy(parcel);
+        }
+        droppedParcels.Clear();
     }
 
     void BeginArrival(Shipment shipment)
@@ -475,6 +511,7 @@ public class IngredientDeliveryService : MonoBehaviour
 
         Sfx.Play(SfxId.ItemDelivered);
         DeliveryArrivedNotice.Show(shipment);
+        shipment.delivered = true;
         shipment.packs.Clear();
         if (shipment.courier != null)
             shipment.courier.Depart();
@@ -487,6 +524,7 @@ public class IngredientDeliveryService : MonoBehaviour
     void CancelShipment(int index)
     {
         Shipment shipment = shipments[index];
+        shipment.cancelled = true;
         if (shipment.courier != null)
             shipment.courier.CancelAndLeave();
         if (shipment.van != null)
@@ -504,7 +542,7 @@ public class IngredientDeliveryService : MonoBehaviour
 
     static float DeliveryDuration()
     {
-        return OnboardingTutorial.IsActive ? ArrivalLeadSeconds : DeliverySeconds;
+        return ShiftPlanningUI.IsPlanning || OnboardingTutorial.IsActive ? ArrivalLeadSeconds : DeliverySeconds;
     }
 
     static GameObject LoadVanPrefab()

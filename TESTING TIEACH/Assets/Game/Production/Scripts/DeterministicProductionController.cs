@@ -105,7 +105,7 @@ public sealed class DeterministicProductionController : IDisposable
 
     public void Tick()
     {
-        if (disposed || !Application.isPlaying) return;
+        if (disposed || !Application.isPlaying || GameTimeManager.Instance?.IsShiftOver == true) return;
         if (grid != GridManager.Instance)
         {
             if (grid != null) grid.GridChanged -= GridChanged;
@@ -127,6 +127,7 @@ public sealed class DeterministicProductionController : IDisposable
         }
         if (simulation == null) return;
         SynchronizeExternalState();
+        if (ShiftPlanningUI.IsPlanning) return;
         long target = Math.Max(simulation.Now, (long)Math.Floor((now - epoch) * Sim.TicksPerSecond + 1e-6));
         simulation.AdvanceTo(target);
         ApplyEvents();
@@ -362,6 +363,7 @@ public sealed class DeterministicProductionController : IDisposable
         plannedTotalsByFlowItem = null;
         nextForecastAt = -1;
         SynchronizeExternalState();
+        if (ShiftPlanningUI.IsPlanning) return;
         simulation.AdvanceTo(0);
         ApplyEvents();
         ProjectBuffers();

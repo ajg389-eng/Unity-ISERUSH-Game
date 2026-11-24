@@ -6,6 +6,8 @@ using TMPro;
 
 public class PlayerCameraController : MonoBehaviour
 {
+    const float MaxCameraStepSeconds = 0.05f;
+
     public float moveSpeed = 30f;
     [Tooltip("How fast WASD reaches full speed. Higher = tighter / more responsive.")]
     public float moveResponse = 42f;
@@ -92,14 +94,19 @@ public class PlayerCameraController : MonoBehaviour
 
         bool manualMove = Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.01f
             || Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.01f;
-        if (isFocusing && !manualMove)
+        float scroll = Input.mouseScrollDelta.y * 0.1f;
+        if (Mathf.Abs(scroll) <= 0.01f || ShouldBlockZoom()) scroll = 0f;
+        bool manualControl = manualMove || Input.GetMouseButton(1) || scroll != 0f;
+        if (manualControl && isFocusing)
+        {
+            isFocusing = false;
+            focusVelocity = Vector3.zero;
+        }
+        if (isFocusing)
             UpdateFocusPan();
         else
-        {
-            if (manualMove) isFocusing = false;
             Move();
-        }
-        Zoom();
+        Zoom(scroll);
         Rotate();
         ClampToPlayableBounds();
     }
@@ -288,14 +295,13 @@ public class PlayerCameraController : MonoBehaviour
         ClampToPlayableBounds();
     }
 
-    void Zoom()
+    void Zoom(float scroll)
     {
-        float scroll = Input.mouseScrollDelta.y * 0.1f;
-        if (Mathf.Abs(scroll) > 0.01f && !ShouldBlockZoom())
+        if (scroll != 0f)
         {
             targetZoomY -= scroll * zoomSpeed;
-        if (!freeCamera)
-            targetZoomY = Mathf.Clamp(targetZoomY, minY, maxY);
+            if (!freeCamera)
+                targetZoomY = Mathf.Clamp(targetZoomY, minY, maxY);
         }
 
         float dt = InteractionDeltaTime;
@@ -388,7 +394,7 @@ public class PlayerCameraController : MonoBehaviour
     }
 
     /// <summary>Real-time delta so camera keeps moving while simulation is paused.</summary>
-    static float InteractionDeltaTime => Time.unscaledDeltaTime;
+    static float InteractionDeltaTime => Mathf.Min(Time.unscaledDeltaTime, MaxCameraStepSeconds);
 
     static readonly List<RaycastResult> ZoomRaycastHits = new List<RaycastResult>();
     static EventSystem zoomPointerEventSystem;

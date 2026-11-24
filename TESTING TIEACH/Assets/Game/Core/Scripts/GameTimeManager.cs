@@ -242,6 +242,19 @@ public class GameTimeManager : MonoBehaviour
     public bool IsExternallyPaused => externalPauseSources.Count > 0;
     public bool IsSimulationPaused => Time.timeScale <= 0f;
 
+    internal float PlanningDeliveryDeltaTime
+    {
+        get
+        {
+            if (IsShiftOver || CurrentSpeed == SpeedMode.Paused) return 0f;
+            // Keep the kitchen and shift clock paused while the delivery advances.
+            foreach (string source in externalPauseSources)
+                if (source != ShiftPlanningUI.PauseSource && source != PauseManagement && source != PauseOnboarding)
+                    return 0f;
+            return Mathf.Min(Time.unscaledDeltaTime * RunningTimeScale(), Time.maximumDeltaTime);
+        }
+    }
+
     public int CurrentHour24 => Mathf.FloorToInt(CurrentMinutes / 60f) % 24;
 
     /// <summary>Customer rush periods are disabled; kept for older UI integrations.</summary>
@@ -271,13 +284,15 @@ public class GameTimeManager : MonoBehaviour
             return;
         }
 
-        if (CurrentSpeed == SpeedMode.SuperFast)
-            Time.timeScale = Mathf.Max(1f, superFastTimeScale);
-        else if (CurrentSpeed == SpeedMode.FastForward)
-            Time.timeScale = CurrentFastForwardRate;
-        else
-            Time.timeScale = 1f;
+        Time.timeScale = RunningTimeScale();
     }
+
+    float RunningTimeScale() => CurrentSpeed switch
+    {
+        SpeedMode.SuperFast => Mathf.Max(1f, superFastTimeScale),
+        SpeedMode.FastForward => CurrentFastForwardRate,
+        _ => 1f
+    };
 
     public string GetSpeedLabel()
     {
@@ -295,6 +310,8 @@ public class GameTimeManager : MonoBehaviour
     {
         if (IsShiftOver) return;
         IsShiftOver = true;
+        if (MissionListUI.Instance?.IsOpen == true)
+            MissionListUI.Instance.SetVisible(false);
         if (pauseAtDayEnd)
             SetSpeed(SpeedMode.Paused);
         if (recordShiftResult)
@@ -305,6 +322,7 @@ public class GameTimeManager : MonoBehaviour
         // Clear service state before the end-of-day autosave and summary.
         CustomerAI.DespawnAllCustomers();
         ProductionManager.ClearShiftProduction();
+        IngredientDeliveryService.Instance?.ClearDroppedParcels();
         OnDayEnded?.Invoke();
         TutorialVoiceEvents.Raise(TutorialVoiceEventId.DayEnded);
     }

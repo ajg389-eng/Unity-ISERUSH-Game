@@ -25,6 +25,7 @@ public class IngredientCourier : MonoBehaviour
     Phase phase = Phase.ToCounter;
     float handoffTimer;
     float blockedWait;
+    float parcelAnimationTime;
     Vector3 handoff;
     Vector3 vanDoor;
     GameObject carriedParcel;
@@ -49,6 +50,7 @@ public class IngredientCourier : MonoBehaviour
         SnapFeetToFloor();
         transform.position = doorAtVan;
         AttachCarriedParcel();
+        PartyCharacterAnimator.EnsureOn(gameObject)?.UseDeliveryClock();
     }
 
     public void Depart()
@@ -72,13 +74,16 @@ public class IngredientCourier : MonoBehaviour
 
     void Update()
     {
+        float deltaTime = IngredientDeliveryService.DeliveryDeltaTime;
+        if (deltaTime <= 0f) return;
+        parcelAnimationTime += deltaTime;
         SnapFeetToFloor();
         PushOutOfCounters();
 
         if (phase == Phase.HandingOff)
         {
             FacePoint(handoff + Vector3.left);
-            handoffTimer -= Time.deltaTime;
+            handoffTimer -= deltaTime;
             if (handoffTimer <= 0f)
                 IngredientDeliveryService.Instance?.NotifyArrived(this);
             return;
@@ -111,13 +116,13 @@ public class IngredientCourier : MonoBehaviour
         FacePoint(target);
         if (!DoorIsClear(transform.position, target))
         {
-            blockedWait += Time.deltaTime;
+            blockedWait += deltaTime;
             if (blockedWait < 1.5f)
                 return;
         }
         else
             blockedWait = 0f;
-        transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
+        transform.position = Vector3.MoveTowards(transform.position, target, speed * deltaTime);
         PushOutOfCounters();
         if (HorizontalDist(transform.position, target) <= 0.14f)
             index++;
@@ -201,7 +206,10 @@ public class IngredientCourier : MonoBehaviour
         box.name = "IngredientDrop";
         box.transform.position = new Vector3(counterTop.x, counterTop.y + 0.28f, counterTop.z);
         box.transform.rotation = Quaternion.identity;
-        Destroy(box, 5f);
+        if (IngredientDeliveryService.Instance != null)
+            IngredientDeliveryService.Instance.ShowDroppedParcel(box);
+        else
+            Destroy(box);
     }
 
     void LateUpdate()
@@ -220,11 +228,11 @@ public class IngredientCourier : MonoBehaviour
     void SeatCarriedParcel()
     {
         if (carriedParcel == null) return;
-        float bob = Mathf.Sin(Time.time * 2.4f) * 0.045f;
+        float bob = Mathf.Sin(parcelAnimationTime * 2.4f) * 0.045f;
         Vector3 above = transform.position + Vector3.up * (2.35f + bob);
         if (TryGetVisualBounds(out Bounds bounds))
             above = new Vector3(bounds.center.x, bounds.max.y + 0.55f + bob, bounds.center.z);
-        carriedParcel.transform.SetPositionAndRotation(above, Quaternion.Euler(0f, Time.time * 28f, 0f));
+        carriedParcel.transform.SetPositionAndRotation(above, Quaternion.Euler(0f, parcelAnimationTime * 28f, 0f));
     }
 
     static GameObject BuildWoodCrate()

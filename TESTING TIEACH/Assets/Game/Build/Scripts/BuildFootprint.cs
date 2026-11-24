@@ -243,7 +243,8 @@ public class CustomerWallDoor : MonoBehaviour
         }
 
         swingAngle = Mathf.MoveTowards(swingAngle, target,
-            (desired == 0 ? SwingCloseDegreesPerSecond : SwingOpenDegreesPerSecond) * Time.deltaTime);
+            (desired == 0 ? SwingCloseDegreesPerSecond : SwingOpenDegreesPerSecond)
+            * IngredientDeliveryService.DeliveryDeltaTime);
         swingDirection = desired;
         ApplySwingAngle();
     }

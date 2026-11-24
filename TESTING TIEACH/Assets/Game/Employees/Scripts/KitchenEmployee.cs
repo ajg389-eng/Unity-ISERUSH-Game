@@ -2469,7 +2469,7 @@ public partial class KitchenEmployee : MonoBehaviour
     {
         if (manager == null)
             manager = ProductionManager.Instance;
-        if (ShiftPlanningUI.IsPlanning)
+        if (ShiftPlanningUI.IsPlanning || GameTimeManager.Instance?.IsShiftOver == true)
         {
             ShowTaskBar = false;
             TaskProgress = 0f;

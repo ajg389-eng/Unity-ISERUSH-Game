@@ -587,13 +587,13 @@ public class KitchenInventory : MonoBehaviour
         return TryOrderCart(cart);
     }
 
-    /// <summary>Pay for an ingredient cart. During planning, stock is added immediately.</summary>
+    /// <summary>Pay for an ingredient cart and schedule delivery.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts)
     {
         return TryOrderCart(packCounts, false, true);
     }
 
-    /// <summary>Pay for a cart and either queue normal delivery or add it to stock immediately.</summary>
+    /// <summary>Pay for a cart using the selected delivery speed.</summary>
     public bool TryOrderCart(IReadOnlyDictionary<ItemDefinition, int> packCounts, bool express)
     {
         return TryOrderCart(packCounts, express, true);
@@ -604,7 +604,7 @@ public class KitchenInventory : MonoBehaviour
         if (packCounts == null || packCounts.Count == 0) return false;
         if (money == null) money = FindObjectOfType<MoneyManager>();
 
-        bool instantPurchase = ShiftPlanningUI.IsPlanning;
+        bool instantPurchase = ShiftPlanningUI.IsPlanning && !MilestoneFeatures.SupplyPlanningUnlocked;
         IngredientDeliveryService service = IngredientDeliveryService.Instance;
         if (!instantPurchase && service == null)
         {

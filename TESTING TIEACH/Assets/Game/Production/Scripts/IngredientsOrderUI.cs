@@ -3061,7 +3061,7 @@ public class IngredientsOrderUI : MonoBehaviour
         placeOrderButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
         ConfigureCartActionLabel(placeOrderLabel);
         DelayedTooltip.Attach(placeOrderButton,
-            "Place a supplier purchase order. Plan orders are added to starting stock; shift orders arrive by courier after the lead time.");
+            "Order ingredient packs. Once Supply Planning unlocks, packs arrive by van during planning or service.");
         placeOrderButton.onClick.AddListener(SubmitCart);
 
         clearCartButton.transform.SetAsLastSibling();
@@ -3214,7 +3214,8 @@ public class IngredientsOrderUI : MonoBehaviour
             placeOrderLabel.text = deliveryActive ? "Busy"
                 : cartLockMilestone > 0 ? "Milestone"
                 : !affordable && cartPackCount > 0 ? "Funds" : "Order";
-        if (placeOrderLabel != null && planning && cartLockMilestone == 0 && affordable)
+        if (placeOrderLabel != null && planning && !MilestoneFeatures.SupplyPlanningUnlocked
+            && cartLockMilestone == 0 && affordable)
             placeOrderLabel.text = "Add to Stock";
     }
 

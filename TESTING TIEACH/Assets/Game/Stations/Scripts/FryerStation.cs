@@ -175,7 +175,7 @@ public partial class FryerStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        if (ProductionManager.IsScheduledStation(gameObject))
+        if (!ProductionManager.CanProcessFood || ProductionManager.IsScheduledStation(gameObject))
         {
             processProgressIndicator?.SetProgress(
                 IsCooking, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));

@@ -4,6 +4,12 @@ using UnityEngine;
 // simulation for connected production stations, including their saved progress.
 public partial class GrillStation
 {
+    internal void ResetRuntimeState()
+    {
+        bufferedOrder = null;
+        ApplyScheduledBuffers(0, 0, 0, 0, 0f);
+    }
+
     public int ScheduledProcessingUnits => pattyUnits;
     public void ApplyScheduledBuffers(int input, int secondary, int output, int processing, float progress)
     {
@@ -32,6 +38,12 @@ public partial class FryerStation
 
 public partial class CuttingStation
 {
+    internal void ResetRuntimeState()
+    {
+        bufferedOrder = null;
+        ApplyScheduledBuffers(0, 0, 0, 0f);
+    }
+
     public int ScheduledProcessingUnits => processingUnits;
     public float ScheduledProcessingProgress => processingTimer;
     public void ApplyScheduledBuffers(int input, int output, int processing, float progress)
@@ -47,6 +59,8 @@ public partial class CuttingStation
 
 public partial class AssemblyStation
 {
+    internal void ResetRuntimeState() => ApplyScheduledBuffers(0, 0, 0, 0, 0, 0f);
+
     public void ApplyScheduledBuffers(int processed, int pantry, int third, int output, int processing, float progress)
     {
         bool changed = bufferedProcessedInputs != processed || bufferedPantryInputs != pantry

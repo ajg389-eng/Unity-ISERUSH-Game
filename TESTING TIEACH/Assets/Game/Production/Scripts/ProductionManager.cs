@@ -1602,6 +1602,9 @@ public partial class ProductionManager : MonoBehaviour
 
     float nextPlanningDiagnostic;
 
+    internal static bool CanProcessFood => Time.deltaTime > 0f && !ShiftPlanningUI.IsPlanning
+        && GameTimeManager.Instance?.IsShiftOver != true;
+
     void Update()
     {
         if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftOver)
@@ -1611,7 +1614,7 @@ public partial class ProductionManager : MonoBehaviour
             ScheduledProduction.Tick();
             return;
         }
-        if (Time.timeScale <= 0f)
+        if (ShiftPlanningUI.IsPlanning || Time.timeScale <= 0f)
             return;
         float now = Time.unscaledTime;
         bool fallbackDue = now >= nextPlanningTime;
@@ -3527,13 +3530,15 @@ public partial class ProductionManager : MonoBehaviour
         }
 
         foreach (GrillStation station in FindObjectsByType<GrillStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            station.ApplyScheduledBuffers(0, 0, 0, 0, 0f);
+            station.ResetRuntimeState();
         foreach (AssemblyStation station in FindObjectsByType<AssemblyStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            station.ApplyScheduledBuffers(0, 0, 0, 0, 0, 0f);
+            station.ResetRuntimeState();
         foreach (CuttingStation station in FindObjectsByType<CuttingStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            station.ApplyScheduledBuffers(0, 0, 0, 0f);
+            station.ResetRuntimeState();
         foreach (FryerStation station in FindObjectsByType<FryerStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             station.ResetRuntimeState();
+        foreach (Register register in FindObjectsByType<Register>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            register.ResetRuntimeState();
         HeatLampStation.ClearPickupStock();
     }
 

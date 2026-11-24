@@ -28,7 +28,10 @@ public class OnboardingTutorial : MonoBehaviour
     const int MilestoneTwoLiveStep = 14;
     const int MilestoneTwoStationStep = 15;
     const float LiveAnalyticsComparisonSeconds = 15f;
-    const int SupplyTourLastPage = 2;
+    const int MilestoneThreeDeliveryStep = 16;
+    const int SupplyApplyPage = 2;
+    const int SupplyTourLastPage = 3;
+    const float SupplyDeliveryArrivalGraceSeconds = 45f;
     const int BaselineRunCustomerCount = 15;
     const float BaselineRunDurationSeconds = 180f;
     const float FeatureLockRefreshSeconds = 0.35f;
@@ -687,10 +690,20 @@ public class OnboardingTutorial : MonoBehaviour
                 ? StationNode.EnsureOn(buildTutorialPantry)?.StableStationId : null
         };
     }
-    bool IsSupplyLesson => milestoneOneLessonActive && stepIndex == MilestoneThreeSupplyStep;
+    bool IsSupplyLesson => milestoneOneLessonActive
+        && (stepIndex == MilestoneThreeSupplyStep || stepIndex == MilestoneThreeDeliveryStep);
+    bool IsSupplyDeliveryLesson => IsSupplyLesson && stepIndex == MilestoneThreeDeliveryStep;
     bool supplyLessonDone;
+    bool supplyLessonPlanningReviewed;
+    bool supplyLessonDeliveryArrived;
+    IngredientDeliveryService.Shipment supplyLessonShipment;
+    Transform supplyLessonDeliveryTarget;
+    float supplyLessonDeliveryWatchDeadline;
     int supplyLessonPage;
     public bool SupplyLessonDoneForSave => supplyLessonDone;
+    public bool SupplyLessonPlanningReviewedForSave => supplyLessonPlanningReviewed;
+    public bool SupplyLessonDeliveryArrivedForSave => supplyLessonDeliveryArrived
+        || supplyLessonShipment?.delivered == true;
     bool IsWorkerLesson => milestoneOneLessonActive
         && (stepIndex == HireWorkerStep || stepIndex == AssignWorkerStep);
     ProductionFlowPlan workerLessonFlow;
@@ -728,7 +741,8 @@ public class OnboardingTutorial : MonoBehaviour
         int savedMilestoneOneIntroProgress = 0, bool savedSupplyLessonDone = false,
         PantryPracticeState savedPantryPractice = null, bool savedWorkerLessonDone = false,
         bool savedWorkerLessonHireReviewed = false, ProductionFlowPlan savedWorkerLessonFlow = null,
-        bool savedMilestoneTwoPlanningReviewed = false)
+        bool savedMilestoneTwoPlanningReviewed = false, bool savedSupplyLessonPlanningReviewed = false,
+        bool savedSupplyLessonDeliveryArrived = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -772,7 +786,11 @@ public class OnboardingTutorial : MonoBehaviour
         milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone
             && milestoneTwoPlanningReviewed;
         milestoneOneIntroProgress = Mathf.Clamp(savedMilestoneOneIntroProgress, 0, MilestoneOneObjectivesStep + 1);
-        supplyLessonDone = savedSupplyLessonDone;
+        supplyLessonDone = savedSupplyLessonDone && savedSupplyLessonPlanningReviewed;
+        supplyLessonPlanningReviewed = savedSupplyLessonPlanningReviewed;
+        supplyLessonDeliveryArrived = savedSupplyLessonDeliveryArrived;
+        supplyLessonShipment = null;
+        supplyLessonDeliveryTarget = null;
         workerLessonDone = savedWorkerLessonDone;
         workerLessonFlow = complete && !workerLessonDone ? savedWorkerLessonFlow : null;
         workerLessonHireReviewed = workerLessonFlow != null && savedWorkerLessonHireReviewed;
@@ -1152,6 +1170,9 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None),
         new Step("Look for a bottleneck",
             "The <b>Customer Orders</b> board shows who's waiting and what they ordered. To see why work might be waiting, open <b>Kitchen → Workers</b> and click a production station.",
+            "Finish", Highlight.None),
+        new Step("Order a delivery",
+            "Before opening, use <b>Kitchen → Supply</b> to order one pack of an ingredient you need.",
             "Finish", Highlight.None)
     };
 
@@ -1170,11 +1191,12 @@ public class OnboardingTutorial : MonoBehaviour
         "The recipe diagrams show what goes into each item and where it gets made.",
         "Let's use an extra Pantry to practice buying, setting an ingredient, and deleting a station.",
         "Check the tasks before you open, then set up the menu and kitchen to meet them.",
-        "I've handled ingredient deliveries up to now. It's your turn to run Supply.",
+        "I've been keeping the kitchen stocked. From now on, you're in charge of the restaurant's inventory.",
         "Your flow is saved. Let's get someone to run it.",
         "Give a worker this flow so they know which stations to run.",
         "Watch what comes in at the register and what makes it to Pickup. Are we keeping up?",
-        "Analytics shows where we're falling behind. The orders board shows who's waiting, and the station tells us where to look for the cause."
+        "Analytics shows where we're falling behind. The orders board shows who's waiting, and the station tells us where to look for the cause.",
+        "Let's place an order and see how it gets from the supplier to the kitchen."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -1307,6 +1329,10 @@ public class OnboardingTutorial : MonoBehaviour
                 break;
             case "milestone_03":
                 supplyLessonDone = false;
+                supplyLessonPlanningReviewed = false;
+                supplyLessonDeliveryArrived = false;
+                supplyLessonShipment = null;
+                supplyLessonDeliveryTarget = null;
                 break;
         }
         RefreshTutorialFeatureLocks(true);
@@ -1332,6 +1358,10 @@ public class OnboardingTutorial : MonoBehaviour
         observingImprovedLayout = false;
         milestoneOneIntroProgress = 0;
         supplyLessonDone = false;
+        supplyLessonPlanningReviewed = false;
+        supplyLessonDeliveryArrived = false;
+        supplyLessonShipment = null;
+        supplyLessonDeliveryTarget = null;
         workerLessonDone = false;
         workerLessonFlow = null;
         workerLessonHireReviewed = false;
@@ -1601,7 +1631,8 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (tutorialVisibleCharacters < tutorialTotalCharacters
             && !(milestoneOneLessonActive && stepIndex == MilestoneTwoIntroStep)
-            && !IsMilestoneTwoComparison)
+            && !IsMilestoneTwoComparison && !IsSupplyDeliveryLesson
+            && !(IsSupplyLesson && supplyLessonPage == SupplyTourLastPage))
         {
             tutorialVisibleCharacters = tutorialTotalCharacters;
             tutorialCharacterProgress = tutorialTotalCharacters;
@@ -1643,16 +1674,7 @@ public class OnboardingTutorial : MonoBehaviour
 
         if (IsSupplyLesson)
         {
-            if (supplyLessonPage < SupplyTourLastPage)
-            {
-                supplyLessonPage++;
-                nextControlHighlightRefresh = 0f;
-                RefreshControlHighlights();
-                return;
-            }
-            supplyLessonDone = true;
-            EndMilestoneOneLesson();
-            GameSaveSlots.SaveActiveSlot();
+            AdvanceSupplyLesson();
             return;
         }
 
@@ -2860,11 +2882,12 @@ public class OnboardingTutorial : MonoBehaviour
         {
             var step = Steps[stepIndex];
             string labelText = ready
-                ? observingImprovedLayout || (IsSupplyLesson && supplyLessonPage == SupplyTourLastPage)
-                    ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
+                ? observingImprovedLayout ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
                 : LockedLabel(step);
             if (IsMilestoneTwoComparison)
                 labelText = MilestoneTwoReadingButtonLabel();
+            if (IsSupplyLesson)
+                labelText = SupplyLessonButtonLabel();
             nextLabel.text = labelText;
             FitTutorialButton();
             if (ready && step.requirePlaced)
@@ -3021,7 +3044,7 @@ public class OnboardingTutorial : MonoBehaviour
             && (!analyticsScreenOpened || !analyticsScreenClosed
                 || analyticsTutorialStage < AnalyticsTourCloseStage)) return false;
         if (step.requireBusinessOverview && !IsBusinessOverviewOpen()) return false;
-        if (IsSupplyLesson && !IsBusinessSupplyTabActive()) return false;
+        if (IsSupplyLesson && !SupplyLessonRequirementMet()) return false;
         if (step.requireBuildOverview && !BuildTutorialComplete) return false;
         if (step.requireProductionFlowOverview && !IsBusinessOverviewOpen()) return false;
         if (step.requireBusinessOverview && businessOverviewStage <= 2 && !IsBusinessWorkersTabActive()) return false;
@@ -5206,8 +5229,15 @@ public class OnboardingTutorial : MonoBehaviour
                 EndMilestoneOneLesson();
                 return;
             }
+            if (IsSupplyDeliveryLesson && (!ShiftPlanningUI.IsPlanning
+                || GameTimeManager.Instance?.IsShiftOver == true
+                || MilestoneProgressManager.Instance?.ActiveMilestoneId != "milestone_03"))
+            {
+                EndMilestoneOneLesson();
+                return;
+            }
             bool hideLesson = MilestoneUnlockPopupUI.IsPendingOrVisible
-                || IsMilestoneTwoLesson && (PauseMenuUI.IsOpen || CutscenePresentation.IsActive)
+                || (IsMilestoneTwoLesson || IsSupplyLesson) && (PauseMenuUI.IsOpen || CutscenePresentation.IsActive)
                 || (IsWorkerLesson && ManagementModeController.Instance?.IsCapturingFlow == true);
             if (canvasRoot != null && canvasRoot.activeSelf == hideLesson)
                 canvasRoot.SetActive(!hideLesson);
@@ -5316,9 +5346,10 @@ public class OnboardingTutorial : MonoBehaviour
         }
         if (milestone == "milestone_03" && !supplyLessonDone)
         {
-            prioritizeDebugMilestoneLesson = false;
             supplyLessonPage = 0;
-            BeginMilestoneLesson(MilestoneThreeSupplyStep);
+            if (supplyLessonPlanningReviewed) prioritizeDebugMilestoneLesson = false;
+            BeginMilestoneLesson(supplyLessonPlanningReviewed
+                ? MilestoneThreeDeliveryStep : MilestoneThreeSupplyStep);
             return;
         }
         if (milestone != "milestone_01" || milestoneOneIntroProgress > MilestoneOneObjectivesStep)
@@ -5648,18 +5679,16 @@ public class OnboardingTutorial : MonoBehaviour
 
     void RefreshSupplyLesson()
     {
+        if (IsSupplyDeliveryLesson)
+        {
+            RefreshSupplyDeliveryLesson();
+            return;
+        }
+
         if (!IsBusinessSupplyTabActive())
         {
-            SetTutorialBodyText("Open <b>Kitchen → Supply</b> to start.");
-            MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
-            Button supplyTab = tabs?.WorkspaceTabButton(2);
-            if (supplyTab != null && supplyTab.gameObject.activeInHierarchy)
-                FocusTutorialControl(supplyTab);
-            else if (tabs != null && tabs.KitchenButton != null)
-            {
-                tabs.PrepareWorkspaceTabForNextOpen(2);
-                FocusTutorialControl(tabs.KitchenButton);
-            }
+            SetTutorialBodyText("Open <b>Kitchen → Supply</b> to see what you have and what you'll need.");
+            HighlightSupplyTab();
             return;
         }
 
@@ -5667,18 +5696,189 @@ public class OnboardingTutorial : MonoBehaviour
         switch (supplyLessonPage)
         {
             case 0:
-                SetTutorialBodyText("Compare <b>Stock</b> with the <b>Forecast</b>. Supplier capacity limits your total delivery rate.");
+                SetTutorialBodyText("<b>Stock</b> is what you have now. <b>Need / shift</b> is the forecast. <b>Short</b> shows what may still be missing after your planned deliveries. The supplier limit at the top is shared by all ingredients.");
                 FocusTutorialControl(supply?.TutorialCapacityTarget);
                 break;
             case 1:
-                SetTutorialBodyText("Use <b>−</b> and <b>+</b> to set delivery rates. <b>Balance Rates</b> suggests rates within your supplier capacity.");
+                SetTutorialBodyText("Use <b>−</b> and <b>+</b> to change how many of an ingredient arrive each minute. Try <b>Balance Rates</b> to get a starting plan that fits the supplier's limit.");
                 FocusTutorialControl(supply?.TutorialBalanceRatesTarget);
                 break;
-            default:
-                SetTutorialBodyText("Click <b>Apply Supply Plan</b> to use your rates. Deliveries run during the shift and stop when stock is full.");
+            case SupplyApplyPage:
+                SetTutorialBodyText("Use <b>Apply Supply Plan</b> to save any changes. The supplier restocks at those rates during the shift and stops adding an ingredient when its stock is full.");
                 FocusTutorialControl(supply?.TutorialPlaceOrderButton);
                 break;
+            default:
+                bool changesToApply = supply?.TutorialPlaceOrderButton?.interactable == true;
+                SetTutorialBodyText("Use <b>Order</b> on an ingredient to buy a pack. The button shows the amount and price. The van can deliver it before you open."
+                    + (changesToApply ? " Apply your rate changes first." : " Click <b>Order a Delivery</b> to try it."));
+                FocusTutorialControl(changesToApply ? supply.TutorialPlaceOrderButton : supply?.TutorialOrderPackTarget);
+                break;
         }
+    }
+
+    void HighlightSupplyTab()
+    {
+        MainHudTabs tabs = FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include);
+        Button supplyTab = tabs?.WorkspaceTabButton(2);
+        if (supplyTab != null && supplyTab.gameObject.activeInHierarchy)
+            FocusTutorialControl(supplyTab);
+        else if (tabs != null && tabs.KitchenButton != null)
+        {
+            tabs.PrepareWorkspaceTabForNextOpen(2);
+            FocusTutorialControl(tabs.KitchenButton);
+        }
+    }
+
+    bool CanFinishSupplyDelivery()
+    {
+        if (SupplyLessonDeliveryArrivedForSave) return true;
+        if (supplyLessonShipment != null)
+            return supplyLessonShipment.activeSeconds >= supplyLessonDeliveryWatchDeadline;
+        SupplyPlanningScreenUI supply = FindFirstObjectByType<SupplyPlanningScreenUI>();
+        return IngredientDeliveryService.Instance?.HasPending != true
+            && supply != null && supply.TutorialOrderPackTarget == null;
+    }
+
+    bool SupplyLessonRequirementMet()
+    {
+        if (IsSupplyDeliveryLesson)
+            return CanFinishSupplyDelivery() || (supplyLessonShipment != null
+                && (IsBusinessOverviewOpen()
+                    || GameTimeManager.Instance?.CurrentSpeed == GameTimeManager.SpeedMode.Paused
+                    || supplyLessonDeliveryTarget != null));
+
+        return IsBusinessSupplyTabActive() && (supplyLessonPage < SupplyApplyPage
+            || FindFirstObjectByType<SupplyPlanningScreenUI>()?.TutorialPlaceOrderButton?.interactable != true);
+    }
+
+    string SupplyLessonButtonLabel()
+    {
+        if (!IsSupplyDeliveryLesson)
+        {
+            if (!IsBusinessSupplyTabActive()) return "Open Supply";
+            if (!SupplyLessonRequirementMet()) return "Apply Supply Plan";
+            if (supplyLessonPage == SupplyTourLastPage) return "Order a Delivery";
+            return "Next";
+        }
+        if (CanFinishSupplyDelivery()) return "Start Shift";
+        if (supplyLessonShipment == null)
+            return IsBusinessSupplyTabActive() ? "Order a Pack" : "Open Supply";
+        if (IsBusinessOverviewOpen()) return "Watch Delivery";
+        if (GameTimeManager.Instance?.CurrentSpeed == GameTimeManager.SpeedMode.Paused)
+            return "Resume Delivery";
+        if (supplyLessonDeliveryTarget != null)
+            return supplyLessonShipment.courier != null ? "Find Driver" : "Find Van";
+        return "Waiting for Delivery";
+    }
+
+    void AdvanceSupplyLesson()
+    {
+        if (!IsSupplyDeliveryLesson)
+        {
+            if (supplyLessonPage < SupplyTourLastPage)
+            {
+                supplyLessonPage++;
+                nextControlHighlightRefresh = 0f;
+                RefreshControlHighlights();
+                RefreshAdvanceGate();
+                return;
+            }
+
+            supplyLessonPlanningReviewed = true;
+            prioritizeDebugMilestoneLesson = false;
+            BeginMilestoneLesson(MilestoneThreeDeliveryStep);
+            GameSaveSlots.SaveActiveSlot();
+            return;
+        }
+
+        if (CanFinishSupplyDelivery())
+        {
+            supplyLessonDone = true;
+            FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+            EndMilestoneOneLesson();
+            GameSaveSlots.SaveActiveSlot();
+            ShiftPlanningUI.Instance?.StartShiftFromMilestoneIntro();
+        }
+        else if (IsBusinessOverviewOpen())
+            FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+        else if (GameTimeManager.Instance?.CurrentSpeed == GameTimeManager.SpeedMode.Paused)
+            GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
+        else if (supplyLessonDeliveryTarget != null)
+            FindFirstObjectByType<PlayerCameraController>()?.PanTo(supplyLessonDeliveryTarget);
+        nextControlHighlightRefresh = 0f;
+    }
+
+    void RefreshSupplyDeliveryLesson()
+    {
+        supplyLessonDeliveryArrived = SupplyLessonDeliveryArrivedForSave;
+        if (supplyLessonDeliveryArrived)
+        {
+            ClearHighlight();
+            SetTutorialBodyText("The order arrived. Those ingredients are in <b>Stock</b>. Workers can use them after you open. Click <b>Start Shift</b> when you're ready.");
+            return;
+        }
+
+        if (supplyLessonShipment != null && supplyLessonShipment.cancelled)
+        {
+            supplyLessonShipment = null;
+            supplyLessonDeliveryTarget = null;
+            ClearHighlight();
+        }
+
+        if (supplyLessonShipment == null && IngredientDeliveryService.Instance != null)
+        {
+            foreach (IngredientDeliveryService.Shipment shipment in IngredientDeliveryService.Instance.Shipments)
+            {
+                if (shipment == null || shipment.packs.Count == 0) continue;
+                supplyLessonShipment = shipment;
+                supplyLessonDeliveryWatchDeadline = shipment.activeSeconds + shipment.remaining
+                    + SupplyDeliveryArrivalGraceSeconds;
+                break;
+            }
+        }
+
+        if (supplyLessonShipment == null)
+        {
+            if (!IsBusinessSupplyTabActive())
+            {
+                SetTutorialBodyText(Steps[stepIndex].body);
+                HighlightSupplyTab();
+                return;
+            }
+
+            Button orderPack = FindFirstObjectByType<SupplyPlanningScreenUI>()?.TutorialOrderPackTarget;
+            SetTutorialBodyText(orderPack != null
+                ? "Pick an ingredient you need. Click its <b>Order</b> button to buy a pack at the shown price."
+                : "No pack can be ordered right now. Pack orders need enough cash and space in Stock. You can start the shift when ready.");
+            FocusTutorialControl(orderPack);
+            return;
+        }
+
+        if (CanFinishSupplyDelivery())
+        {
+            SetTutorialBodyText("The order is still on its way. When the driver drops it off, the ingredients go into <b>Stock</b>. You can start the shift while you wait.");
+            return;
+        }
+
+        if (IsBusinessOverviewOpen())
+        {
+            SetTutorialBodyText("Your pack is marked <b>Incoming</b> until the driver drops it off. Click <b>Watch Delivery</b> to close Kitchen and see it arrive before opening.");
+            return;
+        }
+
+        IngredientCourier courier = supplyLessonShipment.courier;
+        DeliveryVan van = supplyLessonShipment.van;
+        Transform target = courier != null ? courier.transform : van != null ? van.transform : null;
+        if (target != supplyLessonDeliveryTarget)
+        {
+            supplyLessonDeliveryTarget = target;
+            SetHighlightTarget(target);
+        }
+        SetTutorialBodyText(courier != null
+            ? "Watch the driver bring the order to the counter. Use <b>Find Driver</b> if you lose sight of them."
+            : van != null
+                ? "The delivery van is on its way. Use <b>Find Van</b> to see it park."
+                : $"Your order is on its way. Estimated arrival <b>{IngredientDeliveryService.FormatCountdown(supplyLessonShipment.remaining)}</b>. You can use Fast Forward while you wait.");
     }
 
     void RefreshStationHealthLesson()

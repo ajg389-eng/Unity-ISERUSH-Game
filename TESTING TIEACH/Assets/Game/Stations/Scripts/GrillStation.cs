@@ -288,7 +288,8 @@ public partial class GrillStation : MonoBehaviour, IStationBuffer
 
     void Update()
     {
-        if (!ProductionManager.IsScheduledStation(gameObject)) UpdateCooking(Time.deltaTime);
+        if (ProductionManager.CanProcessFood && !ProductionManager.IsScheduledStation(gameObject))
+            UpdateCooking(Time.deltaTime);
         processProgressIndicator?.SetProgress(
             IsCookingPatty, cookTimer / Mathf.Max(0.01f, EffectiveProcessTimeSeconds));
         RefreshItemDisplay(force: false);

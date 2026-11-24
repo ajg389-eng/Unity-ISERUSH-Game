@@ -11,7 +11,7 @@ using UnityEngine.UI;
 /// </summary>
 public sealed class ShiftPlanningUI : MonoBehaviour
 {
-    const string PauseSource = "ShiftPlanning";
+    internal const string PauseSource = "ShiftPlanning";
     const float LiveRefreshSeconds = 1f;
     const float DemandHeaderFontSize = 15f;
     const float DemandHeaderHeight = 36f;

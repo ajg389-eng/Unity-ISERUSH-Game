@@ -28,11 +28,11 @@ MonoBehaviour:
   - questionId: supply_forecast
     prompt: "What tells you how much of an ingredient you may need?"
     answers:
-    - "The Forecast column"
-    - "The station purchase price"
-    - "The song title"
+    - "Need / shift for that ingredient"
+    - "The ingredient's current stock"
+    - "The total supplier limit"
     correctAnswerIndex: 0
-    explanation: "Compare Forecast with Stock when planning deliveries."
+    explanation: "Need / shift is the forecast. Compare it with Stock and your planned deliveries."
   - questionId: supply_apply
     prompt: "Which button puts your delivery rates into effect?"
     answers:
@@ -58,13 +58,13 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: "Compare the expected need with what you already have. Thirty-five minus twenty leaves fifteen."
   - questionId: supply_capacity_limit
-    prompt: "Your supplier can deliver 12 items per minute. You request 8 buns and 7 potatoes per minute. What must change?"
+    prompt: "Your supplier can deliver 10 items per minute. You request 10 buns and 5 potatoes per minute. What must change?"
     answers:
-    - "Lower the combined rate by at least 3"
-    - "Raise both rates by 3"
-    - "Lower the combined rate by 1"
+    - "Lower the combined rate by at least 5"
+    - "Raise the bun rate by 5"
+    - "Keep both rates and place a pack order"
     correctAnswerIndex: 0
-    explanation: "Eight plus seven is fifteen. That is three items per minute above the supplier's limit."
+    explanation: "Fifteen items per minute is five above the supplier's shared limit."
   - questionId: supply_rate_change
     prompt: "You have a steady shortage of buns but enough of everything else. Which delivery rate should you review first?"
     answers:
@@ -82,13 +82,13 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: "Balance Rates suggests delivery rates within the supplier's capacity."
   - questionId: supply_ingredients_only
-    prompt: "Should you set a supplier delivery rate for finished Cheeseburgers?"
+    prompt: "You need more buns on hand before opening. What happens if you order a pack during planning?"
     answers:
-    - "No, plan deliveries for the ingredients"
-    - "Yes, when predicted output is low"
-    - "Yes, when there's room at Pickup"
+    - "The van can deliver them before opening"
+    - "The buns go into Stock as soon as you pay"
+    - "The regular bun delivery rate goes up"
     correctAnswerIndex: 0
-    explanation: "Suppliers deliver ingredients. Your kitchen still needs to make the finished item."
+    explanation: "A planning order arrives by van. The ingredients enter Stock when the driver drops off the pack."
   - questionId: supply_raise_one
     prompt: "You raise the bun rate while the supplier is already at capacity. How can you make room for it?"
     answers:
@@ -98,13 +98,13 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: "Delivery rates share a single supplier capacity."
   - questionId: supply_full_storage
-    prompt: "Milk stops arriving while its stock is full. What should you check before changing the rate?"
+    prompt: "You order a pack before opening. When does it change from Incoming to Stock?"
     answers:
-    - "Whether milk is being used and making room"
-    - "Whether milk is listed as a finished order"
-    - "Whether the register has open orders"
+    - "When the delivery driver drops off the pack"
+    - "As soon as you pay for the pack"
+    - "As soon as the van starts driving to the restaurant"
     correctAnswerIndex: 0
-    explanation: "The supplier stops adding an ingredient while storage is full."
+    explanation: "An in-shift pack order is marked Incoming until the driver delivers it to the counter."
   - questionId: supply_plan_timing
     prompt: "You applied a supply plan before opening. When do the deliveries run?"
     answers:

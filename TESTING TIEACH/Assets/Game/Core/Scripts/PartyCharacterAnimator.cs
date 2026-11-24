@@ -29,6 +29,10 @@ public class PartyCharacterAnimator : MonoBehaviour
 
     [Tooltip("Animator on the party character. Auto-found in children if empty.")]
     public Animator animator;
+    bool useDeliveryClock;
+    float AnimationDeltaTime => useDeliveryClock ? IngredientDeliveryService.DeliveryDeltaTime : Time.deltaTime;
+
+    internal void UseDeliveryClock() => useDeliveryClock = true;
 
     [Tooltip("Optional: assign Assets/Imported/FREE/Pack_FREE_PartyCharacters/Animations/char_AC")]
     public RuntimeAnimatorController controller;
@@ -165,7 +169,13 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (visualRoot == null)
             ResolveRefs();
 
-        float dt = Time.deltaTime;
+        float dt = AnimationDeltaTime;
+        if (useDeliveryClock && animator != null)
+        {
+            AnimatorUpdateMode mode = ShiftPlanningUI.IsPlanning && dt > 0f
+                ? AnimatorUpdateMode.UnscaledTime : AnimatorUpdateMode.Normal;
+            if (animator.updateMode != mode) animator.updateMode = mode;
+        }
         Vector3 pos = transform.position;
 
         Vector3 delta = pos - lastPos;
@@ -533,13 +543,14 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (visualRoot == null) visualRoot = transform;
 
         Quaternion targetRot = Quaternion.LookRotation(dir.normalized, Vector3.up);
-        if (!smooth || turnSpeed <= 0f || Time.deltaTime <= 0.0001f)
+        float deltaTime = AnimationDeltaTime;
+        if (!smooth || turnSpeed <= 0f || deltaTime <= 0.0001f)
         {
             visualRoot.rotation = targetRot;
             return;
         }
 
-        float t = 1f - Mathf.Exp(-turnSpeed * Time.deltaTime);
+        float t = 1f - Mathf.Exp(-turnSpeed * deltaTime);
         visualRoot.rotation = Quaternion.Slerp(visualRoot.rotation, targetRot, t);
     }
 
@@ -548,7 +559,7 @@ public class PartyCharacterAnimator : MonoBehaviour
         if (visualRoot == null) visualRoot = transform;
         Quaternion targetRot = Quaternion.LookRotation(lockedFaceDir, Vector3.up);
         float maxDegrees = Mathf.Max(0f, travelTurnDegreesPerSecond)
-            * Mathf.Min(Time.deltaTime, 0.05f);
+            * Mathf.Min(AnimationDeltaTime, 0.05f);
         visualRoot.rotation = Quaternion.RotateTowards(visualRoot.rotation, targetRot, maxDegrees);
     }
 

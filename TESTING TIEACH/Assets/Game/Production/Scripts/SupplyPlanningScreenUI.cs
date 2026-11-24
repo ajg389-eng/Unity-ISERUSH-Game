@@ -21,6 +21,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         public TMP_Text lockedText;
         public Button minus;
         public Button plus;
+        public Button orderPack;
         public GameObject lockedOverlay;
     }
 
@@ -28,6 +29,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
     readonly List<IngredientRow> rows = new List<IngredientRow>();
 
     KitchenInventory inventory;
+    MoneyManager money;
     CustomerOrderConfig orderConfig;
     TMP_Text capacityText;
     TMP_Text capacityHintText;
@@ -48,6 +50,8 @@ public class SupplyPlanningScreenUI : MonoBehaviour
     public Button TutorialPlaceOrderButton => applyButton;
     internal Component TutorialCapacityTarget => capacityText;
     internal Component TutorialBalanceRatesTarget => balanceButton;
+    internal Button TutorialOrderPackTarget => rows.Find(row =>
+        row.orderPack.isActiveAndEnabled && row.orderPack.interactable)?.orderPack;
 
     public Button TutorialAddButton(ItemDefinition item)
     {
@@ -114,7 +118,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         planningStateInitialized = true;
         SetFooter(wasPlanning
             ? "Rates are saved when you apply the plan."
-            : "Shift underway. Supply changes are locked until the next planning phase.");
+            : "Rates are locked during the shift. You can still order packs.");
         RefreshData();
     }
 
@@ -278,7 +282,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         GameObject card = CreatePanel("Ingredient_" + item.name, parent, GameUITheme.Surface,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         LayoutElement cardLayout = card.AddComponent<LayoutElement>();
-        cardLayout.minHeight = cardLayout.preferredHeight = 160f;
+        cardLayout.minHeight = cardLayout.preferredHeight = 192f;
 
         GameObject iconObject = new GameObject("ItemIcon", typeof(RectTransform), typeof(Image));
         iconObject.transform.SetParent(card.transform, false);
@@ -351,14 +355,20 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         ConfigureCompactLine(row.projection, 10f, 12f);
 
         row.minus = CreateButton("RateMinus", card.transform, "-", GameUITheme.Danger,
-            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(25f, 16f), new Vector2(34f, 28f), out _);
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(25f, 48f), new Vector2(34f, 28f), out _);
         row.rate = CreateText("Rate", card.transform, "0/min", 14f, GameUITheme.TextPrimary,
-            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(47f, 2f), new Vector2(104f, 30f), FontStyles.Bold);
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(47f, 34f), new Vector2(104f, 62f), FontStyles.Bold);
         row.rate.alignment = TextAlignmentOptions.Center;
         row.plus = CreateButton("RatePlus", card.transform, "+", GameUITheme.Positive,
-            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(129f, 16f), new Vector2(34f, 28f), out _);
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(129f, 48f), new Vector2(34f, 28f), out _);
         row.minus.onClick.AddListener(() => AdjustRate(row, -5));
         row.plus.onClick.AddListener(() => AdjustRate(row, 5));
+        row.orderPack = CreateButton("OrderPack", card.transform,
+            $"Order {inventory.GetPackSize(item)} · ${inventory.GetPackPrice(item)}", GameUITheme.Surface,
+            Vector2.zero, new Vector2(1f, 0f), new Vector2(8f, 4f), new Vector2(-8f, 32f), out TMP_Text orderLabel);
+        ConfigureCompactLine(orderLabel, 10f, 13f);
+        row.orderPack.onClick.AddListener(() => OrderPack(row));
+        DelayedTooltip.Attach(row.orderPack, "Buy one ingredient pack. It arrives by van during planning or during the shift.");
 
         row.lockedOverlay = CreatePanel("LockStatus", card.transform,
             new Color(GameUITheme.Charcoal.r, GameUITheme.Charcoal.g, GameUITheme.Charcoal.b, 0.92f),
@@ -390,6 +400,22 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         }
         pendingRates[row.item] = next;
         planDirty = true;
+        RefreshData();
+    }
+
+    void OrderPack(IngredientRow row)
+    {
+        if (inventory == null || row == null || !row.orderPack.interactable) return;
+        if (!inventory.TryOrderPack(row.item))
+        {
+            SetFooter("Order unavailable. Check space, cash, and pending deliveries.");
+            RefreshData();
+            return;
+        }
+
+        string item = inventory.GetDisplayName(row.item);
+        SetFooter(ShiftPlanningUI.IsPlanning ? $"Ordered {item}. Watch for the van before opening."
+            : $"Ordered {item}. Close Kitchen to resume the shift and watch for the van.");
         RefreshData();
     }
 
@@ -500,7 +526,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         if (planningStateInitialized && wasPlanning && !planning)
         {
             planDirty = false;
-            SetFooter("Shift started. Supply changes are locked until the next planning phase.");
+            SetFooter("Rates are locked during the shift. You can still order packs.");
         }
         else if (planningStateInitialized && !wasPlanning && planning)
         {
@@ -567,6 +593,9 @@ public class SupplyPlanningScreenUI : MonoBehaviour
 
         float totalNeed = 0f;
         float estimatedShiftCost = 0f;
+        if (money == null) money = FindFirstObjectByType<MoneyManager>();
+        bool canOrder = (planning || GameTimeManager.Instance?.IsShiftInProgress == true)
+            && IngredientDeliveryService.Instance?.HasPending != true;
         foreach (IngredientRow row in rows)
         {
             if (row == null || row.item == null) continue;
@@ -611,6 +640,10 @@ public class SupplyPlanningScreenUI : MonoBehaviour
             row.minus.gameObject.SetActive(row.unlocked);
             row.rate.gameObject.SetActive(row.unlocked);
             row.plus.gameObject.SetActive(row.unlocked);
+            row.orderPack.gameObject.SetActive(row.unlocked);
+            row.orderPack.interactable = canOrder && row.unlocked
+                && inventory.GetAvailableStockCapacity(row.item) >= inventory.GetPackSize(row.item)
+                && (money == null || money.CanAfford(inventory.GetPackPrice(row.item)));
             row.minus.interactable = planning && row.unlocked && rate > 0;
             int otherRates = assigned - rate;
             row.plus.interactable = planning && row.unlocked && rate < KitchenInventory.MaxSupplyRatePerMinute

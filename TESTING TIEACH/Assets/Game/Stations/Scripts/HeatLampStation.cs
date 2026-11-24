@@ -915,7 +915,7 @@ public class HeatLampStation : MonoBehaviour, IStationBuffer
     {
         foreach (HeatLampStation station in FindObjectsByType<HeatLampStation>(
                      FindObjectsInactive.Include, FindObjectsSortMode.None))
-            station.ClearAllMeals(recordWaste: false);
+            station.ResetRuntimeState();
     }
 
     internal void RestoreHeldMeal(CustomerOrder order, float age)

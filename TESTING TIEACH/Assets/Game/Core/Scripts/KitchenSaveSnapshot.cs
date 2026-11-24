@@ -42,6 +42,7 @@ public class KitchenSaveSnapshot
     public bool milestoneTwoPlanningReviewed;
     public int milestoneOneIntroProgress;
     public bool supplyLessonDone;
+    public bool supplyLessonPlanningReviewed, supplyLessonDeliveryArrived;
     public bool workerLessonDone, workerLessonHireReviewed;
     public int workerLessonFlowIndex = -1;
     public OnboardingTutorial.PantryPracticeState pantryPractice;
@@ -152,6 +153,10 @@ public class KitchenSaveSnapshot
         s.milestoneOneIntroProgress = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.MilestoneOneIntroProgressForSave : 0;
         s.supplyLessonDone = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.SupplyLessonDoneForSave;
+        s.supplyLessonPlanningReviewed = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.SupplyLessonPlanningReviewedForSave;
+        s.supplyLessonDeliveryArrived = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.SupplyLessonDeliveryArrivedForSave;
         if (OnboardingTutorial.Instance != null)
         {
             s.workerLessonDone = OnboardingTutorial.Instance.WorkerLessonDoneForSave;
@@ -941,7 +946,7 @@ public class KitchenSaveSnapshot
                 supplyLessonDone, pantryPractice, workerLessonDone, workerLessonHireReviewed,
                 version >= 60 && workerLessonFlowIndex >= 0 && workerLessonFlowIndex < pm.productionFlows.Count
                     ? pm.productionFlows[workerLessonFlowIndex] : null,
-                milestoneTwoPlanningReviewed);
+                milestoneTwoPlanningReviewed, supplyLessonPlanningReviewed, supplyLessonDeliveryArrived);
         return true;
     }
 

@@ -22,7 +22,7 @@ public class DeliveryVan : MonoBehaviour
     Action onParked;
     bool parked;
     bool useExactStallPose;
-    float parkedAt;
+    float parkedSeconds;
     Transform[] wheels;
     float wheelRadius = 0.35f;
 
@@ -93,7 +93,11 @@ public class DeliveryVan : MonoBehaviour
 
     void Update()
     {
-        if (parked && !leaving && parkedAt > 0f && Time.unscaledTime - parkedAt > 75f)
+        float deltaTime = IngredientDeliveryService.DeliveryDeltaTime;
+        if (deltaTime <= 0f) return;
+        if (parked && !leaving)
+            parkedSeconds += deltaTime;
+        if (parked && !leaving && parkedSeconds > 75f)
         {
             Leave();
             return;
@@ -101,7 +105,7 @@ public class DeliveryVan : MonoBehaviour
 
         if (settling)
         {
-            TickSettle();
+            TickSettle(deltaTime);
             return;
         }
 
@@ -127,7 +131,7 @@ public class DeliveryVan : MonoBehaviour
                 RoadTrafficController.KeepDeliveryLaneClear(2f);
         }
 
-        if (!VehiclePathMotion.Advance(transform, path, ref index, ref speed, cruise, 120f, 3, Time.deltaTime, wheels, wheelRadius))
+        if (!VehiclePathMotion.Advance(transform, path, ref index, ref speed, cruise, 120f, 3, deltaTime, wheels, wheelRadius))
             return;
 
         if (leaving)
@@ -172,19 +176,19 @@ public class DeliveryVan : MonoBehaviour
         }
     }
 
-    void TickSettle()
+    void TickSettle(float deltaTime)
     {
-        settleT += Time.deltaTime / 0.7f;
+        settleT += deltaTime / 0.7f;
         float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(settleT));
         Vector3 pos = Vector3.Lerp(settleFrom, stall, t);
         pos.y = Mathf.Lerp(settleFrom.y, stall.y, t);
         transform.SetPositionAndRotation(pos, Quaternion.Slerp(settleFromRot, stallFacing, t));
-        SpinWheels(Mathf.Lerp(speed, 0f, t) * Time.deltaTime);
+        SpinWheels(Mathf.Lerp(speed, 0f, t) * deltaTime);
         if (t < 1f) return;
 
         settling = false;
         parked = true;
-        parkedAt = Time.unscaledTime;
+        parkedSeconds = 0f;
         speed = 0f;
         RoadTrafficController.EndDeliveryLaneClearance();
         onParked?.Invoke();
