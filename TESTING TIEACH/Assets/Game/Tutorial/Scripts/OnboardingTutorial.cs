@@ -16,7 +16,7 @@ public class OnboardingTutorial : MonoBehaviour
     const int AnalyticsTourCloseStage = 5;
     const int OnboardingStepCount = 4;
     const int MilestoneOneBottleneckStep = 4;
-    const int MilestoneTwoAnalyticsStep = 5;
+    const int MilestoneTwoIntroStep = 5;
     const int MilestoneOneIntroStep = 6;
     const int MilestoneOneFlowDemoStep = 7;
     const int MilestoneOneRecipesStep = 8;
@@ -25,6 +25,9 @@ public class OnboardingTutorial : MonoBehaviour
     const int MilestoneThreeSupplyStep = 11;
     const int HireWorkerStep = 12;
     const int AssignWorkerStep = 13;
+    const int MilestoneTwoLiveStep = 14;
+    const int MilestoneTwoStationStep = 15;
+    const float LiveAnalyticsComparisonSeconds = 15f;
     const int SupplyTourLastPage = 2;
     const int BaselineRunCustomerCount = 15;
     const float BaselineRunDurationSeconds = 180f;
@@ -584,6 +587,16 @@ public class OnboardingTutorial : MonoBehaviour
     bool milestoneOneLessonActive;
     bool milestoneOneBottleneckLessonDone;
     bool milestoneOneAnalyticsLessonDone;
+    bool milestoneTwoPlanningReviewed;
+    bool prioritizeDebugMilestoneLesson;
+    enum MilestoneTwoAnalyticsPage { Service, Compare, Ordered, Demand, Produced, Predicted, PlayerStats }
+    MilestoneTwoAnalyticsPage milestoneTwoAnalyticsPage;
+    bool milestoneTwoReadingsCompared;
+    float milestoneTwoFirstReadingTime;
+    int milestoneTwoFirstOpenOrders;
+    int milestoneTwoSecondOpenOrders;
+    int milestoneTwoStationSelectionRevision;
+    ItemDefinition milestoneTwoObservedItem;
     bool tutorialStationHealthReviewed;
     GameObject lastStationHealthLessonTarget;
     bool milestoneOneStationClickObserved;
@@ -635,6 +648,16 @@ public class OnboardingTutorial : MonoBehaviour
     public float BaselinePracticeElapsedSecondsForSave => baselinePracticeElapsedSeconds;
     public bool MilestoneOneBottleneckLessonDoneForSave => milestoneOneBottleneckLessonDone;
     public bool MilestoneOneAnalyticsLessonDoneForSave => milestoneOneAnalyticsLessonDone;
+    public bool MilestoneTwoPlanningReviewedForSave => milestoneTwoPlanningReviewed;
+    bool IsMilestoneTwoLesson => milestoneOneLessonActive
+        && (stepIndex == MilestoneTwoIntroStep || stepIndex == MilestoneTwoLiveStep
+            || stepIndex == MilestoneTwoStationStep);
+    bool IsMilestoneTwoLiveLesson => IsMilestoneTwoLesson && stepIndex >= MilestoneTwoLiveStep;
+    bool IsMilestoneTwoComparison => IsMilestoneTwoLiveLesson && stepIndex == MilestoneTwoLiveStep
+        && milestoneTwoAnalyticsPage == MilestoneTwoAnalyticsPage.Compare;
+    bool CanTakeMilestoneTwoReading => ProductionManager.Instance?.HasFullThroughputWindow == true
+        && (milestoneTwoFirstReadingTime < 0f
+            || Time.time >= milestoneTwoFirstReadingTime + LiveAnalyticsComparisonSeconds);
     int milestoneOneIntroProgress;
     bool IsMilestoneOneIntro => milestoneOneLessonActive && stepIndex >= MilestoneOneIntroStep
         && stepIndex <= MilestoneOneObjectivesStep;
@@ -704,7 +727,8 @@ public class OnboardingTutorial : MonoBehaviour
         float savedBaselinePracticeElapsedSeconds = 0f, bool savedObservingImprovedLayout = false,
         int savedMilestoneOneIntroProgress = 0, bool savedSupplyLessonDone = false,
         PantryPracticeState savedPantryPractice = null, bool savedWorkerLessonDone = false,
-        bool savedWorkerLessonHireReviewed = false, ProductionFlowPlan savedWorkerLessonFlow = null)
+        bool savedWorkerLessonHireReviewed = false, ProductionFlowPlan savedWorkerLessonFlow = null,
+        bool savedMilestoneTwoPlanningReviewed = false)
     {
         PlayerPrefs.SetInt(PrefsCompleteKey, complete ? 1 : 0);
         // Save restore replaces scene-authored stations with checkpoint objects.
@@ -743,7 +767,10 @@ public class OnboardingTutorial : MonoBehaviour
         inheritedTargetRate = complete ? savedTargetRate : 5f;
         inheritedStationMoved = savedStationMoved;
         milestoneOneBottleneckLessonDone = savedMilestoneOneBottleneckLessonDone;
-        milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone;
+        milestoneTwoPlanningReviewed = savedMilestoneTwoPlanningReviewed;
+        prioritizeDebugMilestoneLesson = false;
+        milestoneOneAnalyticsLessonDone = savedMilestoneOneAnalyticsLessonDone
+            && milestoneTwoPlanningReviewed;
         milestoneOneIntroProgress = Mathf.Clamp(savedMilestoneOneIntroProgress, 0, MilestoneOneObjectivesStep + 1);
         supplyLessonDone = savedSupplyLessonDone;
         workerLessonDone = savedWorkerLessonDone;
@@ -1093,9 +1120,9 @@ public class OnboardingTutorial : MonoBehaviour
         new Step("Identify a bottleneck",
             "It is noon. Open <b>Kitchen</b>, choose <b>Workers</b>, and select a production station. Read its Working, Blocked, Starved, and Idle percentages to see where time is going.",
             "Got it", Highlight.None, requireStationHealthReview: true),
-        new Step("Review Analytics",
-            "Open <b>Analytics</b> to compare service, demand, and production.",
-            "Finish", Highlight.None, pauseSim: true, requireAnalyticsScreen: true),
+        new Step("Demand and capacity",
+            "You can review <b>Objectives</b> before opening. Click <b>Start Shift</b> when you're ready to see whether the kitchen can keep up with orders.",
+            "Start Shift", Highlight.None, pauseSim: true),
         new Step("Expand the menu",
             "Let's look at your <b>burger flow</b> before building the new lines.",
             "Show me", Highlight.None, pauseSim: true),
@@ -1119,7 +1146,13 @@ public class OnboardingTutorial : MonoBehaviour
             "Next", Highlight.None, pauseSim: true, openWorkers: true),
         new Step("Assign a worker",
             "Click <b>Assign</b> on a worker's card, or drag the card onto your new flow's tab.",
-            "Finish", Highlight.None, pauseSim: true, openWorkers: true)
+            "Finish", Highlight.None, pauseSim: true, openWorkers: true),
+        new Step("Read Analytics",
+            "Open <b>Analytics → Live Analytics</b> as the kitchen starts taking orders.",
+            "Next", Highlight.None),
+        new Step("Look for a bottleneck",
+            "The <b>Customer Orders</b> board shows who's waiting and what they ordered. To see why work might be waiting, open <b>Kitchen → Workers</b> and click a production station.",
+            "Finish", Highlight.None)
     };
 
     // Gus gives the player context and motivation. The moving instruction card
@@ -1131,7 +1164,7 @@ public class OnboardingTutorial : MonoBehaviour
         "Let's see how this process handles 15 customers over three minutes before we start changing anything.",
         "Let's shorten the route between stations and see if we can get more burgers out.",
         "That line's slowing down around noon. Help me see where things are getting stuck.",
-        "Analytics shows where the kitchen is keeping up and where we need more capacity.",
+        "We've unlocked Cheeseburgers, Cheese Fries, and Whipped Cream Shakes. Once we open, let's see how well the kitchen keeps up.",
         "I stocked potatoes, fry containers, milk, and cups. Let's add fries and shakes.",
         "A flow tells workers where to pick up ingredients and where to deliver them.",
         "The recipe diagrams show what goes into each item and where it gets made.",
@@ -1139,7 +1172,9 @@ public class OnboardingTutorial : MonoBehaviour
         "Check the tasks before you open, then set up the menu and kitchen to meet them.",
         "I've handled ingredient deliveries up to now. It's your turn to run Supply.",
         "Your flow is saved. Let's get someone to run it.",
-        "Give a worker this flow so they know which stations to run."
+        "Give a worker this flow so they know which stations to run.",
+        "Watch what comes in at the register and what makes it to Pickup. Are we keeping up?",
+        "Analytics shows where we're falling behind. The orders board shows who's waiting, and the station tells us where to look for the cause."
     };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -1247,6 +1282,36 @@ public class OnboardingTutorial : MonoBehaviour
         Complete(skipped: true);
     }
 
+    internal void ResetMilestoneLessonForDebugJump(string milestoneId)
+    {
+        if (IsFirstDayBuildLesson)
+            pendingPantryPractice = CapturePantryPractice();
+        if (milestoneOneLessonActive)
+            EndMilestoneOneLesson();
+
+        WorkerAssignmentLinkVisuals.ClearTutorialFlowProgress();
+        prioritizeDebugMilestoneLesson = milestoneId == "milestone_01"
+            || milestoneId == "milestone_02" || milestoneId == "milestone_03";
+
+        switch (milestoneId)
+        {
+            case "milestone_01":
+                // Leave the initial stock grant pending only on the first visit.
+                if (milestoneOneIntroProgress > 0)
+                    milestoneOneIntroProgress = MilestoneOneIntroStep;
+                pendingPantryPractice = null;
+                break;
+            case "milestone_02":
+                milestoneTwoPlanningReviewed = false;
+                milestoneOneAnalyticsLessonDone = false;
+                break;
+            case "milestone_03":
+                supplyLessonDone = false;
+                break;
+        }
+        RefreshTutorialFeatureLocks(true);
+    }
+
     public void Restart()
     {
         panelDragHandle?.ResetUserPosition();
@@ -1297,6 +1362,8 @@ public class OnboardingTutorial : MonoBehaviour
         milestoneOneLessonActive = false;
         milestoneOneBottleneckLessonDone = false;
         milestoneOneAnalyticsLessonDone = false;
+        milestoneTwoPlanningReviewed = false;
+        prioritizeDebugMilestoneLesson = false;
         milestoneOneStationClickObserved = false;
         tutorialStationHealthReviewed = false;
         lastStationHealthLessonTarget = null;
@@ -1532,7 +1599,9 @@ public class OnboardingTutorial : MonoBehaviour
             return;
         }
 
-        if (tutorialVisibleCharacters < tutorialTotalCharacters)
+        if (tutorialVisibleCharacters < tutorialTotalCharacters
+            && !(milestoneOneLessonActive && stepIndex == MilestoneTwoIntroStep)
+            && !IsMilestoneTwoComparison)
         {
             tutorialVisibleCharacters = tutorialTotalCharacters;
             tutorialCharacterProgress = tutorialTotalCharacters;
@@ -1552,11 +1621,9 @@ public class OnboardingTutorial : MonoBehaviour
             InventoryUI inventory = FindFirstObjectByType<InventoryUI>(FindObjectsInactive.Include);
             if (inventory != null && inventory.IsPanelOpen) inventory.TogglePanel();
         }
-        if (milestoneOneLessonActive && stepIndex == MilestoneTwoAnalyticsStep)
+        if (IsMilestoneTwoLesson)
         {
-            milestoneOneAnalyticsLessonDone = true;
-            EndMilestoneOneLesson();
-            GameSaveSlots.SaveActiveSlot();
+            AdvanceMilestoneTwoLesson();
             return;
         }
 
@@ -1831,7 +1898,7 @@ public class OnboardingTutorial : MonoBehaviour
             stepLabel.text = milestoneOneLessonActive
                 ? IsWorkerLesson ? "WORKERS"
                     : IsSupplyLesson ? "MILESTONE 3"
-                    : stepIndex == MilestoneTwoAnalyticsStep ? "MILESTONE 2" : "MILESTONE 1"
+                    : IsMilestoneTwoLesson ? "MILESTONE 2" : "MILESTONE 1"
                 : $"Tutorial  {stepIndex + 1} / {OnboardingStepCount}";
         if (nextLabel != null)
             nextLabel.text = step.nextLabel;
@@ -2198,7 +2265,8 @@ public class OnboardingTutorial : MonoBehaviour
         RectTransform objectivesPanelRect = objectivesTutorial != null
             && objectivesTutorial.panelRoot != null
                 ? objectivesTutorial.panelRoot.transform as RectTransform : null;
-        bool analyticsTutorial = running && Steps[stepIndex].requireAnalyticsScreen;
+        bool analyticsTutorial = running && (Steps[stepIndex].requireAnalyticsScreen
+            || IsMilestoneTwoLesson && AnalyticsPopupUI.IsOpen);
         bool stationaryRecipeTutorial = running && Steps[stepIndex].requireRecipes;
         bool timeControlTutorial = running && Steps[stepIndex].requireTimeControlInteractions;
         float desiredPanelWidth = IsFirstDayRecipeReview && IngredientsOrderUI.IsRecipeOverlayOpen ? 400f
@@ -2448,7 +2516,7 @@ public class OnboardingTutorial : MonoBehaviour
         if (stationaryRecipeTutorial)
             panelPosition = new Vector2(0f, -rootHeight * 0.12f);
         bool fixedImproveLineCard = running && Steps[stepIndex].requireOptimizedLayout;
-        if (fixedImproveLineCard || milestoneOneLessonActive)
+        if (fixedImproveLineCard || milestoneOneLessonActive && !analyticsTutorial)
         {
             const float topBarGap = 26f;
             float cardY = rootHeight * 0.5f - 122f - panelHeight * 0.5f;
@@ -2795,6 +2863,8 @@ public class OnboardingTutorial : MonoBehaviour
                 ? observingImprovedLayout || (IsSupplyLesson && supplyLessonPage == SupplyTourLastPage)
                     ? "Finish" : freezerGuideNext ? "Next" : step.nextLabel
                 : LockedLabel(step);
+            if (IsMilestoneTwoComparison)
+                labelText = MilestoneTwoReadingButtonLabel();
             nextLabel.text = labelText;
             FitTutorialButton();
             if (ready && step.requirePlaced)
@@ -2804,6 +2874,7 @@ public class OnboardingTutorial : MonoBehaviour
 
     string LockedLabel(Step step)
     {
+        if (IsMilestoneTwoLesson && stepIndex == MilestoneTwoStationStep) return "Inspect Station";
         if (IsSupplyLesson) return "Open Supply";
         if (IsBaselinePracticeStep(step))
         {
@@ -2927,6 +2998,7 @@ public class OnboardingTutorial : MonoBehaviour
     {
         if (stepIndex < 0 || stepIndex >= Steps.Length) return true;
         var step = Steps[stepIndex];
+        if (IsMilestoneTwoLesson && !MilestoneTwoRequirementMet()) return false;
         if (step.requireGlossaryTermClick && !glossaryTermClicked) return false;
         if (step.requireObjectivesScreen && !objectivesScreenOpened) return false;
         if (step.requireCameraControls
@@ -4721,6 +4793,11 @@ public class OnboardingTutorial : MonoBehaviour
         ClearControlHighlights();
         calloutTarget = null;
         var step = Steps[stepIndex];
+        if (IsMilestoneTwoLesson)
+        {
+            RefreshMilestoneTwoLesson();
+            return;
+        }
         if (IsWorkerLesson)
         {
             RefreshWorkerLesson();
@@ -5121,7 +5198,16 @@ public class OnboardingTutorial : MonoBehaviour
             ApplyPause(true);
         if (milestoneOneLessonActive)
         {
+            if (IsMilestoneTwoLiveLesson && (ShiftPlanningUI.IsPlanning
+                || GameTimeManager.Instance?.IsShiftOver == true
+                || MilestoneProgressManager.Instance?.ActiveMilestoneId != "milestone_02"))
+            {
+                AnalyticsPopupUI.CloseIfOpen();
+                EndMilestoneOneLesson();
+                return;
+            }
             bool hideLesson = MilestoneUnlockPopupUI.IsPendingOrVisible
+                || IsMilestoneTwoLesson && (PauseMenuUI.IsOpen || CutscenePresentation.IsActive)
                 || (IsWorkerLesson && ManagementModeController.Instance?.IsCapturingFlow == true);
             if (canvasRoot != null && canvasRoot.activeSelf == hideLesson)
                 canvasRoot.SetActive(!hideLesson);
@@ -5173,15 +5259,39 @@ public class OnboardingTutorial : MonoBehaviour
 
     void TryBeginMilestoneLesson()
     {
-        if (!gameplayReady || !IsComplete || !ShiftPlanningUI.IsPlanning
+        if (!gameplayReady || !IsComplete
             || TitleScreenController.IsTitleScreenActive || CutscenePresentation.IsActive
             || IntroCutsceneUI.IsPlaying || MilestoneUnlockPopupUI.IsPendingOrVisible
             || PauseMenuUI.IsOpen)
             return;
 
         string milestone = MilestoneProgressManager.Instance?.ActiveMilestoneId;
+        if (!ShiftPlanningUI.IsPlanning)
+        {
+            if (milestone == "milestone_02" && !milestoneOneAnalyticsLessonDone
+                && milestoneTwoPlanningReviewed
+                && GameTimeManager.Instance?.IsShiftInProgress == true)
+            {
+                milestoneTwoFirstReadingTime = -1f;
+                milestoneTwoReadingsCompared = false;
+                milestoneTwoAnalyticsPage = MilestoneTwoAnalyticsPage.Service;
+                CustomerOrderConfig menu = ProductionManager.Instance?.orderConfig;
+                milestoneTwoObservedItem = menu?.cheeseburgerItem;
+                if (menu != null && !menu.IsItemEnabled(milestoneTwoObservedItem))
+                {
+                    foreach (ItemDefinition item in menu.GetEnabledMenuItems())
+                    {
+                        milestoneTwoObservedItem = item;
+                        break;
+                    }
+                }
+                prioritizeDebugMilestoneLesson = false;
+                BeginMilestoneLesson(MilestoneTwoLiveStep);
+            }
+            return;
+        }
         ProductionManager production = ProductionManager.Instance;
-        if (workerLessonFlow != null && production != null)
+        if (!prioritizeDebugMilestoneLesson && workerLessonFlow != null && production != null)
         {
             int flowIndex = production.productionFlows.IndexOf(workerLessonFlow);
             if (flowIndex < 0)
@@ -5198,13 +5308,15 @@ public class OnboardingTutorial : MonoBehaviour
             }
         }
 
-        if (milestone == "milestone_02" && !milestoneOneAnalyticsLessonDone)
+        if (milestone == "milestone_02" && !milestoneOneAnalyticsLessonDone
+            && !milestoneTwoPlanningReviewed)
         {
-            BeginMilestoneLesson(MilestoneTwoAnalyticsStep);
+            BeginMilestoneLesson(MilestoneTwoIntroStep);
             return;
         }
         if (milestone == "milestone_03" && !supplyLessonDone)
         {
+            prioritizeDebugMilestoneLesson = false;
             supplyLessonPage = 0;
             BeginMilestoneLesson(MilestoneThreeSupplyStep);
             return;
@@ -5225,6 +5337,7 @@ public class OnboardingTutorial : MonoBehaviour
             milestoneOneIntroProgress = MilestoneOneIntroStep;
         }
 
+        prioritizeDebugMilestoneLesson = false;
         milestoneOneLessonActive = true;
         running = true;
         pendingStart = false;
@@ -5251,10 +5364,217 @@ public class OnboardingTutorial : MonoBehaviour
         stepIndex = lessonStep;
         analyticsScreenOpened = false;
         analyticsScreenClosed = false;
-        if (lessonStep == MilestoneTwoAnalyticsStep)
-            analyticsTutorialStage = -1;
         EnsureUI();
         ShowStep();
+    }
+
+    bool HasMilestoneTwoStationSelection()
+    {
+        ManagementModeController management = ManagementModeController.Instance;
+        return management != null && management.HasOpenStationPanel
+            && management.TutorialStationSelectionRevision != milestoneTwoStationSelectionRevision
+            && IsProductionStationWithHealth(management.TutorialSelectedStation);
+    }
+
+    bool MilestoneTwoRequirementMet()
+    {
+        if (stepIndex == MilestoneTwoIntroStep) return true;
+        if (stepIndex == MilestoneTwoStationStep) return HasMilestoneTwoStationSelection();
+        if (milestoneTwoAnalyticsPage == MilestoneTwoAnalyticsPage.PlayerStats)
+            return AnalyticsPopupUI.IsPlayerStatsVisible;
+        if (!IsMilestoneTwoComparison || AnalyticsPopupUI.IsOpen)
+            return AnalyticsPopupUI.IsLiveAnalyticsVisible;
+        return milestoneTwoReadingsCompared || CanTakeMilestoneTwoReading
+            || GameTimeManager.Instance?.CurrentSpeed == GameTimeManager.SpeedMode.Paused;
+    }
+
+    string MilestoneTwoReadingButtonLabel()
+    {
+        if (AnalyticsPopupUI.IsLiveAnalyticsVisible)
+        {
+            if (milestoneTwoReadingsCompared) return "Next";
+            if (!CanTakeMilestoneTwoReading) return "Watch the Kitchen Run";
+            return milestoneTwoFirstReadingTime < 0f ? "Take Reading" : "Take Second Reading";
+        }
+        if (AnalyticsPopupUI.IsOpen || milestoneTwoReadingsCompared || CanTakeMilestoneTwoReading)
+            return "Open Live Analytics";
+        return GameTimeManager.Instance?.CurrentSpeed == GameTimeManager.SpeedMode.Paused
+            ? "Resume Shift" : "Waiting for Next Reading";
+    }
+
+    void AdvanceMilestoneTwoLesson()
+    {
+        switch (stepIndex)
+        {
+            case MilestoneTwoIntroStep:
+                MissionListUI.Instance?.SetVisible(false);
+                FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+                milestoneTwoPlanningReviewed = true;
+                EndMilestoneOneLesson();
+                GameSaveSlots.SaveActiveSlot();
+                ShiftPlanningUI.Instance?.StartShiftFromMilestoneIntro();
+                return;
+            case MilestoneTwoStationStep:
+                FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+                milestoneOneAnalyticsLessonDone = true;
+                EndMilestoneOneLesson();
+                GameSaveSlots.SaveActiveSlot();
+                return;
+        }
+
+        if (milestoneTwoAnalyticsPage == MilestoneTwoAnalyticsPage.PlayerStats)
+        {
+            milestoneTwoStationSelectionRevision = ManagementModeController.Instance?.TutorialStationSelectionRevision ?? 0;
+            stepIndex = MilestoneTwoStationStep;
+            nextControlHighlightRefresh = 0f;
+            ShowStep();
+            return;
+        }
+
+        if (IsMilestoneTwoComparison && !AnalyticsPopupUI.IsOpen)
+        {
+            if (milestoneTwoReadingsCompared || CanTakeMilestoneTwoReading)
+                AnalyticsPopupUI.Open(FindHudCanvas());
+            else
+                GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
+        }
+        else if (IsMilestoneTwoComparison && !milestoneTwoReadingsCompared)
+        {
+            if (CanTakeMilestoneTwoReading)
+                TakeMilestoneTwoReading();
+            else
+                AnalyticsPopupUI.CloseIfOpen();
+        }
+        else
+            milestoneTwoAnalyticsPage++;
+
+        nextControlHighlightRefresh = 0f;
+        RefreshControlHighlights();
+        RefreshAdvanceGate();
+        UpdateContextualCallout();
+    }
+
+    void TakeMilestoneTwoReading()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        ItemDefinition item = milestoneTwoObservedItem;
+        if (production == null || item == null) return;
+        var reading = production.GetRequiredOutputByItem().Find(row => row.item == item);
+        if (milestoneTwoFirstReadingTime < 0f)
+        {
+            milestoneTwoFirstReadingTime = Time.time;
+            milestoneTwoFirstOpenOrders = reading.openOrdersAtRegister;
+            return;
+        }
+
+        milestoneTwoReadingsCompared = true;
+        milestoneTwoSecondOpenOrders = reading.openOrdersAtRegister;
+    }
+
+    void RefreshMilestoneTwoLesson()
+    {
+        if (stepIndex == MilestoneTwoIntroStep) return;
+        if (stepIndex == MilestoneTwoStationStep)
+        {
+            bool selected = HasMilestoneTwoStationSelection();
+            SetTutorialBodyText(selected
+                ? "Look at the percentages at the bottom. <b>Working</b> means it's making food. <b>Blocked</b> means food can't move on. Check the next station. <b>Starved</b> means something it needs hasn't arrived. Check where it gets its supplies. <b>Idle</b> means there's no work right now."
+                : Steps[stepIndex].body);
+            if (selected)
+            {
+                ManagementModeController station = ManagementModeController.Instance;
+                FocusTutorialControl(station.TutorialStationStateTarget(1));
+                HighlightControl(station.TutorialStationStateTarget(0));
+                HighlightControl(station.TutorialStationStateTarget(2));
+            }
+            else if (!IsBusinessWorkersTabActive()) HighlightHudButton("BusinessTab");
+            return;
+        }
+
+        if (!AnalyticsPopupUI.IsOpen)
+        {
+            if (IsMilestoneTwoComparison)
+            {
+                if (milestoneTwoReadingsCompared || CanTakeMilestoneTwoReading)
+                {
+                    SetTutorialBodyText(milestoneTwoReadingsCompared
+                        ? "Reopen <b>Live Analytics</b> to review the comparison."
+                        : "The reading is ready. Open <b>Live Analytics</b> to check <b>Open Orders</b>.");
+                    HighlightHudButton("AnalyticsButton");
+                }
+                else
+                {
+                    string wait = milestoneTwoFirstReadingTime < 0f
+                        ? "Take the first reading after the kitchen has run for one minute."
+                        : "Give the kitchen 15 seconds of simulation time between readings.";
+                    SetTutorialBodyText("Watch customers place orders and workers bring food to Pickup. " + wait);
+                }
+                return;
+            }
+            SetTutorialBodyText(Steps[stepIndex].body);
+            HighlightHudButton("AnalyticsButton");
+            return;
+        }
+
+        if (milestoneTwoAnalyticsPage == MilestoneTwoAnalyticsPage.PlayerStats)
+        {
+            SetTutorialBodyText("Open <b>Player Stats</b> and find <b>Average Order Wait</b>. This number covers all your shifts. In <b>Live Analytics</b>, <b>Order to Pickup</b> covers this shift.");
+            FocusTutorialControl(AnalyticsPopupUI.IsPlayerStatsVisible
+                ? AnalyticsPopupUI.TutorialAverageOrderWaitTarget : AnalyticsPopupUI.TutorialPlayerStatsTab);
+            return;
+        }
+
+        if (!AnalyticsPopupUI.IsLiveAnalyticsVisible)
+        {
+            SetTutorialBodyText("Switch to <b>Live Analytics</b> to continue the tour.");
+            FocusTutorialControl(AnalyticsPopupUI.TutorialLiveAnalyticsTab);
+            return;
+        }
+
+        CustomersUI live = FindFirstObjectByType<CustomersUI>();
+        switch (milestoneTwoAnalyticsPage)
+        {
+            case MilestoneTwoAnalyticsPage.Service:
+                SetTutorialBodyText("<b>Customers in Store</b> counts who's here. <b>Order to Pickup</b> shows the average wait for a finished order. <b>Orders Served / Min</b> shows how fast you serve. <b>Service Rate</b> compares how many customers you served with how many left without their orders.");
+                FocusTutorialControl(live?.TutorialMetricTarget(0));
+                break;
+            case MilestoneTwoAnalyticsPage.Ordered:
+                SetTutorialBodyText("<b>Ordered / Min</b> shows how many of this item customers are ordering each minute at the register.");
+                FocusTutorialControl(live?.TutorialDemandHeaderTarget(2));
+                break;
+            case MilestoneTwoAnalyticsPage.Demand:
+                SetTutorialBodyText("<b>Demand / Min</b> shows how many of this item we expect customers to order each minute.");
+                FocusTutorialControl(live?.TutorialDemandHeaderTarget(3));
+                break;
+            case MilestoneTwoAnalyticsPage.Produced:
+                SetTutorialBodyText("<b>Produced / Min</b> shows how many of this item reached Pickup in the last minute. If more are ordered than reach Pickup and <b>Open Orders</b> keeps rising, the kitchen is falling behind.");
+                FocusTutorialControl(live?.TutorialDemandHeaderTarget(4));
+                break;
+            case MilestoneTwoAnalyticsPage.Predicted:
+                SetTutorialBodyText("<b>Predicted / Min</b> estimates how much the kitchen can make each minute. Compare it with <b>Demand / Min</b>. If customers are expected to order 10 and you can make 7, you're short by 3 each minute.");
+                FocusTutorialControl(live?.TutorialDemandHeaderTarget(5));
+                break;
+            case MilestoneTwoAnalyticsPage.Compare:
+                if (milestoneTwoReadingsCompared)
+                {
+                    string trend = milestoneTwoSecondOpenOrders > milestoneTwoFirstOpenOrders ? "grew"
+                        : milestoneTwoSecondOpenOrders < milestoneTwoFirstOpenOrders ? "shrank" : "held steady";
+                    SetTutorialBodyText($"Open Orders for <b>{milestoneTwoObservedItem.itemName}</b> {trend} ({milestoneTwoFirstOpenOrders} → {milestoneTwoSecondOpenOrders}). Check <b>Order to Pickup</b> to see the shift's average wait.");
+                    FocusTutorialControl(live?.TutorialDemandHeaderTarget(1));
+                }
+                else
+                {
+                    string itemName = milestoneTwoObservedItem?.itemName ?? "your menu item";
+                    string instruction = milestoneTwoFirstReadingTime < 0f
+                        ? $"<b>Open Orders</b> shows what's been ordered and still needs to reach Pickup. Find <b>{itemName}</b> and take a reading after the first minute."
+                        : $"Your first reading for <b>{itemName}</b> was <b>{milestoneTwoFirstOpenOrders} open orders</b>.";
+                    SetTutorialBodyText(instruction + (CanTakeMilestoneTwoReading
+                        ? " Take the reading now."
+                        : " Click <b>Watch the Kitchen Run</b> to close Analytics while you wait."));
+                    FocusTutorialControl(live?.TutorialDemandHeaderTarget(1));
+                }
+                break;
+        }
     }
 
     void RefreshWorkerLesson()

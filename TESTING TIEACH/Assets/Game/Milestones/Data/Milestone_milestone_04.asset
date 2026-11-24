@@ -50,6 +50,102 @@ MonoBehaviour:
     - "Milestone Details"
     correctAnswerIndex: 0
     explanation: "Supply shows how much you have and how much you may need."
+  - questionId: improve_baseline
+    prompt: "You want to test a shorter burger route. What should you measure before moving a station?"
+    answers:
+    - "How many burgers currently reach Pickup"
+    - "How much the new station costs"
+    - "How many items the supplier could deliver"
+    correctAnswerIndex: 0
+    explanation: "Measure the old layout first so you have a baseline for the new one."
+  - questionId: improve_change_one
+    prompt: "Which test makes it easiest to tell whether a shorter walk helped?"
+    answers:
+    - "Move one station and compare the same item's output"
+    - "Move several stations and change the menu at once"
+    - "Change the menu and compare two different items"
+    correctAnswerIndex: 0
+    explanation: "A focused change makes it easier to see what affected the result."
+  - questionId: improve_read_pickup
+    prompt: "Produced / Min rises from 7 to 9 after a layout change. What improved?"
+    answers:
+    - "Two more items reached Pickup per minute"
+    - "Customers ordered two more items per minute"
+    - "The supplier delivered two more ingredients per minute"
+    correctAnswerIndex: 0
+    explanation: "Produced / Min measures real deliveries to Pickup."
+  - questionId: improve_predicted_only
+    prompt: "Predicted / Min rises, but Produced / Min stays the same. What should you conclude so far?"
+    answers:
+    - "Expected output rose, but actual output hasn't yet"
+    - "The kitchen served more customers"
+    - "The forecast for demand dropped"
+    correctAnswerIndex: 0
+    explanation: "Check what reached Pickup before judging the change."
+  - questionId: improve_moved_bottleneck
+    prompt: "The Grill now keeps up, but work starts piling up before Assembly. What likely changed?"
+    answers:
+    - "Assembly is now holding up the flow"
+    - "Customers stopped ordering burgers"
+    - "The Grill is still the only place to improve"
+    correctAnswerIndex: 0
+    explanation: "Improving one step can move the bottleneck to another step."
+  - questionId: improve_follow_block
+    prompt: "The Fryer is often Blocked. Which change should you investigate first?"
+    answers:
+    - "Make it easier for cooked fries to leave the Fryer"
+    - "Deliver more raw potatoes to Cutting"
+    - "Increase how many fries customers order"
+    correctAnswerIndex: 0
+    explanation: "Blocked means the station is waiting for its output to move onward."
+  - questionId: improve_follow_starve
+    prompt: "Assembly is often Starved after a layout change. What should you trace first?"
+    answers:
+    - "The ingredients and transfers that feed Assembly"
+    - "Only deliveries from Assembly to Pickup"
+    - "Only the customer path to the register"
+    correctAnswerIndex: 0
+    explanation: "A starved station is missing something it needs to do the work."
+  - questionId: improve_wait
+    prompt: "Output per minute rises, but average Order to Pickup time also rises. What should you do?"
+    answers:
+    - "Check the longer waits before judging the change"
+    - "Assume the longer waits show an improvement"
+    - "Use predicted output instead of live results"
+    correctAnswerIndex: 0
+    explanation: "Output and wait time tell you different things. Check both when judging an improvement."
+  - questionId: improve_shortfall_math
+    prompt: "Demand is 10 per minute. Output improved from 6 to 8. How far short are you now?"
+    answers:
+    - "2 items per minute"
+    - "4 items per minute"
+    - "8 items per minute"
+    correctAnswerIndex: 0
+    explanation: "Compare the new output of eight with demand of ten."
+  - questionId: improve_more_grill
+    prompt: "The Grill already supplies all the patties Assembly can use. Will another Grill automatically raise burger output?"
+    answers:
+    - "No, check what currently limits the whole flow"
+    - "Yes, each Grill always raises finished output"
+    - "Yes, as long as demand is higher than predicted"
+    correctAnswerIndex: 0
+    explanation: "Extra capacity helps when it addresses the step that limits finished output."
+  - questionId: improve_same_conditions
+    prompt: "How can you make a before-and-after comparison fairer?"
+    answers:
+    - "Compare the same menu item under similar demand"
+    - "Compare a busy shift with a much quieter one"
+    - "Compare one item's demand with another item's output"
+    correctAnswerIndex: 0
+    explanation: "Keeping the item and demand similar helps you judge the change you tested."
+  - questionId: improve_end_to_end
+    prompt: "A station makes more items after a change, but Pickup receives the same amount. What should you check?"
+    answers:
+    - "Where the extra output is waiting or getting stuck"
+    - "Whether the station needs an even higher target"
+    - "Whether the demand forecast should be ignored"
+    correctAnswerIndex: 0
+    explanation: "A station can make more without increasing finished deliveries if a later step cannot keep up."
   shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

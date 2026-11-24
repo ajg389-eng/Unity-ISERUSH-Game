@@ -16,7 +16,7 @@ public class MainHudTabs : MonoBehaviour
     const float TabHeight = 40f;
     const float TabSpacing = 10f;
     const float WorkspaceTabSpacing = 4f;
-    const float WorkspaceTabTopOffset = 50f;
+    const float WorkspaceTabTopOffset = 58f;
 
     static readonly string[] WorkspaceTabNames =
     {

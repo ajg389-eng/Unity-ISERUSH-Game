@@ -37,7 +37,6 @@ public static class MilestoneFeatures
         { "mk2_stations", 3 },
         { "core_workforce", 0 },
         { "manual_operations", 0 },
-        { "express_ordering", 2 },
         { "automatic_ordering", 4 },
         { "smart_operations", 4 }
     };
@@ -64,8 +63,7 @@ public static class MilestoneFeatures
             case "milestone_02":
                 return new[]
                 {
-                    "Cheeseburger", "Cheese Fries", "Whipped Cream Shake",
-                    "Express ingredient ordering", "Analytics"
+                    "Cheeseburger", "Cheese Fries", "Whipped Cream Shake", "Analytics"
                 };
             case "milestone_03":
                 return new[]

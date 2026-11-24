@@ -33,6 +33,7 @@ public class MilestoneProgressManager : MonoBehaviour
     public event Action<MilestoneDefinition> OnMilestoneCompleted;
 
     public string ActiveMilestoneId => activeMilestoneId;
+    internal string PendingDayEndMilestoneId { get; private set; }
     public bool ActiveShiftObjectives => activeShiftObjectives;
     public int CompletedMilestoneCount => completedMilestoneIds.Count;
     public int CompletedNumberedMilestoneCount
@@ -262,6 +263,8 @@ public class MilestoneProgressManager : MonoBehaviour
         if (completedMilestoneIds.Contains(current.milestoneId)) return false;
 
         completedMilestoneIds.Add(current.milestoneId);
+        if (!current.isTutorial)
+            PendingDayEndMilestoneId = current.milestoneId;
 
         OnMilestoneCompleted?.Invoke(current);
 
@@ -274,7 +277,7 @@ public class MilestoneProgressManager : MonoBehaviour
         {
             activeMilestoneId = next.milestoneId;
             ApplyActiveMissions(reset: true);
-            MilestoneUnlockPopupUI.ShowAfterTransition(next);
+            if (current.isTutorial) MilestoneUnlockPopupUI.ShowAfterTransition(next);
         }
         else
         {
@@ -285,6 +288,17 @@ public class MilestoneProgressManager : MonoBehaviour
         OnMilestonesChanged?.Invoke();
         Sfx.Play(SfxId.MissionComplete);
         return true;
+    }
+
+    internal void PresentDayEndMilestone()
+    {
+        if (string.IsNullOrEmpty(PendingDayEndMilestoneId)) return;
+        MilestoneDefinition completed = database?.GetById(PendingDayEndMilestoneId);
+        PendingDayEndMilestoneId = null;
+        if (completed == null) return;
+
+        TitleScreenController.Instance?.PresentMilestoneCompletion(completed);
+        MilestoneUnlockPopupUI.ShowAfterTransition(GetActiveMilestone());
     }
 
     /// <summary>Debug: complete every milestone before this numbered stage and make it active.</summary>
@@ -310,6 +324,7 @@ public class MilestoneProgressManager : MonoBehaviour
         label = GetMilestoneDisplayLabel(target);
 
         completedMilestoneIds.Clear();
+        PendingDayEndMilestoneId = null;
 
         foreach (var milestone in database.milestones)
         {
@@ -332,6 +347,7 @@ public class MilestoneProgressManager : MonoBehaviour
     {
         activeShiftObjectives = false;
         completedMilestoneIds.Clear();
+        PendingDayEndMilestoneId = null;
         activeMilestoneId = null;
         EnsureActiveMilestone();
         ApplyActiveMissions(reset: true);
@@ -361,7 +377,8 @@ public class MilestoneProgressManager : MonoBehaviour
     }
 
     public void RestoreCheckpoint(string savedActiveMilestoneId,
-        IReadOnlyList<string> savedCompletedMilestoneIds, int progressionVersion = 0)
+        IReadOnlyList<string> savedCompletedMilestoneIds, int progressionVersion = 0,
+        string pendingDayEndMilestoneId = null)
     {
         activeShiftObjectives = false;
         completedMilestoneIds.Clear();
@@ -393,6 +410,9 @@ public class MilestoneProgressManager : MonoBehaviour
                 completedMilestoneIds.Add(id);
             }
         }
+
+        PendingDayEndMilestoneId = !string.IsNullOrEmpty(pendingDayEndMilestoneId)
+            && completedMilestoneIds.Contains(pendingDayEndMilestoneId) ? pendingDayEndMilestoneId : null;
 
         string mappedActiveId = progressionVersion < 2
             ? MapLegacyMilestoneId(savedActiveMilestoneId)

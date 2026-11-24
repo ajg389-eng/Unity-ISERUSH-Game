@@ -161,7 +161,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     public Button TutorialMenuItemButton(ItemDefinition item)
     {
-        return null;
+        return IsMenuItemPickerOpen && item != null
+            ? demandRows.Find(row => row.item == item)?.menuToggle : null;
     }
 
     public void FocusPlanningCard()
@@ -169,6 +170,15 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (panelRoot == null || !IsPlanning) return;
         planHiddenForStationPopup = false;
         ShowAndFitPlanningPanel();
+    }
+
+    internal void StartShiftFromMilestoneIntro()
+    {
+        if (!IsPlanning) return;
+        planCollapsedByPlayer = false;
+        ApplyPlanPresentation();
+        FocusPlanningCard();
+        StartShift();
     }
 
     public void ResumeTutorialPracticeShift()
@@ -375,9 +385,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         Canvas.ForceUpdateCanvases();
     }
 
-    static bool ShouldHidePlanForProgress()
+    bool ShouldHidePlanForProgress()
     {
-        return (MissionListUI.Instance != null && MissionListUI.Instance.IsOpen)
+        return (startShiftWarningOverlay != null && startShiftWarningOverlay.activeInHierarchy)
+            || (MissionListUI.Instance != null && MissionListUI.Instance.IsOpen)
             || MilestoneUnlockPopupUI.ActivePanelRect != null;
     }
 
@@ -424,6 +435,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         planning.timeManager = clock != null ? clock : planning.timeManager;
         planning.planHiddenForStationPopup = false;
         planning.ShowPlanningCard();
+    }
+
+    internal static void RestartPlanningForDebugJump()
+    {
+        if (Instance != null)
+        {
+            Instance.startShiftWarningOverlay?.SetActive(false);
+            Instance.planCollapsedByPlayer = false;
+            Instance.editingMenu = false;
+            if (Instance.panelRoot != null)
+                Instance.ApplyPlanPresentation();
+        }
+        ReturnToPlanPhaseAfterTutorial();
     }
 
     /// <summary>Restores the HUD and, when interrupted, the active Plan phase after a Gus cutscene.</summary>
@@ -1226,7 +1250,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
 
     void StartShift()
     {
-        if (!OnboardingTutorial.CanStartShiftFromPlan) return;
+        if (!OnboardingTutorial.CanStartShiftFromPlan || ResolveOrderConfig()?.HasEnabledItems != true) return;
         if (TryGetStartShiftWarnings(out List<string> warnings)
             && ShowStartShiftWarning(warnings)) return;
         BeginShift();
@@ -1325,6 +1349,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
 
         startShiftWarningOverlay.SetActive(true);
+        if (panelRoot != null) panelRoot.SetActive(false);
         startShiftWarningOverlay.transform.SetAsLastSibling();
         Sfx.Play(SfxId.UiOpen);
         return true;

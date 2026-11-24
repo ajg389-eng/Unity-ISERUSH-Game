@@ -62,7 +62,7 @@ public class MilestoneDefinition : ScriptableObject
     [Tooltip("Optional shared mission list asset. Used when missions list is empty.")]
     public MissionDatabase missionDatabase;
 
-    [Tooltip("Three milestone-specific questions Gus asks during the second half of each shift. Each questionId must match its lessonId at the same list position.")]
+    [Tooltip("Question bank for this milestone. Gus draws three per shift.")]
     public List<ShiftQuestion> shiftQuestions = new List<ShiftQuestion>();
 
     [Tooltip("Three short ISE concepts Gus explains early in each shift, in order. Each lessonId must match the questionId at the same list position.")]

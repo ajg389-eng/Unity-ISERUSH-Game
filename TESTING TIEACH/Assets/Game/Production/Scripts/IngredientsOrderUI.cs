@@ -59,10 +59,7 @@ public class IngredientsOrderUI : MonoBehaviour
     Button addAllButton;
     TextMeshProUGUI addAllLabel;
     Button placeOrderButton;
-    Button expressOrderButton;
     TextMeshProUGUI placeOrderLabel;
-    TextMeshProUGUI expressOrderLabel;
-    GameObject expressLockedOverlay;
     GameObject expandedMenuRow;
     GameObject expandedWorkflow;
     LayoutElement expandedMenuLayout;
@@ -367,10 +364,7 @@ public class IngredientsOrderUI : MonoBehaviour
         cartSummaryText = null;
         clearCartButton = null;
         placeOrderButton = null;
-        expressOrderButton = null;
-        expressLockedOverlay = null;
         placeOrderLabel = null;
-        expressOrderLabel = null;
         expandedMenuRow = null;
         expandedWorkflow = null;
         expandedMenuLayout = null;
@@ -2967,9 +2961,6 @@ public class IngredientsOrderUI : MonoBehaviour
             case "PlaceOrder":
                 GameIconLibrary.ApplyToButton(button, GameIconId.Cart, 18f, 8f);
                 break;
-            case "ExpressOrder":
-                GameIconLibrary.ApplyToButton(button, GameIconId.FastForward, 18f, 8f);
-                break;
             case "SuppliesTab":
                 GameIconLibrary.ApplyToButton(button, GameIconId.Cart, 22f, 8f);
                 break;
@@ -3073,13 +3064,6 @@ public class IngredientsOrderUI : MonoBehaviour
             "Place a supplier purchase order. Plan orders are added to starting stock; shift orders arrive by courier after the lead time.");
         placeOrderButton.onClick.AddListener(SubmitCart);
 
-        expressOrderButton = CreateCartButton(footer.transform, "ExpressOrder", "Express", 102f, GameUITheme.Accent, out expressOrderLabel);
-        expressOrderButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        ConfigureCartActionLabel(expressOrderLabel);
-        DelayedTooltip.Attach(expressOrderButton,
-            "Place an expedited supplier order for an additional fee. The courier arrives sooner.");
-        expressOrderButton.onClick.AddListener(SubmitExpressCart);
-        expressLockedOverlay = CreateLockedCardOverlay(expressOrderButton.transform);
         clearCartButton.transform.SetAsLastSibling();
     }
 
@@ -3145,17 +3129,6 @@ public class IngredientsOrderUI : MonoBehaviour
         }
     }
 
-    void SubmitExpressCart()
-    {
-        if (showMenu) return;
-        if (inventory == null || cartPacks.Count == 0) return;
-        if (inventory.TryOrderCart(cartPacks, true))
-        {
-            cartPacks.Clear();
-            RefreshAll();
-        }
-    }
-
     public void Refresh()
     {
         nextCatalogCheck = 0f;
@@ -3205,8 +3178,6 @@ public class IngredientsOrderUI : MonoBehaviour
         int cartLockMilestone = 0;
 
         bool affordable = money == null || money.CanAfford(cartTotal);
-        int expressTotal = cartTotal + KitchenInventory.ExpressDeliveryFee;
-        bool expressAffordable = money == null || money.CanAfford(expressTotal);
         if (deliveryStatusText != null)
         {
             float remaining = delivery != null ? delivery.NextDeliveryRemaining : -1f;
@@ -3243,23 +3214,8 @@ public class IngredientsOrderUI : MonoBehaviour
             placeOrderLabel.text = deliveryActive ? "Busy"
                 : cartLockMilestone > 0 ? "Milestone"
                 : !affordable && cartPackCount > 0 ? "Funds" : "Order";
-        bool expressUnlocked = MilestoneFeatures.IsResearchComplete("express_ordering");
-        if (expressLockedOverlay != null && expressLockedOverlay.activeSelf == expressUnlocked)
-            expressLockedOverlay.SetActive(!expressUnlocked);
-        if (expressOrderButton != null)
-        {
-            expressOrderButton.gameObject.SetActive(!planning);
-            expressOrderButton.interactable = expressUnlocked && !deliveryActive && cartPackCount > 0 && expressAffordable
-                && cartLockMilestone == 0;
-        }
         if (placeOrderLabel != null && planning && cartLockMilestone == 0 && affordable)
             placeOrderLabel.text = "Add to Stock";
-        if (expressOrderLabel != null)
-            expressOrderLabel.text = !expressUnlocked ? "Milestone"
-                : deliveryActive ? "Busy"
-                : cartLockMilestone > 0 ? "Milestone"
-                : !expressAffordable && cartPackCount > 0 ? "Funds"
-                : "Express";
     }
 
     void RefreshMenuRows()

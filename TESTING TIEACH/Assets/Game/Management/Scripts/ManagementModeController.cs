@@ -1238,6 +1238,8 @@ public class ManagementModeController : MonoBehaviour
         SetStationStateButton(3, "IDLE", idle, "#B7BEC5");
     }
 
+    internal Button TutorialStationStateTarget(int index) => stationStateButtons[index];
+
     void SetStationStateButton(int index, string label, int percent, string color)
     {
         if (index < 0 || index >= stationStateButtonLabels.Length

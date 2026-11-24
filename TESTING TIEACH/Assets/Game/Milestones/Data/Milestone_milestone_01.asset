@@ -29,29 +29,125 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9e1b233836794be39df5ebcb1f007023, type: 2}
   shiftQuestions:
   - questionId: flow_route
-    prompt: "What does a production flow show?"
+    prompt: "The Grill cooks the patty, and the Assembly Station builds the burger. Which route should the worker follow?"
     answers:
-    - "Where workers carry items next"
-    - "Which song is playing"
-    - "How much cash is in the register"
+    - "Grill → Assembly Station → Pickup"
+    - "Grill → Pickup → Assembly Station"
+    - "Assembly Station → Grill → Pickup"
     correctAnswerIndex: 0
-    explanation: "A flow connects the stations that make and deliver an item."
+    explanation: "The cooked patty goes from the Grill to Assembly. The finished burger then goes to Pickup."
   - questionId: fries_cutting
-    prompt: "Which station cuts potatoes for fries?"
+    prompt: "Potatoes reach the Cutting Station, but the Fryer is waiting for slices. Which link should you check first?"
     answers:
-    - "Cutting Station"
-    - "Register"
-    - "Pickup Station"
+    - "Cutting Station → Fryer"
+    - "Pantry → Cutting Station"
+    - "Fryer → Assembly Station"
     correctAnswerIndex: 0
-    explanation: "The Cutting Station turns potatoes into slices before they go to the Fryer."
+    explanation: "Potatoes are already reaching the Cutting Station. Check the next link, which carries slices to the Fryer."
   - questionId: pantry_ingredient
-    prompt: "Where do you choose what a Pantry supplies?"
+    prompt: "The fries flow is linked correctly. Its Pantry supplies buns, but the Assembly Station needs fry containers. What should you change?"
     answers:
-    - "Select it in Kitchen → Workers"
-    - "Click the music button"
-    - "Open Objectives"
+    - "Set the Pantry to supply fry containers"
+    - "Send cooked fries straight to Pickup"
+    - "Run the Fryer at a higher target"
     correctAnswerIndex: 0
-    explanation: "In Workers, select a station and use its ingredient box."
+    explanation: "Select the Pantry in Kitchen → Workers and set its ingredient to fry containers so Assembly can package the fries."
+  - questionId: flow_output
+    prompt: "A burger is fully assembled. Where does the worker take it next?"
+    answers:
+    - "Pickup"
+    - "The Grill"
+    - "The ingredient Pantry"
+    correctAnswerIndex: 0
+    explanation: "Pickup is the last stop for finished food."
+  - questionId: flow_patty
+    prompt: "The Grill has cooked patties and Assembly has none. Which transfer should you check?"
+    answers:
+    - "Grill to Assembly"
+    - "Freezer to Grill"
+    - "Assembly to Pickup"
+    correctAnswerIndex: 0
+    explanation: "Cooked patties move from the Grill to Assembly so they can become burgers."
+  - questionId: flow_missing_buns
+    prompt: "Assembly has cooked patties but no buns. Which link should you check first?"
+    answers:
+    - "Bun Pantry to Assembly"
+    - "Grill to Assembly"
+    - "Assembly to Pickup"
+    correctAnswerIndex: 0
+    explanation: "Buns reach Assembly from their Pantry on a separate link."
+  - questionId: flow_raw_patty
+    prompt: "A worker brings raw patties from cold storage. Which station should receive them?"
+    answers:
+    - "Grill"
+    - "Assembly Station"
+    - "Pickup"
+    correctAnswerIndex: 0
+    explanation: "The Grill cooks raw patties before they go to Assembly."
+  - questionId: flow_sources
+    prompt: "Assembly needs both cooked patties and buns. What should feed it?"
+    answers:
+    - "The Grill and the bun Pantry"
+    - "The Grill and Pickup"
+    - "The bun Pantry and Pickup"
+    correctAnswerIndex: 0
+    explanation: "The Grill supplies cooked patties and the Pantry supplies buns."
+  - questionId: flow_distance
+    prompt: "A worker walks across the kitchen for every cooked patty. Which layout change shortens that trip?"
+    answers:
+    - "Move the Grill closer to Assembly"
+    - "Move Pickup closer to the register"
+    - "Move the Fryer closer to cold storage"
+    correctAnswerIndex: 0
+    explanation: "Move the two stations used for that transfer closer together."
+  - questionId: flow_recipe
+    prompt: "You want to build a Shake flow. Where can you check which ingredients and stations it needs?"
+    answers:
+    - "Recipes"
+    - "Objectives"
+    - "Worker assignments"
+    correctAnswerIndex: 0
+    explanation: "The recipe diagram shows the ingredients and the stations that handle them."
+  - questionId: flow_layout_test
+    prompt: "You moved the Grill closer to Assembly. What should you watch when you test the layout?"
+    answers:
+    - "How far the worker walks with cooked patties"
+    - "How many items appear on the menu"
+    - "How many orders can fit on the board"
+    correctAnswerIndex: 0
+    explanation: "Watch the transfer you changed to see whether it really takes less travel."
+  - questionId: flow_supply_route
+    prompt: "The bun Pantry is stocked, but Assembly never gets buns. What should you check before buying more?"
+    answers:
+    - "Whether the flow connects the Pantry to Assembly"
+    - "Whether Pickup is linked to the register"
+    - "Whether the Grill is set to a higher target"
+    correctAnswerIndex: 0
+    explanation: "Stocked ingredients still need a route to the station that uses them."
+  - questionId: flow_open_end
+    prompt: "The Shake station finishes drinks, but workers leave them there. What should you look for in the flow?"
+    answers:
+    - "A link from the Shake station to Pickup"
+    - "A link from Pickup to cold storage"
+    - "A link from the Grill to the Shake station"
+    correctAnswerIndex: 0
+    explanation: "The final link tells the worker where to deliver the finished shake."
+  - questionId: flow_worker
+    prompt: "You saved a new flow and the stations are connected. What should you check so someone runs it?"
+    answers:
+    - "A worker is assigned to that flow"
+    - "All workers are assigned to the burger flow"
+    - "The item is selected as an Objective"
+    correctAnswerIndex: 0
+    explanation: "A saved route needs an assigned worker to carry out its steps."
+  - questionId: flow_pantry_choice
+    prompt: "A Pantry was set to supply potatoes. You want it to provide buns instead. Where do you change that?"
+    answers:
+    - "Select that Pantry in Kitchen → Workers"
+    - "Select the product in Objectives"
+    - "Change the cutting recipe in Recipes"
+    correctAnswerIndex: 0
+    explanation: "The Pantry's station settings control what it supplies."
   shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

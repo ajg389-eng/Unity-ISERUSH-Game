@@ -10,6 +10,10 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 {
     const string VoiceVolumePreference = "PauseMenu.VoiceVolume";
     const float TypewriterVoiceVolume = 0.42f;
+    const float SkipRightMargin = 40f;
+    const float SkipTopMargin = 38f;
+    const float SkipWidth = 120f;
+    const float SkipHeight = 42f;
     public const float TypewriterCharactersPerSecond = 45f;
     public const float TypewriterVoiceInterval = 0.075f;
     static AudioClip[] typewriterVoiceClips;
@@ -159,13 +163,18 @@ public sealed class IntroCutsceneUI : MonoBehaviour
 
         var chapter = CreateText(contentRoot, "Chapter",
             ISEVocabularyHighlighter.Highlight(chapterTitle), 18f,
-            TextAlignmentOptions.TopRight, FontStyles.Bold, GameUITheme.Accent);
+            TextAlignmentOptions.MidlineRight, FontStyles.Bold, GameUITheme.Accent);
         ISEGlossaryLinkHandler.Attach(chapter);
         var chapterRect = chapter.rectTransform;
-        chapterRect.anchorMin = new Vector2(0.68f, 0.91f);
-        chapterRect.anchorMax = new Vector2(0.94f, 0.97f);
-        chapterRect.offsetMin = Vector2.zero;
-        chapterRect.offsetMax = Vector2.zero;
+        chapterRect.anchorMin = new Vector2(0f, 1f);
+        chapterRect.anchorMax = Vector2.one;
+        chapterRect.offsetMin = new Vector2(SkipRightMargin, -(SkipTopMargin + SkipHeight));
+        chapterRect.offsetMax = new Vector2(-(SkipRightMargin + SkipWidth + 16f), -SkipTopMargin);
+        chapter.enableAutoSizing = true;
+        chapter.fontSizeMin = 14f;
+        chapter.fontSizeMax = 18f;
+        chapter.textWrappingMode = TextWrappingModes.NoWrap;
+        chapter.overflowMode = TextOverflowModes.Ellipsis;
         chapter.characterSpacing = 2f;
 
         ShowLine(0);
@@ -293,12 +302,12 @@ public sealed class IntroCutsceneUI : MonoBehaviour
         next.onClick.AddListener(Advance);
 
         var skip = CreateButton(parent, "SkipButton", "SKIP", GameUITheme.Surface,
-            new Vector2(120f, 42f));
+            new Vector2(SkipWidth, SkipHeight));
         var skipRect = (RectTransform)skip.transform;
         skipRect.anchorMin = new Vector2(1f, 1f);
         skipRect.anchorMax = new Vector2(1f, 1f);
         skipRect.pivot = Vector2.one;
-        skipRect.anchoredPosition = new Vector2(-40f, -38f);
+        skipRect.anchoredPosition = new Vector2(-SkipRightMargin, -SkipTopMargin);
         skip.onClick.AddListener(Finish);
     }
 

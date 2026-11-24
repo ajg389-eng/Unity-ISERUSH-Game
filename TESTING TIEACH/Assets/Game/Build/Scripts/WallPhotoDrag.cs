@@ -32,8 +32,9 @@ public class WallPhotoDrag : MonoBehaviour
 
     void OnEnable()
     {
-        if (GetComponent<WallMountedCutawayFollower>() == null)
-            gameObject.AddComponent<WallMountedCutawayFollower>();
+        WallMountedCutawayFollower follower = GetComponent<WallMountedCutawayFollower>();
+        if (follower == null) follower = gameObject.AddComponent<WallMountedCutawayFollower>();
+        follower.SetArtwork(artwork);
         photos.Add(this);
     }
     void OnDisable()
@@ -79,6 +80,7 @@ public class WallPhotoDrag : MonoBehaviour
         if (dragging == null && Input.GetMouseButtonDown(0)
             && (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject()))
         {
+            if (GetComponent<WallMountedCutawayFollower>()?.IsFrontVisible(camera) == false) return;
             if (!Physics.Raycast(camera.ScreenPointToRay(Input.mousePosition), out RaycastHit hit, 500f)) return;
             if (hit.transform != transform && hit.transform != artwork) return;
             original = transform.position;

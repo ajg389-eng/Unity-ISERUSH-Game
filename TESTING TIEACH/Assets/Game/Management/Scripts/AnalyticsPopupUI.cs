@@ -18,6 +18,12 @@ public sealed class AnalyticsPopupUI : MonoBehaviour
     Button playerStatisticsTab;
     Button closeButton;
     public static bool IsOpen => instance != null && instance.gameObject.activeInHierarchy;
+    internal static bool IsLiveAnalyticsVisible => IsOpen && instance.liveAnalyticsContent.activeInHierarchy;
+    internal static bool IsPlayerStatsVisible => IsOpen && instance.playerStatisticsContent.activeInHierarchy;
+    internal static Button TutorialLiveAnalyticsTab => instance != null ? instance.liveAnalyticsTab : null;
+    internal static Button TutorialPlayerStatsTab => instance != null ? instance.playerStatisticsTab : null;
+    internal static Component TutorialAverageOrderWaitTarget => IsPlayerStatsVisible
+        ? instance.playerStatisticsContent.GetComponent<PlayerStatisticsUI>().TutorialAverageOrderWaitTarget : null;
     public static Button TutorialCloseButton => instance != null ? instance.closeButton : null;
 
     public static void Open(Transform canvas)

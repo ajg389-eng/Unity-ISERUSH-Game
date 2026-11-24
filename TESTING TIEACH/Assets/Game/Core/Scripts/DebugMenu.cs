@@ -341,7 +341,7 @@ public class DebugMenu : MonoBehaviour
         });
 
         CreateLabel(actionContent, "Jump to milestone", 12, FontStyles.Bold);
-        CreateLabel(actionContent, "Sets the selected milestone active and marks earlier milestones complete.", 10, FontStyles.Normal);
+        CreateLabel(actionContent, "Returns to planning, marks earlier milestones complete, and replays the selected tutorial if available.", 10, FontStyles.Normal);
         var jumpRow = new GameObject("MilestoneJumpRow", typeof(RectTransform));
         jumpRow.transform.SetParent(actionContent, false);
         jumpRow.AddComponent<LayoutElement>().minHeight = 32;
@@ -455,10 +455,6 @@ public class DebugMenu : MonoBehaviour
 
     void JumpToMilestone(int number)
     {
-        var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
-        if (tutorial != null && (OnboardingTutorial.IsActive || !OnboardingTutorial.IsComplete))
-            tutorial.Skip();
-
         var milestones = MilestoneProgressManager.Instance;
         if (milestones == null)
         {
@@ -472,8 +468,29 @@ public class DebugMenu : MonoBehaviour
             return;
         }
 
-        Toast("Now on " + label);
-        RefreshStatus();
+        var tutorial = OnboardingTutorial.Instance ?? FindFirstObjectByType<OnboardingTutorial>();
+        if (tutorial != null && !OnboardingTutorial.IsComplete)
+            tutorial.Skip();
+        tutorial?.ResetMilestoneLessonForDebugJump(milestones.ActiveMilestoneId);
+
+        MilestoneUnlockPopupUI.DismissForDebugJump();
+        EndOfDaySummaryUI.Instance?.Hide();
+        AnalyticsPopupUI.CloseIfOpen();
+        ResearchTreeUI.CloseIfOpen();
+        FindFirstObjectByType<IngredientsOrderUI>(FindObjectsInactive.Include)?.CloseRecipesFromHud();
+        FindFirstObjectByType<CustomerOrderBoard>()?.CloseOrderView();
+        MissionListUI.Instance?.SetVisible(false);
+        if (ManagementModeController.Instance is { IsCapturingFlow: true } management)
+            management.CancelFlowCapture();
+        FindFirstObjectByType<MainHudTabs>(FindObjectsInactive.Include)?.CloseKitchenWorkspace();
+
+        CustomerAI.DespawnAllCustomers();
+        ProductionManager.ClearShiftProduction();
+        StoreStatisticsManager.Instance?.BeginDay();
+        GusShiftQuestionManager.RestoreShiftEventsState(0, null, null, 0, -1);
+        ShiftPlanningUI.RestartPlanningForDebugJump();
+        GameTimeManager.Instance?.SetSpeed(GameTimeManager.SpeedMode.Play);
+        SetVisible(false);
     }
 
     void CreateGusCutsceneDebugSection(Transform parent)

@@ -579,6 +579,8 @@ public partial class ProductionManager : MonoBehaviour
         RecordHistory(pickupDeliveryHistory, order);
     }
 
+    internal bool HasFullThroughputWindow => Time.time - throughputTrackingStartedAt >= ThroughputWindowSeconds;
+
     /// <summary>Delivered item rate over the current observed shift window.</summary>
     public float GetPickupDeliveryRatePerMinute(ItemDefinition item)
     {

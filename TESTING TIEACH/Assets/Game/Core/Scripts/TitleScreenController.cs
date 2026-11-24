@@ -1034,6 +1034,14 @@ public class TitleScreenController : MonoBehaviour
 
     void HandleMilestoneCompleted(MilestoneDefinition milestone)
     {
+        if (milestone != null && milestone.isTutorial) PresentMilestoneCompletion(milestone);
+    }
+
+    internal static bool IsGusCutscenePendingOrPlaying =>
+        Instance != null && Instance.gusCutsceneSequenceRunning;
+
+    internal void PresentMilestoneCompletion(MilestoneDefinition milestone)
+    {
         if (!gameStartCompleted || milestone == null) return;
 
         string title = boundMilestoneManager != null

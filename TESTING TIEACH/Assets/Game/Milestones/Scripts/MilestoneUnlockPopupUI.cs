@@ -18,6 +18,14 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
     internal static bool IsPendingOrVisible => instance != null
         && (instance.pendingUnlocks > 0 || instance.isVisible);
 
+    internal static void DismissForDebugJump()
+    {
+        if (instance == null) return;
+        instance.StopAllCoroutines();
+        instance.pendingUnlocks = 0;
+        instance.Close();
+    }
+
     public static RectTransform ActivePanelRect
     {
         get
@@ -76,7 +84,8 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
     {
         // Milestone completion dialogue runs first. Show the new rewards after Gus's cutscene.
         yield return null;
-        while (CutscenePresentation.IsActive || IntroCutsceneUI.IsPlaying)
+        while (TitleScreenController.IsGusCutscenePendingOrPlaying
+            || CutscenePresentation.IsActive || IntroCutsceneUI.IsPlaying)
             yield return null;
 
         ShowImmediately(milestone, true);
@@ -228,11 +237,6 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
 
         for (int i = 0; i < unlocks.Count; i++)
         {
-            if (string.Equals(unlocks[i], "Express ingredient ordering", System.StringComparison.OrdinalIgnoreCase))
-            {
-                CreateExpressUnlockRow(rewardList.transform, unlocks[i]);
-                continue;
-            }
             TextMeshProUGUI rewardLine = CreateLayoutText(rewardList.transform,
                 "Unlock_" + i, "<color=#D8B365>•</color>  " + unlocks[i], 19f,
                 FontStyles.Normal, 30f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
@@ -395,130 +399,6 @@ public sealed class MilestoneUnlockPopupUI : MonoBehaviour
         int valueStart = marker + markerLength;
         topics = description.Substring(valueStart).Trim();
         description = description.Substring(0, marker).Trim();
-    }
-
-    void CreateExpressUnlockRow(Transform parent, string label)
-    {
-        GameObject row = new GameObject("ExpressOrderingUnlock", typeof(RectTransform),
-            typeof(HorizontalLayoutGroup), typeof(LayoutElement));
-        row.transform.SetParent(parent, false);
-        HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
-        layout.spacing = 10f;
-        layout.childAlignment = TextAnchor.MiddleLeft;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = false;
-        layout.childForceExpandHeight = false;
-        LayoutElement rowSize = row.GetComponent<LayoutElement>();
-        rowSize.minHeight = rowSize.preferredHeight = 36f;
-
-        TextMeshProUGUI rewardLine = CreateLayoutText(row.transform, "Label",
-            "<color=#D8B365>•</color>  " + label, 17f, FontStyles.Normal, 32f,
-            GameUITheme.TextPrimary, TextAlignmentOptions.Left);
-        rewardLine.GetComponent<LayoutElement>().flexibleWidth = 1f;
-        rewardLine.enableAutoSizing = true;
-        rewardLine.fontSizeMin = 14f;
-        rewardLine.fontSizeMax = 17f;
-
-        GameObject buttonObject = new GameObject("DetailsButton", typeof(RectTransform),
-            typeof(Image), typeof(Button), typeof(Outline), typeof(LayoutElement));
-        buttonObject.transform.SetParent(row.transform, false);
-        LayoutElement buttonSize = buttonObject.GetComponent<LayoutElement>();
-        buttonSize.minWidth = buttonSize.preferredWidth = 102f;
-        buttonSize.minHeight = buttonSize.preferredHeight = 32f;
-        Image buttonImage = buttonObject.GetComponent<Image>();
-        buttonImage.color = GameUITheme.RaisedSlate;
-        Outline buttonBorder = buttonObject.GetComponent<Outline>();
-        buttonBorder.effectColor = Color.white;
-        buttonBorder.effectDistance = new Vector2(1f, -1f);
-        buttonBorder.useGraphicAlpha = false;
-        Button button = buttonObject.GetComponent<Button>();
-        GameUITheme.ApplyButton(button);
-        button.onClick.AddListener(ShowExpressOrderingDetails);
-
-        TextMeshProUGUI buttonLabel = CreateLayoutText(buttonObject.transform, "Label", "DETAILS", 12f,
-            FontStyles.Bold, 32f, GameUITheme.TextPrimary, TextAlignmentOptions.Center);
-        buttonLabel.rectTransform.anchorMin = Vector2.zero;
-        buttonLabel.rectTransform.anchorMax = Vector2.one;
-        buttonLabel.rectTransform.offsetMin = Vector2.zero;
-        buttonLabel.rectTransform.offsetMax = Vector2.zero;
-    }
-
-    void ShowExpressOrderingDetails()
-    {
-        if (popupRoot == null || popupRoot.transform.Find("ExpressOrderingDetails") != null) return;
-        GameObject overlay = new GameObject("ExpressOrderingDetails", typeof(RectTransform), typeof(Image));
-        overlay.transform.SetParent(popupRoot.transform, false);
-        overlay.transform.SetAsLastSibling();
-        RectTransform overlayRect = overlay.transform as RectTransform;
-        overlayRect.anchorMin = Vector2.zero;
-        overlayRect.anchorMax = Vector2.one;
-        overlayRect.offsetMin = Vector2.zero;
-        overlayRect.offsetMax = Vector2.zero;
-        overlay.GetComponent<Image>().color = new Color(0.015f, 0.02f, 0.03f, 0.72f);
-
-        GameObject panel = new GameObject("DetailsPanel", typeof(RectTransform), typeof(Image),
-            typeof(Outline), typeof(VerticalLayoutGroup));
-        panel.transform.SetParent(overlay.transform, false);
-        RectTransform panelRect = panel.transform as RectTransform;
-        panelRect.anchorMin = panelRect.anchorMax = panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.sizeDelta = new Vector2(Mathf.Min(560f, Screen.width * 0.9f),
-            Mathf.Min(440f, Screen.height * 0.9f));
-        panel.GetComponent<Image>().color = GameUITheme.PanelSlate;
-        Outline border = panel.GetComponent<Outline>();
-        border.effectColor = GameUITheme.Accent;
-        border.effectDistance = new Vector2(2f, -2f);
-        border.useGraphicAlpha = false;
-        VerticalLayoutGroup layout = panel.GetComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(26, 26, 24, 24);
-        layout.spacing = 12f;
-        layout.childAlignment = TextAnchor.UpperLeft;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-
-        CreateLayoutText(panel.transform, "Overline", "UNLOCKED FEATURE", 12f,
-            FontStyles.Bold, 20f, GameUITheme.Accent, TextAlignmentOptions.Left);
-        CreateLayoutText(panel.transform, "Title", "Express Ingredient Ordering", 24f,
-            FontStyles.Bold, 36f, GameUITheme.TextPrimary, TextAlignmentOptions.Left);
-        CreateLayoutText(panel.transform, "Description",
-            "Send the ingredients in your current order cart by express delivery. It skips the regular delivery wait and adds a $200 fee to the ingredient cost.",
-            16f, FontStyles.Normal, 70f, GameUITheme.TextSecondary, TextAlignmentOptions.Left);
-        CreateLayoutText(panel.transform, "HowToHeader", "HOW TO USE", 13f,
-            FontStyles.Bold, 22f, GameUITheme.Accent, TextAlignmentOptions.Left);
-        TextMeshProUGUI steps = CreateLayoutText(panel.transform, "Steps",
-            "1. Open Ingredients and add the packs you need to the cart.\n2. Select <b>Express</b> instead of <b>Place Order</b>.\n3. The van is dispatched immediately, without the regular delivery countdown.",
-            15f, FontStyles.Normal, 92f, GameUITheme.TextPrimary, TextAlignmentOptions.TopLeft);
-        steps.enableAutoSizing = true;
-        steps.fontSizeMin = 13f;
-        steps.fontSizeMax = 15f;
-
-        GameObject footerSpacer = new GameObject("FooterSpacer", typeof(RectTransform), typeof(LayoutElement));
-        footerSpacer.transform.SetParent(panel.transform, false);
-        footerSpacer.GetComponent<LayoutElement>().flexibleHeight = 1f;
-
-        GameObject closeObject = new GameObject("CloseButton", typeof(RectTransform),
-            typeof(Image), typeof(Button), typeof(Outline), typeof(LayoutElement));
-        closeObject.transform.SetParent(panel.transform, false);
-        LayoutElement closeSize = closeObject.GetComponent<LayoutElement>();
-        closeSize.minWidth = closeSize.preferredWidth = 150f;
-        closeSize.minHeight = closeSize.preferredHeight = 42f;
-        closeSize.flexibleWidth = 0f;
-        closeObject.GetComponent<Image>().color = GameUITheme.Positive;
-        Outline closeBorder = closeObject.GetComponent<Outline>();
-        closeBorder.effectColor = Color.white;
-        closeBorder.effectDistance = new Vector2(1.25f, -1.25f);
-        closeBorder.useGraphicAlpha = false;
-        closeObject.GetComponent<Button>().onClick.AddListener(() => Destroy(overlay));
-        TextMeshProUGUI closeLabel = CreateLayoutText(closeObject.transform, "Label", "GOT IT", 14f,
-            FontStyles.Bold, 42f, GameUITheme.TextPrimary, TextAlignmentOptions.Center);
-        closeLabel.rectTransform.anchorMin = Vector2.zero;
-        closeLabel.rectTransform.anchorMax = Vector2.one;
-        closeLabel.rectTransform.offsetMin = Vector2.zero;
-        closeLabel.rectTransform.offsetMax = Vector2.zero;
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(panelRect);
     }
 
     static TextMeshProUGUI CreateLayoutText(Transform parent, string name, string value, float size,

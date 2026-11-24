@@ -29,29 +29,125 @@ MonoBehaviour:
   - {fileID: 11400000, guid: ef8ec327ad06458ba97a3bb331545b9f, type: 2}
   shiftQuestions:
   - questionId: analytics_demand
-    prompt: "Which Analytics column shows expected orders per minute?"
+    prompt: "Demand / Min is 10 and Predicted / Min is 7. How many more cheeseburgers per minute does the line need to make?"
     answers:
-    - "Demand / Min"
-    - "Produced / Min"
-    - "Open Orders"
+    - "3 more per minute"
+    - "7 more per minute"
+    - "17 more per minute"
     correctAnswerIndex: 0
-    explanation: "Demand / Min is the forecast for that item."
+    explanation: "The forecast is 10 per minute and the estimated output is 7, so the line is short by 3 per minute."
   - questionId: analytics_pickup
-    prompt: "What does Produced / Min count?"
+    prompt: "Ordered / Min stays above Produced / Min, and Open Orders rises from 2 to 6. What is happening?"
     answers:
-    - "Items that reach Pickup"
-    - "Stations you bought"
-    - "Ingredients in storage"
+    - "Unfinished orders are piling up"
+    - "Pickup is completing orders faster than they come in"
+    - "The demand forecast has dropped"
     correctAnswerIndex: 0
-    explanation: "Produced / Min measures finished items delivered to Pickup."
+    explanation: "The register is accepting items faster than the kitchen brings them to Pickup, and the rising Open Orders count shows the backlog growing."
   - questionId: analytics_bottleneck
-    prompt: "What does a bottleneck limit?"
+    prompt: "Open Orders is rising and a station spends much of its time Starved. Where should you look first?"
     answers:
-    - "How much the whole line can finish"
-    - "How many menu items you can unlock"
-    - "How far the camera can zoom"
+    - "Upstream, where the station gets its inputs"
+    - "Downstream, where the station sends its output"
+    - "Player Stats, for the career average wait"
     correctAnswerIndex: 0
-    explanation: "The limiting step determines how much finished output the line can deliver."
+    explanation: "Starved means the station is missing inputs. Trace its supply, upstream stations, and worker deliveries."
+  - questionId: analytics_forecast_gap_fries
+    prompt: "Cheese Fries demand is 10 per minute and predicted output is 6. What's the expected shortfall?"
+    answers:
+    - "4 Cheese Fries per minute"
+    - "6 Cheese Fries per minute"
+    - "16 Cheese Fries per minute"
+    correctAnswerIndex: 0
+    explanation: "Subtract predicted output from forecast demand. Ten minus six leaves four."
+  - questionId: analytics_forecast_gap_shake
+    prompt: "The kitchen expects 10 shake orders a minute and predicts it can make 12. How much room does it have above demand?"
+    answers:
+    - "2 shakes per minute"
+    - "10 shakes per minute"
+    - "22 shakes per minute"
+    correctAnswerIndex: 0
+    explanation: "The estimate exceeds demand by two shakes per minute."
+  - questionId: analytics_open_readings
+    prompt: "Open Orders falls from 9 to 4 between readings. What changed?"
+    answers:
+    - "The unfinished orders went down by 5"
+    - "The unfinished orders went up by 5"
+    - "Demand went down by 9 per minute"
+    correctAnswerIndex: 0
+    explanation: "Open Orders counts work still waiting to reach Pickup. The count fell by five."
+  - questionId: analytics_actual_vs_forecast
+    prompt: "Demand / Min says 10, but Ordered / Min says 7. What does 7 describe?"
+    answers:
+    - "The rate the register recently accepted"
+    - "The forecast for the whole shift"
+    - "The rate the kitchen is expected to make"
+    correctAnswerIndex: 0
+    explanation: "Ordered / Min reflects recent orders taken at the register."
+  - questionId: analytics_actual_vs_predicted
+    prompt: "Predicted / Min is 10 and Produced / Min is 6. How many reached Pickup in the last minute?"
+    answers:
+    - "6"
+    - "10"
+    - "16"
+    correctAnswerIndex: 0
+    explanation: "Produced / Min measures the actual deliveries to Pickup in the last minute."
+  - questionId: analytics_flat_backlog
+    prompt: "Open Orders reads 5 twice in a row. What can you tell from those readings?"
+    answers:
+    - "The backlog held steady between readings"
+    - "Exactly five orders reached Pickup"
+    - "No customers placed orders"
+    correctAnswerIndex: 0
+    explanation: "Orders can come in and go out between readings while the unfinished count stays the same."
+  - questionId: analytics_blocked_station
+    prompt: "The Grill has cooked patties but has spent much of the shift Blocked. Where do you look next?"
+    answers:
+    - "Where cooked patties are supposed to go"
+    - "Where the raw patties come from"
+    - "Where customers place their orders"
+    correctAnswerIndex: 0
+    explanation: "Blocked means the station cannot move its output. Check the next step and how workers reach it."
+  - questionId: analytics_idle_station
+    prompt: "A station is mostly Idle and no one is ordering its item. What's the likely reason?"
+    answers:
+    - "There is little work for it right now"
+    - "Its finished food cannot move on"
+    - "It is waiting for a missing input"
+    correctAnswerIndex: 0
+    explanation: "Idle means no work currently needs that station."
+  - questionId: analytics_wait_live
+    prompt: "Which metric shows the average wait for orders served during this shift?"
+    answers:
+    - "Order to Pickup in Live Analytics"
+    - "Average Order Wait in Player Stats"
+    - "Open Orders in Live Analytics"
+    correctAnswerIndex: 0
+    explanation: "Order to Pickup is the current shift average. Player Stats includes past shifts."
+  - questionId: analytics_order_board
+    prompt: "You see Open Orders rising. Where can you check which customers are waiting for which items?"
+    answers:
+    - "The wall's Customer Orders board"
+    - "The Player Stats tab"
+    - "The shift Objectives list"
+    correctAnswerIndex: 0
+    explanation: "The order board lists individual customers and the items they ordered."
+  - questionId: analytics_service_metric
+    prompt: "You want to compare customers served with customers who walked out. Which metric do you read?"
+    answers:
+    - "Service Rate"
+    - "Customers in Store"
+    - "Orders Served / Min"
+    correctAnswerIndex: 0
+    explanation: "Service Rate compares served customers with those who left without their orders."
+  - questionId: analytics_flow_consequence
+    prompt: "Ordered / Min is 10, Produced / Min stays at 7, and Open Orders keeps rising. What's a useful next step?"
+    answers:
+    - "Inspect a station on that item's flow"
+    - "Wait for Player Stats to reset"
+    - "Assume the forecast needs to be raised"
+    correctAnswerIndex: 0
+    explanation: "The live numbers show work piling up. Check the stations to see what is holding it back."
   shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

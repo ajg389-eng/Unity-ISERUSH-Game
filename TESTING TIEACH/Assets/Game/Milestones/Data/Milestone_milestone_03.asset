@@ -49,6 +49,102 @@ MonoBehaviour:
     - "When you move the camera"
     correctAnswerIndex: 0
     explanation: "Deliveries stop at the stock limit and can resume when there is room."
+  - questionId: supply_stock_vs_forecast
+    prompt: "Supply shows 20 buns in stock and a forecast of 35. How many more buns would cover the forecast?"
+    answers:
+    - "15 buns"
+    - "20 buns"
+    - "35 buns"
+    correctAnswerIndex: 0
+    explanation: "Compare the expected need with what you already have. Thirty-five minus twenty leaves fifteen."
+  - questionId: supply_capacity_limit
+    prompt: "Your supplier can deliver 12 items per minute. You request 8 buns and 7 potatoes per minute. What must change?"
+    answers:
+    - "Lower the combined rate by at least 3"
+    - "Raise both rates by 3"
+    - "Lower the combined rate by 1"
+    correctAnswerIndex: 0
+    explanation: "Eight plus seven is fifteen. That is three items per minute above the supplier's limit."
+  - questionId: supply_rate_change
+    prompt: "You have a steady shortage of buns but enough of everything else. Which delivery rate should you review first?"
+    answers:
+    - "Buns"
+    - "Potatoes"
+    - "Drink cups"
+    correctAnswerIndex: 0
+    explanation: "Review the rate for the ingredient that's running short."
+  - questionId: supply_balance_rates
+    prompt: "Your delivery requests exceed supplier capacity. Which tool suggests rates that fit the limit?"
+    answers:
+    - "Balance Rates"
+    - "Edit Menu"
+    - "Predicted / Min"
+    correctAnswerIndex: 0
+    explanation: "Balance Rates suggests delivery rates within the supplier's capacity."
+  - questionId: supply_ingredients_only
+    prompt: "Should you set a supplier delivery rate for finished Cheeseburgers?"
+    answers:
+    - "No, plan deliveries for the ingredients"
+    - "Yes, when predicted output is low"
+    - "Yes, when there's room at Pickup"
+    correctAnswerIndex: 0
+    explanation: "Suppliers deliver ingredients. Your kitchen still needs to make the finished item."
+  - questionId: supply_raise_one
+    prompt: "You raise the bun rate while the supplier is already at capacity. How can you make room for it?"
+    answers:
+    - "Reduce a less-needed ingredient's rate"
+    - "Raise the potato rate by the same amount"
+    - "Leave every other rate unchanged"
+    correctAnswerIndex: 0
+    explanation: "Delivery rates share a single supplier capacity."
+  - questionId: supply_full_storage
+    prompt: "Milk stops arriving while its stock is full. What should you check before changing the rate?"
+    answers:
+    - "Whether milk is being used and making room"
+    - "Whether milk is listed as a finished order"
+    - "Whether the register has open orders"
+    correctAnswerIndex: 0
+    explanation: "The supplier stops adding an ingredient while storage is full."
+  - questionId: supply_plan_timing
+    prompt: "You applied a supply plan before opening. When do the deliveries run?"
+    answers:
+    - "During the shift"
+    - "Only after the day ends"
+    - "Only while the planning screen is open"
+    correctAnswerIndex: 0
+    explanation: "The supplier delivers at the planned rates during service."
+  - questionId: supply_forecast_increase
+    prompt: "The menu now uses more potatoes. Which supply numbers should you compare first?"
+    answers:
+    - "Potato stock and the potato forecast"
+    - "Potato stock and total customers served"
+    - "The Fryer's target and service rate"
+    correctAnswerIndex: 0
+    explanation: "Stock and forecast tell you whether the potatoes on hand cover the expected need."
+  - questionId: supply_reserve
+    prompt: "You have plenty of cups but are likely to run low on milk. Where should extra supplier capacity go first?"
+    answers:
+    - "Milk"
+    - "Cups"
+    - "Whichever item is listed first"
+    correctAnswerIndex: 0
+    explanation: "Put delivery capacity toward the ingredient most likely to run short."
+  - questionId: supply_station_diagnosis
+    prompt: "The Shake station is Starved and milk is out of stock. What should you review?"
+    answers:
+    - "The milk supply rate and forecast"
+    - "Only the Shake station's output target"
+    - "The Pickup delivery rate for shakes"
+    correctAnswerIndex: 0
+    explanation: "Check whether your plan brings in enough of the missing ingredient."
+  - questionId: supply_check_after_change
+    prompt: "You revised the supply plan to prevent a bun shortage. What can you check during the shift?"
+    answers:
+    - "Whether bun stock now lasts while the kitchen runs"
+    - "Whether the demand forecast disappeared"
+    - "Whether every delivery rate stayed the same"
+    correctAnswerIndex: 0
+    explanation: "Watch the ingredient you adjusted to see whether the new plan covers its use."
   shiftLessons: []
   missionDatabase: {fileID: 0}
   quiz: {fileID: 0}

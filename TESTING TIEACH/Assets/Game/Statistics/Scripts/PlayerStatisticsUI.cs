@@ -17,6 +17,7 @@ public sealed class PlayerStatisticsUI : MonoBehaviour
     GridLayoutGroup grid;
     float nextRefresh;
     bool built;
+    internal Component TutorialAverageOrderWaitTarget => values[6];
 
     void OnEnable()
     {

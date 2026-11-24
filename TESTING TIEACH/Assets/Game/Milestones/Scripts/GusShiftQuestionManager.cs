@@ -13,6 +13,16 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     const int ShiftEventsPerShift = FirstQuestionToken + QuestionsPerShift;
     const int CorrectAnswerReward = 50;
 
+    [Serializable]
+    public sealed class QuestionRotationState
+    {
+        public string milestoneId;
+        public int[] remainingQuestions;
+        public int[] previousShiftQuestions;
+        public int lastCorrectAnswerSlot = -1;
+        public int[] pendingAnswerOrder;
+    }
+
     public static GusShiftQuestionManager Instance { get; private set; }
     public static event Action PromptStateChanged;
     public static bool ShouldDeferEndOfDay => Instance != null && Instance.HasShiftPromptsRemainingAtEnd();
@@ -29,6 +39,11 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     string visibleQuestionId;
     System.Random questionRandom;
     readonly List<int> answerOrder = new List<int>();
+    readonly List<int> remainingQuestions = new List<int>();
+    string rotationMilestoneId;
+    int[] previousShiftQuestions = Array.Empty<int>();
+    int lastCorrectAnswerSlot = -1;
+    int[] restoredAnswerOrder;
 
     GameObject overlay;
     GameObject canvasRoot;
@@ -55,6 +70,16 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     public int QuestionCursorForSave => questionCursor;
     public bool HasOpenPrompt => questionVisible && overlay != null && overlay.activeSelf;
 
+    public QuestionRotationState CaptureQuestionRotation() => new QuestionRotationState
+    {
+        milestoneId = rotationMilestoneId,
+        remainingQuestions = remainingQuestions.ToArray(),
+        previousShiftQuestions = (int[])previousShiftQuestions.Clone(),
+        lastCorrectAnswerSlot = lastCorrectAnswerSlot,
+        pendingAnswerOrder = pendingQuestionIndex < 0 ? null
+            : HasOpenPrompt ? answerOrder.ToArray() : restoredAnswerOrder
+    };
+
     public static bool HasOpenShiftPrompt => Instance != null && Instance.HasOpenPrompt;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -72,9 +97,10 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     }
 
     public static void RestoreState(int day, float[] savedMinutes, int[] savedOrder,
-        int cursor, int pendingIndex)
+        int cursor, int pendingIndex, QuestionRotationState rotation = null)
     {
         GusShiftQuestionManager manager = EnsureInstance();
+        manager.RestoreQuestionRotation(rotation);
         manager.scheduledDay = Mathf.Max(0, day);
         manager.scheduledMinutes = savedMinutes != null
             ? (float[])savedMinutes.Clone() : System.Array.Empty<float>();
@@ -93,6 +119,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     public static void RestoreLegacyState(int day, int savedQuestionIndex, bool asked, bool pending)
     {
         GusShiftQuestionManager manager = EnsureInstance();
+        manager.RestoreQuestionRotation(null);
         manager.scheduledDay = Mathf.Max(0, day);
         manager.scheduledMinutes = System.Array.Empty<float>();
         manager.questionOrder = System.Array.Empty<int>();
@@ -107,9 +134,10 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     }
 
     public static void RestoreShiftEventsState(int day, float[] savedMinutes, int[] savedOrder,
-        int cursor, int pendingToken)
+        int cursor, int pendingToken, QuestionRotationState rotation = null)
     {
         GusShiftQuestionManager manager = EnsureInstance();
+        manager.RestoreQuestionRotation(rotation);
         manager.scheduledDay = Mathf.Max(0, day);
         manager.scheduledMinutes = savedMinutes != null
             ? (float[])savedMinutes.Clone() : System.Array.Empty<float>();
@@ -126,6 +154,18 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         manager.questionVisible = false;
         manager.visibleQuestionId = null;
         if (manager.overlay != null) manager.overlay.SetActive(false);
+    }
+
+    void RestoreQuestionRotation(QuestionRotationState rotation)
+    {
+        rotationMilestoneId = rotation?.milestoneId;
+        remainingQuestions.Clear();
+        if (rotation?.remainingQuestions != null)
+            foreach (int index in rotation.remainingQuestions)
+                if (!remainingQuestions.Contains(index)) remainingQuestions.Add(index);
+        previousShiftQuestions = rotation?.previousShiftQuestions ?? Array.Empty<int>();
+        lastCorrectAnswerSlot = rotation?.lastCorrectAnswerSlot ?? -1;
+        restoredAnswerOrder = rotation?.pendingAnswerOrder;
     }
 
     void Awake()
@@ -273,6 +313,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         questionResolved = false;
         questionVisible = false;
         visibleQuestionId = null;
+        restoredAnswerOrder = null;
         if (overlay != null) overlay.SetActive(false);
         PromptStateChanged?.Invoke();
     }
@@ -290,8 +331,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return;
         }
 
-        questionOrder = new int[QuestionsPerShift];
-        for (int i = 0; i < QuestionsPerShift; i++) questionOrder[i] = i;
+        questionOrder = DrawShiftQuestions(milestone);
 
         float start = time.dayStartHour * 60f;
         float duration = Mathf.Max(1f, (time.dayEndHour - time.dayStartHour) * 60f);
@@ -304,16 +344,13 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
     {
         scheduledDay = time.CurrentDay;
         questionCursor = 0;
-        if (!HasOrderedQuestions(milestone))
+        if (!HasEnoughQuestions(milestone))
         {
             scheduledMinutes = System.Array.Empty<float>();
             questionOrder = System.Array.Empty<int>();
             questionCursor = QuestionsPerShift;
             return;
         }
-
-        questionOrder = new int[QuestionsPerShift];
-        for (int i = 0; i < QuestionsPerShift; i++) questionOrder[i] = i;
 
         int start = Mathf.RoundToInt(time.dayStartHour * 60f);
         int end = Mathf.RoundToInt(time.dayEndHour * 60f);
@@ -326,6 +363,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return;
         }
 
+        questionOrder = DrawShiftQuestions(milestone);
         scheduledMinutes = new float[QuestionsPerShift];
         int windowLength = latest - earliest + 1;
         for (int i = 0; i < QuestionsPerShift; i++)
@@ -344,10 +382,8 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             return false;
 
         for (int i = 0; i < QuestionsPerShift; i++)
-            if (scheduledMinutes[i] <= 0f || questionOrder[i] != i
-                || !IsValidQuestion(milestone, questionOrder[i]))
-                return false;
-        return true;
+            if (scheduledMinutes[i] <= 0f) return false;
+        return HasValidQuestionOrder(milestone);
     }
 
     bool HasValidSchedule(int day, MilestoneDefinition milestone)
@@ -360,9 +396,49 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
 
         for (int i = FirstQuestionToken; i < scheduledMinutes.Length; i++)
             if (scheduledMinutes[i] <= 0f) return false;
+        return HasValidQuestionOrder(milestone);
+    }
+
+    bool HasValidQuestionOrder(MilestoneDefinition milestone)
+    {
         for (int i = 0; i < questionOrder.Length; i++)
-            if (questionOrder[i] != i || !IsValidQuestion(milestone, questionOrder[i])) return false;
+        {
+            if (!IsValidQuestion(milestone, questionOrder[i])) return false;
+            if (Array.IndexOf(questionOrder, questionOrder[i], 0, i) >= 0) return false;
+        }
         return true;
+    }
+
+    int[] DrawShiftQuestions(MilestoneDefinition milestone)
+    {
+        if (rotationMilestoneId != milestone.milestoneId)
+        {
+            rotationMilestoneId = milestone.milestoneId;
+            remainingQuestions.Clear();
+            previousShiftQuestions = Array.Empty<int>();
+        }
+        remainingQuestions.RemoveAll(index => !IsValidQuestion(milestone, index));
+
+        int[] drawn = new int[QuestionsPerShift];
+        for (int i = 0; i < drawn.Length; i++)
+        {
+            if (remainingQuestions.Count == 0)
+            {
+                for (int index = 0; index < milestone.shiftQuestions.Count; index++)
+                    if (IsValidQuestion(milestone, index)) remainingQuestions.Add(index);
+                Shuffle(remainingQuestions);
+            }
+
+            // Prefer a different question from last shift when a deck wraps.
+            int drawIndex = remainingQuestions.FindLastIndex(index =>
+                Array.IndexOf(drawn, index, 0, i) < 0 && Array.IndexOf(previousShiftQuestions, index) < 0);
+            if (drawIndex < 0)
+                drawIndex = remainingQuestions.FindLastIndex(index => Array.IndexOf(drawn, index, 0, i) < 0);
+            drawn[i] = remainingQuestions[drawIndex];
+            remainingQuestions.RemoveAt(drawIndex);
+        }
+        previousShiftQuestions = drawn;
+        return drawn;
     }
 
     bool HasShiftPromptsRemainingAtEnd()
@@ -377,16 +453,17 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
 
     static bool HasShiftContent(MilestoneDefinition milestone)
     {
-        return HasOrderedQuestions(milestone) && OnboardingTutorial.HasIntroducedShiftQuestions(milestone);
+        return HasEnoughQuestions(milestone) && OnboardingTutorial.HasIntroducedShiftQuestions(milestone);
     }
 
-    static bool HasOrderedQuestions(MilestoneDefinition milestone)
+    static bool HasEnoughQuestions(MilestoneDefinition milestone)
     {
         if (!HasQuestions(milestone) || milestone.shiftQuestions.Count < QuestionsPerShift)
             return false;
-        for (int i = 0; i < QuestionsPerShift; i++)
-            if (!IsValidQuestion(milestone, i)) return false;
-        return true;
+        int validCount = 0;
+        for (int i = 0; i < milestone.shiftQuestions.Count; i++)
+            if (IsValidQuestion(milestone, i) && ++validCount == QuestionsPerShift) return true;
+        return false;
     }
 
     void AskNextLegacyQuestion(MilestoneDefinition milestone)
@@ -426,15 +503,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
             if (button != null) Destroy(button.gameObject);
         }
         answerButtons.Clear();
-        answerOrder.Clear();
-        for (int i = 0; i < question.answers.Length; i++) answerOrder.Add(i);
-        for (int i = answerOrder.Count - 1; i > 0; i--)
-        {
-            int swapIndex = questionRandom.Next(0, i + 1);
-            int swapValue = answerOrder[i];
-            answerOrder[i] = answerOrder[swapIndex];
-            answerOrder[swapIndex] = swapValue;
-        }
+        PrepareAnswerOrder(question);
         for (int i = 0; i < answerOrder.Count; i++)
         {
             int answerIndex = answerOrder[i];
@@ -450,6 +519,45 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         questionVisible = true;
         visibleQuestionId = questionId;
         Sfx.Play(SfxId.UiOpen);
+    }
+
+    void PrepareAnswerOrder(MilestoneDefinition.ShiftQuestion question)
+    {
+        answerOrder.Clear();
+        int count = question.answers.Length;
+        if (restoredAnswerOrder?.Length == count)
+        {
+            foreach (int answer in restoredAnswerOrder)
+                if (answer >= 0 && answer < count && !answerOrder.Contains(answer)) answerOrder.Add(answer);
+        }
+        restoredAnswerOrder = null;
+        if (answerOrder.Count != count)
+        {
+            answerOrder.Clear();
+            for (int i = 0; i < count; i++) answerOrder.Add(i);
+            Shuffle(answerOrder);
+            int correctSlot = answerOrder.IndexOf(question.correctAnswerIndex);
+            if (correctSlot == lastCorrectAnswerSlot)
+            {
+                int otherSlot = questionRandom.Next(count - 1);
+                if (otherSlot >= correctSlot) otherSlot++;
+                Swap(answerOrder, correctSlot, otherSlot);
+            }
+        }
+        lastCorrectAnswerSlot = answerOrder.IndexOf(question.correctAnswerIndex);
+    }
+
+    void Shuffle(List<int> order)
+    {
+        for (int i = order.Count - 1; i > 0; i--)
+            Swap(order, i, questionRandom.Next(i + 1));
+    }
+
+    static void Swap(List<int> order, int left, int right)
+    {
+        int value = order[left];
+        order[left] = order[right];
+        order[right] = value;
     }
 
     static void SetButtonLabel(Button button, string label)
@@ -524,6 +632,7 @@ public sealed class GusShiftQuestionManager : MonoBehaviour
         pendingQuestionIndex = -1;
         pendingEventToken = -1;
         questionResolved = false;
+        restoredAnswerOrder = null;
         if (overlay != null) overlay.SetActive(false);
         questionVisible = false;
         visibleQuestionId = null;

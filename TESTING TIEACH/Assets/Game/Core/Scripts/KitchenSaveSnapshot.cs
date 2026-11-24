@@ -6,12 +6,13 @@ using UnityEngine;
 [Serializable]
 public class KitchenSaveSnapshot
 {
-    public const int CurrentVersion = 60;
+    public const int CurrentVersion = 61;
     public int version = CurrentVersion, day, cash, width, height, milestone, tutorialStep, appearanceTheme;
     public int milestoneProgressionVersion;
     public int supplierCapacityTierIndex;
     public int totalWorkersHired;
     public string activeMilestoneId;
+    public string pendingDayEndMilestoneId;
     public int wallTexture, floorTexture, roofTexture;
     public Color wallTint = Color.white, floorTint = Color.white, roofTint = Color.white;
     public float minutes;
@@ -38,6 +39,7 @@ public class KitchenSaveSnapshot
     public bool tutorialStationMoved;
     public bool milestoneOneBottleneckLessonDone;
     public bool milestoneOneAnalyticsLessonDone;
+    public bool milestoneTwoPlanningReviewed;
     public int milestoneOneIntroProgress;
     public bool supplyLessonDone;
     public bool workerLessonDone, workerLessonHireReviewed;
@@ -59,6 +61,7 @@ public class KitchenSaveSnapshot
     public float[] gusShiftEventMinutes = Array.Empty<float>();
     public int[] gusShiftQuestionOrder = Array.Empty<int>();
     public int gusShiftEventCursor, gusShiftPendingEvent = -1;
+    public GusShiftQuestionManager.QuestionRotationState gusQuestionRotation;
     public ShiftPlanningUI.SavedState shiftPlanningState;
     public List<Equipment> equipment = new List<Equipment>();
     public List<PickupMeal> pickupMeals = new List<PickupMeal>();
@@ -124,6 +127,7 @@ public class KitchenSaveSnapshot
             s.gusShiftQuestionOrder = questionManager.QuestionOrderForSave;
             s.gusShiftEventCursor = questionManager.QuestionCursorForSave;
             s.gusShiftPendingEvent = questionManager.PendingEventTokenForSave;
+            s.gusQuestionRotation = questionManager.CaptureQuestionRotation();
         }
         var money = UnityEngine.Object.FindFirstObjectByType<MoneyManager>(); s.cash = money != null ? money.CurrentMoney : 1000;
         var grid = GridManager.Instance; if (grid != null) { s.width = grid.Width; s.height = grid.Height; }
@@ -143,6 +147,8 @@ public class KitchenSaveSnapshot
             && OnboardingTutorial.Instance.MilestoneOneBottleneckLessonDoneForSave;
         s.milestoneOneAnalyticsLessonDone = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.MilestoneOneAnalyticsLessonDoneForSave;
+        s.milestoneTwoPlanningReviewed = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.MilestoneTwoPlanningReviewedForSave;
         s.milestoneOneIntroProgress = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.MilestoneOneIntroProgressForSave : 0;
         s.supplyLessonDone = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.SupplyLessonDoneForSave;
@@ -171,6 +177,7 @@ public class KitchenSaveSnapshot
             s.activeMilestoneId = MilestoneProgressManager.Instance.ActiveMilestoneId;
             s.activeMilestoneShiftObjectives = MilestoneProgressManager.Instance.ActiveShiftObjectives;
             s.completedMilestoneIds.AddRange(MilestoneProgressManager.Instance.GetCompletedMilestoneIds());
+            s.pendingDayEndMilestoneId = MilestoneProgressManager.Instance.PendingDayEndMilestoneId;
         }
         if (MissionProgressManager.Instance != null)
             s.missionProgress = MissionProgressManager.Instance.CaptureProgress();
@@ -467,7 +474,7 @@ public class KitchenSaveSnapshot
             if (version >= 10 && (completedMilestoneIds != null && completedMilestoneIds.Count > 0
                 || !string.IsNullOrEmpty(activeMilestoneId)))
                 milestoneProgress.RestoreCheckpoint(activeMilestoneId, completedMilestoneIds,
-                    milestoneProgressionVersion);
+                    milestoneProgressionVersion, ended ? pendingDayEndMilestoneId : null);
             else if (milestone > 0)
                 milestoneProgress.DebugJumpToNumberedMilestone(
                     MapLegacyMilestoneNumber(milestone), out _);
@@ -851,10 +858,10 @@ public class KitchenSaveSnapshot
         milestoneProgress?.RestoreActiveShiftObjectives(resumeShift && version >= 35 && activeMilestoneShiftObjectives);
         if (version >= 51 && !gusShiftLegacyQuestionSchedule)
             GusShiftQuestionManager.RestoreShiftEventsState(gusQuestionScheduledDay,
-                gusShiftEventMinutes, gusShiftQuestionOrder, gusShiftEventCursor, gusShiftPendingEvent);
+                gusShiftEventMinutes, gusShiftQuestionOrder, gusShiftEventCursor, gusShiftPendingEvent, gusQuestionRotation);
         else if (version >= 51)
             GusShiftQuestionManager.RestoreState(gusQuestionScheduledDay,
-                gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex);
+                gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex, gusQuestionRotation);
         else if (version >= 49)
             GusShiftQuestionManager.RestoreState(gusQuestionScheduledDay,
                 gusQuestionScheduledMinutes, gusQuestionOrder, gusQuestionCursor, gusQuestionPendingIndex);
@@ -873,6 +880,10 @@ public class KitchenSaveSnapshot
                         objects[meal.station].GetComponent<HeatLampStation>()?.RestoreHeldMeal(
                             CustomerAI.RestoreOrder(meal.order, definitions), meal.age);
             customerSpawner?.RestoreSavedCustomers(customers, definitions, stationObjectsByGuid);
+        }
+        else if (ended && !string.IsNullOrEmpty(milestoneProgress?.PendingDayEndMilestoneId))
+        {
+            clock?.RestoreCheckpoint(day, closingMinutes);
         }
         else
         {
@@ -929,7 +940,8 @@ public class KitchenSaveSnapshot
                     : milestoneOneIntroProgress,
                 supplyLessonDone, pantryPractice, workerLessonDone, workerLessonHireReviewed,
                 version >= 60 && workerLessonFlowIndex >= 0 && workerLessonFlowIndex < pm.productionFlows.Count
-                    ? pm.productionFlows[workerLessonFlowIndex] : null);
+                    ? pm.productionFlows[workerLessonFlowIndex] : null,
+                milestoneTwoPlanningReviewed);
         return true;
     }
 

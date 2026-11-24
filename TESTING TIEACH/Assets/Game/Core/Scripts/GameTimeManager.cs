@@ -136,6 +136,7 @@ public class GameTimeManager : MonoBehaviour
 
     public void StartNextDay()
     {
+        if (IsShiftOver) MilestoneProgressManager.Instance?.PresentDayEndMilestone();
         CurrentDay++;
         ResetDayClock();
         SetSpeed(SpeedMode.Play);
