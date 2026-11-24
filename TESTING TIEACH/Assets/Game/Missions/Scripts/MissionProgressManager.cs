@@ -67,7 +67,8 @@ public class MissionProgressManager : MonoBehaviour
 
     void HandleGameEvent(string eventId)
     {
-        if (string.IsNullOrEmpty(eventId) || database?.missions == null) return;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive
+            || string.IsNullOrEmpty(eventId) || database?.missions == null) return;
 
         bool anyChange = false;
         foreach (var mission in database.missions)
@@ -99,7 +100,8 @@ public class MissionProgressManager : MonoBehaviour
 
     public void RecordProducedItem(ItemDefinition item, int units)
     {
-        if (item == null || units <= 0 || database?.missions == null) return;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive
+            || item == null || units <= 0 || database?.missions == null) return;
 
         bool anyChange = false;
         bool unlockedMenuProductChecked = false;
@@ -144,7 +146,8 @@ public class MissionProgressManager : MonoBehaviour
     /// <summary>Counts an item only after a customer actually picks it up.</summary>
     public void RecordCustomerPickupItem(ItemDefinition item, int units = 1)
     {
-        if (item == null || units <= 0 || database?.missions == null) return;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive
+            || item == null || units <= 0 || database?.missions == null) return;
 
         bool anyChange = false;
         foreach (MissionDefinition mission in database.missions)

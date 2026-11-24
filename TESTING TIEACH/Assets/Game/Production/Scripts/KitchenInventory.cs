@@ -26,6 +26,9 @@ public class KitchenInventory : MonoBehaviour
     static readonly int[] SupplierUpgradeCosts = { 0, 250, 600, 1200, 2000, 3500 };
 
     public static KitchenInventory Instance { get; private set; }
+    readonly Dictionary<ItemDefinition, int> practiceStockUsed = new Dictionary<ItemDefinition, int>();
+
+    internal void ClearPracticeStock() => practiceStockUsed.Clear();
 
     struct IngredientUseSample
     {
@@ -88,7 +91,7 @@ public class KitchenInventory : MonoBehaviour
         if (usageWasPlanning && !planning)
             ResetIngredientUseHistory();
         usageWasPlanning = planning;
-        if (Time.timeScale <= 0f || planning
+        if (Time.timeScale <= 0f || planning || OnboardingTutorial.IsMilestoneTwoPracticeActive
             || (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftOver))
             return;
 
@@ -285,6 +288,8 @@ public class KitchenInventory : MonoBehaviour
     public int GetCount(ItemDefinition item)
     {
         if (item == null) return 0;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+            return MaxIngredientStock - (practiceStockUsed.TryGetValue(item, out int used) ? used : 0);
         foreach (var e in stock)
         {
             if (e != null && e.item == item)
@@ -509,6 +514,14 @@ public class KitchenInventory : MonoBehaviour
     public bool TryConsume(ItemDefinition item, int amount = 1)
     {
         if (item == null || amount <= 0) return false;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+        {
+            int available = GetCount(item);
+            if (available < amount) return false;
+            practiceStockUsed[item] = MaxIngredientStock - available + amount;
+            ProductionManager.Instance?.NotifyProductionStateChanged();
+            return true;
+        }
         var entry = EnsureEntry(item);
         if (entry.quantity < amount) return false;
         entry.quantity -= amount;

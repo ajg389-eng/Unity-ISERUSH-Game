@@ -77,7 +77,7 @@ public class DrivingCar : MonoBehaviour
     {
         float dt = TitleScreenController.IsTitleScreenActive
             ? Time.unscaledDeltaTime
-            : Time.deltaTime;
+            : RoadTrafficController.VehicleDeltaTime;
         if (dt <= 0f) return;
 
         bouncePhase += dt * 18f;

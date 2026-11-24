@@ -421,14 +421,14 @@ public class CustomerSpawner : MonoBehaviour
         supplementalOrderIndex = 0;
     }
 
-    public bool SpawnTutorialCustomer()
+    public bool SpawnTutorialCustomer(CustomerOrder order = null)
     {
         // Practice orders are independent from live menu demand. The tutorial
         // still needs its fixed customer cohort even if a menu item was removed.
-        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(true, true);
+        return OnboardingTutorial.AllowsPracticeCustomer && TrySpawn(true, true, order);
     }
 
-    bool TrySpawn(bool force = false, bool tutorialPractice = false)
+    bool TrySpawn(bool force = false, bool tutorialPractice = false, CustomerOrder practiceOrder = null)
     {
         LastSpawnError = null;
         if (OnboardingTutorial.BlocksAutoCustomers && !tutorialPractice)
@@ -460,7 +460,7 @@ public class CustomerSpawner : MonoBehaviour
             return false;
         }
 
-        CustomerOrder manualOrder = tutorialPractice ? null : GenerateSupplementalOrder();
+        CustomerOrder manualOrder = tutorialPractice ? practiceOrder : GenerateSupplementalOrder();
         return SpawnOnFoot(r, false, Vector3.zero, null, manualOrder, tutorialPractice);
     }
 
@@ -470,7 +470,7 @@ public class CustomerSpawner : MonoBehaviour
     /// </summary>
     public bool SpawnArrivingCustomer(Vector3 doorWorld, LotArrivalVehicle rideHome)
     {
-        if (OnboardingTutorial.BlocksAutoCustomers) return false;
+        if (ShiftPlanningUI.IsPlanning || OnboardingTutorial.BlocksAutoCustomers) return false;
         if (customerPrefab == null) return false;
         CustomerOrderConfig config = ResolveOrderConfig();
         if (config == null || !config.HasEnabledItems) return false;
@@ -653,7 +653,7 @@ public class CustomerSpawner : MonoBehaviour
         if (r != null)
             ai.SetTargetRegister(r);
 
-        if (StoreStatisticsManager.Instance != null)
+        if (StoreStatisticsManager.Instance != null && !OnboardingTutorial.IsMilestoneTwoPracticeActive)
             StoreStatisticsManager.Instance.RecordCustomerVisit();
 
         if (entryPointsBuffer.Count < 2)

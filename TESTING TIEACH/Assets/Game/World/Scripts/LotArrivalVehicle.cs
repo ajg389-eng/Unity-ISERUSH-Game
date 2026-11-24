@@ -141,6 +141,9 @@ public class LotArrivalVehicle : MonoBehaviour
 
     void Update()
     {
+        float deltaTime = RoadTrafficController.VehicleDeltaTime;
+        if (deltaTime <= 0f) return;
+
         if (departWhenClear && parked && !leaving)
         {
             if (!PullOutIsClear())
@@ -152,7 +155,7 @@ public class LotArrivalVehicle : MonoBehaviour
 
         if (settling)
         {
-            TickSettle();
+            TickSettle(deltaTime);
             return;
         }
 
@@ -180,7 +183,7 @@ public class LotArrivalVehicle : MonoBehaviour
 
         float yaw = HoldsBusBay ? 78f : 150f;
         int lookAhead = HoldsBusBay ? 5 : 3;
-        if (!VehiclePathMotion.Advance(transform, path, ref index, ref speed, cruise, yaw, lookAhead, Time.deltaTime, wheels, wheelRadius))
+        if (!VehiclePathMotion.Advance(transform, path, ref index, ref speed, cruise, yaw, lookAhead, deltaTime, wheels, wheelRadius))
             return;
 
         if (leaving)
@@ -223,14 +226,14 @@ public class LotArrivalVehicle : MonoBehaviour
             stallFacing = opposite;
     }
 
-    void TickSettle()
+    void TickSettle(float deltaTime)
     {
-        settleT += Time.deltaTime / 0.7f;
+        settleT += deltaTime / 0.7f;
         float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(settleT));
         Vector3 pos = Vector3.Lerp(settleFrom, stall, t);
         pos.y = Mathf.Lerp(settleFrom.y, stall.y, t);
         transform.SetPositionAndRotation(pos, Quaternion.Slerp(settleFromRot, stallFacing, t));
-        SpinWheels(Mathf.Lerp(speed, 0f, t) * Time.deltaTime);
+        SpinWheels(Mathf.Lerp(speed, 0f, t) * deltaTime);
         if (t < 1f) return;
 
         settling = false;

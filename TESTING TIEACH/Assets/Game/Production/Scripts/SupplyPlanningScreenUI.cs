@@ -368,7 +368,7 @@ public class SupplyPlanningScreenUI : MonoBehaviour
             Vector2.zero, new Vector2(1f, 0f), new Vector2(8f, 4f), new Vector2(-8f, 32f), out TMP_Text orderLabel);
         ConfigureCompactLine(orderLabel, 10f, 13f);
         row.orderPack.onClick.AddListener(() => OrderPack(row));
-        DelayedTooltip.Attach(row.orderPack, "Buy one ingredient pack. It arrives by van during planning or during the shift.");
+        DelayedTooltip.Attach(row.orderPack, "Buy one ingredient pack. A truck delivers it during planning or during the shift.");
 
         row.lockedOverlay = CreatePanel("LockStatus", card.transform,
             new Color(GameUITheme.Charcoal.r, GameUITheme.Charcoal.g, GameUITheme.Charcoal.b, 0.92f),
@@ -414,8 +414,8 @@ public class SupplyPlanningScreenUI : MonoBehaviour
         }
 
         string item = inventory.GetDisplayName(row.item);
-        SetFooter(ShiftPlanningUI.IsPlanning ? $"Ordered {item}. Watch for the van before opening."
-            : $"Ordered {item}. Close Kitchen to resume the shift and watch for the van.");
+        SetFooter(ShiftPlanningUI.IsPlanning ? $"Ordered {item}. Watch for the delivery truck before opening."
+            : $"Ordered {item}. Close Kitchen to resume the shift and watch for the delivery truck.");
         RefreshData();
     }
 

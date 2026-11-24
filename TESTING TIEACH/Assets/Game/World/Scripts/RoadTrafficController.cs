@@ -27,6 +27,22 @@ public class RoadTrafficController : MonoBehaviour
     internal static HashSet<DeliveryVan> ActiveDeliveryVans => activeDeliveryVans;
     internal static HashSet<LotArrivalVehicle> ActiveArrivalVehicles => activeArrivalVehicles;
     internal static HashSet<DrivingCar> ActiveDrivingCars => activeDrivingCars;
+    internal static float VehicleDeltaTime
+    {
+        get
+        {
+            if (ShiftPlanningUI.IsPlanning && HasMovingDeliveryTruck())
+                return IngredientDeliveryService.DeliveryDeltaTime;
+            return Time.deltaTime;
+        }
+    }
+
+    static bool HasMovingDeliveryTruck()
+    {
+        foreach (DeliveryVan truck in activeDeliveryVans)
+            if (truck != null && !truck.IsParked) return true;
+        return false;
+    }
 
     static RoadTrafficController instance;
     static readonly HashSet<DeliveryVan> activeDeliveryVans = new HashSet<DeliveryVan>();
@@ -146,9 +162,7 @@ public class RoadTrafficController : MonoBehaviour
             : Time.deltaTime;
         nextEastbound -= trafficDelta;
         nextWestbound -= trafficDelta;
-        bool deliveryManeuvering = false;
-        foreach (DeliveryVan van in activeDeliveryVans)
-            if (van != null && !van.IsParked) { deliveryManeuvering = true; break; }
+        bool deliveryManeuvering = HasMovingDeliveryTruck();
         SpawnWindow(out float minInterval, out float maxInterval);
         if (nextEastbound <= 0f)
         {

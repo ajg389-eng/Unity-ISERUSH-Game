@@ -21,8 +21,8 @@ MonoBehaviour:
   - Keep the stations close and the path simple. A shorter route gives us more time
     to serve orders.
   isTutorial: 0
-  minimumSystemEfficiencyPercent: 25
-  minimumCustomersServedPercent: 50
+  minimumSystemEfficiencyPercent: 50
+  minimumCustomersServedPercent: 55
   missions:
   - {fileID: 11400000, guid: 7a8ccd56baa7476eb83291c1650c9c38, type: 2}
   - {fileID: 11400000, guid: 6f00fbb8c62d483fa25b7b6d00eccc3a, type: 2}

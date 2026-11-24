@@ -42,3 +42,4 @@ MonoBehaviour:
   fastForward: {fileID: 2800000, guid: 09161b68770649d478a91666f3bbd3cf, type: 3}
   analytics: {fileID: 2800000, guid: ec6b2ead79c858e4fa77f01b45f8f90d, type: 3}
   star: {fileID: 2800000, guid: 1e3c407316f60da4986a03732022c8f2, type: 3}
+  speechBubble: {fileID: 2800000, guid: 3e16c59c19704c5c80b8bb76fda8bbd4, type: 3}

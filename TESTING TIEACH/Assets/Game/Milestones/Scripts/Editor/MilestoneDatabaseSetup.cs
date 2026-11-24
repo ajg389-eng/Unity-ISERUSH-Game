@@ -374,9 +374,9 @@ public static class MilestoneDatabaseSetup
             new MilestoneContent
             {
                 id = "milestone_04",
-                name = "Measure and Improve",
-                description = "Use delivered output to see whether a focused change improves the whole process.",
-                topics = "Throughput, continuous improvement",
+                name = "Process Optimization",
+                description = "Improve one product line and check how the change affects output across the kitchen.",
+                topics = "Shared resources, throughput trade-offs, customer service",
                 missions = new[]
                 {
                     M("serve_super_burgers", "Serve 216 Super Burgers",

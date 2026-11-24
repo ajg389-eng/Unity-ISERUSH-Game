@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -53,6 +54,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
     bool buildRoutesDirty;
     bool billboardPoseCached;
     Transform billboardCamera;
+    TextMeshPro tutorialStartLabel;
     Vector3 billboardCameraPosition;
     Quaternion billboardCameraRotation;
     KitchenEmployee focusedWorker;
@@ -115,6 +117,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             && Quaternion.Angle(cameraTransform.rotation, billboardCameraRotation) < 0.1f)
             return;
         FaceRecipePreviewsTowardCamera();
+        OrientTutorialStartLabel(cameraTransform);
         billboardCamera = cameraTransform;
         billboardCameraPosition = cameraTransform.position;
         billboardCameraRotation = cameraTransform.rotation;
@@ -521,8 +524,9 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
                 revealedStations.Add(connection.from);
                 revealedStations.Add(connection.to);
             }
-        if (revealedStations.Count == 0 && source.stations[0] != null)
-            revealedStations.Add(source.stations[0]);
+        GameObject startStation = source.stations.Find(station => station != null);
+        if (revealedStations.Count == 0 && startStation != null)
+            revealedStations.Add(startStation);
 
         var visibleStations = new List<GameObject>();
         foreach (GameObject station in source.stations)
@@ -537,6 +541,40 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
             connections = revealedEdges
         };
         DrawDraftFlow(preview, true);
+        if (revealedCount == 0 && startStation != null && GridManager.Instance is GridManager grid)
+            CreateTutorialStartLabel(startStation, grid);
+    }
+
+    void CreateTutorialStartLabel(GameObject station, GridManager grid)
+    {
+        Vector3 tile = grid.GetCellCenter(KitchenEmployee.GetInteractionPosition(station));
+        Vector3 outward = Vector3.ProjectOnPlane(tile - station.transform.position, Vector3.up).normalized;
+        Vector3 position = tile + outward * (grid.cellSize * 0.55f);
+        position.y = grid.Origin.y + floorOffset + 0.07f;
+
+        var label = new GameObject("TutorialFlowStartLabel", typeof(RectTransform), typeof(TextMeshPro));
+        tutorialStartLabel = label.GetComponent<TextMeshPro>();
+        tutorialStartLabel.rectTransform.SetParent(visualsRoot, false);
+        tutorialStartLabel.rectTransform.position = position;
+        tutorialStartLabel.rectTransform.sizeDelta = new Vector2(1.35f, 0.45f) * grid.cellSize;
+        tutorialStartLabel.text = "START";
+        tutorialStartLabel.alignment = TextAlignmentOptions.Center;
+        tutorialStartLabel.fontStyle = FontStyles.Bold;
+        tutorialStartLabel.fontSize = 3f * grid.cellSize;
+        tutorialStartLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        tutorialStartLabel.outlineColor = new Color32(0, 0, 0, 255);
+        tutorialStartLabel.outlineWidth = 0.22f;
+        OrientTutorialStartLabel(Camera.main != null ? Camera.main.transform : null);
+    }
+
+    void OrientTutorialStartLabel(Transform cameraTransform)
+    {
+        if (tutorialStartLabel == null) return;
+        Vector3 upright = cameraTransform != null
+            ? Vector3.ProjectOnPlane(cameraTransform.up, Vector3.up) : Vector3.forward;
+        if (upright.sqrMagnitude < 0.001f)
+            upright = Vector3.forward;
+        tutorialStartLabel.transform.rotation = Quaternion.LookRotation(Vector3.down, upright);
     }
 
     static bool IsLastNonNullStation(ProductionFlowPlan flow, int index)
@@ -1262,6 +1300,7 @@ public class WorkerAssignmentLinkVisuals : MonoBehaviour
         activeLineCount = 0;
         backgroundSegments.Clear();
         recipePreviewBadges.Clear();
+        tutorialStartLabel = null;
         for (int i = 0; i < generatedMeshes.Count; i++)
             if (generatedMeshes[i] != null) Destroy(generatedMeshes[i]);
         generatedMeshes.Clear();

@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Runtime access to the Kenney Game Icons pack. The source files are kept as
+/// Runtime access to the game's UI icons. The source files are kept as
 /// Texture2D assets and converted to cached UI sprites when a screen requests
 /// an icon. This avoids duplicating the imported art or requiring prefab edits.
 /// </summary>
@@ -39,7 +39,8 @@ public enum GameIconId
     Information,
     FastForward,
     Analytics,
-    Star
+    Star,
+    SpeechBubble
 }
 
 public sealed class GameIconLibrary : ScriptableObject
@@ -74,6 +75,7 @@ public sealed class GameIconLibrary : ScriptableObject
     [SerializeField] Texture2D fastForward;
     [SerializeField] Texture2D analytics;
     [SerializeField] Texture2D star;
+    [SerializeField] Texture2D speechBubble;
 
     readonly Dictionary<GameIconId, Sprite> spriteCache = new Dictionary<GameIconId, Sprite>();
     static GameIconLibrary instance;
@@ -196,6 +198,7 @@ public sealed class GameIconLibrary : ScriptableObject
             case GameIconId.FastForward: return fastForward;
             case GameIconId.Analytics: return analytics;
             case GameIconId.Star: return star;
+            case GameIconId.SpeechBubble: return speechBubble;
             default: return null;
         }
     }

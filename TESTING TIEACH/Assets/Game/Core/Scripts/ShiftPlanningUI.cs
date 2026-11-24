@@ -32,11 +32,31 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     }
 
     [System.Serializable]
+    public sealed class OptimizationResult
+    {
+        public string itemName;
+        public float baselineDemand, baselinePrediction, demand, prediction;
+        public int delivered;
+    }
+
+    [System.Serializable]
+    public sealed class OptimizationTrial
+    {
+        public int day;
+        public string originalSetup;
+        public bool compared, readyToStart, started, completed;
+        public int baselineIngredientShortage, ingredientShortage;
+        public float shiftMinutes;
+        public List<OptimizationResult> products = new List<OptimizationResult>();
+    }
+
+    [System.Serializable]
     public sealed class SavedState
     {
         public string selectedGoalItemName;
         public ShiftResult latestShift;
         public ShiftResult previousShift;
+        public OptimizationTrial optimizationTrial;
         public List<StationBaselineRecord> stationBaselines = new List<StationBaselineRecord>();
     }
 
@@ -86,6 +106,12 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     static SavedState pendingRestoreState;
     static bool hasPendingRestoreState;
     static bool pendingRestoreHasIdleBaseline = true;
+    OptimizationTrial optimizationTrial;
+
+    internal OptimizationTrial CurrentOptimizationTrial => optimizationTrial != null
+        && optimizationTrial.day == GameTimeManager.Instance?.CurrentDay ? optimizationTrial : null;
+
+    internal void ResetOptimizationTrial() => optimizationTrial = null;
 
     readonly Dictionary<string, StationSnapshot> stationBaseline =
         new Dictionary<string, StationSnapshot>(System.StringComparer.Ordinal);
@@ -112,6 +138,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     Button startShiftButton;
     Button editMenuButton;
     TextMeshProUGUI editMenuLabel;
+    TextMeshProUGUI planIntro;
     TextMeshProUGUI shiftTotalHeader;
     bool editingMenu;
     GameObject startShiftWarningOverlay;
@@ -128,7 +155,19 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     bool planCondensedForOverlay;
     bool planCollapsedByPlayer;
     bool planCollapsedForTutorial;
-    bool IsPlanCompact => planCondensedForOverlay || planCollapsedByPlayer || planCollapsedForTutorial;
+    bool planCollapsedForGus;
+    bool planExpandedDuringGusDialogue;
+    internal bool IsPlanCompact => planCondensedForOverlay || planCollapsedByPlayer
+        || planCollapsedForTutorial || IsPlanCollapsedForGus;
+    internal bool IsPlanCollapsedForGus => planCollapsedForGus && !planExpandedDuringGusDialogue;
+
+    internal void SetGusDialogueCentered(bool centered)
+    {
+        if (planCollapsedForGus == centered) return;
+        planCollapsedForGus = centered;
+        planExpandedDuringGusDialogue = false;
+        ApplyPlanPresentation();
+    }
     bool preShiftPlanningActive;
     bool livePanelCollapsed;
     bool? resumeShiftAfterLoad;
@@ -181,12 +220,12 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         StartShift();
     }
 
-    public void ResumeTutorialPracticeShift()
+    public void ResumeTutorialPracticeShift(bool showLivePanel = true)
     {
         preShiftPlanningActive = false;
         planHiddenForStationPopup = false;
         if (panelRoot != null) panelRoot.SetActive(false);
-        ShowLivePanel();
+        if (showLivePanel) ShowLivePanel();
         EnsureMainHudNavigation();
         if (resumeShiftAfterLoad != true)
             timeManager?.ReleaseExternalPause(PauseSource);
@@ -395,6 +434,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
     void RefreshPlanOverlayPresentation()
     {
         if (panelRoot == null || dayTitle == null) return;
+        if (!OnboardingTutorial.HasVisibleGusDialogue)
+            SetGusDialogueCentered(false);
         bool analyticsOpen = AnalyticsPopupUI.IsOpen;
         bool recipesOpen = IngredientsOrderUI.IsRecipeOverlayOpen;
         bool shouldCondense = panelRoot.activeSelf && preShiftPlanningActive
@@ -413,7 +454,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         startShiftFooter.SetActive(!IsPlanCompact);
         startShiftButton.gameObject.SetActive(!IsPlanCompact);
         planCollapseButton.gameObject.SetActive(!planCondensedForOverlay && !planCollapsedForTutorial);
-        planCollapseLabel.text = planCollapsedByPlayer ? "Expand" : "Collapse";
+        planCollapseLabel.text = IsPlanCompact ? "Expand" : "Collapse";
         dayTitle.alignment = planCondensedForOverlay ? TextAlignmentOptions.Center : TextAlignmentOptions.Left;
         var rect = (RectTransform)panelRoot.transform;
         rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(planCondensedForOverlay ? 0.5f : 1f, 0f);
@@ -548,7 +589,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         planCollapseButton.onClick.AddListener(() =>
         {
             if (OnboardingTutorial.IsLayoutImprovementLesson) return;
-            planCollapsedByPlayer = !planCollapsedByPlayer;
+            planCollapsedByPlayer = !IsPlanCompact;
+            planExpandedDuringGusDialogue = planCollapsedForGus && !planCollapsedByPlayer;
             ApplyPlanPresentation();
         });
 
@@ -558,10 +600,10 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         bodyLayout.spacing = layout.spacing;
         bodyLayout.childControlWidth = bodyLayout.childControlHeight = true;
         bodyLayout.childForceExpandHeight = false;
-        TextMeshProUGUI intro = CreateText(planBody.transform, "Intro",
-            "Choose what to serve, review demand, and tune the kitchen before starting the shift.",
+        planIntro = CreateText(planBody.transform, "Intro",
+            "Review demand and tune the kitchen before starting the shift.",
             14f, FontStyles.Normal, 28f, GameUITheme.TextPrimary);
-        intro.textWrappingMode = TextWrappingModes.Normal;
+        planIntro.textWrappingMode = TextWrappingModes.Normal;
 
         shiftDurationText = CreateText(planBody.transform, "ShiftDuration",
             "SHIFT LENGTH  10:00 AM–10:00 PM  |  12 MINUTES AT 1x",
@@ -1017,8 +1059,13 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         }
 
         config.SyncMenuToActiveMilestoneObjectives();
-        editMenuButton.gameObject.SetActive(!OnboardingTutorial.IsActive);
-        if (OnboardingTutorial.IsActive) editingMenu = false;
+        bool fixedMenu = config.HasFixedMilestoneMenu;
+        bool canEdit = !fixedMenu && !OnboardingTutorial.IsActive;
+        editMenuButton.gameObject.SetActive(canEdit);
+        editingMenu &= canEdit;
+        planIntro.text = fixedMenu
+            ? "Your milestone sets the menu. Check demand and update your flows in Kitchen → Workers."
+            : "Choose what to serve, review demand, and tune the kitchen before starting the shift.";
         editMenuLabel.text = editingMenu ? "Done Editing" : "Edit Menu";
         shiftTotalHeader.text = editingMenu ? "MENU" : "SHIFT\nTOTAL";
         lastPlanDemandRevision = config.DemandScheduleRevision;
@@ -1061,7 +1108,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         EnsureDemandRowCapacity(visibleMenu.Count);
         if (visibleMenu.Count == 0)
         {
-            SetDemandEmptyState(editingMenu ? "No menu items unlocked yet." : "Use Edit Menu to add items to serve.");
+            SetDemandEmptyState(fixedMenu || editingMenu
+                ? "No menu items available yet." : "Use Edit Menu to add items to serve.");
         }
         else
         {
@@ -1375,6 +1423,12 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         if (!OnboardingTutorial.CanStartShiftFromPlan) return;
         editingMenu = false;
         ResolveOrderConfig()?.SyncMenuToActiveMilestoneObjectives();
+        if (MilestoneProgressManager.Instance?.ActiveMilestoneId == "milestone_04"
+            && CurrentOptimizationTrial is { readyToStart: true, started: false } trial)
+        {
+            UpdateOptimizationRates(trial, false);
+            trial.started = true;
+        }
         if (OnboardingTutorial.IsComplete && !MilestoneFeatures.SupplyPlanningUnlocked
             && KitchenInventory.Instance is KitchenInventory stock)
             foreach (KeyValuePair<ItemDefinition, float> need in GetForecastIngredientNeedsPerShift())
@@ -1702,6 +1756,165 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         return Instance != null ? Instance.BuildShiftComparisonSummary() : string.Empty;
     }
 
+    ItemDefinition[] OptimizationProducts()
+    {
+        CustomerOrderConfig menu = ResolveOrderConfig();
+        return menu != null ? new[] { menu.superBurgerItem, menu.cheeseBaconFriesItem,
+            menu.whippedCreamSprinkleShakeItem } : System.Array.Empty<ItemDefinition>();
+    }
+
+    internal bool CanRecordOptimizationBaseline()
+    {
+        CustomerOrderConfig menu = ResolveOrderConfig();
+        if (menu == null) return false;
+        return menu.IsItemEnabled(menu.superBurgerItem)
+            && menu.IsItemEnabled(menu.cheeseBaconFriesItem)
+            && menu.IsItemEnabled(menu.whippedCreamSprinkleShakeItem);
+    }
+
+    internal void RecordOptimizationBaseline()
+    {
+        optimizationTrial = new OptimizationTrial
+        {
+            day = GameTimeManager.Instance?.CurrentDay ?? 0,
+            originalSetup = GetOptimizationSetup()
+        };
+        UpdateOptimizationRates(optimizationTrial, true);
+    }
+
+    internal bool HasOptimizationChange()
+    {
+        return CurrentOptimizationTrial != null
+            && CurrentOptimizationTrial.originalSetup != GetOptimizationSetup();
+    }
+
+    static void AppendOptimizationStation(StringBuilder text, GameObject station)
+    {
+        if (station == null || !station.activeInHierarchy) return;
+        StationNode node = station.GetComponent<StationNode>();
+        text.Append(node != null ? node.StableStationId : station.name)
+            .Append(station.transform.position.ToString("F3", System.Globalization.CultureInfo.InvariantCulture))
+            .Append(station.transform.rotation.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append('|');
+    }
+
+    static string GetOptimizationSetup()
+    {
+        var text = new StringBuilder();
+        ProductionManager production = ProductionManager.Instance;
+        if (production?.productionFlows != null)
+        {
+            foreach (ProductionFlowPlan flow in production.productionFlows)
+            {
+                if (flow == null) continue;
+                text.Append("Flow ").Append(flow.workers?.Count ?? 0).Append('|');
+                if (flow.stations != null)
+                    foreach (GameObject station in flow.stations) AppendOptimizationStation(text, station);
+                if (flow.connections == null) continue;
+                foreach (ProductionFlowConnection edge in flow.connections)
+                {
+                    if (edge == null) continue;
+                    AppendOptimizationStation(text, edge.from);
+                    AppendOptimizationStation(text, edge.to);
+                }
+            }
+        }
+        KitchenInventory stock = KitchenInventory.Instance;
+        if (stock != null)
+            foreach (ItemDefinition item in stock.GetOrderableItems())
+                if (item != null) text.Append(item.name).Append('=').Append(stock.GetSupplyRatePerMinute(item)).Append('|');
+        return text.ToString();
+    }
+
+    void UpdateOptimizationRates(OptimizationTrial trial, bool baseline)
+    {
+        CustomerOrderConfig menu = ResolveOrderConfig();
+        ProductionManager production = ProductionManager.Instance;
+        if (IsPlanning && production != null && production.useScheduledProduction)
+        {
+            production.ScheduledProduction.RequestConfigurationCheck();
+            production.ScheduledProduction.Tick();
+        }
+        trial.ingredientShortage = GetOptimizationIngredientShortage();
+        if (baseline) trial.baselineIngredientShortage = trial.ingredientShortage;
+        foreach (ItemDefinition item in OptimizationProducts())
+        {
+            if (item == null) continue;
+            float demand = menu.GetCustomerDemandPerMinute(item);
+            float prediction = production?.GetPredictedOutputPerMinute(item) ?? 0f;
+            if (baseline)
+                trial.products.Add(new OptimizationResult { itemName = item.itemName,
+                    baselineDemand = demand, baselinePrediction = prediction, demand = demand, prediction = prediction });
+            else
+            {
+                OptimizationResult product = trial.products.Find(value => value.itemName == item.itemName);
+                if (product == null) continue;
+                product.demand = demand;
+                product.prediction = prediction;
+            }
+        }
+    }
+
+    int GetOptimizationIngredientShortage()
+    {
+        KitchenInventory stock = KitchenInventory.Instance;
+        if (stock == null) return 0;
+        float duration = GetShiftDurationMinutes();
+        int shortage = 0;
+        foreach (KeyValuePair<ItemDefinition, float> need in GetForecastIngredientNeedsPerShift())
+        {
+            ItemDefinition item = need.Key;
+            int incoming = IngredientDeliveryService.Instance?.GetIncomingCount(item) ?? 0;
+            float available = stock.GetCount(item) + incoming + stock.GetSupplyRatePerMinute(item) * duration;
+            shortage += Mathf.CeilToInt(Mathf.Max(0f, need.Value - available));
+        }
+        return shortage;
+    }
+
+    internal void CompareOptimizationForecasts()
+    {
+        if (CurrentOptimizationTrial == null) return;
+        UpdateOptimizationRates(optimizationTrial, false);
+        optimizationTrial.compared = true;
+    }
+
+    internal string GetOptimizationLiveResults()
+    {
+        ProductionManager production = ProductionManager.Instance;
+        var lines = new List<string>();
+        foreach (ItemDefinition item in OptimizationProducts())
+        {
+            if (item == null) continue;
+            float demand = ResolveOrderConfig().GetCustomerDemandPerMinute(item);
+            float output = production?.GetPickupDeliveryRatePerMinute(item) ?? 0f;
+            lines.Add(demand > 0 ? $"{item.itemName}: {output:0.#} / {demand:0.#}" : item.itemName + ": off menu");
+        }
+        return string.Join("\n", lines);
+    }
+
+    internal void RecordOptimizationPickup(CustomerOrder order)
+    {
+        if (!(CurrentOptimizationTrial is { started: true, completed: false } trial) || order?.lines == null) return;
+        foreach (CustomerOrder.OrderLine line in order.lines)
+        {
+            if (line.item == null || line.quantity <= 0) continue;
+            OptimizationResult product = trial.products.Find(value => value.itemName == line.item.itemName);
+            if (product != null) product.delivered += line.quantity;
+        }
+    }
+
+    internal static string GetOptimizationShiftSummary()
+    {
+        if (!(Instance?.CurrentOptimizationTrial is { completed: true } trial)) return string.Empty;
+        var results = new List<string>();
+        foreach (OptimizationResult item in trial.products)
+        {
+            float actualRate = item.delivered / Mathf.Max(0.01f, trial.shiftMinutes);
+            results.Add(item.demand > 0f
+                ? $"{item.itemName}: {item.delivered} ({actualRate:0.#}/min)" : item.itemName + ": off menu");
+        }
+        return string.Join("  ·  ", results);
+    }
+
     public static SavedState CaptureSaveState()
     {
         return Instance != null ? Instance.MakeSavedState() : new SavedState();
@@ -1722,7 +1935,8 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         {
             selectedGoalItemName = selectedGoalItemName,
             latestShift = CloneResult(latestShift),
-            previousShift = CloneResult(previousShift)
+            previousShift = CloneResult(previousShift),
+            optimizationTrial = CloneOptimizationTrial(optimizationTrial)
         };
         foreach (KeyValuePair<string, StationSnapshot> entry in stationBaseline)
             state.stationBaselines.Add(new StationBaselineRecord
@@ -1741,6 +1955,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         selectedGoalItemName = state != null ? state.selectedGoalItemName : string.Empty;
         latestShift = state != null ? CloneResult(state.latestShift) : null;
         previousShift = state != null ? CloneResult(state.previousShift) : null;
+        optimizationTrial = CloneOptimizationTrial(state?.optimizationTrial);
         stationBaseline.Clear();
         if (state != null && state.stationBaselines != null)
         {
@@ -1784,6 +1999,7 @@ public sealed class ShiftPlanningUI : MonoBehaviour
             selectedGoalItemName = state.selectedGoalItemName,
             latestShift = CloneResult(state.latestShift),
             previousShift = CloneResult(state.previousShift),
+            optimizationTrial = CloneOptimizationTrial(state.optimizationTrial),
             stationBaselines = state.stationBaselines != null
                 ? new List<StationBaselineRecord>(state.stationBaselines.Count)
                 : new List<StationBaselineRecord>()
@@ -1814,8 +2030,30 @@ public sealed class ShiftPlanningUI : MonoBehaviour
         };
     }
 
+    static OptimizationTrial CloneOptimizationTrial(OptimizationTrial trial)
+    {
+        if (trial?.products == null) return null;
+        var clone = new OptimizationTrial { day = trial.day, originalSetup = trial.originalSetup,
+            compared = trial.compared, readyToStart = trial.readyToStart, started = trial.started,
+            completed = trial.completed, shiftMinutes = trial.shiftMinutes,
+            baselineIngredientShortage = trial.baselineIngredientShortage, ingredientShortage = trial.ingredientShortage };
+        foreach (OptimizationResult item in trial.products)
+            if (item != null) clone.products.Add(new OptimizationResult { itemName = item.itemName,
+                baselineDemand = item.baselineDemand, baselinePrediction = item.baselinePrediction,
+                demand = item.demand, prediction = item.prediction, delivered = item.delivered });
+        return clone;
+    }
+
     void RecordShiftCompletion()
     {
+        if (CurrentOptimizationTrial is { started: true } trial)
+        {
+            trial.shiftMinutes = timeManager != null
+                ? Mathf.Max(0f, timeManager.CurrentMinutes - timeManager.dayStartHour * 60f)
+                    * Mathf.Max(1f, timeManager.realSecondsPerGameHour) / 3600f
+                : GetPlannedShiftDurationMinutes();
+            trial.completed = true;
+        }
         if (selectedGoalItem == null) return;
         CustomerOrderConfig config = ResolveOrderConfig();
         StoreStatisticsManager stats = StoreStatisticsManager.Instance;

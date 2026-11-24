@@ -577,6 +577,7 @@ public partial class ProductionManager : MonoBehaviour
     public void RecordPickupDelivery(CustomerOrder order)
     {
         RecordHistory(pickupDeliveryHistory, order);
+        ShiftPlanningUI.Instance?.RecordOptimizationPickup(order);
     }
 
     internal bool HasFullThroughputWindow => Time.time - throughputTrackingStartedAt >= ThroughputWindowSeconds;

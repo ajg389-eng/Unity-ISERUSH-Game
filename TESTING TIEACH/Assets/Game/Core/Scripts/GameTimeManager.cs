@@ -105,7 +105,8 @@ public class GameTimeManager : MonoBehaviour
         // The tutorial is an isolated practice shift. Keep the simulation live so
         // workers, customers, stations, and player controls behave normally, but
         // do not advance the campaign clock or trigger the end of a day.
-        if (Time.timeScale <= 0f || IsShiftOver || OnboardingTutorial.BlocksProgression)
+        if (Time.timeScale <= 0f || IsShiftOver || OnboardingTutorial.BlocksProgression
+            || OnboardingTutorial.IsMilestoneTwoPracticeActive)
             return;
 
         CurrentMinutes += GameMinutesPerRealSecond * Time.deltaTime;
@@ -142,7 +143,10 @@ public class GameTimeManager : MonoBehaviour
         SetSpeed(SpeedMode.Play);
         ProductionManager production = ProductionManager.Instance;
         if (production != null && production.orderConfig != null)
+        {
+            production.orderConfig.SyncMenuToActiveMilestoneObjectives();
             production.orderConfig.RefreshDemandScheduleForNewShift();
+        }
         OnDayStarted?.Invoke();
     }
 
@@ -167,7 +171,7 @@ public class GameTimeManager : MonoBehaviour
     /// <summary>Debug helper that ends the shift through the normal day-end path.</summary>
     public bool DebugSkipToEndOfDay()
     {
-        if (IsShiftOver) return false;
+        if (IsShiftOver || OnboardingTutorial.IsMilestoneTwoPracticeActive) return false;
         CurrentMinutes = DayEndMinutes;
         OnTimeChanged?.Invoke();
         EndShift();

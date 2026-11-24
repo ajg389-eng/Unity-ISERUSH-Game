@@ -323,12 +323,16 @@ public class EndOfDaySummaryUI : MonoBehaviour
 
     static string BuildOperationsDiagnosis()
     {
-        string comparison = ShiftPlanningUI.GetShiftComparisonSummary();
+        string optimization = ShiftPlanningUI.GetOptimizationShiftSummary();
+        string comparison = string.IsNullOrEmpty(optimization)
+            ? ShiftPlanningUI.GetShiftComparisonSummary() : optimization;
         string production = ShiftPlanningUI.GetShiftProductionDiagnosis();
         var lines = new System.Text.StringBuilder();
 
         if (!string.IsNullOrEmpty(comparison))
-            lines.Append("<color=#83D9ED><b>Shift goal:</b></color> ").Append(comparison);
+            lines.Append(string.IsNullOrEmpty(optimization)
+                ? "<color=#83D9ED><b>Shift goal:</b></color> "
+                : "<color=#83D9ED><b>Full-shift Pickup:</b></color> ").Append(comparison);
         if (!string.IsNullOrEmpty(production))
         {
             if (lines.Length > 0) lines.Append('\n');

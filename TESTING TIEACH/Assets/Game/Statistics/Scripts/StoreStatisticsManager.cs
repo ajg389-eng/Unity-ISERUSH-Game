@@ -82,6 +82,11 @@ public class StoreStatisticsManager : MonoBehaviour
     {
         float now = Time.time;
         float wait = Mathf.Max(0f, now - orderPlacedTime);
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+        {
+            OnboardingTutorial.Instance.RecordMilestoneTwoPracticeService(wait);
+            return;
+        }
         completedOrderTimes.Add(now);
         if (completedOrderTimes.Count > MaxCompletedOrders)
             completedOrderTimes.RemoveAt(0);
@@ -100,6 +105,7 @@ public class StoreStatisticsManager : MonoBehaviour
 
     public void RecordMealWasted()
     {
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive) return;
         mealsWasted++;
         dayMealsWasted++;
         OnStatisticsChanged?.Invoke();
@@ -109,6 +115,11 @@ public class StoreStatisticsManager : MonoBehaviour
 
     public void RecordCustomerLost()
     {
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+        {
+            OnboardingTutorial.Instance.RecordMilestoneTwoPracticeLoss();
+            return;
+        }
         dayCustomersLost++;
         careerCustomersLost++;
         OnStatisticsChanged?.Invoke();

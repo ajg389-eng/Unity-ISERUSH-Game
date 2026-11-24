@@ -50,20 +50,27 @@ public class PlayerCameraController : MonoBehaviour
     bool freeLooking;
     bool freeCamera;
     Transform lockedFollowTarget;
-    Vector3 lastLockedFollowTargetPosition;
+    Quaternion openingViewRotation;
+    float openingViewHeight;
 
     public bool FreeCameraEnabled => freeCamera;
     public bool IsLockedFollowing => lockedFollowTarget != null;
 
     void Start()
     {
-        targetZoomY = transform.position.y;
-        Vector3 initialEuler = transform.eulerAngles;
-        yaw = initialEuler.y;
-        pitch = initialEuler.x > 180f ? initialEuler.x - 360f : initialEuler.x;
-        targetYaw = yaw;
-        targetPitch = pitch;
+        openingViewRotation = transform.rotation;
+        openingViewHeight = transform.position.y;
+        SyncManualView();
         CameraWallCutaway.EnsureExists();
+    }
+
+    void SyncManualView()
+    {
+        Vector3 angles = transform.eulerAngles;
+        yaw = targetYaw = angles.y;
+        pitch = targetPitch = Mathf.DeltaAngle(0f, angles.x);
+        targetZoomY = transform.position.y;
+        yawVelocity = pitchVelocity = zoomVelocity = 0f;
     }
 
     void Update()
@@ -197,14 +204,20 @@ public class PlayerCameraController : MonoBehaviour
             PanTo(total / count);
     }
 
-    public void BeginLockedFollow(Transform target)
+    internal void BeginDeliveryFollow(Transform target)
     {
         if (target == null) return;
-        if (freeCamera) SetFreeCamera(false);
+        freeCamera = false;
+        if (freeLooking)
+        {
+            freeLooking = false;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
         lockedFollowTarget = target;
-        lastLockedFollowTargetPosition = target.position;
         currentMoveVelocity = Vector3.zero;
-        PanTo(target.position);
+        focusVelocity = Vector3.zero;
+        isFocusing = false;
     }
 
     public void EndLockedFollow()
@@ -213,6 +226,7 @@ public class PlayerCameraController : MonoBehaviour
         isFocusing = false;
         focusVelocity = Vector3.zero;
         currentMoveVelocity = Vector3.zero;
+        SyncManualView();
     }
 
     void UpdateLockedFollow()
@@ -223,19 +237,23 @@ public class PlayerCameraController : MonoBehaviour
             return;
         }
 
-        Vector3 currentTargetPosition = lockedFollowTarget.position;
-        Vector3 movement = currentTargetPosition - lastLockedFollowTargetPosition;
-        movement.y = 0f;
-        if (isFocusing)
-            focusTargetPosition += movement;
-        else
-            transform.position += movement;
-        lastLockedFollowTargetPosition = currentTargetPosition;
+        float dt = InteractionDeltaTime;
+        if (dt <= 0f) return;
 
-        if (isFocusing)
-            UpdateFocusPan();
-        else
-            ClampToPlayableBounds();
+        Vector3 subject = lockedFollowTarget.position;
+        Vector3 viewForward = openingViewRotation * Vector3.forward;
+        float distance = viewForward.y < -0.001f
+            ? Mathf.Max(0f, (subject.y - openingViewHeight) / viewForward.y)
+            : 0f;
+        Vector3 destination = subject - viewForward * distance;
+        destination.y = openingViewHeight;
+        destination = ClampPositionToPlayableBounds(destination);
+
+        float smoothing = Mathf.Max(0.05f, focusSmoothTime);
+        transform.position = Vector3.SmoothDamp(transform.position, destination,
+            ref focusVelocity, smoothing, Mathf.Infinity, dt);
+        transform.rotation = Quaternion.Slerp(transform.rotation, openingViewRotation,
+            1f - Mathf.Exp(-dt * 3f / smoothing));
     }
 
     void UpdateFocusPan()

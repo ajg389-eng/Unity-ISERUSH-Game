@@ -514,6 +514,16 @@ public class CustomersUI : MonoBehaviour
         if (metricValues.Count < 4) return;
         var stats = StoreStatisticsManager.Instance;
         metricValues[0].text = stats != null ? stats.CustomersInSystem.ToString() : "—";
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+        {
+            OnboardingTutorial practice = OnboardingTutorial.Instance;
+            int served = practice.MilestoneTwoPracticeServed;
+            int resolved = served + practice.MilestoneTwoPracticeLost;
+            metricValues[1].text = served > 0 ? (practice.MilestoneTwoPracticeWaitTotal / served).ToString("F1") + " s" : "No data";
+            metricValues[2].text = served > 0 ? practice.MilestoneTwoPracticeOrdersPerMinute.ToString("F1") : "Warming up";
+            metricValues[3].text = resolved > 0 ? (100f * served / resolved).ToString("F0") + "%" : "Warming up";
+            return;
+        }
         metricValues[1].text = stats != null && stats.OrdersCompletedToday > 0
             ? stats.AverageWaitTimeTodaySeconds.ToString("F1") + " s"
             : "No data";
@@ -529,6 +539,11 @@ public class CustomersUI : MonoBehaviour
     void RefreshArrivalsSummary()
     {
         if (arrivalsSummary == null) return;
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+        {
+            arrivalsSummary.text = $"Practice arrivals: {OnboardingTutorial.Instance.MilestoneTwoPracticeArrivals}";
+            return;
+        }
 
         var stats = StoreStatisticsManager.Instance;
         if (stats == null)

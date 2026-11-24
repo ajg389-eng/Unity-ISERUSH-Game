@@ -779,6 +779,8 @@ public class CustomerOrderConfig : ScriptableObject
 
     int GetDemandRate()
     {
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+            return DefaultItemDemandPerMinute;
         MilestoneProgressManager milestones = MilestoneProgressManager.Instance;
         int reachedStage = milestones != null ? milestones.GetHighestReachedNumberedStage() : 1;
         int demandTier = Mathf.Clamp(reachedStage, 1, MaxDemandMilestoneTier);
@@ -857,7 +859,7 @@ public class CustomerOrderConfig : ScriptableObject
             case 1: return "Milestone 1: Process Flow";
             case 2: return "Milestone 2: Demand and Capacity";
             case 3: return "Milestone 3: Supply Planning";
-            default: return "Milestone 4: Measure and Improve";
+            default: return "Milestone 4: Process Optimization";
         }
     }
     public bool IsCheeseburger(ItemDefinition item) => item != null && item == cheeseburgerItem;
@@ -1053,6 +1055,8 @@ public class CustomerOrderConfig : ScriptableObject
 
     public bool IsItemEnabled(ItemDefinition item)
     {
+        if (OnboardingTutorial.IsMilestoneTwoPracticeActive)
+            return item != null && (item == burgerBase || item == friesItem || item == drinkItem);
         if (item == null || !IsCustomerRecipeUnlocked(item)) return false;
         return (IsBurger(item) || IsFries(item) || IsDrink(item))
             && enabledMenuItems.Contains(item);
@@ -1062,9 +1066,9 @@ public class CustomerOrderConfig : ScriptableObject
     public List<string> CaptureEnabledMenuItemNames()
     {
         var names = new List<string>();
-        foreach (ItemDefinition item in GetEnabledMenuItems())
+        foreach (ItemDefinition item in GetMenuItems())
         {
-            if (item != null && !string.IsNullOrEmpty(item.name))
+            if (enabledMenuItems.Contains(item) && IsCustomerRecipeUnlocked(item) && !string.IsNullOrEmpty(item.name))
                 names.Add(item.name);
         }
         return names;
@@ -1093,22 +1097,61 @@ public class CustomerOrderConfig : ScriptableObject
         InvalidateDemandSchedule();
     }
 
-    /// <summary>Applies recipe unlocks while preserving the player's selection.</summary>
+    internal bool HasFixedMilestoneMenu
+    {
+        get
+        {
+            MilestoneDefinition milestone = MilestoneProgressManager.Instance?.GetActiveMilestone();
+            if (milestone?.isTutorial == true) return true;
+            foreach (ItemDefinition item in GetMilestoneDeliveryItems(milestone))
+                return true;
+            return false;
+        }
+    }
+
+    static IEnumerable<ItemDefinition> GetMilestoneDeliveryItems(MilestoneDefinition milestone)
+    {
+        if (milestone == null) yield break;
+        foreach (MissionDefinition mission in milestone.GetMissions())
+            if (mission != null && mission.deliveredItem != null)
+                yield return mission.deliveredItem;
+    }
+
+    /// <summary>Sets the campaign menu from the active milestone's delivery tasks.</summary>
     public bool SyncMenuToActiveMilestoneObjectives(bool allowDuringShift = false)
     {
         if (!allowDuringShift && GameTimeManager.Instance != null
             && GameTimeManager.Instance.IsShiftInProgress)
             return false;
 
-        MilestoneProgressManager progression = MilestoneProgressManager.Instance;
-        MilestoneDefinition milestone = progression != null ? progression.GetActiveMilestone() : null;
-        bool tutorial = milestone != null && milestone.isTutorial;
-        bool changed = enabledMenuItems.RemoveWhere(item =>
-            !IsCustomerRecipeUnlocked(item) || (tutorial && item != burgerBase)) > 0;
-        if ((tutorial || !menuSelectionInitialized) && IsCustomerRecipeUnlocked(burgerBase))
+        MilestoneDefinition milestone = MilestoneProgressManager.Instance?.GetActiveMilestone();
+        var requiredItems = new HashSet<ItemDefinition>(GetMilestoneDeliveryItems(milestone));
+        bool fixedMenu = milestone?.isTutorial == true || requiredItems.Count > 0;
+        bool changed;
+        if (fixedMenu)
         {
-            changed |= enabledMenuItems.Add(burgerBase);
+            if (milestone.isTutorial)
+            {
+                requiredItems.Clear();
+                requiredItems.Add(burgerBase);
+            }
+            requiredItems.RemoveWhere(item => !IsCustomerRecipeUnlocked(item));
+            changed = !enabledMenuItems.SetEquals(requiredItems);
+            if (changed)
+            {
+                enabledMenuItems.Clear();
+                enabledMenuItems.UnionWith(requiredItems);
+            }
             menuSelectionInitialized = true;
+        }
+        else
+        {
+            changed = enabledMenuItems.RemoveWhere(item => !IsCustomerRecipeUnlocked(item)) > 0;
+            if (!menuSelectionInitialized && IsCustomerRecipeUnlocked(burgerBase))
+            {
+                changed |= enabledMenuItems.Add(burgerBase);
+                menuSelectionInitialized = true;
+            }
         }
         if (!changed) return false;
         InvalidateDemandSchedule();
@@ -1144,8 +1187,11 @@ public class CustomerOrderConfig : ScriptableObject
     {
         if (GameTimeManager.Instance != null && GameTimeManager.Instance.IsShiftInProgress)
             return;
-        MilestoneDefinition milestone = MilestoneProgressManager.Instance?.GetActiveMilestone();
-        if (milestone != null && milestone.isTutorial && (item != burgerBase || !enabled)) return;
+        if (HasFixedMilestoneMenu)
+        {
+            SyncMenuToActiveMilestoneObjectives();
+            return;
+        }
         if (!IsCustomerRecipeUnlocked(item)) return;
         menuSelectionInitialized = true;
         bool changed = enabled

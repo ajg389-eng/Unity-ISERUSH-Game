@@ -7,7 +7,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Escape pause overlay. Main screen matches a simple Resume / Options / Quit to Menu list.
+/// Escape pause overlay and in-game settings.
 /// Options holds Audio, Video, Graphics, and Keybinds.
 /// </summary>
 public class PauseMenuUI : MonoBehaviour
@@ -98,8 +98,6 @@ public class PauseMenuUI : MonoBehaviour
     TextMeshProUGUI antiAliasingValue;
     TextMeshProUGUI textureQualityValue;
     TextMeshProUGUI graphicsPresetValue;
-    TextMeshProUGUI saveButtonLabel;
-    float saveButtonLabelResetAt;
     int shadowQualityIndex;
     int antiAliasingIndex;
     int textureQualityIndex;
@@ -109,7 +107,6 @@ public class PauseMenuUI : MonoBehaviour
     bool built;
     bool showingOptions;
     bool showingGuidebook;
-    bool guidebookReturnsToGame;
     bool showingCredits;
     bool titleSettingsMode;
     bool confirmationOwnsOverlay;
@@ -155,13 +152,6 @@ public class PauseMenuUI : MonoBehaviour
 
     void LateUpdate()
     {
-        if (saveButtonLabel != null && saveButtonLabelResetAt > 0f
-            && Time.unscaledTime >= saveButtonLabelResetAt)
-        {
-            saveButtonLabel.text = "Save Game";
-            saveButtonLabelResetAt = 0f;
-        }
-
         if (Time.unscaledTime < pauseInputBlockedUntil)
         {
             EscapeHandledThisFrame = false;
@@ -238,7 +228,6 @@ public class PauseMenuUI : MonoBehaviour
         visible = false;
         showingOptions = false;
         showingGuidebook = false;
-        guidebookReturnsToGame = false;
         showingCredits = false;
         if (guidebook != null)
             guidebook.Close();
@@ -271,25 +260,11 @@ public class PauseMenuUI : MonoBehaviour
 
     public void CloseGuidebook()
     {
-        bool returnToGame = guidebookReturnsToGame;
-        guidebookReturnsToGame = false;
-        showingGuidebook = false;
-        if (guidebook != null)
-            guidebook.Close();
-        if (returnToGame)
-            Hide();
-        else
-            ShowMain();
+        if (showingGuidebook) Hide();
     }
 
-    void ShowGuidebook()
+    void ShowGuidebook(string chapter, string term = null)
     {
-        ShowGuidebook(false, null);
-    }
-
-    void ShowGuidebook(bool returnToGameWhenClosed, string chapter, string term = null)
-    {
-        guidebookReturnsToGame = returnToGameWhenClosed;
         showingGuidebook = true;
         showingOptions = false;
         if (mainPage != null) mainPage.SetActive(false);
@@ -307,7 +282,7 @@ public class PauseMenuUI : MonoBehaviour
         if (IsTitleVisible()) return;
         if (!visible)
             Show();
-        ShowGuidebook(true, chapter);
+        ShowGuidebook(chapter);
     }
 
     public void OpenGuidebookTermFromHud(string term)
@@ -315,7 +290,7 @@ public class PauseMenuUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(term)) return;
         if (!visible)
             Show();
-        ShowGuidebook(true, null, term);
+        ShowGuidebook(null, term);
     }
 
     void ShowOptions()
@@ -534,11 +509,6 @@ public class PauseMenuUI : MonoBehaviour
             Hide(playSound: false);
         });
 
-        var save = CreateMenuButton(page.transform, "SaveGameButton", "Save Game",
-            54f, 360f, 22f, GameUITheme.Positive);
-        save.onClick.AddListener(OnSaveGame);
-        saveButtonLabel = save.GetComponentInChildren<TextMeshProUGUI>(true);
-
         var options = CreateMenuButton(page.transform, "OptionsButton", "Options", 54f, 360f, 22f, MainButtonColor);
         options.onClick.AddListener(() =>
         {
@@ -546,17 +516,12 @@ public class PauseMenuUI : MonoBehaviour
             ShowOptions();
         });
 
-        var guidebookBtn = CreateMenuButton(page.transform, "GuidebookButton", "Guidebook", 54f, 360f, 22f, MainButtonColor);
-        guidebookBtn.onClick.AddListener(() =>
-        {
-            Sfx.Play(SfxId.UiClick);
-            ShowGuidebook();
-        });
-
         var feedback = CreateMenuButton(page.transform, "FeedbackButton", "Give Feedback", 54f, 360f, 22f, MainButtonColor);
+        GameIconLibrary.ApplyToButton(feedback, GameIconId.SpeechBubble, 22f, 12f);
         feedback.onClick.AddListener(OpenFeedbackForm);
 
         var credits = CreateMenuButton(page.transform, "CreditsButton", "Credits", 54f, 360f, 22f, MainButtonColor);
+        GameIconLibrary.ApplyToButton(credits, GameIconId.Star, 22f, 12f);
         credits.onClick.AddListener(() =>
         {
             Sfx.Play(SfxId.UiClick);
@@ -566,17 +531,6 @@ public class PauseMenuUI : MonoBehaviour
         var quit = CreateMenuButton(page.transform, "QuitToMenuButton", "Quit to Menu", 54f, 360f, 22f, GameUITheme.Danger);
         quit.onClick.AddListener(OnQuitToMenu);
         return page;
-    }
-
-    void OnSaveGame()
-    {
-        bool saved = GameSaveSlots.SaveActiveSlot();
-        if (saveButtonLabel != null)
-        {
-            saveButtonLabel.text = saved ? "Saved!" : "Save Failed";
-            saveButtonLabelResetAt = Time.unscaledTime + 1.5f;
-        }
-        Sfx.Play(saved ? SfxId.BuildPlace : SfxId.UiError);
     }
 
     void ShowCredits()
@@ -1933,8 +1887,6 @@ public class PauseMenuUI : MonoBehaviour
             GameIconLibrary.ApplyToButton(btn, GameIconId.Play, 22f, 12f);
         else if (name == "OptionsButton")
             GameIconLibrary.ApplyToButton(btn, GameIconId.Gear, 22f, 12f);
-        else if (name == "GuidebookButton")
-            GameIconLibrary.ApplyToButton(btn, GameIconId.Information, 22f, 12f);
         else if (name == "QuitToMenuButton")
             GameIconLibrary.ApplyToButton(btn, GameIconId.Home, 22f, 12f);
         else if (name == "BackButton" || name == "CreditsBackButton")

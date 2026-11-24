@@ -276,13 +276,13 @@ public class MilestoneProgressManager : MonoBehaviour
         if (next != null && !string.IsNullOrEmpty(next.milestoneId))
         {
             activeMilestoneId = next.milestoneId;
-            ApplyActiveMissions(reset: true);
+            ApplyActiveMissions(reset: true, syncMenu: current.isTutorial);
             if (current.isTutorial) MilestoneUnlockPopupUI.ShowAfterTransition(next);
         }
         else
         {
             activeMilestoneId = null;
-            ApplyActiveMissions(reset: true);
+            ApplyActiveMissions(reset: true, syncMenu: current.isTutorial);
         }
 
         OnMilestonesChanged?.Invoke();
@@ -454,12 +454,10 @@ public class MilestoneProgressManager : MonoBehaviour
         return true;
     }
 
-    void ApplyActiveMissions(bool reset)
+    void ApplyActiveMissions(bool reset, bool syncMenu = true)
     {
-        CustomerOrderConfig orderConfig = ProductionManager.Instance != null
-            ? ProductionManager.Instance.orderConfig : null;
-        if (orderConfig != null)
-            orderConfig.SyncMenuToActiveMilestoneObjectives(allowDuringShift: true);
+        if (syncMenu)
+            ProductionManager.Instance?.orderConfig?.SyncMenuToActiveMilestoneObjectives(allowDuringShift: true);
 
         if (!driveMissionList) return;
 

@@ -42,6 +42,7 @@ public class KitchenSaveSnapshot
     public bool milestoneTwoPlanningReviewed;
     public int milestoneOneIntroProgress;
     public bool supplyLessonDone;
+    public bool optimizationLessonDone;
     public bool supplyLessonPlanningReviewed, supplyLessonDeliveryArrived;
     public bool workerLessonDone, workerLessonHireReviewed;
     public int workerLessonFlowIndex = -1;
@@ -153,6 +154,8 @@ public class KitchenSaveSnapshot
         s.milestoneOneIntroProgress = OnboardingTutorial.Instance != null
             ? OnboardingTutorial.Instance.MilestoneOneIntroProgressForSave : 0;
         s.supplyLessonDone = OnboardingTutorial.Instance != null && OnboardingTutorial.Instance.SupplyLessonDoneForSave;
+        s.optimizationLessonDone = OnboardingTutorial.Instance != null
+            && OnboardingTutorial.Instance.OptimizationLessonDoneForSave;
         s.supplyLessonPlanningReviewed = OnboardingTutorial.Instance != null
             && OnboardingTutorial.Instance.SupplyLessonPlanningReviewedForSave;
         s.supplyLessonDeliveryArrived = OnboardingTutorial.Instance != null
@@ -223,7 +226,8 @@ public class KitchenSaveSnapshot
         {
             s.enabledMenuItemNames.AddRange(productionForMenu.orderConfig.CaptureEnabledMenuItemNames());
         }
-        s.customers = CustomerAI.CaptureAllForSave();
+        if (!OnboardingTutorial.IsMilestoneTwoPracticeActive)
+            s.customers = CustomerAI.CaptureAllForSave();
         var appearance = StoreAppearanceController.Instance;
         if (appearance != null)
         {
@@ -946,7 +950,8 @@ public class KitchenSaveSnapshot
                 supplyLessonDone, pantryPractice, workerLessonDone, workerLessonHireReviewed,
                 version >= 60 && workerLessonFlowIndex >= 0 && workerLessonFlowIndex < pm.productionFlows.Count
                     ? pm.productionFlows[workerLessonFlowIndex] : null,
-                milestoneTwoPlanningReviewed, supplyLessonPlanningReviewed, supplyLessonDeliveryArrived);
+                milestoneTwoPlanningReviewed, supplyLessonPlanningReviewed, supplyLessonDeliveryArrived,
+                optimizationLessonDone);
         return true;
     }
 

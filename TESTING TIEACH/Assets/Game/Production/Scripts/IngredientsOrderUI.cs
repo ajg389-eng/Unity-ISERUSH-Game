@@ -3061,7 +3061,7 @@ public class IngredientsOrderUI : MonoBehaviour
         placeOrderButton.GetComponent<LayoutElement>().flexibleWidth = 1f;
         ConfigureCartActionLabel(placeOrderLabel);
         DelayedTooltip.Attach(placeOrderButton,
-            "Order ingredient packs. Once Supply Planning unlocks, packs arrive by van during planning or service.");
+            "Order ingredient packs. Once Supply Planning unlocks, a truck delivers packs during planning or service.");
         placeOrderButton.onClick.AddListener(SubmitCart);
 
         clearCartButton.transform.SetAsLastSibling();

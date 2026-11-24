@@ -13,27 +13,27 @@ MonoBehaviour:
   m_Name: Milestone_milestone_04
   m_EditorClassIdentifier: Assembly-CSharp::MilestoneDefinition
   milestoneId: milestone_04
-  displayName: Measure and Improve
-  description: Use delivered output to see whether a focused change improves the whole process.
+  displayName: Process Optimization
+  description: Improve one product line and check how the change affects output across the kitchen.
   completionDialogue:
-  - The data shows whether your change improved the process. Use it to choose what to fix next.
-  - Check the whole system. Improving one station can move the bottleneck somewhere else.
+  - Find the step holding up the kitchen and change one thing at a time. Check what reaches Pickup and how many customers get served.
+  - A faster station can move the bottleneck somewhere else. Follow the work through the whole kitchen before deciding what to improve next.
   isTutorial: 0
-  minimumSystemEfficiencyPercent: 50
-  minimumCustomersServedPercent: 75
+  minimumSystemEfficiencyPercent: 80
+  minimumCustomersServedPercent: 70
   missions:
   - {fileID: 11400000, guid: 9ca87026fb1d4a348ba9f31e225d7d0f, type: 2}
   - {fileID: 11400000, guid: 2d6eff8a216647678689348797f51cf0, type: 2}
   - {fileID: 11400000, guid: f273a94d2ab7449198238e0e6f0bb506, type: 2}
   shiftQuestions:
   - questionId: check_output
-    prompt: "After moving a station, what should you compare?"
+    prompt: "Moving a worker to burgers lifts their forecast from 16 to 20 per minute. Fries drop from 20 to 15. Both need 20. What should you check before keeping the change?"
     answers:
-    - "How much food reaches Pickup"
-    - "The station card color"
-    - "The number of tabs open"
+    - "Whether the change helps customers get their whole orders"
+    - "Whether burgers alone are now on target"
+    - "Whether burgers have the fastest worker"
     correctAnswerIndex: 0
-    explanation: "Use delivered output to see whether the layout helped."
+    explanation: "Fries now have a bigger shortfall than burgers had. Check all three outputs and customer service before keeping the new assignment."
   - questionId: check_shortfall
     prompt: "If Produced / Min is below Demand / Min, what does that mean?"
     answers:
@@ -43,21 +43,21 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: "Compare output with demand to see if production keeps up."
   - questionId: check_stock
-    prompt: "Where can you check ingredient stock and forecast?"
+    prompt: "You shift supplier capacity from buns to milk. Shakes have enough milk now, but the Supply plan shows buns running short. What should you do?"
     answers:
-    - "Kitchen → Supply"
-    - "Music"
-    - "Milestone Details"
+    - "Rebalance the rates and check both ingredient shortages"
+    - "Keep the plan because shakes have enough milk"
+    - "Raise the burger station's target to make up the difference"
     correctAnswerIndex: 0
-    explanation: "Supply shows how much you have and how much you may need."
+    explanation: "The supplier limit is shared. Check where a change removes a shortage and where it creates one."
   - questionId: improve_baseline
-    prompt: "You want to test a shorter burger route. What should you measure before moving a station?"
+    prompt: "You want to test a shorter burger route that uses a worker shared with fries. What should you record before changing it?"
     answers:
-    - "How many burgers currently reach Pickup"
+    - "The starting output forecast for all three menu items"
     - "How much the new station costs"
     - "How many items the supplier could deliver"
     correctAnswerIndex: 0
-    explanation: "Measure the old layout first so you have a baseline for the new one."
+    explanation: "The starting rates help you see which lines gain or lose output after the change."
   - questionId: improve_change_one
     prompt: "Which test makes it easiest to tell whether a shorter walk helped?"
     answers:
@@ -67,13 +67,13 @@ MonoBehaviour:
     correctAnswerIndex: 0
     explanation: "A focused change makes it easier to see what affected the result."
   - questionId: improve_read_pickup
-    prompt: "Produced / Min rises from 7 to 9 after a layout change. What improved?"
+    prompt: "Live Analytics shows 20 shakes per minute. The day summary shows an average of 16. How can both be right?"
     answers:
-    - "Two more items reached Pickup per minute"
-    - "Customers ordered two more items per minute"
-    - "The supplier delivered two more ingredients per minute"
+    - "Live Analytics uses the last minute. The summary averages the whole shift."
+    - "The summary only counts shakes in single-item orders."
+    - "Live Analytics is a production forecast."
     correctAnswerIndex: 0
-    explanation: "Produced / Min measures real deliveries to Pickup."
+    explanation: "Produced / Min is a recent reading. The end-of-day average includes slow periods earlier in the shift."
   - questionId: improve_predicted_only
     prompt: "Predicted / Min rises, but Produced / Min stays the same. What should you conclude so far?"
     answers:

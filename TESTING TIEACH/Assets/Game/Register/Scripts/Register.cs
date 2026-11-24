@@ -495,7 +495,7 @@ public class Register : MonoBehaviour
             return;
         }
 
-        if (sale > 0)
+        if (sale > 0 && !OnboardingTutorial.IsMilestoneTwoPracticeActive)
         {
             if (moneyManager == null) moneyManager = FindObjectOfType<MoneyManager>();
             if (moneyManager != null) moneyManager.AddMoney(sale);

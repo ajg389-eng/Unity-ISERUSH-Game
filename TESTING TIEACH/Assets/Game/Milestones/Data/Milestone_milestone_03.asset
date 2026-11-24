@@ -19,8 +19,8 @@ MonoBehaviour:
   - You planned ingredient supply around what production needs.
   - Keep stock available for the process without ordering far beyond expected use.
   isTutorial: 0
-  minimumSystemEfficiencyPercent: 35
-  minimumCustomersServedPercent: 60
+  minimumSystemEfficiencyPercent: 70
+  minimumCustomersServedPercent: 65
   missions:
   - {fileID: 11400000, guid: 720b3bc1d4e94236af25b99cfc37e39a, type: 2}
   - {fileID: 11400000, guid: 2f81f5e24e884a3890e7bf3f4f9d1eff, type: 2}
@@ -84,11 +84,11 @@ MonoBehaviour:
   - questionId: supply_ingredients_only
     prompt: "You need more buns on hand before opening. What happens if you order a pack during planning?"
     answers:
-    - "The van can deliver them before opening"
+    - "The truck can deliver them before opening"
     - "The buns go into Stock as soon as you pay"
     - "The regular bun delivery rate goes up"
     correctAnswerIndex: 0
-    explanation: "A planning order arrives by van. The ingredients enter Stock when the driver drops off the pack."
+    explanation: "A delivery truck brings the order during planning. The ingredients enter Stock when the driver drops off the pack."
   - questionId: supply_raise_one
     prompt: "You raise the bun rate while the supplier is already at capacity. How can you make room for it?"
     answers:
@@ -102,7 +102,7 @@ MonoBehaviour:
     answers:
     - "When the delivery driver drops off the pack"
     - "As soon as you pay for the pack"
-    - "As soon as the van starts driving to the restaurant"
+    - "As soon as the truck starts driving to the restaurant"
     correctAnswerIndex: 0
     explanation: "An in-shift pack order is marked Incoming until the driver delivers it to the counter."
   - questionId: supply_plan_timing

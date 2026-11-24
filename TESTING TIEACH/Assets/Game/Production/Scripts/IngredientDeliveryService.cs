@@ -12,7 +12,8 @@ public class IngredientDeliveryService : MonoBehaviour
     public const float ArrivalLeadSeconds = 17f;
 
     public static IngredientDeliveryService Instance { get; private set; }
-    internal static float DeliveryDeltaTime => ShiftPlanningUI.IsPlanning
+    internal static float DeliveryDeltaTime => OnboardingTutorial.IsMilestoneTwoPracticeActive ? 0f
+        : ShiftPlanningUI.IsPlanning
         ? GameTimeManager.Instance?.PlanningDeliveryDeltaTime ?? 0f
         : GameTimeManager.Instance?.IsShiftOver == true ? 0f : Time.deltaTime;
 
